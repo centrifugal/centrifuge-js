@@ -1,4 +1,4 @@
-centrifuge-javascript-client
-============================
+centrifuge-js
+=============
 
 Future home for Centrifuge javascript client

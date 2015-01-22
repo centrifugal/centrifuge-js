@@ -1,0 +1,28 @@
+{
+  "name": "centrifuge",
+  "version": "0.5.2",
+  "description": "Centrifuge javascript client",
+  "main": "centrifuge.js",
+  "dependencies": {},
+  "devDependencies": {},
+  "scripts": {
+    "build-js": "cat centrifuge.js | uglifyjs -cm > centrifuge.min.js",
+    "build-dom-plugin": "cat plugins/centrifuge-dom/centrifuge.dom.js | uglifyjs -cm > plugins/centrifuge-dom/centrifuge.dom.min.js",
+    "build": "npm run build-js",
+    "build-plugins": "npm run build-dom-plugin"
+  },
+  "author": "Alexandr Emelin",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/centrifugal/centrifuge-js.git"
+  },
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/centrifugal/centrifuge-js/issues"
+  },
+  "homepage": "https://github.com/centrifugal/centrifuge-js",
+  "keywords": [
+    "sockjs",
+    "websocket"
+  ]
+}

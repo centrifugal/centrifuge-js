@@ -6,9 +6,10 @@
   "dependencies": {},
   "devDependencies": {},
   "scripts": {
-    "build-js": "cat centrifuge.js | uglifyjs -cm > centrifuge.min.js",
+    "build-js": "cat src/centrifuge.js > centrifuge.js",
+    "build-minified-js": "cat src/centrifuge.js | uglifyjs -cm > centrifuge.min.js",
     "build-dom-plugin": "cat plugins/centrifuge-dom/centrifuge.dom.js | uglifyjs -cm > plugins/centrifuge-dom/centrifuge.dom.min.js",
-    "build": "npm run build-js",
+    "build": "npm run build-js && npm run build-minified-js",
     "build-plugins": "npm run build-dom-plugin"
   },
   "author": "Alexandr Emelin",

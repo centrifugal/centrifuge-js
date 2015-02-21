@@ -756,7 +756,12 @@
         }
 
         if (!this._config.user && this._config.user !== '') {
-            throw 'Missing required configuration parameter \'user\' specifying user\'s unique ID in your application';
+            if (!this._config.insecure) {
+                throw 'Missing required configuration parameter \'user\' specifying user\'s unique ID in your application';
+            } else {
+                this._debug("user not found but this is OK for insecure mode - anonymous access will be used");
+                this._config.user = "";
+            }
         }
 
         if (!this._config.timestamp) {

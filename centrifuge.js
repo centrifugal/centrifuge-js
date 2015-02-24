@@ -1,7 +1,4 @@
-/**
- * Centrifuge javascript client
- * v0.5.2
- */
+// v0.7.0
 ;(function () {
     'use strict';
 
@@ -564,8 +561,100 @@
         }
     }
 
+    // http://krasimirtsonev.com/blog/article/Cross-browser-handling-of-Ajax-requests-in-absurdjs
+    var AJAX = {
+        request: function(url, method, ops) {
+            ops.data = ops.data || {};
+
+            var getParams = function(data, request_url) {
+                var arr = [], str;
+                for(var name in data) {
+                    if (typeof data[name] === 'object') {
+                        for (var i in data[name]) {
+                            arr.push(name + '=' + encodeURIComponent(data[name][i]));
+                        }
+                    } else {
+                        arr.push(name + '=' + encodeURIComponent(data[name]));
+                    }
+                }
+                str = arr.join('&');
+                if(str != '') {
+                    return request_url ? (request_url.indexOf('?') < 0 ? '?' + str : '&' + str) : str;
+                }
+                return '';
+            };
+            var api = {
+                host: {},
+                setHeaders: function(headers) {
+                    for(var name in headers) {
+                        this.xhr && this.xhr.setRequestHeader(name, headers[name]);
+                    }
+                },
+                process: function(ops) {
+                    var self = this;
+                    this.xhr = null;
+                    if (window.ActiveXObject) {
+                        this.xhr = new ActiveXObject('Microsoft.XMLHTTP');
+                    }
+                    else if (window.XMLHttpRequest) {
+                        this.xhr = new XMLHttpRequest();
+                    }
+                    if(this.xhr) {
+                        this.xhr.onreadystatechange = function() {
+                            if(self.xhr.readyState == 4 && self.xhr.status == 200) {
+                                var result = self.xhr.responseText;
+                                if (typeof JSON != 'undefined') {
+                                    result = JSON.parse(result);
+                                } else {
+                                    throw "JSON undefined";
+                                }
+                                self.doneCallback && self.doneCallback.apply(self.host, [result, self.xhr]);
+                            } else if(self.xhr.readyState == 4) {
+                                self.failCallback && self.failCallback.apply(self.host, [self.xhr]);
+                            }
+                            self.alwaysCallback && self.alwaysCallback.apply(self.host, [self.xhr]);
+                        }
+                    }
+                    if(method == 'get') {
+                        this.xhr.open("GET", url + getParams(ops.data, url), true);
+                    } else {
+                        this.xhr.open(method, url, true);
+                        this.setHeaders({
+                            'X-Requested-With': 'XMLHttpRequest',
+                            'Content-type': 'application/x-www-form-urlencoded'
+                        });
+                    }
+                    if(ops.headers && typeof ops.headers == 'object') {
+                        this.setHeaders(ops.headers);
+                    }
+                    setTimeout(function() {
+                        method == 'get' ? self.xhr.send() : self.xhr.send(getParams(ops.data));
+                    }, 20);
+                    return this;
+                },
+                done: function(callback) {
+                    this.doneCallback = callback;
+                    return this;
+                },
+                fail: function(callback) {
+                    this.failCallback = callback;
+                    return this;
+                },
+                always: function(callback) {
+                    this.alwaysCallback = callback;
+                    return this;
+                }
+            };
+            return api.process(ops);
+        }
+    };
+
     function endsWith(value, suffix) {
         return value.indexOf(suffix, value.length - suffix.length) !== -1;
+    }
+
+    function startsWith(value, prefix) {
+        return value.lastIndexOf(prefix, 0) === 0;
     }
 
     function stripSlash(value) {
@@ -608,10 +697,14 @@
         this._subscriptions = {};
         this._messages = [];
         this._isBatching = false;
+        this._isAuthBatching = false;
+        this._authChannels = {};
+        this._refreshTimeout = null;
         this._config = {
             retry: 3000,
             info: null,
             debug: false,
+            insecure: false,
             server: null,
             protocols_whitelist: [
                 'websocket',
@@ -623,7 +716,12 @@
                 'xhr-polling',
                 'iframe-xhr-polling',
                 'jsonp-polling'
-            ]
+            ],
+            privateChannelPrefix: "$",
+            refreshEndpoint: "/centrifuge/refresh",
+            authEndpoint: "/centrifuge/auth",
+            authHeaders: {},
+            refreshHeaders: {}
         };
         if (options) {
             this.configure(options);
@@ -632,15 +730,15 @@
 
     extend(Centrifuge, EventEmitter);
 
-    var centrifuge_proto = Centrifuge.prototype;
+    var centrifugeProto = Centrifuge.prototype;
 
-    centrifuge_proto._debug = function () {
+    centrifugeProto._debug = function () {
         if (this._config.debug === true) {
             log('debug', arguments);
         }
     };
 
-    centrifuge_proto._configure = function (configuration) {
+    centrifugeProto._configure = function (configuration) {
         this._debug('Configuring centrifuge object with', configuration);
 
         if (!configuration) {
@@ -653,20 +751,33 @@
             throw 'Missing required configuration parameter \'url\' specifying the Centrifuge server URL';
         }
 
-        if (!this._config.token) {
-            throw 'Missing required configuration parameter \'token\' specifying the sign of authorization request';
-        }
-
         if (!this._config.project) {
             throw 'Missing required configuration parameter \'project\' specifying project ID in Centrifuge';
         }
 
         if (!this._config.user && this._config.user !== '') {
-            throw 'Missing required configuration parameter \'user\' specifying user\'s unique ID in your application';
+            if (!this._config.insecure) {
+                throw 'Missing required configuration parameter \'user\' specifying user\'s unique ID in your application';
+            } else {
+                this._debug("user not found but this is OK for insecure mode - anonymous access will be used");
+                this._config.user = "";
+            }
         }
 
         if (!this._config.timestamp) {
-            throw 'Missing required configuration parameter \'timestamp\'';
+            if (!this._config.insecure) {
+                throw 'Missing required configuration parameter \'timestamp\'';
+            } else {
+                this._debug("token not found but this is OK for insecure mode");
+            }
+        }
+
+        if (!this._config.token) {
+            if (!this._config.insecure) {
+                throw 'Missing required configuration parameter \'token\' specifying the sign of authorization request';
+            } else {
+                this._debug("timestamp not found but this is OK for insecure mode");
+            }
         }
 
         this._config.url = stripSlash(this._config.url);
@@ -680,30 +791,34 @@
         }
     };
 
-    centrifuge_proto._setStatus = function (newStatus) {
+    centrifugeProto._setStatus = function (newStatus) {
         if (this._status !== newStatus) {
             this._debug('Status', this._status, '->', newStatus);
             this._status = newStatus;
         }
     };
 
-    centrifuge_proto._isDisconnected = function () {
+    centrifugeProto._isDisconnected = function () {
         return this._isConnected() === false;
     };
 
-    centrifuge_proto._isConnected = function () {
+    centrifugeProto._isConnected = function () {
         return this._status === 'connected';
     };
 
-    centrifuge_proto._nextMessageId = function () {
+    centrifugeProto._isConnecting = function () {
+        return this._status === 'connecting';
+    };
+
+    centrifugeProto._nextMessageId = function () {
         return ++this._messageId;
     };
 
-    centrifuge_proto._clearSubscriptions = function () {
+    centrifugeProto._clearSubscriptions = function () {
         this._subscriptions = {};
     };
 
-    centrifuge_proto._send = function (messages) {
+    centrifugeProto._send = function (messages) {
         // We must be sure that the messages have a clientId.
         // This is not guaranteed since the handshake may take time to return
         // (and hence the clientId is not known yet) and the application
@@ -721,7 +836,11 @@
         }
     };
 
-    centrifuge_proto._connect = function (callback) {
+    centrifugeProto._connect = function (callback) {
+
+        if (this.isConnected()) {
+            return;
+        }
 
         this._clientId = null;
 
@@ -759,18 +878,18 @@
             var centrifugeMessage = {
                 'method': 'connect',
                 'params': {
-                    'token': self._config.token,
                     'user': self._config.user,
-                    'project': self._config.project,
-                    'timestamp': self._config.timestamp
+                    'project': self._config.project
                 }
             };
 
             if (self._config.info !== null) {
-                self._debug("connect using additional info");
-                centrifugeMessage['params']['info'] = self._config.info;
-            } else {
-                self._debug("connect without additional info");
+                centrifugeMessage["params"]["info"] = self._config.info;
+            }
+
+            if (!self._config.insecure) {
+                centrifugeMessage["params"]["timestamp"] = self._config.timestamp;
+                centrifugeMessage["params"]["token"] = self._config.token;
             }
             self.send(centrifugeMessage);
         };
@@ -799,7 +918,7 @@
         };
     };
 
-    centrifuge_proto._disconnect = function () {
+    centrifugeProto._disconnect = function () {
         this._clientId = null;
         this._setStatus('disconnected');
         this._subscriptions = {};
@@ -807,7 +926,7 @@
         this._transport.close();
     };
 
-    centrifuge_proto._getSubscription = function (channel) {
+    centrifugeProto._getSubscription = function (channel) {
         var subscription;
         subscription = this._subscriptions[channel];
         if (!subscription) {
@@ -816,37 +935,60 @@
         return subscription;
     };
 
-    centrifuge_proto._removeSubscription = function (channel) {
+    centrifugeProto._removeSubscription = function (channel) {
         try {
             delete this._subscriptions[channel];
         } catch (e) {
             this._debug('nothing to delete for channel ', channel);
         }
+        try {
+            delete this._authChannels[channel];
+        } catch (e) {
+            this._debug('nothing to delete from authChannels for channel ', channel);
+        }
     };
 
-    centrifuge_proto._connectResponse = function (message) {
+    centrifugeProto._connectResponse = function (message) {
+        if (this.isConnected()) {
+            return;
+        }
         if (message.error === null) {
-            this._clientId = message.body;
+            if (!message.body) {
+                return;
+            }
+            var isExpired = message.body.expired;
+            if (isExpired) {
+                this.refresh();
+                return;
+            }
+            this._clientId = message.body.client;
             this._setStatus('connected');
             this.trigger('connect', [message]);
+            if (this._refreshTimeout) {
+                window.clearTimeout(this._refreshTimeout);
+            }
+            if (message.body.ttl !== null) {
+                var self = this;
+                this._refreshTimeout = window.setTimeout(function() {
+                    self.refresh.call(self);
+                }, message.body.ttl * 1000);
+            }
         } else {
             this.trigger('error', [message]);
             this.trigger('connect:error', [message]);
         }
     };
 
-    centrifuge_proto._disconnectResponse = function (message) {
+    centrifugeProto._disconnectResponse = function (message) {
         if (message.error === null) {
             this.disconnect();
-            //this.trigger('disconnect', [message]);
-            //this.trigger('disconnect:success', [message]);
         } else {
             this.trigger('error', [message]);
             this.trigger('disconnect:error', [message.error]);
         }
     };
 
-    centrifuge_proto._subscribeResponse = function (message) {
+    centrifugeProto._subscribeResponse = function (message) {
         if (message.error !== null) {
             this.trigger('error', [message]);
         }
@@ -868,7 +1010,7 @@
         }
     };
 
-    centrifuge_proto._unsubscribeResponse = function (message) {
+    centrifugeProto._unsubscribeResponse = function (message) {
         var body = message.body;
         var channel = body.channel;
         var subscription = this.getSubscription(channel);
@@ -881,7 +1023,7 @@
         }
     };
 
-    centrifuge_proto._publishResponse = function (message) {
+    centrifugeProto._publishResponse = function (message) {
         var body = message.body;
         var channel = body.channel;
         var subscription = this.getSubscription(channel);
@@ -896,7 +1038,7 @@
         }
     };
 
-    centrifuge_proto._presenceResponse = function (message) {
+    centrifugeProto._presenceResponse = function (message) {
         var body = message.body;
         var channel = body.channel;
         var subscription = this.getSubscription(channel);
@@ -912,7 +1054,7 @@
         }
     };
 
-    centrifuge_proto._historyResponse = function (message) {
+    centrifugeProto._historyResponse = function (message) {
         var body = message.body;
         var channel = body.channel;
         var subscription = this.getSubscription(channel);
@@ -928,7 +1070,7 @@
         }
     };
 
-    centrifuge_proto._joinResponse = function(message) {
+    centrifugeProto._joinResponse = function(message) {
         var body = message.body;
         var channel = body.channel;
         var subscription = this.getSubscription(channel);
@@ -938,7 +1080,7 @@
         subscription.trigger('join', [body]);
     };
 
-    centrifuge_proto._leaveResponse = function(message) {
+    centrifugeProto._leaveResponse = function(message) {
         var body = message.body;
         var channel = body.channel;
         var subscription = this.getSubscription(channel);
@@ -948,7 +1090,7 @@
         subscription.trigger('leave', [body]);
     };
 
-    centrifuge_proto._messageResponse = function (message) {
+    centrifugeProto._messageResponse = function (message) {
         var body = message.body;
         var channel = body.channel;
         var subscription = this.getSubscription(channel);
@@ -958,7 +1100,19 @@
         subscription.trigger('message', [body]);
     };
 
-    centrifuge_proto._dispatchMessage = function(message) {
+    centrifugeProto._refreshResponse = function (message) {
+        if (this._refreshTimeout) {
+            window.clearTimeout(this._refreshTimeout);
+        }
+        if (message.body.ttl !== null) {
+            var self = this;
+            self._refreshTimeout = window.setTimeout(function () {
+                self.refresh.call(self);
+            }, message.body.ttl * 1000);
+        }
+    };
+
+    centrifugeProto._dispatchMessage = function(message) {
         if (message === undefined || message === null) {
             return;
         }
@@ -999,6 +1153,9 @@
                 break;
             case 'ping':
                 break;
+            case 'refresh':
+                this._refreshResponse(message);
+                break;
             case 'message':
                 this._messageResponse(message);
                 break;
@@ -1007,7 +1164,7 @@
         }
     };
 
-    centrifuge_proto._receive = function (data) {
+    centrifugeProto._receive = function (data) {
         if (Object.prototype.toString.call(data) === Object.prototype.toString.call([])) {
             for (var i in data) {
                 if (data.hasOwnProperty(i)) {
@@ -1020,13 +1177,13 @@
         }
     };
 
-    centrifuge_proto._flush = function() {
+    centrifugeProto._flush = function() {
         var messages = this._messages.slice(0);
         this._messages = [];
         this._send(messages);
     };
 
-    centrifuge_proto._ping = function () {
+    centrifugeProto._ping = function () {
         var centrifugeMessage = {
             "method": "ping",
             "params": {}
@@ -1036,27 +1193,29 @@
 
     /* PUBLIC API */
 
-    centrifuge_proto.getClientId = function () {
+    centrifugeProto.getClientId = function () {
         return this._clientId;
     };
 
-    centrifuge_proto.isConnected = centrifuge_proto._isConnected;
+    centrifugeProto.isConnected = centrifugeProto._isConnected;
 
-    centrifuge_proto.isDisconnected = centrifuge_proto._isDisconnected;
+    centrifugeProto.isConnecting = centrifugeProto._isConnecting;
 
-    centrifuge_proto.configure = function (configuration) {
+    centrifugeProto.isDisconnected = centrifugeProto._isDisconnected;
+
+    centrifugeProto.configure = function (configuration) {
         this._configure.call(this, configuration);
     };
 
-    centrifuge_proto.connect = centrifuge_proto._connect;
+    centrifugeProto.connect = centrifugeProto._connect;
 
-    centrifuge_proto.disconnect = centrifuge_proto._disconnect;
+    centrifugeProto.disconnect = centrifugeProto._disconnect;
 
-    centrifuge_proto.getSubscription = centrifuge_proto._getSubscription;
+    centrifugeProto.getSubscription = centrifugeProto._getSubscription;
 
-    centrifuge_proto.ping = centrifuge_proto._ping;
+    centrifugeProto.ping = centrifugeProto._ping;
 
-    centrifuge_proto.send = function (message) {
+    centrifugeProto.send = function (message) {
         if (this._isBatching === true) {
             this._messages.push(message);
         } else {
@@ -1064,13 +1223,13 @@
         }
     };
 
-    centrifuge_proto.startBatching = function () {
+    centrifugeProto.startBatching = function () {
         // start collecting messages without sending them to Centrifuge until flush
         // method called
         this._isBatching = true;
     };
 
-    centrifuge_proto.stopBatching = function(flush) {
+    centrifugeProto.stopBatching = function(flush) {
         // stop collecting messages
         flush = flush || false;
         this._isBatching = false;
@@ -1079,11 +1238,96 @@
         }
     };
 
-    centrifuge_proto.flush = function() {
+    centrifugeProto.flush = function() {
+        // send batched messages to Centrifuge
         this._flush();
     };
 
-    centrifuge_proto.subscribe = function (channel, callback) {
+    centrifugeProto.startAuthBatching = function() {
+        // start collecting private channels to create bulk authentication
+        // request to authEndpoint when stopAuthBatching will be called
+        this._isAuthBatching = true;
+    };
+
+    centrifugeProto.stopAuthBatching = function(callback) {
+        // create request to authEndpoint with collected private channels
+        // to ask if this client can subscribe on each channel
+        this._isAuthBatching = false;
+        var authChannels = this._authChannels;
+        this._authChannels = {};
+        var channels = [];
+
+        for (var channel in authChannels) {
+            var subscription = this.getSubscription(channel);
+            if (!subscription) {
+                continue;
+            }
+            channels.push(channel);
+        }
+
+        if (channels.length == 0) {
+            if (callback) {
+                callback();
+            }
+            return;
+        }
+
+        var data = {
+            "client": this.getClientId(),
+            "channels": channels
+        };
+
+        var self = this;
+
+        AJAX.request(this._config.authEndpoint, "post", {
+            "headers": this._config.authHeaders,
+            "data": data
+        }).done(function(data) {
+            for (var i in channels) {
+                var channel = channels[i];
+                var channelResponse = data[channel];
+                if (!channelResponse) {
+                    // subscription:error
+                    self._subscribeResponse({
+                        "error": 404,
+                        "body": {
+                            "channel": channel
+                        }
+                    });
+                    continue;
+                }
+                if (!channelResponse.status || channelResponse.status === 200) {
+                    var centrifugeMessage = {
+                        "method": "subscribe",
+                        "params": {
+                            "channel": channel,
+                            "client": self.getClientId(),
+                            "info": channelResponse.info,
+                            "sign": channelResponse.sign
+                        }
+                    };
+                    self.send(centrifugeMessage);
+                } else {
+                    self._subscribeResponse({
+                        "error": channelResponse.status,
+                        "body": {
+                            "channel": channel
+                        }
+                    });
+                }
+            }
+        }).fail(function() {
+            log("info", "authorization request failed");
+            return false;
+        }).always(function(){
+            if (callback) {
+                callback();
+            }
+        })
+
+    };
+
+    centrifugeProto.subscribe = function (channel, callback) {
 
         if (arguments.length < 1) {
             throw 'Illegal arguments number: required 1, got ' + arguments.length;
@@ -1107,7 +1351,7 @@
         }
     };
 
-    centrifuge_proto.unsubscribe = function (channel) {
+    centrifugeProto.unsubscribe = function (channel) {
         if (arguments.length < 1) {
             throw 'Illegal arguments number: required 1, got ' + arguments.length;
         }
@@ -1124,7 +1368,7 @@
         }
     };
 
-    centrifuge_proto.publish = function (channel, data, callback) {
+    centrifugeProto.publish = function (channel, data, callback) {
         var subscription = this.getSubscription(channel);
         if (subscription === null) {
             this._debug("subscription not found for channel " + channel);
@@ -1134,7 +1378,7 @@
         return subscription;
     };
 
-    centrifuge_proto.presence = function (channel, callback) {
+    centrifugeProto.presence = function (channel, callback) {
         var subscription = this.getSubscription(channel);
         if (subscription === null) {
             this._debug("subscription not found for channel " + channel);
@@ -1144,7 +1388,7 @@
         return subscription;
     };
 
-    centrifuge_proto.history = function (channel, callback) {
+    centrifugeProto.history = function (channel, callback) {
         var subscription = this.getSubscription(channel);
         if (subscription === null) {
             this._debug("subscription not found for channel " + channel);
@@ -1152,6 +1396,49 @@
         }
         subscription.history(callback);
         return subscription;
+    };
+
+    centrifugeProto.refresh = function () {
+        // ask web app for connection parameters - project ID, user ID,
+        // timestamp, info and token
+        var self = this;
+        this._debug('refresh');
+        AJAX.request(this._config.refreshEndpoint, "post", {
+            "headers": this._config.refreshHeaders,
+            "data": {}
+        }).done(function(data) {
+            self._config.user = data.user;
+            self._config.project = data.project;
+            self._config.timestamp = data.timestamp;
+            self._config.info = data.info;
+            self._config.token = data.token;
+            if (self._reconnect && self.isDisconnected()) {
+                self.connect();
+            } else {
+                var centrifugeMessage = {
+                    "method": "refresh",
+                    "params": {
+                        'user': self._config.user,
+                        'project': self._config.project,
+                        'timestamp': self._config.timestamp,
+                        'info': self._config.info,
+                        'token': self._config.token
+                    }
+                };
+                self.send(centrifugeMessage);
+            }
+        }).fail(function(xhr){
+            // 403 or 500 - does not matter - if connection check activated then Centrifuge
+            // will disconnect client eventually
+            self._debug(xhr);
+            self._debug("error getting connect parameters");
+            if (self._refreshTimeout) {
+                window.clearTimeout(self._refreshTimeout);
+            }
+            self._refreshTimeout = window.setTimeout(function(){
+                self.refresh.call(self);
+            }, 3000);
+        });
     };
 
     function Subscription(centrifuge, channel) {
@@ -1166,30 +1453,49 @@
 
     extend(Subscription, EventEmitter);
 
-    var sub_proto = Subscription.prototype;
+    var subscriptionProto = Subscription.prototype;
 
-    sub_proto.getChannel = function () {
+    subscriptionProto.getChannel = function () {
         return this.channel;
     };
 
-    sub_proto.getCentrifuge = function () {
+    subscriptionProto.getCentrifuge = function () {
         return this._centrifuge;
     };
 
-    sub_proto.subscribe = function (callback) {
+    subscriptionProto.subscribe = function (callback) {
+        /*
+        If channel name does not start with privateChannelPrefix - then we
+        can just send subscription message to Centrifuge. If channel name
+        starts with privateChannelPrefix - then this is a private channel
+        and we should ask web application backend for permission first.
+         */
         var centrifugeMessage = {
             "method": "subscribe",
             "params": {
                 "channel": this.channel
             }
         };
-        this._centrifuge.send(centrifugeMessage);
+
+        if (startsWith(this.channel, this._centrifuge._config.privateChannelPrefix)) {
+            // private channel
+            if (this._centrifuge._isAuthBatching) {
+                this._centrifuge._authChannels[this.channel] = true;
+            } else {
+                this._centrifuge.startAuthBatching();
+                this.subscribe(callback);
+                this._centrifuge.stopAuthBatching();
+            }
+        } else {
+            this._centrifuge.send(centrifugeMessage);
+        }
+
         if (callback) {
             this.on('message', callback);
         }
     };
 
-    sub_proto.unsubscribe = function () {
+    subscriptionProto.unsubscribe = function () {
         this._centrifuge._removeSubscription(this.channel);
         var centrifugeMessage = {
             "method": "unsubscribe",
@@ -1200,7 +1506,7 @@
         this._centrifuge.send(centrifugeMessage);
     };
 
-    sub_proto.publish = function (data, callback) {
+    subscriptionProto.publish = function (data, callback) {
         var centrifugeMessage = {
             "method": "publish",
             "params": {
@@ -1214,7 +1520,7 @@
         this._centrifuge.send(centrifugeMessage);
     };
 
-    sub_proto.presence = function (callback) {
+    subscriptionProto.presence = function (callback) {
         var centrifugeMessage = {
             "method": "presence",
             "params": {
@@ -1227,7 +1533,7 @@
         this._centrifuge.send(centrifugeMessage);
     };
 
-    sub_proto.history = function (callback) {
+    subscriptionProto.history = function (callback) {
         var centrifugeMessage = {
             "method": "history",
             "params": {

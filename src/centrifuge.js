@@ -689,6 +689,7 @@
 
     function Centrifuge(options) {
         this._sockjs = false;
+        this._sockjsVersion = null;
         this._status = 'disconnected';
         this._reconnect = true;
         this._transport = null;
@@ -710,6 +711,18 @@
                 'websocket',
                 'xdr-streaming',
                 'xhr-streaming',
+                'iframe-eventsource',
+                'iframe-htmlfile',
+                'xdr-polling',
+                'xhr-polling',
+                'iframe-xhr-polling',
+                'jsonp-polling'
+            ],
+            transports: [
+                'websocket',
+                'xdr-streaming',
+                'xhr-streaming',
+                'eventsource',
                 'iframe-eventsource',
                 'iframe-htmlfile',
                 'xdr-polling',
@@ -784,10 +797,11 @@
 
         if (endsWith(this._config.url, 'connection')) {
             //noinspection JSUnresolvedVariable
-            if (typeof window.SockJS === 'undefined') {
+            if (typeof SockJS === 'undefined') {
                 throw 'You need to include SockJS client library before Centrifuge javascript client library or use pure Websocket connection endpoint';
             }
             this._sockjs = true;
+            this._sockjsVersion = SockJS.version;
         }
     };
 
@@ -858,15 +872,16 @@
 
         if (this._sockjs === true) {
             //noinspection JSUnresolvedFunction
-            var sockjs_options = {
-                protocols_whitelist: this._config.protocols_whitelist
-            };
-            if (this._config.server !== null) {
-                sockjs_options['server'] = this._config.server;
+            var sockjsOptions = {};
+            if (startsWith(this._sockjsVersion, "1.")) {
+                sockjsOptions["transports"] = this._config.transports;
+            } else {
+                sockjsOptions["protocols_whitelist"] = this._config.protocols_whitelist;
             }
-
-            this._transport = new SockJS(this._config.url, null, sockjs_options);
-
+            if (this._config.server !== null) {
+                sockjsOptions['server'] = this._config.server;
+            }
+            this._transport = new SockJS(this._config.url, null, sockjsOptions);
         } else {
             this._transport = new WebSocket(this._config.url);
         }

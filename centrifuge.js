@@ -1347,6 +1347,15 @@
             }
         }).fail(function() {
             self._debug("authorization request failed");
+            for (var i in channels) {
+                var channel = channels[i];
+                self._subscribeResponse({
+                    "error": "authorization request failed",
+                    "body": {
+                        "channel": channel
+                    }
+                });
+            }
             return false;
         }).always(function(){
             if (callback) {

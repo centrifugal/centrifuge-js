@@ -1346,7 +1346,7 @@
                 }
             }
         }).fail(function() {
-            log("info", "authorization request failed");
+            self._debug("authorization request failed");
             return false;
         }).always(function(){
             if (callback) {

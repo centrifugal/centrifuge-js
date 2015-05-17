@@ -671,6 +671,22 @@
         return typeof value === 'string' || value instanceof String;
     }
 
+    function isFunction(value) {
+        if (value === undefined || value === null) {
+            return false;
+        }
+        return typeof value === 'function';
+    }
+
+    function log(level, args) {
+        if (window.console) {
+            var logger = window.console[level];
+            if (isFunction(logger)) {
+                logger.apply(window.console, args);
+            }
+        }
+    }
+
     function Centrifuge(options) {
         this._sockjs = false;
         this._sockjsVersion = null;
@@ -730,16 +746,12 @@
     var centrifugeProto = Centrifuge.prototype;
 
     centrifugeProto._log = function () {
-        if (window.console) {
-            window.console.log(arguments)
-        }
+        log("info", arguments);
     };
 
     centrifugeProto._debug = function () {
         if (this._config.debug === true) {
-            if (window.console) {
-                window.console.log(arguments)
-            }
+            log("debug", arguments);
         }
     };
 

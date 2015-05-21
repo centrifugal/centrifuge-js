@@ -703,7 +703,7 @@
         this._refreshTimeout = null;
         this._config = {
             retry: 3000,
-            info: "{}",
+            info: "",
             debug: false,
             insecure: false,
             server: null,

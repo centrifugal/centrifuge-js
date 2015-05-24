@@ -1378,7 +1378,7 @@
             throw 'Illegal argument type: channel must be a string';
         }
         if (this.isDisconnected()) {
-            throw 'Illegal state: already disconnected';
+            throw 'Can not subscribe in disconnected state';
         }
 
         var current_subscription = this.getSubscription(channel);

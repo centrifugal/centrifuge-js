@@ -1,4 +1,3 @@
-// v0.7.0
 ;(function () {
     'use strict';
 
@@ -689,6 +688,7 @@
 
     function Centrifuge(options) {
         this._sockjs = false;
+        this._sockjsVersion = null;
         this._status = 'disconnected';
         this._reconnect = true;
         this._transport = null;
@@ -702,7 +702,7 @@
         this._refreshTimeout = null;
         this._config = {
             retry: 3000,
-            info: null,
+            info: "",
             debug: false,
             insecure: false,
             server: null,
@@ -710,6 +710,18 @@
                 'websocket',
                 'xdr-streaming',
                 'xhr-streaming',
+                'iframe-eventsource',
+                'iframe-htmlfile',
+                'xdr-polling',
+                'xhr-polling',
+                'iframe-xhr-polling',
+                'jsonp-polling'
+            ],
+            transports: [
+                'websocket',
+                'xdr-streaming',
+                'xhr-streaming',
+                'eventsource',
                 'iframe-eventsource',
                 'iframe-htmlfile',
                 'xdr-polling',
@@ -732,9 +744,13 @@
 
     var centrifugeProto = Centrifuge.prototype;
 
+    centrifugeProto._log = function () {
+        log("info", arguments);
+    };
+
     centrifugeProto._debug = function () {
         if (this._config.debug === true) {
-            log('debug', arguments);
+            log("debug", arguments);
         }
     };
 
@@ -748,11 +764,11 @@
         this._config = mixin(false, this._config, configuration);
 
         if (!this._config.url) {
-            throw 'Missing required configuration parameter \'url\' specifying the Centrifuge server URL';
+            throw 'Missing required configuration parameter \'url\' specifying server URL';
         }
 
         if (!this._config.project) {
-            throw 'Missing required configuration parameter \'project\' specifying project ID in Centrifuge';
+            throw 'Missing required configuration parameter \'project\' specifying project key in server configuration';
         }
 
         if (!this._config.user && this._config.user !== '') {
@@ -783,11 +799,29 @@
         this._config.url = stripSlash(this._config.url);
 
         if (endsWith(this._config.url, 'connection')) {
-            //noinspection JSUnresolvedVariable
-            if (typeof window.SockJS === 'undefined') {
-                throw 'You need to include SockJS client library before Centrifuge javascript client library or use pure Websocket connection endpoint';
+            this._debug("client will connect to SockJS endpoint");
+            if (typeof SockJS === 'undefined') {
+                throw 'include SockJS client library before Centrifuge javascript client library or use raw Websocket connection endpoint';
             }
             this._sockjs = true;
+            this._sockjsVersion = SockJS.version;
+        } else if (endsWith(this._config.url, 'connection/websocket')) {
+            this._debug("client will connect to raw Websocket endpoint");
+            this._config.url = this._config.url.replace("http://", "ws://");
+            this._config.url = this._config.url.replace("https://", "wss://");
+        } else {
+            this._debug("client will detect connection endpoint itself");
+            if (typeof SockJS === 'undefined') {
+                this._debug("no SockJS found, client will connect to raw Websocket endpoint");
+                this._config.url += "/connection/websocket";
+                this._config.url = this._config.url.replace("http://", "ws://");
+                this._config.url = this._config.url.replace("https://", "wss://");
+            } else {
+                this._debug("SockJS found, client will connect to SockJS endpoint");
+                this._config.url += "/connection";
+                this._sockjs = true;
+                this._sockjsVersion = SockJS.version;
+            }
         }
     };
 
@@ -858,15 +892,17 @@
 
         if (this._sockjs === true) {
             //noinspection JSUnresolvedFunction
-            var sockjs_options = {
-                protocols_whitelist: this._config.protocols_whitelist
-            };
-            if (this._config.server !== null) {
-                sockjs_options['server'] = this._config.server;
+            var sockjsOptions = {};
+            if (startsWith(this._sockjsVersion, "1.")) {
+                sockjsOptions["transports"] = this._config.transports;
+            } else {
+                this._log("SockJS <= 0.3.4 is deprecated, use SockJS >= 1.0.0 instead");
+                sockjsOptions["protocols_whitelist"] = this._config.protocols_whitelist;
             }
-
-            this._transport = new SockJS(this._config.url, null, sockjs_options);
-
+            if (this._config.server !== null) {
+                sockjsOptions['server'] = this._config.server;
+            }
+            this._transport = new SockJS(this._config.url, null, sockjsOptions);
         } else {
             this._transport = new WebSocket(this._config.url);
         }
@@ -879,13 +915,10 @@
                 'method': 'connect',
                 'params': {
                     'user': self._config.user,
-                    'project': self._config.project
+                    'project': self._config.project,
+                    'info': self._config.info
                 }
             };
-
-            if (self._config.info !== null) {
-                centrifugeMessage["params"]["info"] = self._config.info;
-            }
 
             if (!self._config.insecure) {
                 centrifugeMessage["params"]["timestamp"] = self._config.timestamp;
@@ -1317,7 +1350,16 @@
                 }
             }
         }).fail(function() {
-            log("info", "authorization request failed");
+            self._debug("authorization request failed");
+            for (var i in channels) {
+                var channel = channels[i];
+                self._subscribeResponse({
+                    "error": "authorization request failed",
+                    "body": {
+                        "channel": channel
+                    }
+                });
+            }
             return false;
         }).always(function(){
             if (callback) {

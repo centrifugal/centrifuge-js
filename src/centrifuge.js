@@ -1,4 +1,3 @@
-// v0.7.0
 ;(function () {
     'use strict';
 

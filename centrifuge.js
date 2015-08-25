@@ -1307,7 +1307,7 @@
 
         var data = {
             "client": this.getClientId(),
-            "channels": channels
+            "channels[]": channels
         };
 
         var self = this;

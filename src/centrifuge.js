@@ -767,10 +767,6 @@
             throw 'Missing required configuration parameter \'url\' specifying server URL';
         }
 
-        if (!this._config.project) {
-            throw 'Missing required configuration parameter \'project\' specifying project key in server configuration';
-        }
-
         if (!this._config.user && this._config.user !== '') {
             if (!this._config.insecure) {
                 throw 'Missing required configuration parameter \'user\' specifying user\'s unique ID in your application';
@@ -915,7 +911,6 @@
                 'method': 'connect',
                 'params': {
                     'user': self._config.user,
-                    'project': self._config.project,
                     'info': self._config.info
                 }
             };
@@ -1441,7 +1436,7 @@
     };
 
     centrifugeProto.refresh = function () {
-        // ask web app for connection parameters - project ID, user ID,
+        // ask web app for connection parameters - user ID,
         // timestamp, info and token
         var self = this;
         this._debug('refresh');
@@ -1450,7 +1445,6 @@
             "data": {}
         }).done(function(data) {
             self._config.user = data.user;
-            self._config.project = data.project;
             self._config.timestamp = data.timestamp;
             self._config.info = data.info;
             self._config.token = data.token;
@@ -1461,7 +1455,6 @@
                     "method": "refresh",
                     "params": {
                         'user': self._config.user,
-                        'project': self._config.project,
                         'timestamp': self._config.timestamp,
                         'info': self._config.info,
                         'token': self._config.token

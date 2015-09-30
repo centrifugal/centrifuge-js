@@ -700,8 +700,10 @@
         this._isAuthBatching = false;
         this._authChannels = {};
         this._refreshTimeout = null;
+        this._retry = null;
         this._config = {
-            retry: 3000,
+            retry: 1000,
+            maxRetry: 10000,
             info: "",
             debug: false,
             insecure: false,
@@ -907,6 +909,8 @@
 
         this._transport.onopen = function () {
 
+            self._retry = null;
+
             var centrifugeMessage = {
                 'method': 'connect',
                 'params': {
@@ -930,11 +934,19 @@
             self._setStatus('disconnected');
             self.trigger('disconnect');
             if (self._reconnect === true) {
+                if (self._retry === null) {
+                    self._retry = self._config.retry + Math.round(Math.random() * 1000);
+                } else {
+                    self._retry = self._retry + Math.round(Math.random() * 1000);
+                }
+                if (self._retry > self._config.maxRetry) {
+                    self._retry = self._config.maxRetry;
+                }
                 window.setTimeout(function () {
                     if (self._reconnect === true) {
                         self._connect.call(self);
                     }
-                }, self._config.retry);
+                }, self._retry);
             }
         };
 

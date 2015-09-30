@@ -850,6 +850,23 @@
         this._subscriptions = {};
     };
 
+    centrifugeProto._resetRetry = function() {
+        this._debug("reset retry timeout");
+        this._retry = null;
+    };
+
+    centrifugeProto._getRetry = function() {
+        if (this._retry === null) {
+            this._retry = this._config.retry + Math.round(Math.random() * 1000);
+        } else {
+            this._retry = this._retry + Math.round(Math.random() * 1000);
+        }
+        if (this._retry > this._config.maxRetry) {
+            this._retry = this._config.maxRetry;
+        }
+        return this._retry;
+    };
+
     centrifugeProto._send = function (messages) {
         // We must be sure that the messages have a clientId.
         // This is not guaranteed since the handshake may take time to return
@@ -909,7 +926,7 @@
 
         this._transport.onopen = function () {
 
-            self._retry = null;
+            self._resetRetry();
 
             var centrifugeMessage = {
                 'method': 'connect',
@@ -934,19 +951,13 @@
             self._setStatus('disconnected');
             self.trigger('disconnect');
             if (self._reconnect === true) {
-                if (self._retry === null) {
-                    self._retry = self._config.retry + Math.round(Math.random() * 1000);
-                } else {
-                    self._retry = self._retry + Math.round(Math.random() * 1000);
-                }
-                if (self._retry > self._config.maxRetry) {
-                    self._retry = self._config.maxRetry;
-                }
+                var retry = self._getRetry();
+                self._debug("reconnect after " + retry + " milliseconds");
                 window.setTimeout(function () {
                     if (self._reconnect === true) {
                         self._connect.call(self);
                     }
-                }, self._retry);
+                }, retry);
             }
         };
 

@@ -620,14 +620,14 @@
                         this.xhr.open(method, url, true);
                         this.setHeaders({
                             'X-Requested-With': 'XMLHttpRequest',
-                            'Content-type': 'application/x-www-form-urlencoded'
+                            'Content-type': 'application/json'
                         });
                     }
                     if(ops.headers && typeof ops.headers == 'object') {
                         this.setHeaders(ops.headers);
                     }
                     setTimeout(function() {
-                        method == 'get' ? self.xhr.send() : self.xhr.send(getParams(ops.data));
+                        method == 'get' ? self.xhr.send() : self.xhr.send(JSON.stringify(ops.data));
                     }, 20);
                     return this;
                 },
@@ -1325,7 +1325,7 @@
 
         var data = {
             "client": this.getClientId(),
-            "channels[]": channels
+            "channels": channels
         };
 
         var self = this;

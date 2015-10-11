@@ -1163,9 +1163,10 @@
             if (isExpired) {
                 self._refreshTimeout = window.setTimeout(function(){
                     self.refresh.call(self);
-                }, 3000);
+                }, 3000 + Math.round(Math.random() * 1000));
                 return;
             }
+            this._clientId = message.body.client;
             self._refreshTimeout = window.setTimeout(function () {
                 self.refresh.call(self);
             }, message.body.ttl * 1000);
@@ -1471,7 +1472,7 @@
         // ask web app for connection parameters - user ID,
         // timestamp, info and token
         var self = this;
-        this._debug('refresh');
+        this._debug('refresh credentials');
         AJAX.request(this._config.refreshEndpoint, "post", {
             "headers": this._config.refreshHeaders,
             "data": {}
@@ -1480,9 +1481,11 @@
             self._config.timestamp = data.timestamp;
             self._config.info = data.info;
             self._config.token = data.token;
-            if (self._reconnect && self.isDisconnected()) {
-                self.connect();
+            if (self.isDisconnected()) {
+                self._debug("credentials refreshed, connect from scratch");
+                self._connect();
             } else {
+                self._debug("send refreshed credentials");
                 var centrifugeMessage = {
                     "method": "refresh",
                     "params": {

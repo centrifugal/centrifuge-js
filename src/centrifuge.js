@@ -996,10 +996,12 @@
             if (!message.body) {
                 return;
             }
-            var isExpired = message.body.expired;
-            if (isExpired) {
-                this.refresh();
-                return;
+            if (message.body.expires) {
+                var isExpired = message.body.expired;
+                if (isExpired) {
+                    this.refresh();
+                    return;
+                }
             }
             this._clientId = message.body.client;
             this._setStatus('connected');
@@ -1007,7 +1009,7 @@
             if (this._refreshTimeout) {
                 window.clearTimeout(this._refreshTimeout);
             }
-            if (message.body.ttl !== null) {
+            if (message.body.expires) {
                 var self = this;
                 this._refreshTimeout = window.setTimeout(function() {
                     self.refresh.call(self);
@@ -1144,8 +1146,15 @@
         if (this._refreshTimeout) {
             window.clearTimeout(this._refreshTimeout);
         }
-        if (message.body.ttl !== null) {
+        if (message.body.expires) {
             var self = this;
+            var isExpired = message.body.expired;
+            if (isExpired) {
+                self._refreshTimeout = window.setTimeout(function(){
+                    self.refresh.call(self);
+                }, 3000);
+                return;
+            }
             self._refreshTimeout = window.setTimeout(function () {
                 self.refresh.call(self);
             }, message.body.ttl * 1000);
@@ -1475,7 +1484,7 @@
                 self.send(centrifugeMessage);
             }
         }).fail(function(xhr){
-            // 403 or 500 - does not matter - if connection check activated then Centrifuge
+            // 403 or 500 - does not matter - if connection check activated then Centrifugo
             // will disconnect client eventually
             self._debug(xhr);
             self._debug("error getting connect parameters");

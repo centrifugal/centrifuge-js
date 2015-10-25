@@ -1,3 +1,13 @@
+1.0.0
+=====
+
+One backwards incompatible change here. Centrifuge-js now sends JSON (`application/json`)
+request instead of `application/x-www-form-urlencoded` when client wants to subscribe on
+private channel. See [in docs](https://fzambia.gitbooks.io/centrifugal/content/mixed/private_channels.html) how to deal with JSON in this case.
+
+* send JSON instead of form when subscribing on private channel.
+* simple reconnect strategy
+
 0.9.0
 =====
 

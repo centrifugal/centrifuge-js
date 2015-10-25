@@ -54,19 +54,18 @@ STEP 2) In main template initialize plugin:
 
 
 STEP 3) Also add html-elements with proper attributes in main template with connection
-address, token, user ID and project ID values.
+address, token, user ID values.
 
 .. code-block:: html
 
     <div id="centrifuge-address" data-centrifuge-value="{{ centrifuge_address }}"></div>
-    <div id="centrifuge-project" data-centrifuge-value="{{ centrifuge_project }}"></div>
     <div id="centrifuge-user" data-centrifuge-value="{{ centrifuge_user }}"></div>
     <div id="centrifuge-timestamp" data-centrifuge-value="{{ centrifuge_timestamp }}"></div>
     <div id="centrifuge-token" data-centrifuge-value="{{ centrifuge_token }}"></div>
 
 
 Here I use syntax of Django templates. In your case it can look slightly different.
-The values of connection address, token, user ID and project ID must provide your
+The values of connection address, token, user ID must provide your
 web app's backend.
 
 STEP 4) On the page with comments add the following html-element with channel and namespace

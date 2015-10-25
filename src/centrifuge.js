@@ -560,94 +560,6 @@
         }
     }
 
-    // http://krasimirtsonev.com/blog/article/Cross-browser-handling-of-Ajax-requests-in-absurdjs
-    var AJAX = {
-        request: function(url, method, ops) {
-            ops.data = ops.data || {};
-
-            var getParams = function(data, request_url) {
-                var arr = [], str;
-                for(var name in data) {
-                    if (typeof data[name] === 'object') {
-                        for (var i in data[name]) {
-                            arr.push(name + '=' + encodeURIComponent(data[name][i]));
-                        }
-                    } else {
-                        arr.push(name + '=' + encodeURIComponent(data[name]));
-                    }
-                }
-                str = arr.join('&');
-                if(str != '') {
-                    return request_url ? (request_url.indexOf('?') < 0 ? '?' + str : '&' + str) : str;
-                }
-                return '';
-            };
-            var api = {
-                host: {},
-                setHeaders: function(headers) {
-                    for(var name in headers) {
-                        this.xhr && this.xhr.setRequestHeader(name, headers[name]);
-                    }
-                },
-                process: function(ops) {
-                    var self = this;
-                    this.xhr = null;
-                    if (window.ActiveXObject) {
-                        this.xhr = new ActiveXObject('Microsoft.XMLHTTP');
-                    }
-                    else if (window.XMLHttpRequest) {
-                        this.xhr = new XMLHttpRequest();
-                    }
-                    if(this.xhr) {
-                        this.xhr.onreadystatechange = function() {
-                            if(self.xhr.readyState == 4 && self.xhr.status == 200) {
-                                var result = self.xhr.responseText;
-                                if (typeof JSON != 'undefined') {
-                                    result = JSON.parse(result);
-                                } else {
-                                    throw "JSON undefined";
-                                }
-                                self.doneCallback && self.doneCallback.apply(self.host, [result, self.xhr]);
-                            } else if(self.xhr.readyState == 4) {
-                                self.failCallback && self.failCallback.apply(self.host, [self.xhr]);
-                            }
-                            self.alwaysCallback && self.alwaysCallback.apply(self.host, [self.xhr]);
-                        }
-                    }
-                    if(method == 'get') {
-                        this.xhr.open("GET", url + getParams(ops.data, url), true);
-                    } else {
-                        this.xhr.open(method, url, true);
-                        this.setHeaders({
-                            'X-Requested-With': 'XMLHttpRequest',
-                            'Content-type': 'application/x-www-form-urlencoded'
-                        });
-                    }
-                    if(ops.headers && typeof ops.headers == 'object') {
-                        this.setHeaders(ops.headers);
-                    }
-                    setTimeout(function() {
-                        method == 'get' ? self.xhr.send() : self.xhr.send(getParams(ops.data));
-                    }, 20);
-                    return this;
-                },
-                done: function(callback) {
-                    this.doneCallback = callback;
-                    return this;
-                },
-                fail: function(callback) {
-                    this.failCallback = callback;
-                    return this;
-                },
-                always: function(callback) {
-                    this.alwaysCallback = callback;
-                    return this;
-                }
-            };
-            return api.process(ops);
-        }
-    };
-
     function endsWith(value, suffix) {
         return value.indexOf(suffix, value.length - suffix.length) !== -1;
     }
@@ -700,12 +612,15 @@
         this._isAuthBatching = false;
         this._authChannels = {};
         this._refreshTimeout = null;
+        this._retry = null;
         this._config = {
-            retry: 3000,
+            retry: 1000,
+            maxRetry: 10000,
             info: "",
             debug: false,
             insecure: false,
             server: null,
+            privateChannelPrefix: "$",
             protocols_whitelist: [
                 'websocket',
                 'xdr-streaming',
@@ -729,11 +644,14 @@
                 'iframe-xhr-polling',
                 'jsonp-polling'
             ],
-            privateChannelPrefix: "$",
             refreshEndpoint: "/centrifuge/refresh",
+            refreshHeaders: {},
+            refreshParams: {},
+            refreshTransport: "ajax",
             authEndpoint: "/centrifuge/auth",
             authHeaders: {},
-            refreshHeaders: {}
+            authParams: {},
+            authTransport: "ajax"
         };
         if (options) {
             this.configure(options);
@@ -742,7 +660,100 @@
 
     extend(Centrifuge, EventEmitter);
 
+    Centrifuge._authCallbacks = {};
+    Centrifuge._nextAuthCallbackID = 1;
+
     var centrifugeProto = Centrifuge.prototype;
+
+    centrifugeProto._jsonp = function (url, params, headers, data, callback) {
+        if (headers.length > 0) {
+            this._log("Only AJAX request allows to send custom headers, it's not possible with JSONP.");
+        }
+        self._debug("sending JSONP request to", url);
+
+        var callbackName = Centrifuge._nextAuthCallbackID.toString();
+        Centrifuge._nextAuthCallbackID++;
+
+        var document = window.document;
+        var script = document.createElement("script");
+        Centrifuge._authCallbacks[callbackName] = function (data) {
+            callback(false, data);
+            delete Centrifuge[callbackName];
+        };
+
+        var query = "";
+        for (var i in params) {
+            if (query.length > 0) {
+                query += "&";
+            }
+            query += encodeURIComponent(i) + "=" + encodeURIComponent(params[i]);
+        }
+
+        var callback_name = "Centrifuge._authCallbacks['" + callbackName + "']";
+        script.src = this._config.authEndpoint +
+            '?callback=' + encodeURIComponent(callback_name) +
+            '&data=' + encodeURIComponent(JSON.stringify(data)) +
+            '&' + query;
+
+        var head = document.getElementsByTagName("head")[0] || document.documentElement;
+        head.insertBefore(script, head.firstChild);
+    };
+
+    centrifugeProto._ajax = function (url, params, headers, data, callback) {
+        var self = this;
+        self._debug("sending AJAX request to", url);
+
+        var xhr = (window.XMLHttpRequest ? new window.XMLHttpRequest() : new ActiveXObject("Microsoft.XMLHTTP"));
+
+        var query = "";
+        for (var i in params) {
+            if (query.length > 0) {
+                query += "&";
+            }
+            query += encodeURIComponent(i) + "=" + encodeURIComponent(params[i]);
+        }
+
+        if (query.length > 0) {
+            query = "?" + query;
+        }
+
+        xhr.open("POST", url + query, true);
+
+        // add request headers
+        xhr.setRequestHeader("X-Requested-With", "XMLHttpRequest");
+        xhr.setRequestHeader("Content-Type", "application/json");
+        for (var headerName in headers) {
+            xhr.setRequestHeader(headerName, headers[headerName]);
+        }
+
+        xhr.onreadystatechange = function () {
+            if (xhr.readyState === 4) {
+                if (xhr.status === 200) {
+                    var data, parsed = false;
+
+                    try {
+                        data = JSON.parse(xhr.responseText);
+                        parsed = true;
+                    } catch (e) {
+                        callback(true, 'JSON returned from webapp was invalid, yet status code was 200. Data was: ' + xhr.responseText);
+                    }
+
+                    if (parsed) { // prevents double execution.
+                        callback(false, data);
+                    }
+                } else {
+                    self._log("Couldn't get auth info from your webapp", xhr.status);
+                    callback(true, xhr.status);
+                }
+            }
+        };
+
+        setTimeout(function() {
+            // method == 'get' ? self.xhr.send() : self.xhr.send(JSON.stringify(ops.data));
+            xhr.send(JSON.stringify(data));
+        }, 20);
+        return xhr;
+    };
 
     centrifugeProto._log = function () {
         log("info", arguments);
@@ -765,10 +776,6 @@
 
         if (!this._config.url) {
             throw 'Missing required configuration parameter \'url\' specifying server URL';
-        }
-
-        if (!this._config.project) {
-            throw 'Missing required configuration parameter \'project\' specifying project key in server configuration';
         }
 
         if (!this._config.user && this._config.user !== '') {
@@ -852,6 +859,23 @@
         this._subscriptions = {};
     };
 
+    centrifugeProto._resetRetry = function() {
+        this._debug("reset retry timeout");
+        this._retry = null;
+    };
+
+    centrifugeProto._getRetry = function() {
+        if (this._retry === null) {
+            this._retry = this._config.retry + Math.round(Math.random() * 1000);
+        } else {
+            this._retry = this._retry + Math.round(Math.random() * 1000);
+        }
+        if (this._retry > this._config.maxRetry) {
+            this._retry = this._config.maxRetry;
+        }
+        return this._retry;
+    };
+
     centrifugeProto._send = function (messages) {
         // We must be sure that the messages have a clientId.
         // This is not guaranteed since the handshake may take time to return
@@ -911,11 +935,12 @@
 
         this._transport.onopen = function () {
 
+            self._resetRetry();
+
             var centrifugeMessage = {
                 'method': 'connect',
                 'params': {
                     'user': self._config.user,
-                    'project': self._config.project,
                     'info': self._config.info
                 }
             };
@@ -935,11 +960,13 @@
             self._setStatus('disconnected');
             self.trigger('disconnect');
             if (self._reconnect === true) {
+                var retry = self._getRetry();
+                self._debug("reconnect after " + retry + " milliseconds");
                 window.setTimeout(function () {
                     if (self._reconnect === true) {
                         self._connect.call(self);
                     }
-                }, self._config.retry);
+                }, retry);
             }
         };
 
@@ -989,10 +1016,12 @@
             if (!message.body) {
                 return;
             }
-            var isExpired = message.body.expired;
-            if (isExpired) {
-                this.refresh();
-                return;
+            if (message.body.expires) {
+                var isExpired = message.body.expired;
+                if (isExpired) {
+                    this.refresh();
+                    return;
+                }
             }
             this._clientId = message.body.client;
             this._setStatus('connected');
@@ -1000,7 +1029,7 @@
             if (this._refreshTimeout) {
                 window.clearTimeout(this._refreshTimeout);
             }
-            if (message.body.ttl !== null) {
+            if (message.body.expires) {
                 var self = this;
                 this._refreshTimeout = window.setTimeout(function() {
                     self.refresh.call(self);
@@ -1137,8 +1166,16 @@
         if (this._refreshTimeout) {
             window.clearTimeout(this._refreshTimeout);
         }
-        if (message.body.ttl !== null) {
+        if (message.body.expires) {
             var self = this;
+            var isExpired = message.body.expired;
+            if (isExpired) {
+                self._refreshTimeout = window.setTimeout(function(){
+                    self.refresh.call(self);
+                }, 3000 + Math.round(Math.random() * 1000));
+                return;
+            }
+            this._clientId = message.body.client;
             self._refreshTimeout = window.setTimeout(function () {
                 self.refresh.call(self);
             }, message.body.ttl * 1000);
@@ -1307,15 +1344,28 @@
 
         var data = {
             "client": this.getClientId(),
-            "channels[]": channels
+            "channels": channels
         };
 
         var self = this;
 
-        AJAX.request(this._config.authEndpoint, "post", {
-            "headers": this._config.authHeaders,
-            "data": data
-        }).done(function(data) {
+        var cb = function(error, data) {
+            if (error === true) {
+                self._debug("authorization request failed");
+                for (var i in channels) {
+                    var channel = channels[i];
+                    self._subscribeResponse({
+                        "error": "authorization request failed",
+                        "body": {
+                            "channel": channel
+                        }
+                    });
+                }
+                if (callback) {
+                    callback();
+                }
+                return;
+            }
             for (var i in channels) {
                 var channel = channels[i];
                 var channelResponse = data[channel];
@@ -1349,24 +1399,19 @@
                     });
                 }
             }
-        }).fail(function() {
-            self._debug("authorization request failed");
-            for (var i in channels) {
-                var channel = channels[i];
-                self._subscribeResponse({
-                    "error": "authorization request failed",
-                    "body": {
-                        "channel": channel
-                    }
-                });
-            }
-            return false;
-        }).always(function(){
             if (callback) {
                 callback();
             }
-        })
+        };
 
+        var transport = this._config.authTransport.toLowerCase();
+        if (transport === "ajax") {
+            this._ajax(this._config.authEndpoint, this._config.authParams, this._config.authHeaders, data, cb);
+        } else if (transport === "jsonp") {
+            this._jsonp(this._config.authEndpoint, this._config.authParams, this._config.authHeaders, data, cb);
+        } else {
+            throw 'Unknown auth transport ' + transport;
+        }
     };
 
     centrifugeProto.subscribe = function (channel, callback) {
@@ -1441,27 +1486,37 @@
     };
 
     centrifugeProto.refresh = function () {
-        // ask web app for connection parameters - project ID, user ID,
+        // ask web app for connection parameters - user ID,
         // timestamp, info and token
         var self = this;
-        this._debug('refresh');
-        AJAX.request(this._config.refreshEndpoint, "post", {
-            "headers": this._config.refreshHeaders,
-            "data": {}
-        }).done(function(data) {
+        this._debug('refresh credentials');
+
+        var cb = function(error, data) {
+            if (error === true) {
+                // 403 or 500 - does not matter - if connection check activated then Centrifugo
+                // will disconnect client eventually
+                self._debug("error getting connect parameters", data);
+                if (self._refreshTimeout) {
+                    window.clearTimeout(self._refreshTimeout);
+                }
+                self._refreshTimeout = window.setTimeout(function(){
+                    self.refresh.call(self);
+                }, 3000);
+                return;
+            }
             self._config.user = data.user;
-            self._config.project = data.project;
             self._config.timestamp = data.timestamp;
             self._config.info = data.info;
             self._config.token = data.token;
-            if (self._reconnect && self.isDisconnected()) {
-                self.connect();
+            if (self.isDisconnected()) {
+                self._debug("credentials refreshed, connect from scratch");
+                self._connect();
             } else {
+                self._debug("send refreshed credentials");
                 var centrifugeMessage = {
                     "method": "refresh",
                     "params": {
                         'user': self._config.user,
-                        'project': self._config.project,
                         'timestamp': self._config.timestamp,
                         'info': self._config.info,
                         'token': self._config.token
@@ -1469,18 +1524,16 @@
                 };
                 self.send(centrifugeMessage);
             }
-        }).fail(function(xhr){
-            // 403 or 500 - does not matter - if connection check activated then Centrifuge
-            // will disconnect client eventually
-            self._debug(xhr);
-            self._debug("error getting connect parameters");
-            if (self._refreshTimeout) {
-                window.clearTimeout(self._refreshTimeout);
-            }
-            self._refreshTimeout = window.setTimeout(function(){
-                self.refresh.call(self);
-            }, 3000);
-        });
+        };
+
+        var transport = this._config.refreshTransport.toLowerCase();
+        if (transport === "ajax") {
+            this._ajax(this._config.refreshEndpoint, this._config.refreshParams, this._config.refreshHeaders, {}, cb);
+        } else if (transport === "jsonp") {
+            this._jsonp(this._config.refreshEndpoint, this._config.refreshParams, this._config.refreshHeaders, {}, cb);
+        } else {
+            throw 'Unknown refresh transport ' + transport;
+        }
     };
 
     function Subscription(centrifuge, channel) {

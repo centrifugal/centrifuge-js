@@ -11,7 +11,6 @@
                 selector: '.centrifuge',
                 urlSelector: '#centrifuge-address',
                 tokenSelector: '#centrifuge-token',
-                projectSelector: '#centrifuge-project',
                 userSelector: '#centrifuge-user',
                 timestampSelector: '#centrifuge-timestamp',
                 infoSelector: '#centrifuge-info',
@@ -213,12 +212,6 @@
                     return;
                 }
 
-                var project = $(options.projectSelector).attr(options.valueAttrName);
-                if (!project) {
-                    console.log("Centrifuge project not found");
-                    return;
-                }
-
                 var user = $(options.userSelector).attr(options.valueAttrName);
                 if (!user) {
                     console.log("Centrifuge user not found");
@@ -251,7 +244,6 @@
                 var centrifuge = new Centrifuge({
                     url: url,
                     token: token,
-                    project: project,
                     user: user,
                     timestamp: timestamp,
                     info: info

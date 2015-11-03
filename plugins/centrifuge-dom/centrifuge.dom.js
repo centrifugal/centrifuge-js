@@ -22,6 +22,8 @@
                 debug: false
             };
 
+            this.centrifuge = null;
+
             var options = jQuery.extend(defaults, custom_options);
 
             var compliance = {};
@@ -194,7 +196,7 @@
                 });
             }
 
-            function init() {
+            this.init = function() {
 
                 if (!Centrifuge) {
                     console.log("No Centrifuge javascript client found");
@@ -259,9 +261,11 @@
                 bind_centrifuge_events(centrifuge);
                 bind_handler_events(centrifuge);
                 centrifuge.connect();
-            }
+                this.centrifuge = centrifuge;
+                return this;
+            };
 
-            return init();
+            return this.init();
 
         }
     });

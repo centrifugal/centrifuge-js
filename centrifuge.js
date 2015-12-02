@@ -607,7 +607,7 @@
         this._messageId = 0;
         this._clientId = null;
         this._subscriptions = {};
-        this._last_message_id = {};
+        this._lastMessageID = {};
         this._messages = [];
         this._isBatching = false;
         this._isAuthBatching = false;
@@ -1068,14 +1068,14 @@
             subscription.trigger('subscribe:success', [body]);
             subscription.trigger('ready', [body]);
             var messages = body["messages"];
-            if (messages) {
+            if (messages && messages.length > 0) {
                 for (var i in messages.reverse()) {
                     this._messageResponse({body: messages[i]});
                 }
-            }
-            var last = body["last"];
-            if (last && last !== "") {
-                this._last_message_id[channel] = last;
+            } else {
+                if ("last" in body) {
+                    this._lastMessageID[channel] = body["last"];
+                }
             }
         } else {
             subscription.trigger('subscribe:error', [message.error]);
@@ -1171,7 +1171,7 @@
             return;
         }
         // keep last uid received from channel.
-        this._last_message_id[channel] = body["uid"];
+        this._lastMessageID[channel] = body["uid"];
         subscription.trigger('message', [body]);
     };
 
@@ -1274,8 +1274,12 @@
         this.send(centrifugeMessage);
     };
 
-    centrifugeProto._getLastUID = function(channel) {
-        var lastUID = this._last_message_id[channel];
+    centrifugeProto._recover = function(channel) {
+        return channel in this._lastMessageID;
+    };
+
+    centrifugeProto._getLastID = function(channel) {
+        var lastUID = this._lastMessageID[channel];
         if (lastUID) {
             this._debug("last uid found and sent for channel", channel);
             return lastUID;
@@ -1410,10 +1414,14 @@
                             "channel": channel,
                             "client": self.getClientId(),
                             "info": channelResponse.info,
-                            "sign": channelResponse.sign,
-                            "last": self._getLastUID(channel)
+                            "sign": channelResponse.sign
                         }
                     };
+                    var recover = self._recover(channel);
+                    if (recover === true) {
+                        centrifugeMessage["params"]["recover"] = true;
+                        centrifugeMessage["params"]["last"] = self._getLastID(channel);
+                    }
                     self.send(centrifugeMessage);
                 } else {
                     self._subscribeResponse({
@@ -1607,7 +1615,11 @@
                 this._centrifuge.stopAuthBatching();
             }
         } else {
-            centrifugeMessage["params"]["last"] = this._centrifuge._getLastUID(this.channel);
+            var recover = this._centrifuge._recover(this.channel);
+            if (recover === true) {
+                centrifugeMessage["params"]["recover"] = true;
+                centrifugeMessage["params"]["last"] = this._centrifuge._getLastID(this.channel);
+            }
             this._centrifuge.send(centrifugeMessage);
         }
 

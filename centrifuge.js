@@ -598,6 +598,10 @@
         }
     }
 
+    function errorExists(data) {
+        return "error" in data && data.error !== null && data.error !== "";
+    }
+
     function Centrifuge(options) {
         this._sockjs = false;
         this._sockjsVersion = null;
@@ -938,6 +942,13 @@
 
             self._resetRetry();
 
+            if (!isString(self._config.user)) {
+                self._debug("user expected to be string");
+            }
+            if (!isString(self._config.info)) {
+                self._debug("info expected to be string");
+            }
+
             var centrifugeMessage = {
                 'method': 'connect',
                 'params': {
@@ -949,6 +960,12 @@
             if (!self._config.insecure) {
                 centrifugeMessage["params"]["timestamp"] = self._config.timestamp;
                 centrifugeMessage["params"]["token"] = self._config.token;
+                if (!isString(self._config.timestamp)) {
+                    self._debug("timestamp expected to be string");
+                }
+                if (!isString(self._config.token)) {
+                    self._debug("token expected to be string");
+                }
             }
             self.send(centrifugeMessage);
         };
@@ -1013,7 +1030,7 @@
         if (this.isConnected()) {
             return;
         }
-        if (message.error === null) {
+        if (!errorExists(message)) {
             if (!message.body) {
                 return;
             }
@@ -1043,7 +1060,7 @@
     };
 
     centrifugeProto._disconnectResponse = function (message) {
-        if (message.error === null) {
+        if (!errorExists(message)) {
             this.disconnect();
         } else {
             this.trigger('error', [message]);
@@ -1052,7 +1069,7 @@
     };
 
     centrifugeProto._subscribeResponse = function (message) {
-        if (message.error !== null) {
+        if (errorExists(message)) {
             this.trigger('error', [message]);
         }
         var body = message.body;
@@ -1064,7 +1081,7 @@
         if (!subscription) {
             return;
         }
-        if (message.error === null) {
+        if (!errorExists(message)) {
             subscription.trigger('subscribe:success', [body]);
             subscription.trigger('ready', [body]);
             var messages = body["messages"];
@@ -1090,7 +1107,7 @@
         if (!subscription) {
             return;
         }
-        if (message.error === null) {
+        if (!errorExists(message)) {
             subscription.trigger('unsubscribe', [body]);
             this._removeSubscription(channel);
         }
@@ -1103,7 +1120,7 @@
         if (!subscription) {
             return;
         }
-        if (message.error === null) {
+        if (!errorExists(message)) {
             subscription.trigger('publish:success', [body]);
         } else {
             subscription.trigger('publish:error', [message.error]);
@@ -1118,7 +1135,7 @@
         if (!subscription) {
             return;
         }
-        if (message.error === null) {
+        if (!errorExists(message)) {
             subscription.trigger('presence', [body]);
             subscription.trigger('presence:success', [body]);
         } else {
@@ -1134,7 +1151,7 @@
         if (!subscription) {
             return;
         }
-        if (message.error === null) {
+        if (!errorExists(message)) {
             subscription.trigger('history', [body]);
             subscription.trigger('history:success', [body]);
         } else {

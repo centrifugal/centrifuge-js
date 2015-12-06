@@ -1,3 +1,9 @@
+1.1.0
+=====
+
+* support for `recover` option (introduced in Centrifugo v1.2.0)
+* fix removing subscription when unsubscribing from channel
+
 1.0.0
 =====
 

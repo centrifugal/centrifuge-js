@@ -1,6 +1,6 @@
 {
   "name": "centrifuge",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Centrifuge javascript client",
   "main": "centrifuge.js",
   "dependencies": {},
@@ -24,6 +24,7 @@
   "homepage": "https://github.com/centrifugal/centrifuge-js",
   "keywords": [
     "sockjs",
-    "websocket"
+    "websocket",
+    "centrifugo"
   ]
 }

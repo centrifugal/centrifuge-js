@@ -598,6 +598,10 @@
         }
     }
 
+    function errorExists(data) {
+        return "error" in data && data.error !== null && data.error !== "";
+    }
+
     function Centrifuge(options) {
         this._sockjs = false;
         this._sockjsVersion = null;
@@ -607,6 +611,7 @@
         this._messageId = 0;
         this._clientId = null;
         this._subscriptions = {};
+        this._lastMessageID = {};
         this._messages = [];
         this._isBatching = false;
         this._isAuthBatching = false;
@@ -937,6 +942,13 @@
 
             self._resetRetry();
 
+            if (!isString(self._config.user)) {
+                self._debug("user expected to be string");
+            }
+            if (!isString(self._config.info)) {
+                self._debug("info expected to be string");
+            }
+
             var centrifugeMessage = {
                 'method': 'connect',
                 'params': {
@@ -948,6 +960,12 @@
             if (!self._config.insecure) {
                 centrifugeMessage["params"]["timestamp"] = self._config.timestamp;
                 centrifugeMessage["params"]["token"] = self._config.token;
+                if (!isString(self._config.timestamp)) {
+                    self._debug("timestamp expected to be string");
+                }
+                if (!isString(self._config.token)) {
+                    self._debug("token expected to be string");
+                }
             }
             self.send(centrifugeMessage);
         };
@@ -1012,7 +1030,7 @@
         if (this.isConnected()) {
             return;
         }
-        if (message.error === null) {
+        if (!errorExists(message)) {
             if (!message.body) {
                 return;
             }
@@ -1042,7 +1060,7 @@
     };
 
     centrifugeProto._disconnectResponse = function (message) {
-        if (message.error === null) {
+        if (!errorExists(message)) {
             this.disconnect();
         } else {
             this.trigger('error', [message]);
@@ -1051,7 +1069,7 @@
     };
 
     centrifugeProto._subscribeResponse = function (message) {
-        if (message.error !== null) {
+        if (errorExists(message)) {
             this.trigger('error', [message]);
         }
         var body = message.body;
@@ -1063,9 +1081,19 @@
         if (!subscription) {
             return;
         }
-        if (message.error === null) {
+        if (!errorExists(message)) {
             subscription.trigger('subscribe:success', [body]);
             subscription.trigger('ready', [body]);
+            var messages = body["messages"];
+            if (messages && messages.length > 0) {
+                for (var i in messages.reverse()) {
+                    this._messageResponse({body: messages[i]});
+                }
+            } else {
+                if ("last" in body) {
+                    this._lastMessageID[channel] = body["last"];
+                }
+            }
         } else {
             subscription.trigger('subscribe:error', [message.error]);
             subscription.trigger('error', [message]);
@@ -1079,9 +1107,9 @@
         if (!subscription) {
             return;
         }
-        if (message.error === null) {
+        if (!errorExists(message)) {
             subscription.trigger('unsubscribe', [body]);
-            this._centrifuge._removeSubscription(channel);
+            this._removeSubscription(channel);
         }
     };
 
@@ -1092,7 +1120,7 @@
         if (!subscription) {
             return;
         }
-        if (message.error === null) {
+        if (!errorExists(message)) {
             subscription.trigger('publish:success', [body]);
         } else {
             subscription.trigger('publish:error', [message.error]);
@@ -1107,7 +1135,7 @@
         if (!subscription) {
             return;
         }
-        if (message.error === null) {
+        if (!errorExists(message)) {
             subscription.trigger('presence', [body]);
             subscription.trigger('presence:success', [body]);
         } else {
@@ -1123,7 +1151,7 @@
         if (!subscription) {
             return;
         }
-        if (message.error === null) {
+        if (!errorExists(message)) {
             subscription.trigger('history', [body]);
             subscription.trigger('history:success', [body]);
         } else {
@@ -1159,6 +1187,8 @@
         if (subscription === null) {
             return;
         }
+        // keep last uid received from channel.
+        this._lastMessageID[channel] = body["uid"];
         subscription.trigger('message', [body]);
     };
 
@@ -1259,6 +1289,21 @@
             "params": {}
         };
         this.send(centrifugeMessage);
+    };
+
+    centrifugeProto._recover = function(channel) {
+        return channel in this._lastMessageID;
+    };
+
+    centrifugeProto._getLastID = function(channel) {
+        var lastUID = this._lastMessageID[channel];
+        if (lastUID) {
+            this._debug("last uid found and sent for channel", channel);
+            return lastUID;
+        } else {
+            this._debug("no last uid found for channel", channel);
+            return "";
+        }
     };
 
     /* PUBLIC API */
@@ -1389,6 +1434,11 @@
                             "sign": channelResponse.sign
                         }
                     };
+                    var recover = self._recover(channel);
+                    if (recover === true) {
+                        centrifugeMessage["params"]["recover"] = true;
+                        centrifugeMessage["params"]["last"] = self._getLastID(channel);
+                    }
                     self.send(centrifugeMessage);
                 } else {
                     self._subscribeResponse({
@@ -1582,6 +1632,11 @@
                 this._centrifuge.stopAuthBatching();
             }
         } else {
+            var recover = this._centrifuge._recover(this.channel);
+            if (recover === true) {
+                centrifugeMessage["params"]["recover"] = true;
+                centrifugeMessage["params"]["last"] = this._centrifuge._getLastID(this.channel);
+            }
             this._centrifuge.send(centrifugeMessage);
         }
 

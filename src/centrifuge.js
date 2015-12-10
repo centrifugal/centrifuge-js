@@ -608,6 +608,8 @@
         this._status = 'disconnected';
         this._reconnect = true;
         this._transport = null;
+        this._latency = null;
+        this._latencyStart = null;
         this._messageId = 0;
         this._clientId = null;
         this._subscriptions = {};
@@ -968,6 +970,7 @@
                 }
             }
             self.send(centrifugeMessage);
+            self._latencyStart = new Date();
         };
 
         this._transport.onerror = function (error) {
@@ -1027,6 +1030,13 @@
     };
 
     centrifugeProto._connectResponse = function (message) {
+
+        if (this._latencyStart !== null) {
+            var latencyEnd = new Date();
+            this._latency = latencyEnd.getTime() - this._latencyStart.getTime();
+            this._latencyStart = null;
+        }
+
         if (this.isConnected()) {
             return;
         }

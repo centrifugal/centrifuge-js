@@ -598,6 +598,15 @@
         }
     }
 
+    function backoff(step, min, max) {
+        var interval = min * Math.pow(2, step);
+        interval += Math.random() * (interval - min) + Math.random() * min;
+        if (interval > max) {
+            interval = max;
+        }
+        return Math.floor(interval);
+    }
+
     function errorExists(data) {
         return "error" in data && data.error !== null && data.error !== "";
     }
@@ -619,10 +628,10 @@
         this._isAuthBatching = false;
         this._authChannels = {};
         this._refreshTimeout = null;
-        this._retry = null;
+        this._retries = 0;
         this._config = {
             retry: 1000,
-            maxRetry: 10000,
+            maxRetry: 20000,
             info: "",
             debug: false,
             insecure: false,
@@ -867,20 +876,14 @@
     };
 
     centrifugeProto._resetRetry = function() {
-        this._debug("reset retry timeout");
-        this._retry = null;
+        this._debug("reset retries count to 0");
+        this._retries = 0;
     };
 
-    centrifugeProto._getRetry = function() {
-        if (this._retry === null) {
-            this._retry = this._config.retry + Math.round(Math.random() * 1000);
-        } else {
-            this._retry = this._retry + Math.round(Math.random() * 1000);
-        }
-        if (this._retry > this._config.maxRetry) {
-            this._retry = this._config.maxRetry;
-        }
-        return this._retry;
+    centrifugeProto._getRetryInterval = function() {
+        var interval = backoff(this._retries, this._config.retry, this._config.maxRetry);
+        this._retries += 1;
+        return interval;
     };
 
     centrifugeProto._send = function (messages) {
@@ -981,13 +984,13 @@
             self._setStatus('disconnected');
             self.trigger('disconnect');
             if (self._reconnect === true) {
-                var retry = self._getRetry();
-                self._debug("reconnect after " + retry + " milliseconds");
+                var interval = self._getRetryInterval();
+                self._debug("reconnect after " + interval + " milliseconds");
                 window.setTimeout(function () {
                     if (self._reconnect === true) {
                         self._connect.call(self);
                     }
-                }, retry);
+                }, interval);
             }
         };
 

@@ -1075,6 +1075,9 @@
     centrifugeProto._disconnectResponse = function (message) {
         if (!errorExists(message)) {
             this.disconnect();
+            if ("reason" in message.body) {
+                this._debug("disconnected:", message.body["reason"]);
+            }
         } else {
             this.trigger('error', [message]);
             this.trigger('disconnect:error', [message.error]);

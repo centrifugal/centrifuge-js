@@ -599,12 +599,12 @@
     }
 
     function backoff(step, min, max) {
-        var interval = min * Math.pow(2, step);
-        interval += Math.random() * (interval - min) + Math.random() * min;
+        var jitter = 0.5 * Math.random();
+        var interval = min * Math.pow(2, step+1);
         if (interval > max) {
-            interval = max;
+            interval = max
         }
-        return Math.floor(interval);
+        return Math.floor((1-jitter) * interval);
     }
 
     function errorExists(data) {

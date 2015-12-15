@@ -1002,11 +1002,14 @@
         };
     };
 
-    centrifugeProto._disconnect = function () {
+    centrifugeProto._disconnect = function (shouldReconnect) {
+        var reconnect = shouldReconnect || false;
         this._clientId = null;
         this._setStatus('disconnected');
-        this._subscriptions = {};
-        this._reconnect = false;
+        if (reconnect === false) {
+            this._subscriptions = {};
+            this._reconnect = false;
+        }
         this._transport.close();
     };
 
@@ -1074,7 +1077,11 @@
 
     centrifugeProto._disconnectResponse = function (message) {
         if (!errorExists(message)) {
-            this.disconnect();
+            var shouldReconnect = false;
+            if ("reconnect" in message.body) {
+                shouldReconnect = message.body["reconnect"];
+            }
+            this.disconnect(shouldReconnect);
             if ("reason" in message.body) {
                 this._debug("disconnected:", message.body["reason"]);
             }

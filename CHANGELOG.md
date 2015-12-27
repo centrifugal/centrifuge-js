@@ -1,3 +1,9 @@
+1.2.0
+=====
+
+* use exponential backoff when reconnecting
+* follow disconnect advice from Centrifugo
+
 1.1.0
 =====
 

@@ -598,6 +598,15 @@
         }
     }
 
+    function backoff(step, min, max) {
+        var jitter = 0.5 * Math.random();
+        var interval = min * Math.pow(2, step+1);
+        if (interval > max) {
+            interval = max
+        }
+        return Math.floor((1-jitter) * interval);
+    }
+
     function errorExists(data) {
         return "error" in data && data.error !== null && data.error !== "";
     }
@@ -608,6 +617,8 @@
         this._status = 'disconnected';
         this._reconnect = true;
         this._transport = null;
+        this._latency = null;
+        this._latencyStart = null;
         this._messageId = 0;
         this._clientId = null;
         this._subscriptions = {};
@@ -617,10 +628,10 @@
         this._isAuthBatching = false;
         this._authChannels = {};
         this._refreshTimeout = null;
-        this._retry = null;
+        this._retries = 0;
         this._config = {
             retry: 1000,
-            maxRetry: 10000,
+            maxRetry: 20000,
             info: "",
             debug: false,
             insecure: false,
@@ -865,20 +876,14 @@
     };
 
     centrifugeProto._resetRetry = function() {
-        this._debug("reset retry timeout");
-        this._retry = null;
+        this._debug("reset retries count to 0");
+        this._retries = 0;
     };
 
-    centrifugeProto._getRetry = function() {
-        if (this._retry === null) {
-            this._retry = this._config.retry + Math.round(Math.random() * 1000);
-        } else {
-            this._retry = this._retry + Math.round(Math.random() * 1000);
-        }
-        if (this._retry > this._config.maxRetry) {
-            this._retry = this._config.maxRetry;
-        }
-        return this._retry;
+    centrifugeProto._getRetryInterval = function() {
+        var interval = backoff(this._retries, this._config.retry, this._config.maxRetry);
+        this._retries += 1;
+        return interval;
     };
 
     centrifugeProto._send = function (messages) {
@@ -968,6 +973,7 @@
                 }
             }
             self.send(centrifugeMessage);
+            self._latencyStart = new Date();
         };
 
         this._transport.onerror = function (error) {
@@ -978,13 +984,13 @@
             self._setStatus('disconnected');
             self.trigger('disconnect');
             if (self._reconnect === true) {
-                var retry = self._getRetry();
-                self._debug("reconnect after " + retry + " milliseconds");
+                var interval = self._getRetryInterval();
+                self._debug("reconnect after " + interval + " milliseconds");
                 window.setTimeout(function () {
                     if (self._reconnect === true) {
                         self._connect.call(self);
                     }
-                }, retry);
+                }, interval);
             }
         };
 
@@ -996,11 +1002,14 @@
         };
     };
 
-    centrifugeProto._disconnect = function () {
+    centrifugeProto._disconnect = function (shouldReconnect) {
+        var reconnect = shouldReconnect || false;
         this._clientId = null;
         this._setStatus('disconnected');
-        this._subscriptions = {};
-        this._reconnect = false;
+        if (reconnect === false) {
+            this._subscriptions = {};
+            this._reconnect = false;
+        }
         this._transport.close();
     };
 
@@ -1027,6 +1036,13 @@
     };
 
     centrifugeProto._connectResponse = function (message) {
+
+        if (this._latencyStart !== null) {
+            var latencyEnd = new Date();
+            this._latency = latencyEnd.getTime() - this._latencyStart.getTime();
+            this._latencyStart = null;
+        }
+
         if (this.isConnected()) {
             return;
         }
@@ -1061,7 +1077,14 @@
 
     centrifugeProto._disconnectResponse = function (message) {
         if (!errorExists(message)) {
-            this.disconnect();
+            var shouldReconnect = false;
+            if ("reconnect" in message.body) {
+                shouldReconnect = message.body["reconnect"];
+            }
+            this.disconnect(shouldReconnect);
+            if ("reason" in message.body) {
+                this._debug("disconnected:", message.body["reason"]);
+            }
         } else {
             this.trigger('error', [message]);
             this.trigger('disconnect:error', [message.error]);

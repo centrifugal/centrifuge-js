@@ -633,6 +633,7 @@
             retry: 1000,
             maxRetry: 20000,
             info: "",
+            resubscribe: false,
             debug: false,
             insecure: false,
             server: null,
@@ -894,14 +895,9 @@
         for (var i = 0; i < messages.length; ++i) {
             var message = messages[i];
             message.uid = '' + this._nextMessageId();
-
-            if (this._clientId) {
-                message.clientId = this._clientId;
-            }
-
-            this._debug('Send', message);
-            this._transport.send(JSON.stringify(message));
         }
+        this._debug('Send', messages);
+        this._transport.send(JSON.stringify(messages));
     };
 
     centrifugeProto._connect = function (callback) {
@@ -914,7 +910,9 @@
 
         this._reconnect = true;
 
-        this._clearSubscriptions();
+        if (!this._config.resubscribe) {
+            this._clearSubscriptions();
+        }
 
         this._setStatus('connecting');
 
@@ -1073,6 +1071,18 @@
             this.trigger('error', [message]);
             this.trigger('connect:error', [message]);
         }
+
+        if (this._config.resubscribe) {
+            this.startBatching();
+            this.startAuthBatching();
+            for (var i in this._subscriptions) {
+                var sub = this._subscriptions[i];
+                sub.subscribe();
+            }
+            this.stopAuthBatching();
+            this.stopBatching(true);
+        }
+
     };
 
     centrifugeProto._disconnectResponse = function (message) {
@@ -1495,7 +1505,7 @@
         if (!isString(channel)) {
             throw 'Illegal argument type: channel must be a string';
         }
-        if (this.isDisconnected()) {
+        if (!this._config.resubscribe && this.isDisconnected()) {
             throw 'Can not subscribe in disconnected state';
         }
 
@@ -1504,9 +1514,9 @@
         if (current_subscription !== null) {
             return current_subscription;
         } else {
-            var subscription = new Subscription(this, channel);
+            var subscription = new Subscription(this, channel, callback);
             this._subscriptions[channel] = subscription;
-            subscription.subscribe(callback);
+            subscription.subscribe();
             return subscription;
         }
     };
@@ -1517,9 +1527,6 @@
         }
         if (!isString(channel)) {
             throw 'Illegal argument type: channel must be a string';
-        }
-        if (this.isDisconnected()) {
-            return;
         }
 
         var subscription = this.getSubscription(channel);
@@ -1609,7 +1616,7 @@
         }
     };
 
-    function Subscription(centrifuge, channel) {
+    function Subscription(centrifuge, channel, callback) {
         /**
          * The constructor for a centrifuge object, identified by an optional name.
          * The default name is the string 'default'.
@@ -1617,6 +1624,10 @@
          */
         this._centrifuge = centrifuge;
         this.channel = channel;
+        this.callback = callback;
+        if (this.callback) {
+            this.on('message', this.callback);
+        }
     }
 
     extend(Subscription, EventEmitter);
@@ -1631,13 +1642,17 @@
         return this._centrifuge;
     };
 
-    subscriptionProto.subscribe = function (callback) {
+    subscriptionProto.subscribe = function () {
         /*
         If channel name does not start with privateChannelPrefix - then we
         can just send subscription message to Centrifuge. If channel name
         starts with privateChannelPrefix - then this is a private channel
         and we should ask web application backend for permission first.
          */
+        if (!this._centrifuge.isConnected()) {
+            return;
+        }
+        
         var centrifugeMessage = {
             "method": "subscribe",
             "params": {
@@ -1651,7 +1666,7 @@
                 this._centrifuge._authChannels[this.channel] = true;
             } else {
                 this._centrifuge.startAuthBatching();
-                this.subscribe(callback);
+                this.subscribe();
                 this._centrifuge.stopAuthBatching();
             }
         } else {
@@ -1662,21 +1677,19 @@
             }
             this._centrifuge.send(centrifugeMessage);
         }
-
-        if (callback) {
-            this.on('message', callback);
-        }
     };
 
     subscriptionProto.unsubscribe = function () {
         this._centrifuge._removeSubscription(this.channel);
-        var centrifugeMessage = {
-            "method": "unsubscribe",
-            "params": {
-                "channel": this.channel
-            }
-        };
-        this._centrifuge.send(centrifugeMessage);
+        if (this._centrifuge.isConnected()) {
+            var centrifugeMessage = {
+                "method": "unsubscribe",
+                "params": {
+                    "channel": this.channel
+                }
+            };
+            this._centrifuge.send(centrifugeMessage);
+        }
     };
 
     subscriptionProto.publish = function (data, callback) {

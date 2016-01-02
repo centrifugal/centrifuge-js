@@ -892,6 +892,9 @@
         // This is not guaranteed since the handshake may take time to return
         // (and hence the clientId is not known yet) and the application
         // may create other messages.
+        if (messages.length === 0) {
+            return;
+        }
         for (var i = 0; i < messages.length; ++i) {
             var message = messages[i];
             message.uid = '' + this._nextMessageId();

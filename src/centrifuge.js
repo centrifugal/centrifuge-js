@@ -5,7 +5,6 @@
      * Oliver Caldwell
      * http://oli.me.uk/2013/06/01/prototypical-inheritance-done-right/
      */
-
     if (!Object.create) {
         Object.create = (function(){
             function F(){}
@@ -59,10 +58,10 @@
         return source.prototype;
     }
 
-    /**
-     * EventEmitter v4.2.3 - git.io/ee
-     * Oliver Caldwell
-     * MIT license
+    /*!
+     * EventEmitter v4.2.11 - git.io/ee
+     * Unlicense - http://unlicense.org/
+     * Oliver Caldwell - http://oli.me.uk/
      * @preserve
      */
 
@@ -75,12 +74,12 @@
     function EventEmitter() {}
 
     // Shortcuts to improve speed and size
-
-    // Easy access to the prototype
     var proto = EventEmitter.prototype;
+    var exports = this;
+    var originalGlobalValue = exports.EventEmitter;
 
     /**
-     * Finds the index of the listener for the event in it's storage array.
+     * Finds the index of the listener for the event in its storage array.
      *
      * @param {Function[]} listeners Array of listeners to search through.
      * @param {Function} listener Method to look for.
@@ -127,7 +126,7 @@
 
         // Return a concatenated array of all matching events if
         // the selector is a regular expression.
-        if (typeof evt === 'object') {
+        if (evt instanceof RegExp) {
             response = {};
             for (key in events) {
                 if (events.hasOwnProperty(key) && evt.test(key)) {
@@ -211,14 +210,13 @@
 
     /**
      * Semi-alias of addListener. It will add a listener that will be
-     * automatically removed after it's first execution.
+     * automatically removed after its first execution.
      *
      * @param {String|RegExp} evt Name of the event to attach the listener to.
      * @param {Function} listener Method to be called when the event is emitted. If the function returns true then it will be removed after calling.
      * @return {Object} Current instance of EventEmitter for chaining.
      */
     proto.addOnceListener = function addOnceListener(evt, listener) {
-        //noinspection JSValidateTypes
         return this.addListener(evt, {
             listener: listener,
             once: true
@@ -334,7 +332,7 @@
         var single = remove ? this.removeListener : this.addListener;
         var multiple = remove ? this.removeListeners : this.addListeners;
 
-        // If evt is an object then pass each of it's properties to this method
+        // If evt is an object then pass each of its properties to this method
         if (typeof evt === 'object' && !(evt instanceof RegExp)) {
             for (i in evt) {
                 if (evt.hasOwnProperty(i) && (value = evt[i])) {
@@ -381,10 +379,9 @@
             // Remove all listeners for the specified event
             delete events[evt];
         }
-        else if (type === 'object') {
+        else if (evt instanceof RegExp) {
             // Remove all events matching the regex.
             for (key in events) {
-                //noinspection JSUnresolvedFunction
                 if (events.hasOwnProperty(key) && evt.test(key)) {
                     delete events[key];
                 }
@@ -399,6 +396,13 @@
     };
 
     /**
+     * Alias of removeEvent.
+     *
+     * Added to mirror the node API.
+     */
+    proto.removeAllListeners = alias('removeEvent');
+
+    /**
      * Emits an event of your choice.
      * When emitted, every listener attached to that event will be executed.
      * If you pass the optional argument array then those arguments will be passed to every listener upon execution.
@@ -411,20 +415,22 @@
      * @return {Object} Current instance of EventEmitter for chaining.
      */
     proto.emitEvent = function emitEvent(evt, args) {
-        var listeners = this.getListenersAsObject(evt);
+        var listenersMap = this.getListenersAsObject(evt);
+        var listeners;
         var listener;
         var i;
         var key;
         var response;
 
-        for (key in listeners) {
-            if (listeners.hasOwnProperty(key)) {
-                i = listeners[key].length;
+        for (key in listenersMap) {
+            if (listenersMap.hasOwnProperty(key)) {
+                listeners = listenersMap[key].slice(0);
+                i = listeners.length;
 
                 while (i--) {
                     // If the listener returns true then it shall be removed from the event
                     // The function is executed either with a basic call or an apply if there is an args array
-                    listener = listeners[key][i];
+                    listener = listeners[i];
 
                     if (listener.once === true) {
                         this.removeListener(evt, listener.listener);
@@ -447,7 +453,6 @@
      */
     proto.trigger = alias('emitEvent');
 
-    //noinspection JSValidateJSDoc,JSCommentMatchesSignature
     /**
      * Subtly different from emitEvent in that it will pass its arguments on to the listeners, as opposed to taking a single array of arguments to pass on.
      * As with emitEvent, you can pass a regex in place of the event name to emit to all events that match it.
@@ -621,7 +626,8 @@
         this._latencyStart = null;
         this._messageId = 0;
         this._clientId = null;
-        this._subscriptions = {};
+        this._subs = {};
+        this._channels = {};
         this._lastMessageID = {};
         this._messages = [];
         this._isBatching = false;
@@ -629,6 +635,7 @@
         this._authChannels = {};
         this._refreshTimeout = null;
         this._retries = 0;
+        this._callbacks = {};
         this._config = {
             retry: 1000,
             maxRetry: 20000,
@@ -864,16 +871,8 @@
         return this._status === 'connected';
     };
 
-    centrifugeProto._isConnecting = function () {
-        return this._status === 'connecting';
-    };
-
     centrifugeProto._nextMessageId = function () {
         return ++this._messageId;
-    };
-
-    centrifugeProto._clearSubscriptions = function () {
-        this._subscriptions = {};
     };
 
     centrifugeProto._resetRetry = function() {
@@ -887,6 +886,20 @@
         return interval;
     };
 
+    centrifugeProto._clearConnectedState = function () {
+        this._fireUnsubscribeEvents();
+        if (!this._config.resubscribe) {
+            // completely clear connected state
+            this._subs = {};
+            this._channels = {};
+        } else {
+            // just set subscription flags on channels to false to resubscribe later
+            for (var channel in this._channels) {
+                this._channels[channel] = new ChannelState(channel);
+            }
+        }
+    };
+
     centrifugeProto._send = function (messages) {
         // We must be sure that the messages have a clientId.
         // This is not guaranteed since the handshake may take time to return
@@ -895,10 +908,6 @@
         if (messages.length === 0) {
             return;
         }
-        for (var i = 0; i < messages.length; ++i) {
-            var message = messages[i];
-            message.uid = '' + this._nextMessageId();
-        }
         this._debug('Send', messages);
         this._transport.send(JSON.stringify(messages));
     };
@@ -906,18 +915,13 @@
     centrifugeProto._connect = function (callback) {
 
         if (this.isConnected()) {
+            this._debug("connect called when already connected");
             return;
         }
 
-        this._clientId = null;
-
-        this._reconnect = true;
-
-        if (!this._config.resubscribe) {
-            this._clearSubscriptions();
-        }
-
         this._setStatus('connecting');
+        this._clientId = null;
+        this._reconnect = true;
 
         var self = this;
 
@@ -925,6 +929,7 @@
             this.on('connect', callback);
         }
 
+        // detect transport to use - SockJS or raw Websocket
         if (this._sockjs === true) {
             //noinspection JSUnresolvedFunction
             var sockjsOptions = {};
@@ -941,8 +946,6 @@
         } else {
             this._transport = new WebSocket(this._config.url);
         }
-
-        this._setStatus('connecting');
 
         this._transport.onopen = function () {
 
@@ -964,6 +967,7 @@
             };
 
             if (!self._config.insecure) {
+                // in insecure client mode we don't need timestamp and token.
                 centrifugeMessage["params"]["timestamp"] = self._config.timestamp;
                 centrifugeMessage["params"]["token"] = self._config.token;
                 if (!isString(self._config.timestamp)) {
@@ -973,16 +977,17 @@
                     self._debug("token expected to be string");
                 }
             }
-            self.send(centrifugeMessage);
+            self._addMessage(centrifugeMessage);
             self._latencyStart = new Date();
         };
 
         this._transport.onerror = function (error) {
-            self._debug(error);
+            self._debug("transport level error", error);
         };
 
         this._transport.onclose = function () {
             self._setStatus('disconnected');
+            self._clearConnectedState();
             self.trigger('disconnect');
             if (self._reconnect === true) {
                 var interval = self._getRetryInterval();
@@ -1003,36 +1008,190 @@
         };
     };
 
+    centrifugeProto._fireUnsubscribeEvents = function() {
+        for (var channel in this._subs) {
+            var state = this._channels[channel];
+            var channelSubs = this._subs[channel];
+            for (var i in channelSubs) {
+                var sub = channelSubs[i];
+                if (state && state.isSuccess()) {
+                    sub.trigger("unsubscribe", [sub]);
+                }
+            }
+        }
+    };
+
     centrifugeProto._disconnect = function (shouldReconnect) {
         var reconnect = shouldReconnect || false;
+        this._clearConnectedState();
         this._clientId = null;
         this._setStatus('disconnected');
         if (reconnect === false) {
-            this._subscriptions = {};
+            this._channels = {};
+            this._subs = {};
             this._reconnect = false;
         }
         this._transport.close();
     };
 
-    centrifugeProto._getSubscription = function (channel) {
-        var subscription;
-        subscription = this._subscriptions[channel];
-        if (!subscription) {
-            return null;
+    centrifugeProto._refresh = function () {
+        // ask web app for connection parameters - user ID,
+        // timestamp, info and token
+        var self = this;
+        this._debug('refresh credentials');
+
+        var cb = function(error, data) {
+            if (error === true) {
+                // 403 or 500 - does not matter - if connection check activated then Centrifugo
+                // will disconnect client eventually
+                self._debug("error getting connect parameters", data);
+                if (self._refreshTimeout) {
+                    window.clearTimeout(self._refreshTimeout);
+                }
+                self._refreshTimeout = window.setTimeout(function(){
+                    self._refresh.call(self);
+                }, 3000);
+                return;
+            }
+            self._config.user = data.user;
+            self._config.timestamp = data.timestamp;
+            self._config.info = data.info;
+            self._config.token = data.token;
+            if (self.isDisconnected()) {
+                self._debug("credentials refreshed, connect from scratch");
+                self._connect();
+            } else {
+                self._debug("send refreshed credentials");
+                var centrifugeMessage = {
+                    "method": "refresh",
+                    "params": {
+                        'user': self._config.user,
+                        'timestamp': self._config.timestamp,
+                        'info': self._config.info,
+                        'token': self._config.token
+                    }
+                };
+                self._addMessage(centrifugeMessage);
+            }
+        };
+
+        var transport = this._config.refreshTransport.toLowerCase();
+        if (transport === "ajax") {
+            this._ajax(this._config.refreshEndpoint, this._config.refreshParams, this._config.refreshHeaders, {}, cb);
+        } else if (transport === "jsonp") {
+            this._jsonp(this._config.refreshEndpoint, this._config.refreshParams, this._config.refreshHeaders, {}, cb);
+        } else {
+            throw 'Unknown refresh transport ' + transport;
         }
-        return subscription;
     };
 
-    centrifugeProto._removeSubscription = function (channel) {
-        try {
-            delete this._subscriptions[channel];
-        } catch (e) {
-            this._debug('nothing to delete for channel ', channel);
+    centrifugeProto._subscribe = function(channel) {
+        if (channel in this._channels) {
+            var state = this._channels[channel];
+            if (!state.isNew()) {
+                return state;
+            }
+        } else {
+            this._channels[channel] = new ChannelState(channel);
         }
-        try {
-            delete this._authChannels[channel];
-        } catch (e) {
-            this._debug('nothing to delete from authChannels for channel ', channel);
+
+        if (!this.isConnected()) {
+            // subscribe will be called later
+            return null;
+        }
+
+        this._channels[channel].setSubscribing();
+
+        var centrifugeMessage = {
+            "method": "subscribe",
+            "params": {
+                "channel": channel
+            }
+        };
+
+        // If channel name does not start with privateChannelPrefix - then we
+        // can just send subscription message to Centrifuge. If channel name
+        // starts with privateChannelPrefix - then this is a private channel
+        // and we should ask web application backend for permission first.
+        if (startsWith(channel, this._config.privateChannelPrefix)) {
+            // private channel
+            if (this._isAuthBatching) {
+                this._authChannels[channel] = true;
+            } else {
+                this.startAuthBatching();
+                this._subscribe(channel);
+                this.stopAuthBatching();
+            }
+        } else {
+            var recover = this._recover(channel);
+            if (recover === true) {
+                centrifugeMessage["params"]["recover"] = true;
+                centrifugeMessage["params"]["last"] = this._getLastID(channel);
+            }
+            this._addMessage(centrifugeMessage);
+        }
+
+        return this._channels[channel];
+    };
+
+    centrifugeProto._unsubscribe = function(channel) {
+        if (this.isConnected()) {
+            // No need to unsubscribe in disconnected state - i.e. client already unsubscribed.
+            var centrifugeMessage = {
+                "method": "unsubscribe",
+                "params": {
+                    "channel": channel
+                }
+            };
+            this._addMessage(centrifugeMessage);
+        }
+    };
+
+    centrifugeProto._getSubs = function (channel) {
+        if (!(channel in this._subs)) {
+            return [];
+        }
+        return this._subs[channel];
+    };
+
+    centrifugeProto._addSub = function (channel, sub) {
+        if (!(channel in this._subs)) {
+            this._subs[channel] = [];
+        }
+        var index = this._subs[channel].indexOf(sub);
+        if (index === -1) {
+            // Add subscription only if not exist already
+            this._subs[channel].push(sub);
+        }
+        var state = this._subscribe(channel);
+        if (state !== null && state.isReady()) {
+            if (state.isSuccess()) {
+                sub._setSuccess();
+            } else {
+                sub._setError(state.getError());
+            }
+        }
+    };
+
+    centrifugeProto._removeSub = function (channel, sub) {
+        if (!(channel in this._subs)) {
+            return 0;
+        }
+        var index = this._subs[channel].indexOf(sub);
+        if (index > -1) {
+            this._subs[channel].splice(index, 1);
+        }
+        if (this._subs[channel].length === 0) {
+            if (channel in this._channels) {
+                delete this._channels[channel];
+            }
+            if (channel in this._subs) {
+                delete this._subs[channel];
+            }
+            if (channel in this._authChannels) {
+                delete this._authChannels[channel];
+            }
+            this._unsubscribe(channel);
         }
     };
 
@@ -1054,33 +1213,32 @@
             if (message.body.expires) {
                 var isExpired = message.body.expired;
                 if (isExpired) {
-                    this.refresh();
+                    this._refresh();
                     return;
                 }
             }
             this._clientId = message.body.client;
             this._setStatus('connected');
-            this.trigger('connect', [message]);
+            this.trigger('connect', [message.body]);
             if (this._refreshTimeout) {
                 window.clearTimeout(this._refreshTimeout);
             }
             if (message.body.expires) {
                 var self = this;
                 this._refreshTimeout = window.setTimeout(function() {
-                    self.refresh.call(self);
+                    self._refresh.call(self);
                 }, message.body.ttl * 1000);
             }
         } else {
             this.trigger('error', [message]);
-            this.trigger('connect:error', [message]);
+            this.trigger('connect:error', [this._createErrorObject(message.error)]);
         }
 
         if (this._config.resubscribe) {
             this.startBatching();
             this.startAuthBatching();
-            for (var i in this._subscriptions) {
-                var sub = this._subscriptions[i];
-                sub.subscribe();
+            for (var channel in this._channels) {
+                this._subscribe(channel);
             }
             this.stopAuthBatching();
             this.stopBatching(true);
@@ -1094,104 +1252,158 @@
             if ("reconnect" in message.body) {
                 shouldReconnect = message.body["reconnect"];
             }
-            this.disconnect(shouldReconnect);
+            var reason = "";
             if ("reason" in message.body) {
-                this._debug("disconnected:", message.body["reason"]);
+                reason = message.body["reason"];
             }
+            if (reason.length > 0) {
+                this._debug("disconnected:", reason);
+            }
+            this.disconnect(shouldReconnect);
         } else {
             this.trigger('error', [message]);
-            this.trigger('disconnect:error', [message.error]);
         }
     };
 
     centrifugeProto._subscribeResponse = function (message) {
-        if (errorExists(message)) {
-            this.trigger('error', [message]);
-        }
         var body = message.body;
         if (body === null) {
             return;
         }
         var channel = body.channel;
-        var subscription = this.getSubscription(channel);
-        if (!subscription) {
+
+        if (!(channel in this._channels)) {
+            // ignore subscribe response - not actual anymore
             return;
         }
+
+        var subs = this._getSubs(channel);
+        if (subs.length === 0) {
+            return;
+        }
+
+        var sub;
+
         if (!errorExists(message)) {
-            subscription.trigger('subscribe:success', [body]);
-            subscription.trigger('ready', [body]);
+            this._channels[channel].setSuccess();
+
+            for (var i in subs) {
+                sub = subs[i];
+                sub._setSuccess();
+            }
             var messages = body["messages"];
             if (messages && messages.length > 0) {
+                // handle missed messages
                 for (var i in messages.reverse()) {
                     this._messageResponse({body: messages[i]});
                 }
             } else {
                 if ("last" in body) {
+                    // no missed messages found so set last message id from body.
                     this._lastMessageID[channel] = body["last"];
                 }
             }
         } else {
-            subscription.trigger('subscribe:error', [message.error]);
-            subscription.trigger('error', [message]);
+            this._channels[channel].setError(this._createErrorObject(message.error));
+            this.trigger('error', [message]);
+            for (var i in subs) {
+                sub = subs[i];
+                sub._setError(this._createErrorObject(message.error));
+            }
         }
     };
 
     centrifugeProto._unsubscribeResponse = function (message) {
+        var uid = message.uid;
         var body = message.body;
         var channel = body.channel;
-        var subscription = this.getSubscription(channel);
-        if (!subscription) {
+
+        var subs = this._getSubs(channel);
+        if (subs.length === 0) {
             return;
         }
+
         if (!errorExists(message)) {
-            subscription.trigger('unsubscribe', [body]);
-            this._removeSubscription(channel);
+            if (!uid) {
+                // unsubscribe command from server – unsubscribe all current subs
+                for (var i in subs) {
+                    var sub = subs[i];
+                    sub.unsubscribe();
+                }
+            }
+        } else {
+            this.trigger('error', [message]);
         }
     };
 
     centrifugeProto._publishResponse = function (message) {
+        var uid = message.uid;
         var body = message.body;
-        var channel = body.channel;
-        var subscription = this.getSubscription(channel);
-        if (!subscription) {
+        if (!(uid in this._callbacks)) {
             return;
         }
+        var callbacks = this._callbacks[uid];
+        delete this._callbacks[uid];
         if (!errorExists(message)) {
-            subscription.trigger('publish:success', [body]);
+            var callback = callbacks["callback"];
+            if (!callback) {
+                return;
+            }
+            callback(body);
         } else {
-            subscription.trigger('publish:error', [message.error]);
+            var errback = callbacks["errback"];
+            if (!errback) {
+                return;
+            }
+            errback(this._createErrorObject(message.error));
             this.trigger('error', [message]);
         }
     };
 
     centrifugeProto._presenceResponse = function (message) {
+        var uid = message.uid;
         var body = message.body;
-        var channel = body.channel;
-        var subscription = this.getSubscription(channel);
-        if (!subscription) {
+        if (!(uid in this._callbacks)) {
             return;
         }
+        var callbacks = this._callbacks[uid];
+        delete this._callbacks[uid];
         if (!errorExists(message)) {
-            subscription.trigger('presence', [body]);
-            subscription.trigger('presence:success', [body]);
+            var callback = callbacks["callback"];
+            if (!callback) {
+                return;
+            }
+            callback(body);
         } else {
-            subscription.trigger('presence:error', [message.error]);
+            var errback = callbacks["errback"];
+            if (!errback) {
+                return;
+            }
+            errback(this._createErrorObject(message.error));
             this.trigger('error', [message]);
         }
     };
 
     centrifugeProto._historyResponse = function (message) {
+        var uid = message.uid;
         var body = message.body;
-        var channel = body.channel;
-        var subscription = this.getSubscription(channel);
-        if (!subscription) {
+        if (!(uid in this._callbacks)) {
             return;
         }
+        var callbacks = this._callbacks[uid];
+        delete this._callbacks[uid];
         if (!errorExists(message)) {
-            subscription.trigger('history', [body]);
-            subscription.trigger('history:success', [body]);
+            var callback = callbacks["callback"];
+            if (!callback) {
+                return;
+            }
+            callback(body);
         } else {
-            subscription.trigger('history:error', [message.error]);
+            var errback = callbacks["errback"];
+            if (!errback) {
+                return;
+            }
+            errback(this._createErrorObject(message.error));
             this.trigger('error', [message]);
         }
     };
@@ -1199,33 +1411,43 @@
     centrifugeProto._joinResponse = function(message) {
         var body = message.body;
         var channel = body.channel;
-        var subscription = this.getSubscription(channel);
-        if (!subscription) {
+
+        var subs = this._getSubs(channel);
+        if (subs.length === 0) {
             return;
         }
-        subscription.trigger('join', [body]);
+        for (var i in subs) {
+            var sub = subs[i];
+            sub.trigger('join', [body]);
+        }
     };
 
     centrifugeProto._leaveResponse = function(message) {
         var body = message.body;
         var channel = body.channel;
-        var subscription = this.getSubscription(channel);
-        if (!subscription) {
+
+        var subs = this._getSubs(channel);
+        if (subs.length === 0) {
             return;
         }
-        subscription.trigger('leave', [body]);
+        for (var i in subs) {
+            var sub = subs[i];
+            sub.trigger('leave', [body]);
+        }
     };
 
     centrifugeProto._messageResponse = function (message) {
         var body = message.body;
         var channel = body.channel;
-        var subscription = this.getSubscription(channel);
-        if (subscription === null) {
-            return;
-        }
+
         // keep last uid received from channel.
         this._lastMessageID[channel] = body["uid"];
-        subscription.trigger('message', [body]);
+
+        var subs = this._getSubs(channel);
+        for (var i in subs) {
+            var sub = subs[i];
+            sub.trigger("message", [body]);
+        }
     };
 
     centrifugeProto._refreshResponse = function (message) {
@@ -1237,25 +1459,27 @@
             var isExpired = message.body.expired;
             if (isExpired) {
                 self._refreshTimeout = window.setTimeout(function(){
-                    self.refresh.call(self);
+                    self._refresh.call(self);
                 }, 3000 + Math.round(Math.random() * 1000));
                 return;
             }
             this._clientId = message.body.client;
             self._refreshTimeout = window.setTimeout(function () {
-                self.refresh.call(self);
+                self._refresh.call(self);
             }, message.body.ttl * 1000);
         }
     };
 
     centrifugeProto._dispatchMessage = function(message) {
         if (message === undefined || message === null) {
+            this._debug("dispatch: got undefined or null message");
             return;
         }
 
         var method = message.method;
 
         if (!method) {
+            this._debug("dispatch: got message with empty method");
             return;
         }
 
@@ -1296,12 +1520,14 @@
                 this._messageResponse(message);
                 break;
             default:
+                this._debug("dispatch: got message with unknown method" + method);
                 break;
         }
     };
 
     centrifugeProto._receive = function (data) {
         if (Object.prototype.toString.call(data) === Object.prototype.toString.call([])) {
+            // array of responses received
             for (var i in data) {
                 if (data.hasOwnProperty(i)) {
                     var msg = data[i];
@@ -1309,6 +1535,7 @@
                 }
             }
         } else if (Object.prototype.toString.call(data) === Object.prototype.toString.call({})) {
+            // one response received
             this._dispatchMessage(data);
         }
     };
@@ -1324,7 +1551,7 @@
             "method": "ping",
             "params": {}
         };
-        this.send(centrifugeMessage);
+        this._addMessage(centrifugeMessage);
     };
 
     centrifugeProto._recover = function(channel) {
@@ -1342,6 +1569,37 @@
         }
     };
 
+    centrifugeProto._createErrorObject = function(text) {
+        return {
+            "error": text
+        };
+    };
+
+    centrifugeProto._registerCall = function(uid, callback, errback) {
+        var self = this;
+        this._callbacks[uid] = {
+            "callback": callback,
+            "errback": errback
+        };
+        setTimeout(function() {
+            delete self._callbacks[uid];
+            if (isFunction(errback)) {
+                errback(self._createErrorObject("timeout"));
+            }
+        }, 5000);
+    };
+
+    centrifugeProto._addMessage = function (message) {
+        var uid = '' + this._nextMessageId();
+        message.uid = uid;
+        if (this._isBatching === true) {
+            this._messages.push(message);
+        } else {
+            this._send([message]);
+        }
+        return uid;
+    };
+
     /* PUBLIC API */
 
     centrifugeProto.getClientId = function () {
@@ -1349,8 +1607,6 @@
     };
 
     centrifugeProto.isConnected = centrifugeProto._isConnected;
-
-    centrifugeProto.isConnecting = centrifugeProto._isConnecting;
 
     centrifugeProto.isDisconnected = centrifugeProto._isDisconnected;
 
@@ -1362,17 +1618,7 @@
 
     centrifugeProto.disconnect = centrifugeProto._disconnect;
 
-    centrifugeProto.getSubscription = centrifugeProto._getSubscription;
-
     centrifugeProto.ping = centrifugeProto._ping;
-
-    centrifugeProto.send = function (message) {
-        if (this._isBatching === true) {
-            this._messages.push(message);
-        } else {
-            this._send([message]);
-        }
-    };
 
     centrifugeProto.startBatching = function () {
         // start collecting messages without sending them to Centrifuge until flush
@@ -1409,8 +1655,8 @@
         var channels = [];
 
         for (var channel in authChannels) {
-            var subscription = this.getSubscription(channel);
-            if (!subscription) {
+            var subs = this._getSubs(channel);
+            if (subs.length === 0) {
                 continue;
             }
             channels.push(channel);
@@ -1475,7 +1721,7 @@
                         centrifugeMessage["params"]["recover"] = true;
                         centrifugeMessage["params"]["last"] = self._getLastID(channel);
                     }
-                    self.send(centrifugeMessage);
+                    self._addMessage(centrifugeMessage);
                 } else {
                     self._subscribeResponse({
                         "error": channelResponse.status,
@@ -1500,8 +1746,7 @@
         }
     };
 
-    centrifugeProto.subscribe = function (channel, callback) {
-
+    centrifugeProto.sub = function (channel, events) {
         if (arguments.length < 1) {
             throw 'Illegal arguments number: required 1, got ' + arguments.length;
         }
@@ -1509,193 +1754,105 @@
             throw 'Illegal argument type: channel must be a string';
         }
         if (!this._config.resubscribe && this.isDisconnected()) {
-            throw 'Can not subscribe in disconnected state';
+            throw 'Can not subscribe in disconnected state when resubscribe option is off';
         }
 
-        var current_subscription = this.getSubscription(channel);
-
-        if (current_subscription !== null) {
-            return current_subscription;
-        } else {
-            var subscription = new Subscription(this, channel, callback);
-            this._subscriptions[channel] = subscription;
-            subscription.subscribe();
-            return subscription;
-        }
+        return new Sub(this, channel, events);
     };
 
-    centrifugeProto.unsubscribe = function (channel) {
-        if (arguments.length < 1) {
-            throw 'Illegal arguments number: required 1, got ' + arguments.length;
-        }
-        if (!isString(channel)) {
-            throw 'Illegal argument type: channel must be a string';
-        }
+    var _CHANNEL_STATE_NEW = 0;
+    var _CHANNEL_STATE_SUBSCRIBING = 1;
+    var _CHANNEL_STATE_SUCCESS = 2;
+    var _CHANNEL_STATE_ERROR = 3;
 
-        var subscription = this.getSubscription(channel);
-        if (subscription !== null) {
-            subscription.unsubscribe();
-        }
+    function ChannelState(channel) {
+        this.channel = channel;
+        this._status = _CHANNEL_STATE_NEW;
+        this._error = null;
+    }
+
+    var stateProto = ChannelState.prototype;
+
+    stateProto.isNew = function() {
+        return this._status === _CHANNEL_STATE_NEW;
     };
 
-    centrifugeProto.publish = function (channel, data, callback) {
-        var subscription = this.getSubscription(channel);
-        if (subscription === null) {
-            this._debug("subscription not found for channel " + channel);
-            return null;
-        }
-        subscription.publish(data, callback);
-        return subscription;
+    stateProto.isReady = function() {
+        return this._status === _CHANNEL_STATE_SUCCESS || this._status === _CHANNEL_STATE_ERROR;
     };
 
-    centrifugeProto.presence = function (channel, callback) {
-        var subscription = this.getSubscription(channel);
-        if (subscription === null) {
-            this._debug("subscription not found for channel " + channel);
-            return null;
-        }
-        subscription.presence(callback);
-        return subscription;
+    stateProto.isSuccess = function() {
+        return this._status === _CHANNEL_STATE_SUCCESS;
     };
 
-    centrifugeProto.history = function (channel, callback) {
-        var subscription = this.getSubscription(channel);
-        if (subscription === null) {
-            this._debug("subscription not found for channel " + channel);
-            return null;
-        }
-        subscription.history(callback);
-        return subscription;
+    stateProto.isError = function() {
+        return this._status === _CHANNEL_STATE_ERROR;
     };
 
-    centrifugeProto.refresh = function () {
-        // ask web app for connection parameters - user ID,
-        // timestamp, info and token
-        var self = this;
-        this._debug('refresh credentials');
-
-        var cb = function(error, data) {
-            if (error === true) {
-                // 403 or 500 - does not matter - if connection check activated then Centrifugo
-                // will disconnect client eventually
-                self._debug("error getting connect parameters", data);
-                if (self._refreshTimeout) {
-                    window.clearTimeout(self._refreshTimeout);
-                }
-                self._refreshTimeout = window.setTimeout(function(){
-                    self.refresh.call(self);
-                }, 3000);
-                return;
-            }
-            self._config.user = data.user;
-            self._config.timestamp = data.timestamp;
-            self._config.info = data.info;
-            self._config.token = data.token;
-            if (self.isDisconnected()) {
-                self._debug("credentials refreshed, connect from scratch");
-                self._connect();
-            } else {
-                self._debug("send refreshed credentials");
-                var centrifugeMessage = {
-                    "method": "refresh",
-                    "params": {
-                        'user': self._config.user,
-                        'timestamp': self._config.timestamp,
-                        'info': self._config.info,
-                        'token': self._config.token
-                    }
-                };
-                self.send(centrifugeMessage);
-            }
-        };
-
-        var transport = this._config.refreshTransport.toLowerCase();
-        if (transport === "ajax") {
-            this._ajax(this._config.refreshEndpoint, this._config.refreshParams, this._config.refreshHeaders, {}, cb);
-        } else if (transport === "jsonp") {
-            this._jsonp(this._config.refreshEndpoint, this._config.refreshParams, this._config.refreshHeaders, {}, cb);
-        } else {
-            throw 'Unknown refresh transport ' + transport;
-        }
+    stateProto.getError = function() {
+        return this._error;
     };
 
-    function Subscription(centrifuge, channel, callback) {
-        /**
-         * The constructor for a centrifuge object, identified by an optional name.
-         * The default name is the string 'default'.
-         * @param name the optional name of this centrifuge object
-         */
+    stateProto.setNew = function() {
+        this._status = _CHANNEL_STATE_NEW;
+    };
+
+    stateProto.setSubscribing = function() {
+        this._status = _CHANNEL_STATE_SUBSCRIBING;
+    };
+
+    stateProto.setSuccess = function() {
+        this._status = _CHANNEL_STATE_SUCCESS;
+    };
+
+    stateProto.setError = function(err) {
+        this._status = _CHANNEL_STATE_ERROR;
+        this._error = err;
+    };
+
+    function Sub(centrifuge, channel, events) {
         this._centrifuge = centrifuge;
         this.channel = channel;
-        this.callback = callback;
-        if (this.callback) {
-            this.on('message', this.callback);
+        this._context = {
+            "channel": channel
+        };
+
+        if (isFunction(events)) {
+            this.on("message", events);
+        } else if (Object.prototype.toString.call(events) === Object.prototype.toString.call({})) {
+            var knownEvents = ["message", "join", "leave", "error", "subscribe", "unsubscribe"];
+            for (var i in knownEvents) {
+                var ev = knownEvents[i];
+                if (ev in events) {
+                    this.on(ev, events[ev]);
+                }
+            }
         }
     }
 
-    extend(Subscription, EventEmitter);
+    extend(Sub, EventEmitter);
 
-    var subscriptionProto = Subscription.prototype;
+    var subProto = Sub.prototype;
 
-    subscriptionProto.getChannel = function () {
-        return this.channel;
+    subProto._setSuccess = function() {
+        this.trigger("subscribe", [this]);
     };
 
-    subscriptionProto.getCentrifuge = function () {
-        return this._centrifuge;
+    subProto._setError = function(err) {
+        this.trigger("error", err);
     };
 
-    subscriptionProto.subscribe = function () {
-        /*
-        If channel name does not start with privateChannelPrefix - then we
-        can just send subscription message to Centrifuge. If channel name
-        starts with privateChannelPrefix - then this is a private channel
-        and we should ask web application backend for permission first.
-         */
-        if (!this._centrifuge.isConnected()) {
-            return;
-        }
-        
-        var centrifugeMessage = {
-            "method": "subscribe",
-            "params": {
-                "channel": this.channel
-            }
-        };
-
-        if (startsWith(this.channel, this._centrifuge._config.privateChannelPrefix)) {
-            // private channel
-            if (this._centrifuge._isAuthBatching) {
-                this._centrifuge._authChannels[this.channel] = true;
-            } else {
-                this._centrifuge.startAuthBatching();
-                this.subscribe();
-                this._centrifuge.stopAuthBatching();
-            }
-        } else {
-            var recover = this._centrifuge._recover(this.channel);
-            if (recover === true) {
-                centrifugeMessage["params"]["recover"] = true;
-                centrifugeMessage["params"]["last"] = this._centrifuge._getLastID(this.channel);
-            }
-            this._centrifuge.send(centrifugeMessage);
-        }
+    subProto.subscribe = function() {
+        this._centrifuge._addSub(channel, this);
+        return this;
     };
 
-    subscriptionProto.unsubscribe = function () {
-        this._centrifuge._removeSubscription(this.channel);
-        if (this._centrifuge.isConnected()) {
-            var centrifugeMessage = {
-                "method": "unsubscribe",
-                "params": {
-                    "channel": this.channel
-                }
-            };
-            this._centrifuge.send(centrifugeMessage);
-        }
+    subProto.unsubscribe = function () {
+        this.trigger("unsubscribe", [this]);
+        this._centrifuge._removeSub(this.channel, this);
     };
 
-    subscriptionProto.publish = function (data, callback) {
+    subProto.publish = function (data, callback, errback) {
         var centrifugeMessage = {
             "method": "publish",
             "params": {
@@ -1703,36 +1860,30 @@
                 "data": data
             }
         };
-        if (callback) {
-            this.on('publish:success', callback);
-        }
-        this._centrifuge.send(centrifugeMessage);
+        var uid = this._centrifuge._addMessage(centrifugeMessage);
+        this._centrifuge._registerCall(uid, callback, errback);
     };
 
-    subscriptionProto.presence = function (callback) {
+    subProto.presence = function (callback, errback) {
         var centrifugeMessage = {
             "method": "presence",
             "params": {
                 "channel": this.channel
             }
         };
-        if (callback) {
-            this.on('presence', callback);
-        }
-        this._centrifuge.send(centrifugeMessage);
+        var uid = this._centrifuge._addMessage(centrifugeMessage);
+        this._centrifuge._registerCall(uid, callback, errback);
     };
 
-    subscriptionProto.history = function (callback) {
+    subProto.history = function (callback, errback) {
         var centrifugeMessage = {
             "method": "history",
             "params": {
                 "channel": this.channel
             }
         };
-        if (callback) {
-            this.on('history', callback);
-        }
-        this._centrifuge.send(centrifugeMessage);
+        var uid = this._centrifuge._addMessage(centrifugeMessage);
+        this._centrifuge._registerCall(uid, callback, errback);
     };
 
     // Expose the class either via AMD, CommonJS or the global object

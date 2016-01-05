@@ -146,9 +146,8 @@
         this._latency = null;
         this._latencyStart = null;
         this._messageId = 0;
-        this._clientId = null;
+        this._clientID = null;
         this._subs = {};
-        this._channels = {};
         this._lastMessageID = {};
         this._messages = [];
         this._isBatching = false;
@@ -414,10 +413,6 @@
     };
 
     centrifugeProto._send = function (messages) {
-        // We must be sure that the messages have a clientId.
-        // This is not guaranteed since the handshake may take time to return
-        // (and hence the clientId is not known yet) and the application
-        // may create other messages.
         if (messages.length === 0) {
             return;
         }
@@ -433,7 +428,7 @@
         }
 
         this._setStatus('connecting');
-        this._clientId = null;
+        this._clientID = null;
         this._reconnect = true;
 
         var self = this;
@@ -526,8 +521,6 @@
             var sub = this._subs[channel];
             if (sub._isSuccess()) {
                 sub._setUnsubscribed();
-            } else {
-                sub._setNew();
             }
         }
     };
@@ -535,7 +528,7 @@
     centrifugeProto._disconnect = function (shouldReconnect) {
         var reconnect = shouldReconnect || false;
         this._clearConnectedState();
-        this._clientId = null;
+        this._clientID = null;
         this._setStatus('disconnected');
         if (reconnect === false) {
             this._channels = {};
@@ -701,7 +694,7 @@
                     return;
                 }
             }
-            this._clientId = message.body.client;
+            this._clientID = message.body.client;
             this._setStatus('connected');
             this.trigger('connect', [message.body]);
             if (this._refreshTimeout) {
@@ -801,6 +794,8 @@
                 // unsubscribe command from server – unsubscribe all current subs
                 sub._setUnsubscribed();
             }
+            // ignore client initiated successful unsubscribe responses as we
+            // already unsubscribed on client level.
         } else {
             this.trigger('error', [message]);
         }
@@ -927,7 +922,7 @@
                 }, 3000 + Math.round(Math.random() * 1000));
                 return;
             }
-            this._clientId = message.body.client;
+            this._clientID = message.body.client;
             self._refreshTimeout = window.setTimeout(function () {
                 self._refresh.call(self);
             }, message.body.ttl * 1000);
@@ -1064,10 +1059,8 @@
         return uid;
     };
 
-    /* PUBLIC API */
-
     centrifugeProto.getClientId = function () {
-        return this._clientId;
+        return this._clientID;
     };
 
     centrifugeProto.isConnected = centrifugeProto._isConnected;
@@ -1244,17 +1237,10 @@
         this._status = _STATE_NEW;
         this._error = null;
         this._centrifuge = centrifuge;
-        this._ready = false;
         this.channel = channel;
         this._setEvents(events);
-        this._newPromise();
-    }
 
-    extend(Sub, EventEmitter);
-
-    var subProto = Sub.prototype;
-
-    subProto._newPromise = function() {
+        this._ready = false;
         var self = this;
         this.promise = new Promise(function(resolve, reject) {
             self._resolve = function(value) {
@@ -1266,14 +1252,21 @@
                 reject(err);
             };
         });
-        this._ready = false;
-    };
+    }
+
+    extend(Sub, EventEmitter);
+
+    var subProto = Sub.prototype;
 
     subProto._setEvents = function(events) {
         if (isFunction(events)) {
             this.on("message", events);
         } else if (Object.prototype.toString.call(events) === Object.prototype.toString.call({})) {
-            var knownEvents = ["message", "join", "leave", "error", "subscribe", "unsubscribe"];
+            var knownEvents = [
+                "message", "join", "leave",
+                "subscribe", "resubscribe", "unsubscribe",
+                "error", "subscribe:error", "resubscribe:error"
+            ];
             for (var i in knownEvents) {
                 var ev = knownEvents[i];
                 if (ev in events) {
@@ -1293,7 +1286,7 @@
 
     subProto._isSubscribing = function() {
         return this._status === _STATE_SUBSCRIBING;
-    }
+    };
 
     subProto._isReady = function() {
         return this._status === _STATE_SUCCESS || this._status === _STATE_ERROR;

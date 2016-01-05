@@ -160,7 +160,7 @@
             retry: 1000,
             maxRetry: 20000,
             info: "",
-            resubscribe: false,
+            resubscribe: true,
             debug: false,
             insecure: false,
             server: null,
@@ -531,7 +531,6 @@
         this._clientID = null;
         this._setStatus('disconnected');
         if (reconnect === false) {
-            this._channels = {};
             this._subs = {};
             this._reconnect = false;
         }
@@ -1314,10 +1313,11 @@
         }
         this._status = _STATE_SUCCESS;
         if (this._ready) {
-            this.trigger("resubscribe", [this]);
+            this.trigger("resubscribe:success", [this]);
         } else {
-            this.trigger("subscribe");
+            this.trigger("subscribe:success", [this]);
         }
+        this.trigger("subscribe", [this]);
         this._resolve(this);
     };
 

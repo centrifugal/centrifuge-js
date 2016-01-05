@@ -1,15 +1,30 @@
 ;(function () {
     'use strict';
 
+    /*!
+     * @overview es6-promise - a tiny implementation of Promises/A+.
+     * @copyright Copyright (c) 2014 Yehuda Katz, Tom Dale, Stefan Penner and contributors (Conversion to ES6 API by Jake Archibald)
+     * @license   Licensed under MIT license
+     *            See https://raw.githubusercontent.com/jakearchibald/es6-promise/master/LICENSE
+     * @version   3.0.2
+     */
+    (function(){"use strict";function lib$es6$promise$utils$$objectOrFunction(x){return typeof x==="function"||typeof x==="object"&&x!==null}function lib$es6$promise$utils$$isFunction(x){return typeof x==="function"}function lib$es6$promise$utils$$isMaybeThenable(x){return typeof x==="object"&&x!==null}var lib$es6$promise$utils$$_isArray;if(!Array.isArray){lib$es6$promise$utils$$_isArray=function(x){return Object.prototype.toString.call(x)==="[object Array]"}}else{lib$es6$promise$utils$$_isArray=Array.isArray}var lib$es6$promise$utils$$isArray=lib$es6$promise$utils$$_isArray;var lib$es6$promise$asap$$len=0;var lib$es6$promise$asap$$toString={}.toString;var lib$es6$promise$asap$$vertxNext;var lib$es6$promise$asap$$customSchedulerFn;var lib$es6$promise$asap$$asap=function asap(callback,arg){lib$es6$promise$asap$$queue[lib$es6$promise$asap$$len]=callback;lib$es6$promise$asap$$queue[lib$es6$promise$asap$$len+1]=arg;lib$es6$promise$asap$$len+=2;if(lib$es6$promise$asap$$len===2){if(lib$es6$promise$asap$$customSchedulerFn){lib$es6$promise$asap$$customSchedulerFn(lib$es6$promise$asap$$flush)}else{lib$es6$promise$asap$$scheduleFlush()}}};function lib$es6$promise$asap$$setScheduler(scheduleFn){lib$es6$promise$asap$$customSchedulerFn=scheduleFn}function lib$es6$promise$asap$$setAsap(asapFn){lib$es6$promise$asap$$asap=asapFn}var lib$es6$promise$asap$$browserWindow=typeof window!=="undefined"?window:undefined;var lib$es6$promise$asap$$browserGlobal=lib$es6$promise$asap$$browserWindow||{};var lib$es6$promise$asap$$BrowserMutationObserver=lib$es6$promise$asap$$browserGlobal.MutationObserver||lib$es6$promise$asap$$browserGlobal.WebKitMutationObserver;var lib$es6$promise$asap$$isNode=typeof process!=="undefined"&&{}.toString.call(process)==="[object process]";var lib$es6$promise$asap$$isWorker=typeof Uint8ClampedArray!=="undefined"&&typeof importScripts!=="undefined"&&typeof MessageChannel!=="undefined";function lib$es6$promise$asap$$useNextTick(){return function(){process.nextTick(lib$es6$promise$asap$$flush)}}function lib$es6$promise$asap$$useVertxTimer(){return function(){lib$es6$promise$asap$$vertxNext(lib$es6$promise$asap$$flush)}}function lib$es6$promise$asap$$useMutationObserver(){var iterations=0;var observer=new lib$es6$promise$asap$$BrowserMutationObserver(lib$es6$promise$asap$$flush);var node=document.createTextNode("");observer.observe(node,{characterData:true});return function(){node.data=iterations=++iterations%2}}function lib$es6$promise$asap$$useMessageChannel(){var channel=new MessageChannel;channel.port1.onmessage=lib$es6$promise$asap$$flush;return function(){channel.port2.postMessage(0)}}function lib$es6$promise$asap$$useSetTimeout(){return function(){setTimeout(lib$es6$promise$asap$$flush,1)}}var lib$es6$promise$asap$$queue=new Array(1e3);function lib$es6$promise$asap$$flush(){for(var i=0;i<lib$es6$promise$asap$$len;i+=2){var callback=lib$es6$promise$asap$$queue[i];var arg=lib$es6$promise$asap$$queue[i+1];callback(arg);lib$es6$promise$asap$$queue[i]=undefined;lib$es6$promise$asap$$queue[i+1]=undefined}lib$es6$promise$asap$$len=0}function lib$es6$promise$asap$$attemptVertx(){try{var r=require;var vertx=r("vertx");lib$es6$promise$asap$$vertxNext=vertx.runOnLoop||vertx.runOnContext;return lib$es6$promise$asap$$useVertxTimer()}catch(e){return lib$es6$promise$asap$$useSetTimeout()}}var lib$es6$promise$asap$$scheduleFlush;if(lib$es6$promise$asap$$isNode){lib$es6$promise$asap$$scheduleFlush=lib$es6$promise$asap$$useNextTick()}else if(lib$es6$promise$asap$$BrowserMutationObserver){lib$es6$promise$asap$$scheduleFlush=lib$es6$promise$asap$$useMutationObserver()}else if(lib$es6$promise$asap$$isWorker){lib$es6$promise$asap$$scheduleFlush=lib$es6$promise$asap$$useMessageChannel()}else if(lib$es6$promise$asap$$browserWindow===undefined&&typeof require==="function"){lib$es6$promise$asap$$scheduleFlush=lib$es6$promise$asap$$attemptVertx()}else{lib$es6$promise$asap$$scheduleFlush=lib$es6$promise$asap$$useSetTimeout()}function lib$es6$promise$$internal$$noop(){}var lib$es6$promise$$internal$$PENDING=void 0;var lib$es6$promise$$internal$$FULFILLED=1;var lib$es6$promise$$internal$$REJECTED=2;var lib$es6$promise$$internal$$GET_THEN_ERROR=new lib$es6$promise$$internal$$ErrorObject;function lib$es6$promise$$internal$$selfFulfillment(){return new TypeError("You cannot resolve a promise with itself")}function lib$es6$promise$$internal$$cannotReturnOwn(){return new TypeError("A promises callback cannot return that same promise.")}function lib$es6$promise$$internal$$getThen(promise){try{return promise.then}catch(error){lib$es6$promise$$internal$$GET_THEN_ERROR.error=error;return lib$es6$promise$$internal$$GET_THEN_ERROR}}function lib$es6$promise$$internal$$tryThen(then,value,fulfillmentHandler,rejectionHandler){try{then.call(value,fulfillmentHandler,rejectionHandler)}catch(e){return e}}function lib$es6$promise$$internal$$handleForeignThenable(promise,thenable,then){lib$es6$promise$asap$$asap(function(promise){var sealed=false;var error=lib$es6$promise$$internal$$tryThen(then,thenable,function(value){if(sealed){return}sealed=true;if(thenable!==value){lib$es6$promise$$internal$$resolve(promise,value)}else{lib$es6$promise$$internal$$fulfill(promise,value)}},function(reason){if(sealed){return}sealed=true;lib$es6$promise$$internal$$reject(promise,reason)},"Settle: "+(promise._label||" unknown promise"));if(!sealed&&error){sealed=true;lib$es6$promise$$internal$$reject(promise,error)}},promise)}function lib$es6$promise$$internal$$handleOwnThenable(promise,thenable){if(thenable._state===lib$es6$promise$$internal$$FULFILLED){lib$es6$promise$$internal$$fulfill(promise,thenable._result)}else if(thenable._state===lib$es6$promise$$internal$$REJECTED){lib$es6$promise$$internal$$reject(promise,thenable._result)}else{lib$es6$promise$$internal$$subscribe(thenable,undefined,function(value){lib$es6$promise$$internal$$resolve(promise,value)},function(reason){lib$es6$promise$$internal$$reject(promise,reason)})}}function lib$es6$promise$$internal$$handleMaybeThenable(promise,maybeThenable){if(maybeThenable.constructor===promise.constructor){lib$es6$promise$$internal$$handleOwnThenable(promise,maybeThenable)}else{var then=lib$es6$promise$$internal$$getThen(maybeThenable);if(then===lib$es6$promise$$internal$$GET_THEN_ERROR){lib$es6$promise$$internal$$reject(promise,lib$es6$promise$$internal$$GET_THEN_ERROR.error)}else if(then===undefined){lib$es6$promise$$internal$$fulfill(promise,maybeThenable)}else if(lib$es6$promise$utils$$isFunction(then)){lib$es6$promise$$internal$$handleForeignThenable(promise,maybeThenable,then)}else{lib$es6$promise$$internal$$fulfill(promise,maybeThenable)}}}function lib$es6$promise$$internal$$resolve(promise,value){if(promise===value){lib$es6$promise$$internal$$reject(promise,lib$es6$promise$$internal$$selfFulfillment())}else if(lib$es6$promise$utils$$objectOrFunction(value)){lib$es6$promise$$internal$$handleMaybeThenable(promise,value)}else{lib$es6$promise$$internal$$fulfill(promise,value)}}function lib$es6$promise$$internal$$publishRejection(promise){if(promise._onerror){promise._onerror(promise._result)}lib$es6$promise$$internal$$publish(promise)}function lib$es6$promise$$internal$$fulfill(promise,value){if(promise._state!==lib$es6$promise$$internal$$PENDING){return}promise._result=value;promise._state=lib$es6$promise$$internal$$FULFILLED;if(promise._subscribers.length!==0){lib$es6$promise$asap$$asap(lib$es6$promise$$internal$$publish,promise)}}function lib$es6$promise$$internal$$reject(promise,reason){if(promise._state!==lib$es6$promise$$internal$$PENDING){return}promise._state=lib$es6$promise$$internal$$REJECTED;promise._result=reason;lib$es6$promise$asap$$asap(lib$es6$promise$$internal$$publishRejection,promise)}function lib$es6$promise$$internal$$subscribe(parent,child,onFulfillment,onRejection){var subscribers=parent._subscribers;var length=subscribers.length;parent._onerror=null;subscribers[length]=child;subscribers[length+lib$es6$promise$$internal$$FULFILLED]=onFulfillment;subscribers[length+lib$es6$promise$$internal$$REJECTED]=onRejection;if(length===0&&parent._state){lib$es6$promise$asap$$asap(lib$es6$promise$$internal$$publish,parent)}}function lib$es6$promise$$internal$$publish(promise){var subscribers=promise._subscribers;var settled=promise._state;if(subscribers.length===0){return}var child,callback,detail=promise._result;for(var i=0;i<subscribers.length;i+=3){child=subscribers[i];callback=subscribers[i+settled];if(child){lib$es6$promise$$internal$$invokeCallback(settled,child,callback,detail)}else{callback(detail)}}promise._subscribers.length=0}function lib$es6$promise$$internal$$ErrorObject(){this.error=null}var lib$es6$promise$$internal$$TRY_CATCH_ERROR=new lib$es6$promise$$internal$$ErrorObject;function lib$es6$promise$$internal$$tryCatch(callback,detail){try{return callback(detail)}catch(e){lib$es6$promise$$internal$$TRY_CATCH_ERROR.error=e;return lib$es6$promise$$internal$$TRY_CATCH_ERROR}}function lib$es6$promise$$internal$$invokeCallback(settled,promise,callback,detail){var hasCallback=lib$es6$promise$utils$$isFunction(callback),value,error,succeeded,failed;if(hasCallback){value=lib$es6$promise$$internal$$tryCatch(callback,detail);if(value===lib$es6$promise$$internal$$TRY_CATCH_ERROR){failed=true;error=value.error;value=null}else{succeeded=true}if(promise===value){lib$es6$promise$$internal$$reject(promise,lib$es6$promise$$internal$$cannotReturnOwn());return}}else{value=detail;succeeded=true}if(promise._state!==lib$es6$promise$$internal$$PENDING){}else if(hasCallback&&succeeded){lib$es6$promise$$internal$$resolve(promise,value)}else if(failed){lib$es6$promise$$internal$$reject(promise,error)}else if(settled===lib$es6$promise$$internal$$FULFILLED){lib$es6$promise$$internal$$fulfill(promise,value)}else if(settled===lib$es6$promise$$internal$$REJECTED){lib$es6$promise$$internal$$reject(promise,value)}}function lib$es6$promise$$internal$$initializePromise(promise,resolver){try{resolver(function resolvePromise(value){lib$es6$promise$$internal$$resolve(promise,value)},function rejectPromise(reason){lib$es6$promise$$internal$$reject(promise,reason)})}catch(e){lib$es6$promise$$internal$$reject(promise,e)}}function lib$es6$promise$enumerator$$Enumerator(Constructor,input){var enumerator=this;enumerator._instanceConstructor=Constructor;enumerator.promise=new Constructor(lib$es6$promise$$internal$$noop);if(enumerator._validateInput(input)){enumerator._input=input;enumerator.length=input.length;enumerator._remaining=input.length;enumerator._init();if(enumerator.length===0){lib$es6$promise$$internal$$fulfill(enumerator.promise,enumerator._result)}else{enumerator.length=enumerator.length||0;enumerator._enumerate();if(enumerator._remaining===0){lib$es6$promise$$internal$$fulfill(enumerator.promise,enumerator._result)}}}else{lib$es6$promise$$internal$$reject(enumerator.promise,enumerator._validationError())}}lib$es6$promise$enumerator$$Enumerator.prototype._validateInput=function(input){return lib$es6$promise$utils$$isArray(input)};lib$es6$promise$enumerator$$Enumerator.prototype._validationError=function(){return new Error("Array Methods must be provided an Array")};lib$es6$promise$enumerator$$Enumerator.prototype._init=function(){this._result=new Array(this.length)};var lib$es6$promise$enumerator$$default=lib$es6$promise$enumerator$$Enumerator;lib$es6$promise$enumerator$$Enumerator.prototype._enumerate=function(){var enumerator=this;var length=enumerator.length;var promise=enumerator.promise;var input=enumerator._input;for(var i=0;promise._state===lib$es6$promise$$internal$$PENDING&&i<length;i++){enumerator._eachEntry(input[i],i)}};lib$es6$promise$enumerator$$Enumerator.prototype._eachEntry=function(entry,i){var enumerator=this;var c=enumerator._instanceConstructor;if(lib$es6$promise$utils$$isMaybeThenable(entry)){if(entry.constructor===c&&entry._state!==lib$es6$promise$$internal$$PENDING){entry._onerror=null;enumerator._settledAt(entry._state,i,entry._result)}else{enumerator._willSettleAt(c.resolve(entry),i)}}else{enumerator._remaining--;enumerator._result[i]=entry}};lib$es6$promise$enumerator$$Enumerator.prototype._settledAt=function(state,i,value){var enumerator=this;var promise=enumerator.promise;if(promise._state===lib$es6$promise$$internal$$PENDING){enumerator._remaining--;if(state===lib$es6$promise$$internal$$REJECTED){lib$es6$promise$$internal$$reject(promise,value)}else{enumerator._result[i]=value}}if(enumerator._remaining===0){lib$es6$promise$$internal$$fulfill(promise,enumerator._result)}};lib$es6$promise$enumerator$$Enumerator.prototype._willSettleAt=function(promise,i){var enumerator=this;lib$es6$promise$$internal$$subscribe(promise,undefined,function(value){enumerator._settledAt(lib$es6$promise$$internal$$FULFILLED,i,value)},function(reason){enumerator._settledAt(lib$es6$promise$$internal$$REJECTED,i,reason)})};function lib$es6$promise$promise$all$$all(entries){return new lib$es6$promise$enumerator$$default(this,entries).promise}var lib$es6$promise$promise$all$$default=lib$es6$promise$promise$all$$all;function lib$es6$promise$promise$race$$race(entries){var Constructor=this;var promise=new Constructor(lib$es6$promise$$internal$$noop);if(!lib$es6$promise$utils$$isArray(entries)){lib$es6$promise$$internal$$reject(promise,new TypeError("You must pass an array to race."));return promise}var length=entries.length;function onFulfillment(value){lib$es6$promise$$internal$$resolve(promise,value)}function onRejection(reason){lib$es6$promise$$internal$$reject(promise,reason)}for(var i=0;promise._state===lib$es6$promise$$internal$$PENDING&&i<length;i++){lib$es6$promise$$internal$$subscribe(Constructor.resolve(entries[i]),undefined,onFulfillment,onRejection)}return promise}var lib$es6$promise$promise$race$$default=lib$es6$promise$promise$race$$race;function lib$es6$promise$promise$resolve$$resolve(object){var Constructor=this;if(object&&typeof object==="object"&&object.constructor===Constructor){return object}var promise=new Constructor(lib$es6$promise$$internal$$noop);lib$es6$promise$$internal$$resolve(promise,object);return promise}var lib$es6$promise$promise$resolve$$default=lib$es6$promise$promise$resolve$$resolve;function lib$es6$promise$promise$reject$$reject(reason){var Constructor=this;var promise=new Constructor(lib$es6$promise$$internal$$noop);lib$es6$promise$$internal$$reject(promise,reason);return promise}var lib$es6$promise$promise$reject$$default=lib$es6$promise$promise$reject$$reject;var lib$es6$promise$promise$$counter=0;function lib$es6$promise$promise$$needsResolver(){throw new TypeError("You must pass a resolver function as the first argument to the promise constructor")}function lib$es6$promise$promise$$needsNew(){throw new TypeError("Failed to construct 'Promise': Please use the 'new' operator, this object constructor cannot be called as a function.")}var lib$es6$promise$promise$$default=lib$es6$promise$promise$$Promise;function lib$es6$promise$promise$$Promise(resolver){this._id=lib$es6$promise$promise$$counter++;this._state=undefined;this._result=undefined;this._subscribers=[];if(lib$es6$promise$$internal$$noop!==resolver){if(!lib$es6$promise$utils$$isFunction(resolver)){lib$es6$promise$promise$$needsResolver()}if(!(this instanceof lib$es6$promise$promise$$Promise)){lib$es6$promise$promise$$needsNew()}lib$es6$promise$$internal$$initializePromise(this,resolver)}}lib$es6$promise$promise$$Promise.all=lib$es6$promise$promise$all$$default;lib$es6$promise$promise$$Promise.race=lib$es6$promise$promise$race$$default;lib$es6$promise$promise$$Promise.resolve=lib$es6$promise$promise$resolve$$default;lib$es6$promise$promise$$Promise.reject=lib$es6$promise$promise$reject$$default;lib$es6$promise$promise$$Promise._setScheduler=lib$es6$promise$asap$$setScheduler;lib$es6$promise$promise$$Promise._setAsap=lib$es6$promise$asap$$setAsap;lib$es6$promise$promise$$Promise._asap=lib$es6$promise$asap$$asap;lib$es6$promise$promise$$Promise.prototype={constructor:lib$es6$promise$promise$$Promise,then:function(onFulfillment,onRejection){var parent=this;var state=parent._state;if(state===lib$es6$promise$$internal$$FULFILLED&&!onFulfillment||state===lib$es6$promise$$internal$$REJECTED&&!onRejection){return this}var child=new this.constructor(lib$es6$promise$$internal$$noop);var result=parent._result;if(state){var callback=arguments[state-1];lib$es6$promise$asap$$asap(function(){lib$es6$promise$$internal$$invokeCallback(state,child,callback,result)})}else{lib$es6$promise$$internal$$subscribe(parent,child,onFulfillment,onRejection)}return child},"catch":function(onRejection){return this.then(null,onRejection)}};function lib$es6$promise$polyfill$$polyfill(){var local;if(typeof global!=="undefined"){local=global}else if(typeof self!=="undefined"){local=self}else{try{local=Function("return this")()}catch(e){throw new Error("polyfill failed because global object is unavailable in this environment")}}var P=local.Promise;if(P&&Object.prototype.toString.call(P.resolve())==="[object Promise]"&&!P.cast){return}local.Promise=lib$es6$promise$promise$$default}var lib$es6$promise$polyfill$$default=lib$es6$promise$polyfill$$polyfill;var lib$es6$promise$umd$$ES6Promise={Promise:lib$es6$promise$promise$$default,polyfill:lib$es6$promise$polyfill$$default};if(typeof define==="function"&&define["amd"]){define(function(){return lib$es6$promise$umd$$ES6Promise})}else if(typeof module!=="undefined"&&module["exports"]){module["exports"]=lib$es6$promise$umd$$ES6Promise}else if(typeof this!=="undefined"){this["ES6Promise"]=lib$es6$promise$umd$$ES6Promise}lib$es6$promise$polyfill$$default()}).call(this);
+
+    /*!
+     * EventEmitter v4.2.11 - git.io/ee
+     * Unlicense - http://unlicense.org/
+     * Oliver Caldwell - http://oli.me.uk/
+     * @preserve
+     */
+    (function(){"use strict";function t(){}function i(t,n){for(var e=t.length;e--;)if(t[e].listener===n)return e;return-1}function n(e){return function(){return this[e].apply(this,arguments)}}var e=t.prototype,r=this,s=r.EventEmitter;e.getListeners=function(n){var r,e,t=this._getEvents();if(n instanceof RegExp){r={};for(e in t)t.hasOwnProperty(e)&&n.test(e)&&(r[e]=t[e])}else r=t[n]||(t[n]=[]);return r},e.flattenListeners=function(t){var e,n=[];for(e=0;e<t.length;e+=1)n.push(t[e].listener);return n},e.getListenersAsObject=function(n){var e,t=this.getListeners(n);return t instanceof Array&&(e={},e[n]=t),e||t},e.addListener=function(r,e){var t,n=this.getListenersAsObject(r),s="object"==typeof e;for(t in n)n.hasOwnProperty(t)&&-1===i(n[t],e)&&n[t].push(s?e:{listener:e,once:!1});return this},e.on=n("addListener"),e.addOnceListener=function(e,t){return this.addListener(e,{listener:t,once:!0})},e.once=n("addOnceListener"),e.defineEvent=function(e){return this.getListeners(e),this},e.defineEvents=function(t){for(var e=0;e<t.length;e+=1)this.defineEvent(t[e]);return this},e.removeListener=function(r,s){var n,e,t=this.getListenersAsObject(r);for(e in t)t.hasOwnProperty(e)&&(n=i(t[e],s),-1!==n&&t[e].splice(n,1));return this},e.off=n("removeListener"),e.addListeners=function(e,t){return this.manipulateListeners(!1,e,t)},e.removeListeners=function(e,t){return this.manipulateListeners(!0,e,t)},e.manipulateListeners=function(r,t,i){var e,n,s=r?this.removeListener:this.addListener,o=r?this.removeListeners:this.addListeners;if("object"!=typeof t||t instanceof RegExp)for(e=i.length;e--;)s.call(this,t,i[e]);else for(e in t)t.hasOwnProperty(e)&&(n=t[e])&&("function"==typeof n?s.call(this,e,n):o.call(this,e,n));return this},e.removeEvent=function(e){var t,r=typeof e,n=this._getEvents();if("string"===r)delete n[e];else if(e instanceof RegExp)for(t in n)n.hasOwnProperty(t)&&e.test(t)&&delete n[t];else delete this._events;return this},e.removeAllListeners=n("removeEvent"),e.emitEvent=function(t,u){var n,e,r,i,o,s=this.getListenersAsObject(t);for(i in s)if(s.hasOwnProperty(i))for(n=s[i].slice(0),r=n.length;r--;)e=n[r],e.once===!0&&this.removeListener(t,e.listener),o=e.listener.apply(this,u||[]),o===this._getOnceReturnValue()&&this.removeListener(t,e.listener);return this},e.trigger=n("emitEvent"),e.emit=function(e){var t=Array.prototype.slice.call(arguments,1);return this.emitEvent(e,t)},e.setOnceReturnValue=function(e){return this._onceReturnValue=e,this},e._getOnceReturnValue=function(){return this.hasOwnProperty("_onceReturnValue")?this._onceReturnValue:!0},e._getEvents=function(){return this._events||(this._events={})},t.noConflict=function(){return r.EventEmitter=s,t},"function"==typeof define&&define.amd?define(function(){return t}):"object"==typeof module&&module.exports?module.exports=t:r.EventEmitter=t}).call(this);
+
     /**
      * Oliver Caldwell
      * http://oli.me.uk/2013/06/01/prototypical-inheritance-done-right/
      */
-
     if (!Object.create) {
         Object.create = (function(){
             function F(){}
-
             return function(o){
                 if (arguments.length != 1) {
                     throw new Error('Object.create implementation only accepts one parameter.');
@@ -20,486 +35,19 @@
         })()
     }
 
-    if (!Array.prototype.indexOf) {
-        Array.prototype.indexOf = function (searchElement /*, fromIndex */) {
-            'use strict';
-            if (this == null) {
-                throw new TypeError();
-            }
-            var n, k, t = Object(this),
-                len = t.length >>> 0;
-
-            if (len === 0) {
-                return -1;
-            }
-            n = 0;
-            if (arguments.length > 1) {
-                n = Number(arguments[1]);
-                if (n != n) { // shortcut for verifying if it's NaN
-                    n = 0;
-                } else if (n != 0 && n != Infinity && n != -Infinity) {
-                    n = (n > 0 || -1) * Math.floor(Math.abs(n));
-                }
-            }
-            if (n >= len) {
-                return -1;
-            }
-            for (k = n >= 0 ? n : Math.max(len - Math.abs(n), 0); k < len; k++) {
-                if (k in t && t[k] === searchElement) {
-                    return k;
-                }
-            }
-            return -1;
-        };
-    }
-
     function extend(destination, source) {
         destination.prototype = Object.create(source.prototype);
         destination.prototype.constructor = destination;
         return source.prototype;
     }
 
-    /**
-     * EventEmitter v4.2.3 - git.io/ee
-     * Oliver Caldwell
-     * MIT license
-     * @preserve
-     */
-
-    /**
-     * Class for managing events.
-     * Can be extended to provide event functionality in other classes.
-     *
-     * @class EventEmitter Manages event registering and emitting.
-     */
-    function EventEmitter() {}
-
-    // Shortcuts to improve speed and size
-
-    // Easy access to the prototype
-    var proto = EventEmitter.prototype;
-
-    /**
-     * Finds the index of the listener for the event in it's storage array.
-     *
-     * @param {Function[]} listeners Array of listeners to search through.
-     * @param {Function} listener Method to look for.
-     * @return {Number} Index of the specified listener, -1 if not found
-     * @api private
-     */
-    function indexOfListener(listeners, listener) {
-        var i = listeners.length;
-        while (i--) {
-            if (listeners[i].listener === listener) {
-                return i;
-            }
-        }
-
-        return -1;
+    if (!Array.prototype.indexOf) {
+        Array.prototype.indexOf=function(r){if(null==this)throw new TypeError;var t,e,n=Object(this),a=n.length>>>0;if(0===a)return-1;if(t=0,arguments.length>1&&(t=Number(arguments[1]),t!=t?t=0:0!=t&&1/0!=t&&t!=-1/0&&(t=(t>0||-1)*Math.floor(Math.abs(t)))),t>=a)return-1;for(e=t>=0?t:Math.max(a-Math.abs(t),0);a>e;e++)if(e in n&&n[e]===r)return e;return-1};
     }
 
-    /**
-     * Alias a method while keeping the context correct, to allow for overwriting of target method.
-     *
-     * @param {String} name The name of the target method.
-     * @return {Function} The aliased method
-     * @api private
-     */
-    function alias(name) {
-        return function aliasClosure() {
-            return this[name].apply(this, arguments);
-        };
+    function fieldValue(object, name) {
+        try {return object[name];} catch (x) {return undefined;}
     }
-
-    /**
-     * Returns the listener array for the specified event.
-     * Will initialise the event object and listener arrays if required.
-     * Will return an object if you use a regex search. The object contains keys for each matched event. So /ba[rz]/ might return an object containing bar and baz. But only if you have either defined them with defineEvent or added some listeners to them.
-     * Each property in the object response is an array of listener functions.
-     *
-     * @param {String|RegExp} evt Name of the event to return the listeners from.
-     * @return {Function[]|Object} All listener functions for the event.
-     */
-    proto.getListeners = function getListeners(evt) {
-        var events = this._getEvents();
-        var response;
-        var key;
-
-        // Return a concatenated array of all matching events if
-        // the selector is a regular expression.
-        if (typeof evt === 'object') {
-            response = {};
-            for (key in events) {
-                if (events.hasOwnProperty(key) && evt.test(key)) {
-                    response[key] = events[key];
-                }
-            }
-        }
-        else {
-            response = events[evt] || (events[evt] = []);
-        }
-
-        return response;
-    };
-
-    /**
-     * Takes a list of listener objects and flattens it into a list of listener functions.
-     *
-     * @param {Object[]} listeners Raw listener objects.
-     * @return {Function[]} Just the listener functions.
-     */
-    proto.flattenListeners = function flattenListeners(listeners) {
-        var flatListeners = [];
-        var i;
-
-        for (i = 0; i < listeners.length; i += 1) {
-            flatListeners.push(listeners[i].listener);
-        }
-
-        return flatListeners;
-    };
-
-    /**
-     * Fetches the requested listeners via getListeners but will always return the results inside an object. This is mainly for internal use but others may find it useful.
-     *
-     * @param {String|RegExp} evt Name of the event to return the listeners from.
-     * @return {Object} All listener functions for an event in an object.
-     */
-    proto.getListenersAsObject = function getListenersAsObject(evt) {
-        var listeners = this.getListeners(evt);
-        var response;
-
-        if (listeners instanceof Array) {
-            response = {};
-            response[evt] = listeners;
-        }
-
-        return response || listeners;
-    };
-
-    /**
-     * Adds a listener function to the specified event.
-     * The listener will not be added if it is a duplicate.
-     * If the listener returns true then it will be removed after it is called.
-     * If you pass a regular expression as the event name then the listener will be added to all events that match it.
-     *
-     * @param {String|RegExp} evt Name of the event to attach the listener to.
-     * @param {Function} listener Method to be called when the event is emitted. If the function returns true then it will be removed after calling.
-     * @return {Object} Current instance of EventEmitter for chaining.
-     */
-    proto.addListener = function addListener(evt, listener) {
-        var listeners = this.getListenersAsObject(evt);
-        var listenerIsWrapped = typeof listener === 'object';
-        var key;
-
-        for (key in listeners) {
-            if (listeners.hasOwnProperty(key) && indexOfListener(listeners[key], listener) === -1) {
-                listeners[key].push(listenerIsWrapped ? listener : {
-                    listener: listener,
-                    once: false
-                });
-            }
-        }
-
-        return this;
-    };
-
-    /**
-     * Alias of addListener
-     */
-    proto.on = alias('addListener');
-
-    /**
-     * Semi-alias of addListener. It will add a listener that will be
-     * automatically removed after it's first execution.
-     *
-     * @param {String|RegExp} evt Name of the event to attach the listener to.
-     * @param {Function} listener Method to be called when the event is emitted. If the function returns true then it will be removed after calling.
-     * @return {Object} Current instance of EventEmitter for chaining.
-     */
-    proto.addOnceListener = function addOnceListener(evt, listener) {
-        //noinspection JSValidateTypes
-        return this.addListener(evt, {
-            listener: listener,
-            once: true
-        });
-    };
-
-    /**
-     * Alias of addOnceListener.
-     */
-    proto.once = alias('addOnceListener');
-
-    /**
-     * Defines an event name. This is required if you want to use a regex to add a listener to multiple events at once. If you don't do this then how do you expect it to know what event to add to? Should it just add to every possible match for a regex? No. That is scary and bad.
-     * You need to tell it what event names should be matched by a regex.
-     *
-     * @param {String} evt Name of the event to create.
-     * @return {Object} Current instance of EventEmitter for chaining.
-     */
-    proto.defineEvent = function defineEvent(evt) {
-        this.getListeners(evt);
-        return this;
-    };
-
-    /**
-     * Uses defineEvent to define multiple events.
-     *
-     * @param {String[]} evts An array of event names to define.
-     * @return {Object} Current instance of EventEmitter for chaining.
-     */
-    proto.defineEvents = function defineEvents(evts) {
-        for (var i = 0; i < evts.length; i += 1) {
-            this.defineEvent(evts[i]);
-        }
-        return this;
-    };
-
-    /**
-     * Removes a listener function from the specified event.
-     * When passed a regular expression as the event name, it will remove the listener from all events that match it.
-     *
-     * @param {String|RegExp} evt Name of the event to remove the listener from.
-     * @param {Function} listener Method to remove from the event.
-     * @return {Object} Current instance of EventEmitter for chaining.
-     */
-    proto.removeListener = function removeListener(evt, listener) {
-        var listeners = this.getListenersAsObject(evt);
-        var index;
-        var key;
-
-        for (key in listeners) {
-            if (listeners.hasOwnProperty(key)) {
-                index = indexOfListener(listeners[key], listener);
-
-                if (index !== -1) {
-                    listeners[key].splice(index, 1);
-                }
-            }
-        }
-
-        return this;
-    };
-
-    /**
-     * Alias of removeListener
-     */
-    proto.off = alias('removeListener');
-
-    /**
-     * Adds listeners in bulk using the manipulateListeners method.
-     * If you pass an object as the second argument you can add to multiple events at once. The object should contain key value pairs of events and listeners or listener arrays. You can also pass it an event name and an array of listeners to be added.
-     * You can also pass it a regular expression to add the array of listeners to all events that match it.
-     * Yeah, this function does quite a bit. That's probably a bad thing.
-     *
-     * @param {String|Object|RegExp} evt An event name if you will pass an array of listeners next. An object if you wish to add to multiple events at once.
-     * @param {Function[]} [listeners] An optional array of listener functions to add.
-     * @return {Object} Current instance of EventEmitter for chaining.
-     */
-    proto.addListeners = function addListeners(evt, listeners) {
-        // Pass through to manipulateListeners
-        return this.manipulateListeners(false, evt, listeners);
-    };
-
-    /**
-     * Removes listeners in bulk using the manipulateListeners method.
-     * If you pass an object as the second argument you can remove from multiple events at once. The object should contain key value pairs of events and listeners or listener arrays.
-     * You can also pass it an event name and an array of listeners to be removed.
-     * You can also pass it a regular expression to remove the listeners from all events that match it.
-     *
-     * @param {String|Object|RegExp} evt An event name if you will pass an array of listeners next. An object if you wish to remove from multiple events at once.
-     * @param {Function[]} [listeners] An optional array of listener functions to remove.
-     * @return {Object} Current instance of EventEmitter for chaining.
-     */
-    proto.removeListeners = function removeListeners(evt, listeners) {
-        // Pass through to manipulateListeners
-        return this.manipulateListeners(true, evt, listeners);
-    };
-
-    /**
-     * Edits listeners in bulk. The addListeners and removeListeners methods both use this to do their job. You should really use those instead, this is a little lower level.
-     * The first argument will determine if the listeners are removed (true) or added (false).
-     * If you pass an object as the second argument you can add/remove from multiple events at once. The object should contain key value pairs of events and listeners or listener arrays.
-     * You can also pass it an event name and an array of listeners to be added/removed.
-     * You can also pass it a regular expression to manipulate the listeners of all events that match it.
-     *
-     * @param {Boolean} remove True if you want to remove listeners, false if you want to add.
-     * @param {String|Object|RegExp} evt An event name if you will pass an array of listeners next. An object if you wish to add/remove from multiple events at once.
-     * @param {Function[]} [listeners] An optional array of listener functions to add/remove.
-     * @return {Object} Current instance of EventEmitter for chaining.
-     */
-    proto.manipulateListeners = function manipulateListeners(remove, evt, listeners) {
-        var i;
-        var value;
-        var single = remove ? this.removeListener : this.addListener;
-        var multiple = remove ? this.removeListeners : this.addListeners;
-
-        // If evt is an object then pass each of it's properties to this method
-        if (typeof evt === 'object' && !(evt instanceof RegExp)) {
-            for (i in evt) {
-                if (evt.hasOwnProperty(i) && (value = evt[i])) {
-                    // Pass the single listener straight through to the singular method
-                    if (typeof value === 'function') {
-                        single.call(this, i, value);
-                    }
-                    else {
-                        // Otherwise pass back to the multiple function
-                        multiple.call(this, i, value);
-                    }
-                }
-            }
-        }
-        else {
-            // So evt must be a string
-            // And listeners must be an array of listeners
-            // Loop over it and pass each one to the multiple method
-            i = listeners.length;
-            while (i--) {
-                single.call(this, evt, listeners[i]);
-            }
-        }
-
-        return this;
-    };
-
-    /**
-     * Removes all listeners from a specified event.
-     * If you do not specify an event then all listeners will be removed.
-     * That means every event will be emptied.
-     * You can also pass a regex to remove all events that match it.
-     *
-     * @param {String|RegExp} [evt] Optional name of the event to remove all listeners for. Will remove from every event if not passed.
-     * @return {Object} Current instance of EventEmitter for chaining.
-     */
-    proto.removeEvent = function removeEvent(evt) {
-        var type = typeof evt;
-        var events = this._getEvents();
-        var key;
-
-        // Remove different things depending on the state of evt
-        if (type === 'string') {
-            // Remove all listeners for the specified event
-            delete events[evt];
-        }
-        else if (type === 'object') {
-            // Remove all events matching the regex.
-            for (key in events) {
-                //noinspection JSUnresolvedFunction
-                if (events.hasOwnProperty(key) && evt.test(key)) {
-                    delete events[key];
-                }
-            }
-        }
-        else {
-            // Remove all listeners in all events
-            delete this._events;
-        }
-
-        return this;
-    };
-
-    /**
-     * Emits an event of your choice.
-     * When emitted, every listener attached to that event will be executed.
-     * If you pass the optional argument array then those arguments will be passed to every listener upon execution.
-     * Because it uses `apply`, your array of arguments will be passed as if you wrote them out separately.
-     * So they will not arrive within the array on the other side, they will be separate.
-     * You can also pass a regular expression to emit to all events that match it.
-     *
-     * @param {String|RegExp} evt Name of the event to emit and execute listeners for.
-     * @param {Array} [args] Optional array of arguments to be passed to each listener.
-     * @return {Object} Current instance of EventEmitter for chaining.
-     */
-    proto.emitEvent = function emitEvent(evt, args) {
-        var listeners = this.getListenersAsObject(evt);
-        var listener;
-        var i;
-        var key;
-        var response;
-
-        for (key in listeners) {
-            if (listeners.hasOwnProperty(key)) {
-                i = listeners[key].length;
-
-                while (i--) {
-                    // If the listener returns true then it shall be removed from the event
-                    // The function is executed either with a basic call or an apply if there is an args array
-                    listener = listeners[key][i];
-
-                    if (listener.once === true) {
-                        this.removeListener(evt, listener.listener);
-                    }
-
-                    response = listener.listener.apply(this, args || []);
-
-                    if (response === this._getOnceReturnValue()) {
-                        this.removeListener(evt, listener.listener);
-                    }
-                }
-            }
-        }
-
-        return this;
-    };
-
-    /**
-     * Alias of emitEvent
-     */
-    proto.trigger = alias('emitEvent');
-
-    //noinspection JSValidateJSDoc,JSCommentMatchesSignature
-    /**
-     * Subtly different from emitEvent in that it will pass its arguments on to the listeners, as opposed to taking a single array of arguments to pass on.
-     * As with emitEvent, you can pass a regex in place of the event name to emit to all events that match it.
-     *
-     * @param {String|RegExp} evt Name of the event to emit and execute listeners for.
-     * @param {...*} Optional additional arguments to be passed to each listener.
-     * @return {Object} Current instance of EventEmitter for chaining.
-     */
-    proto.emit = function emit(evt) {
-        var args = Array.prototype.slice.call(arguments, 1);
-        return this.emitEvent(evt, args);
-    };
-
-    /**
-     * Sets the current value to check against when executing listeners. If a
-     * listeners return value matches the one set here then it will be removed
-     * after execution. This value defaults to true.
-     *
-     * @param {*} value The new value to check for when executing listeners.
-     * @return {Object} Current instance of EventEmitter for chaining.
-     */
-    proto.setOnceReturnValue = function setOnceReturnValue(value) {
-        this._onceReturnValue = value;
-        return this;
-    };
-
-    /**
-     * Fetches the current value to check against when executing listeners. If
-     * the listeners return value matches this one then it should be removed
-     * automatically. It will return true by default.
-     *
-     * @return {*|Boolean} The current value to check for or the default, true.
-     * @api private
-     */
-    proto._getOnceReturnValue = function _getOnceReturnValue() {
-        if (this.hasOwnProperty('_onceReturnValue')) {
-            return this._onceReturnValue;
-        }
-        else {
-            return true;
-        }
-    };
-
-    /**
-     * Fetches the events object and creates one if required.
-     *
-     * @return {Object} The events storage object.
-     * @api private
-     */
-    proto._getEvents = function _getEvents() {
-        return this._events || (this._events = {});
-    };
 
     /**
      * Mixes in the given objects into the target object by copying the properties.
@@ -509,55 +57,33 @@
      */
     function mixin(deep, target, objects) {
         var result = target || {};
-
-        // Skip first 2 parameters (deep and target), and loop over the others
-        for (var i = 2; i < arguments.length; ++i) {
+        for (var i = 2; i < arguments.length; ++i) { // Skip first 2 parameters (deep and target), and loop over the others
             var object = arguments[i];
-
             if (object === undefined || object === null) {
                 continue;
             }
-
             for (var propName in object) {
-                //noinspection JSUnfilteredForInLoop
                 var prop = fieldValue(object, propName);
-                //noinspection JSUnfilteredForInLoop
                 var targ = fieldValue(result, propName);
-
-                // Avoid infinite loops
                 if (prop === target) {
-                    continue;
+                    continue; // Avoid infinite loops
                 }
-                // Do not mixin undefined values
                 if (prop === undefined) {
-                    continue;
+                    continue; // Do not mixin undefined values
                 }
-
                 if (deep && typeof prop === 'object' && prop !== null) {
                     if (prop instanceof Array) {
-                        //noinspection JSUnfilteredForInLoop
                         result[propName] = mixin(deep, targ instanceof Array ? targ : [], prop);
                     } else {
                         var source = typeof targ === 'object' && !(targ instanceof Array) ? targ : {};
-                        //noinspection JSUnfilteredForInLoop
                         result[propName] = mixin(deep, source, prop);
                     }
                 } else {
-                    //noinspection JSUnfilteredForInLoop
                     result[propName] = prop;
                 }
             }
         }
-
         return result;
-    }
-
-    function fieldValue(object, name) {
-        try {
-            return object[name];
-        } catch (x) {
-            return undefined;
-        }
     }
 
     function endsWith(value, suffix) {
@@ -621,7 +147,8 @@
         this._latencyStart = null;
         this._messageId = 0;
         this._clientId = null;
-        this._subscriptions = {};
+        this._subs = {};
+        this._channels = {};
         this._lastMessageID = {};
         this._messages = [];
         this._isBatching = false;
@@ -629,6 +156,7 @@
         this._authChannels = {};
         this._refreshTimeout = null;
         this._retries = 0;
+        this._callbacks = {};
         this._config = {
             retry: 1000,
             maxRetry: 20000,
@@ -729,11 +257,9 @@
             }
             query += encodeURIComponent(i) + "=" + encodeURIComponent(params[i]);
         }
-
         if (query.length > 0) {
             query = "?" + query;
         }
-
         xhr.open("POST", url + query, true);
 
         // add request headers
@@ -864,16 +390,8 @@
         return this._status === 'connected';
     };
 
-    centrifugeProto._isConnecting = function () {
-        return this._status === 'connecting';
-    };
-
     centrifugeProto._nextMessageId = function () {
         return ++this._messageId;
-    };
-
-    centrifugeProto._clearSubscriptions = function () {
-        this._subscriptions = {};
     };
 
     centrifugeProto._resetRetry = function() {
@@ -887,6 +405,14 @@
         return interval;
     };
 
+    centrifugeProto._clearConnectedState = function () {
+        this._fireUnsubscribeEvents();
+        if (!this._config.resubscribe) {
+            // completely clear connected state
+            this._subs = {};
+        }
+    };
+
     centrifugeProto._send = function (messages) {
         // We must be sure that the messages have a clientId.
         // This is not guaranteed since the handshake may take time to return
@@ -895,10 +421,6 @@
         if (messages.length === 0) {
             return;
         }
-        for (var i = 0; i < messages.length; ++i) {
-            var message = messages[i];
-            message.uid = '' + this._nextMessageId();
-        }
         this._debug('Send', messages);
         this._transport.send(JSON.stringify(messages));
     };
@@ -906,18 +428,13 @@
     centrifugeProto._connect = function (callback) {
 
         if (this.isConnected()) {
+            this._debug("connect called when already connected");
             return;
         }
 
-        this._clientId = null;
-
-        this._reconnect = true;
-
-        if (!this._config.resubscribe) {
-            this._clearSubscriptions();
-        }
-
         this._setStatus('connecting');
+        this._clientId = null;
+        this._reconnect = true;
 
         var self = this;
 
@@ -925,6 +442,7 @@
             this.on('connect', callback);
         }
 
+        // detect transport to use - SockJS or raw Websocket
         if (this._sockjs === true) {
             //noinspection JSUnresolvedFunction
             var sockjsOptions = {};
@@ -942,20 +460,18 @@
             this._transport = new WebSocket(this._config.url);
         }
 
-        this._setStatus('connecting');
-
         this._transport.onopen = function () {
 
             self._resetRetry();
 
             if (!isString(self._config.user)) {
-                self._debug("user expected to be string");
+                self._log("user expected to be string");
             }
             if (!isString(self._config.info)) {
-                self._debug("info expected to be string");
+                self._log("info expected to be string");
             }
 
-            var centrifugeMessage = {
+            var msg = {
                 'method': 'connect',
                 'params': {
                     'user': self._config.user,
@@ -964,25 +480,27 @@
             };
 
             if (!self._config.insecure) {
-                centrifugeMessage["params"]["timestamp"] = self._config.timestamp;
-                centrifugeMessage["params"]["token"] = self._config.token;
+                // in insecure client mode we don't need timestamp and token.
+                msg["params"]["timestamp"] = self._config.timestamp;
+                msg["params"]["token"] = self._config.token;
                 if (!isString(self._config.timestamp)) {
-                    self._debug("timestamp expected to be string");
+                    self._log("timestamp expected to be string");
                 }
                 if (!isString(self._config.token)) {
-                    self._debug("token expected to be string");
+                    self._log("token expected to be string");
                 }
             }
-            self.send(centrifugeMessage);
+            self._addMessage(msg);
             self._latencyStart = new Date();
         };
 
         this._transport.onerror = function (error) {
-            self._debug(error);
+            self._debug("transport level error", error);
         };
 
         this._transport.onclose = function () {
             self._setStatus('disconnected');
+            self._clearConnectedState();
             self.trigger('disconnect');
             if (self._reconnect === true) {
                 var interval = self._getRetryInterval();
@@ -1003,40 +521,168 @@
         };
     };
 
+    centrifugeProto._fireUnsubscribeEvents = function() {
+        for (var channel in this._subs) {
+            var sub = this._subs[channel];
+            if (sub._isSuccess()) {
+                sub._setUnsubscribed();
+            } else {
+                sub._setNew();
+            }
+        }
+    };
+
     centrifugeProto._disconnect = function (shouldReconnect) {
         var reconnect = shouldReconnect || false;
+        this._clearConnectedState();
         this._clientId = null;
         this._setStatus('disconnected');
         if (reconnect === false) {
-            this._subscriptions = {};
+            this._channels = {};
+            this._subs = {};
             this._reconnect = false;
         }
         this._transport.close();
     };
 
-    centrifugeProto._getSubscription = function (channel) {
-        var subscription;
-        subscription = this._subscriptions[channel];
-        if (!subscription) {
-            return null;
+    centrifugeProto._refresh = function () {
+        // ask web app for connection parameters - user ID,
+        // timestamp, info and token
+        var self = this;
+        this._debug('refresh credentials');
+
+        var cb = function(error, data) {
+            if (error === true) {
+                // 403 or 500 - does not matter - if connection check activated then Centrifugo
+                // will disconnect client eventually
+                self._debug("error getting connect parameters", data);
+                if (self._refreshTimeout) {
+                    window.clearTimeout(self._refreshTimeout);
+                }
+                self._refreshTimeout = window.setTimeout(function(){
+                    self._refresh.call(self);
+                }, 3000);
+                return;
+            }
+            self._config.user = data.user;
+            self._config.timestamp = data.timestamp;
+            self._config.info = data.info;
+            self._config.token = data.token;
+            if (self.isDisconnected()) {
+                self._debug("credentials refreshed, connect from scratch");
+                self._connect();
+            } else {
+                self._debug("send refreshed credentials");
+                var msg = {
+                    "method": "refresh",
+                    "params": {
+                        'user': self._config.user,
+                        'timestamp': self._config.timestamp,
+                        'info': self._config.info,
+                        'token': self._config.token
+                    }
+                };
+                self._addMessage(msg);
+            }
+        };
+
+        var transport = this._config.refreshTransport.toLowerCase();
+        if (transport === "ajax") {
+            this._ajax(this._config.refreshEndpoint, this._config.refreshParams, this._config.refreshHeaders, {}, cb);
+        } else if (transport === "jsonp") {
+            this._jsonp(this._config.refreshEndpoint, this._config.refreshParams, this._config.refreshHeaders, {}, cb);
+        } else {
+            throw 'Unknown refresh transport ' + transport;
         }
-        return subscription;
     };
 
-    centrifugeProto._removeSubscription = function (channel) {
-        try {
-            delete this._subscriptions[channel];
-        } catch (e) {
-            this._debug('nothing to delete for channel ', channel);
+    centrifugeProto._subscribe = function(sub) {
+
+        var channel = sub.channel;
+
+        if (!(channel in this._subs)) {
+            this._subs[channel] = sub;
         }
-        try {
-            delete this._authChannels[channel];
-        } catch (e) {
-            this._debug('nothing to delete from authChannels for channel ', channel);
+
+        if (!this.isConnected()) {
+            // subscribe will be called later
+            sub._setNew();
+            return;
         }
+
+        sub._setSubscribing();
+
+        var msg = {
+            "method": "subscribe",
+            "params": {
+                "channel": channel
+            }
+        };
+
+        // If channel name does not start with privateChannelPrefix - then we
+        // can just send subscription message to Centrifuge. If channel name
+        // starts with privateChannelPrefix - then this is a private channel
+        // and we should ask web application backend for permission first.
+        if (startsWith(channel, this._config.privateChannelPrefix)) {
+            // private channel
+            if (this._isAuthBatching) {
+                this._authChannels[channel] = true;
+            } else {
+                this.startAuthBatching();
+                this._subscribe(sub);
+                this.stopAuthBatching();
+            }
+        } else {
+            var recover = this._recover(channel);
+            if (recover === true) {
+                msg["params"]["recover"] = true;
+                msg["params"]["last"] = this._getLastID(channel);
+            }
+            this._addMessage(msg);
+        }
+    };
+
+    centrifugeProto._unsubscribe = function(sub) {
+
+        var channel = sub.channel;
+
+        if (this.isConnected()) {
+            // No need to unsubscribe in disconnected state - i.e. client already unsubscribed.
+            var msg = {
+                "method": "unsubscribe",
+                "params": {
+                    "channel": channel
+                }
+            };
+            this._addMessage(msg);
+        }
+    };
+
+    centrifugeProto._getSub = function(channel) {
+        var sub = this._subs[channel];
+        if (!sub) {
+            return null;
+        }
+        return sub;
+    };
+
+    centrifugeProto._addSub = function (sub) {
+
+        this._subscribe(sub);
+    };
+
+    centrifugeProto._removeSub = function (sub) {
+        if (channel in this._subs) {
+            delete this._subs[channel];
+        }
+        this._unsubscribe(sub);
     };
 
     centrifugeProto._connectResponse = function (message) {
+
+        if (this.isConnected()) {
+            return;
+        }
 
         if (this._latencyStart !== null) {
             var latencyEnd = new Date();
@@ -1044,9 +690,6 @@
             this._latencyStart = null;
         }
 
-        if (this.isConnected()) {
-            return;
-        }
         if (!errorExists(message)) {
             if (!message.body) {
                 return;
@@ -1054,33 +697,33 @@
             if (message.body.expires) {
                 var isExpired = message.body.expired;
                 if (isExpired) {
-                    this.refresh();
+                    this._refresh();
                     return;
                 }
             }
             this._clientId = message.body.client;
             this._setStatus('connected');
-            this.trigger('connect', [message]);
+            this.trigger('connect', [message.body]);
             if (this._refreshTimeout) {
                 window.clearTimeout(this._refreshTimeout);
             }
             if (message.body.expires) {
                 var self = this;
                 this._refreshTimeout = window.setTimeout(function() {
-                    self.refresh.call(self);
+                    self._refresh.call(self);
                 }, message.body.ttl * 1000);
             }
         } else {
             this.trigger('error', [message]);
-            this.trigger('connect:error', [message]);
+            this.trigger('connect:error', [this._createErrorObject(message.error)]);
         }
 
         if (this._config.resubscribe) {
             this.startBatching();
             this.startAuthBatching();
-            for (var i in this._subscriptions) {
-                var sub = this._subscriptions[i];
-                sub.subscribe();
+            for (var channel in this._subs) {
+                var sub = this._subs[channel];
+                this._subscribe(sub);
             }
             this.stopAuthBatching();
             this.stopBatching(true);
@@ -1094,104 +737,143 @@
             if ("reconnect" in message.body) {
                 shouldReconnect = message.body["reconnect"];
             }
-            this.disconnect(shouldReconnect);
+            var reason = "";
             if ("reason" in message.body) {
-                this._debug("disconnected:", message.body["reason"]);
+                reason = message.body["reason"];
             }
+            if (reason.length > 0) {
+                this._debug("disconnected:", reason);
+            }
+            this.disconnect(shouldReconnect);
         } else {
             this.trigger('error', [message]);
-            this.trigger('disconnect:error', [message.error]);
         }
     };
 
     centrifugeProto._subscribeResponse = function (message) {
-        if (errorExists(message)) {
-            this.trigger('error', [message]);
-        }
         var body = message.body;
         if (body === null) {
             return;
         }
         var channel = body.channel;
-        var subscription = this.getSubscription(channel);
-        if (!subscription) {
+
+        var sub = this._getSub(channel);
+        if (!sub) {
             return;
         }
+
+        if (!sub._isSubscribing()) {
+            return;
+        }
+
         if (!errorExists(message)) {
-            subscription.trigger('subscribe:success', [body]);
-            subscription.trigger('ready', [body]);
+            sub._setSubscribeSuccess();
             var messages = body["messages"];
             if (messages && messages.length > 0) {
+                // handle missed messages
                 for (var i in messages.reverse()) {
                     this._messageResponse({body: messages[i]});
                 }
             } else {
                 if ("last" in body) {
+                    // no missed messages found so set last message id from body.
                     this._lastMessageID[channel] = body["last"];
                 }
             }
         } else {
-            subscription.trigger('subscribe:error', [message.error]);
-            subscription.trigger('error', [message]);
+            this.trigger('error', [message]);
+            sub._setSubscribeError(this._createErrorObject(message.error));
         }
     };
 
     centrifugeProto._unsubscribeResponse = function (message) {
+        var uid = message.uid;
         var body = message.body;
         var channel = body.channel;
-        var subscription = this.getSubscription(channel);
-        if (!subscription) {
+
+        var sub = this._getSub(channel);
+        if (!sub) {
             return;
         }
+
         if (!errorExists(message)) {
-            subscription.trigger('unsubscribe', [body]);
-            this._removeSubscription(channel);
+            if (!uid) {
+                // unsubscribe command from server – unsubscribe all current subs
+                sub._setUnsubscribed();
+            }
+        } else {
+            this.trigger('error', [message]);
         }
     };
 
     centrifugeProto._publishResponse = function (message) {
+        var uid = message.uid;
         var body = message.body;
-        var channel = body.channel;
-        var subscription = this.getSubscription(channel);
-        if (!subscription) {
+        if (!(uid in this._callbacks)) {
             return;
         }
+        var callbacks = this._callbacks[uid];
+        delete this._callbacks[uid];
         if (!errorExists(message)) {
-            subscription.trigger('publish:success', [body]);
+            var callback = callbacks["callback"];
+            if (!callback) {
+                return;
+            }
+            callback(body);
         } else {
-            subscription.trigger('publish:error', [message.error]);
+            var errback = callbacks["errback"];
+            if (!errback) {
+                return;
+            }
+            errback(this._createErrorObject(message.error));
             this.trigger('error', [message]);
         }
     };
 
     centrifugeProto._presenceResponse = function (message) {
+        var uid = message.uid;
         var body = message.body;
-        var channel = body.channel;
-        var subscription = this.getSubscription(channel);
-        if (!subscription) {
+        if (!(uid in this._callbacks)) {
             return;
         }
+        var callbacks = this._callbacks[uid];
+        delete this._callbacks[uid];
         if (!errorExists(message)) {
-            subscription.trigger('presence', [body]);
-            subscription.trigger('presence:success', [body]);
+            var callback = callbacks["callback"];
+            if (!callback) {
+                return;
+            }
+            callback(body);
         } else {
-            subscription.trigger('presence:error', [message.error]);
+            var errback = callbacks["errback"];
+            if (!errback) {
+                return;
+            }
+            errback(this._createErrorObject(message.error));
             this.trigger('error', [message]);
         }
     };
 
     centrifugeProto._historyResponse = function (message) {
+        var uid = message.uid;
         var body = message.body;
-        var channel = body.channel;
-        var subscription = this.getSubscription(channel);
-        if (!subscription) {
+        if (!(uid in this._callbacks)) {
             return;
         }
+        var callbacks = this._callbacks[uid];
+        delete this._callbacks[uid];
         if (!errorExists(message)) {
-            subscription.trigger('history', [body]);
-            subscription.trigger('history:success', [body]);
+            var callback = callbacks["callback"];
+            if (!callback) {
+                return;
+            }
+            callback(body);
         } else {
-            subscription.trigger('history:error', [message.error]);
+            var errback = callbacks["errback"];
+            if (!errback) {
+                return;
+            }
+            errback(this._createErrorObject(message.error));
             this.trigger('error', [message]);
         }
     };
@@ -1199,33 +881,37 @@
     centrifugeProto._joinResponse = function(message) {
         var body = message.body;
         var channel = body.channel;
-        var subscription = this.getSubscription(channel);
-        if (!subscription) {
+
+        var sub = this._getSub(channel);
+        if (!sub) {
             return;
         }
-        subscription.trigger('join', [body]);
+        sub.trigger('join', [body]);
     };
 
     centrifugeProto._leaveResponse = function(message) {
         var body = message.body;
         var channel = body.channel;
-        var subscription = this.getSubscription(channel);
-        if (!subscription) {
+
+        var sub = this._getSub(channel);
+        if (!sub) {
             return;
         }
-        subscription.trigger('leave', [body]);
+        sub.trigger('leave', [body]);
     };
 
     centrifugeProto._messageResponse = function (message) {
         var body = message.body;
         var channel = body.channel;
-        var subscription = this.getSubscription(channel);
-        if (subscription === null) {
-            return;
-        }
+
         // keep last uid received from channel.
         this._lastMessageID[channel] = body["uid"];
-        subscription.trigger('message', [body]);
+
+        var sub = this._getSub(channel);
+        if (!sub) {
+            return;
+        }
+        sub.trigger('message', [body]);
     };
 
     centrifugeProto._refreshResponse = function (message) {
@@ -1237,25 +923,27 @@
             var isExpired = message.body.expired;
             if (isExpired) {
                 self._refreshTimeout = window.setTimeout(function(){
-                    self.refresh.call(self);
+                    self._refresh.call(self);
                 }, 3000 + Math.round(Math.random() * 1000));
                 return;
             }
             this._clientId = message.body.client;
             self._refreshTimeout = window.setTimeout(function () {
-                self.refresh.call(self);
+                self._refresh.call(self);
             }, message.body.ttl * 1000);
         }
     };
 
     centrifugeProto._dispatchMessage = function(message) {
         if (message === undefined || message === null) {
+            this._debug("dispatch: got undefined or null message");
             return;
         }
 
         var method = message.method;
 
         if (!method) {
+            this._debug("dispatch: got message with empty method");
             return;
         }
 
@@ -1296,12 +984,14 @@
                 this._messageResponse(message);
                 break;
             default:
+                this._debug("dispatch: got message with unknown method" + method);
                 break;
         }
     };
 
     centrifugeProto._receive = function (data) {
         if (Object.prototype.toString.call(data) === Object.prototype.toString.call([])) {
+            // array of responses received
             for (var i in data) {
                 if (data.hasOwnProperty(i)) {
                     var msg = data[i];
@@ -1309,6 +999,7 @@
                 }
             }
         } else if (Object.prototype.toString.call(data) === Object.prototype.toString.call({})) {
+            // one response received
             this._dispatchMessage(data);
         }
     };
@@ -1320,11 +1011,11 @@
     };
 
     centrifugeProto._ping = function () {
-        var centrifugeMessage = {
+        var msg = {
             "method": "ping",
             "params": {}
         };
-        this.send(centrifugeMessage);
+        this._addMessage(msg);
     };
 
     centrifugeProto._recover = function(channel) {
@@ -1342,6 +1033,37 @@
         }
     };
 
+    centrifugeProto._createErrorObject = function(text) {
+        return {
+            "error": text
+        };
+    };
+
+    centrifugeProto._registerCall = function(uid, callback, errback) {
+        var self = this;
+        this._callbacks[uid] = {
+            "callback": callback,
+            "errback": errback
+        };
+        setTimeout(function() {
+            delete self._callbacks[uid];
+            if (isFunction(errback)) {
+                errback(self._createErrorObject("timeout"));
+            }
+        }, 5000);
+    };
+
+    centrifugeProto._addMessage = function (message) {
+        var uid = '' + this._nextMessageId();
+        message.uid = uid;
+        if (this._isBatching === true) {
+            this._messages.push(message);
+        } else {
+            this._send([message]);
+        }
+        return uid;
+    };
+
     /* PUBLIC API */
 
     centrifugeProto.getClientId = function () {
@@ -1349,8 +1071,6 @@
     };
 
     centrifugeProto.isConnected = centrifugeProto._isConnected;
-
-    centrifugeProto.isConnecting = centrifugeProto._isConnecting;
 
     centrifugeProto.isDisconnected = centrifugeProto._isDisconnected;
 
@@ -1362,17 +1082,7 @@
 
     centrifugeProto.disconnect = centrifugeProto._disconnect;
 
-    centrifugeProto.getSubscription = centrifugeProto._getSubscription;
-
     centrifugeProto.ping = centrifugeProto._ping;
-
-    centrifugeProto.send = function (message) {
-        if (this._isBatching === true) {
-            this._messages.push(message);
-        } else {
-            this._send([message]);
-        }
-    };
 
     centrifugeProto.startBatching = function () {
         // start collecting messages without sending them to Centrifuge until flush
@@ -1409,8 +1119,8 @@
         var channels = [];
 
         for (var channel in authChannels) {
-            var subscription = this.getSubscription(channel);
-            if (!subscription) {
+            var sub = this._getSub(channel);
+            if (!sub) {
                 continue;
             }
             channels.push(channel);
@@ -1461,7 +1171,7 @@
                     continue;
                 }
                 if (!channelResponse.status || channelResponse.status === 200) {
-                    var centrifugeMessage = {
+                    var msg = {
                         "method": "subscribe",
                         "params": {
                             "channel": channel,
@@ -1472,10 +1182,10 @@
                     };
                     var recover = self._recover(channel);
                     if (recover === true) {
-                        centrifugeMessage["params"]["recover"] = true;
-                        centrifugeMessage["params"]["last"] = self._getLastID(channel);
+                        msg["params"]["recover"] = true;
+                        msg["params"]["last"] = self._getLastID(channel);
                     }
-                    self.send(centrifugeMessage);
+                    self._addMessage(msg);
                 } else {
                     self._subscribeResponse({
                         "error": channelResponse.status,
@@ -1500,8 +1210,7 @@
         }
     };
 
-    centrifugeProto.subscribe = function (channel, callback) {
-
+    centrifugeProto.subscribe = function (channel, events) {
         if (arguments.length < 1) {
             throw 'Illegal arguments number: required 1, got ' + arguments.length;
         }
@@ -1509,230 +1218,202 @@
             throw 'Illegal argument type: channel must be a string';
         }
         if (!this._config.resubscribe && this.isDisconnected()) {
-            throw 'Can not subscribe in disconnected state';
+            throw 'Can not subscribe in disconnected state when resubscribe option is off';
         }
 
-        var current_subscription = this.getSubscription(channel);
+        var currentSub = this._getSub(channel);
 
-        if (current_subscription !== null) {
-            return current_subscription;
+        if (currentSub !== null) {
+            currentSub._setEvents(events);
+            return currentSub;
         } else {
-            var subscription = new Subscription(this, channel, callback);
-            this._subscriptions[channel] = subscription;
-            subscription.subscribe();
-            return subscription;
+            var sub = new Sub(this, channel, events);
+            this._subs[channel] = sub;
+            sub.subscribe();
+            return sub;
         }
     };
 
-    centrifugeProto.unsubscribe = function (channel) {
-        if (arguments.length < 1) {
-            throw 'Illegal arguments number: required 1, got ' + arguments.length;
-        }
-        if (!isString(channel)) {
-            throw 'Illegal argument type: channel must be a string';
-        }
+    var _STATE_NEW = 0;
+    var _STATE_SUBSCRIBING = 1;
+    var _STATE_SUCCESS = 2;
+    var _STATE_ERROR = 3;
+    var _STATE_UNSUBSCRIBED = 4;
 
-        var subscription = this.getSubscription(channel);
-        if (subscription !== null) {
-            subscription.unsubscribe();
-        }
-    };
-
-    centrifugeProto.publish = function (channel, data, callback) {
-        var subscription = this.getSubscription(channel);
-        if (subscription === null) {
-            this._debug("subscription not found for channel " + channel);
-            return null;
-        }
-        subscription.publish(data, callback);
-        return subscription;
-    };
-
-    centrifugeProto.presence = function (channel, callback) {
-        var subscription = this.getSubscription(channel);
-        if (subscription === null) {
-            this._debug("subscription not found for channel " + channel);
-            return null;
-        }
-        subscription.presence(callback);
-        return subscription;
-    };
-
-    centrifugeProto.history = function (channel, callback) {
-        var subscription = this.getSubscription(channel);
-        if (subscription === null) {
-            this._debug("subscription not found for channel " + channel);
-            return null;
-        }
-        subscription.history(callback);
-        return subscription;
-    };
-
-    centrifugeProto.refresh = function () {
-        // ask web app for connection parameters - user ID,
-        // timestamp, info and token
-        var self = this;
-        this._debug('refresh credentials');
-
-        var cb = function(error, data) {
-            if (error === true) {
-                // 403 or 500 - does not matter - if connection check activated then Centrifugo
-                // will disconnect client eventually
-                self._debug("error getting connect parameters", data);
-                if (self._refreshTimeout) {
-                    window.clearTimeout(self._refreshTimeout);
-                }
-                self._refreshTimeout = window.setTimeout(function(){
-                    self.refresh.call(self);
-                }, 3000);
-                return;
-            }
-            self._config.user = data.user;
-            self._config.timestamp = data.timestamp;
-            self._config.info = data.info;
-            self._config.token = data.token;
-            if (self.isDisconnected()) {
-                self._debug("credentials refreshed, connect from scratch");
-                self._connect();
-            } else {
-                self._debug("send refreshed credentials");
-                var centrifugeMessage = {
-                    "method": "refresh",
-                    "params": {
-                        'user': self._config.user,
-                        'timestamp': self._config.timestamp,
-                        'info': self._config.info,
-                        'token': self._config.token
-                    }
-                };
-                self.send(centrifugeMessage);
-            }
-        };
-
-        var transport = this._config.refreshTransport.toLowerCase();
-        if (transport === "ajax") {
-            this._ajax(this._config.refreshEndpoint, this._config.refreshParams, this._config.refreshHeaders, {}, cb);
-        } else if (transport === "jsonp") {
-            this._jsonp(this._config.refreshEndpoint, this._config.refreshParams, this._config.refreshHeaders, {}, cb);
-        } else {
-            throw 'Unknown refresh transport ' + transport;
-        }
-    };
-
-    function Subscription(centrifuge, channel, callback) {
-        /**
-         * The constructor for a centrifuge object, identified by an optional name.
-         * The default name is the string 'default'.
-         * @param name the optional name of this centrifuge object
-         */
+    function Sub(centrifuge, channel, events) {
+        this._status = _STATE_NEW;
+        this._error = null;
         this._centrifuge = centrifuge;
+        this._ready = false;
         this.channel = channel;
-        this.callback = callback;
-        if (this.callback) {
-            this.on('message', this.callback);
-        }
+        this._setEvents(events);
+        this._newPromise();
     }
 
-    extend(Subscription, EventEmitter);
+    extend(Sub, EventEmitter);
 
-    var subscriptionProto = Subscription.prototype;
+    var subProto = Sub.prototype;
 
-    subscriptionProto.getChannel = function () {
-        return this.channel;
+    subProto._newPromise = function() {
+        var self = this;
+        this.promise = new Promise(function(resolve, reject) {
+            self._resolve = function(value) {
+                self._ready = true;
+                resolve(value);
+            };
+            self._reject = function(err) {
+                self._ready = true;
+                reject(err);
+            };
+        });
+        this._ready = false;
     };
 
-    subscriptionProto.getCentrifuge = function () {
-        return this._centrifuge;
+    subProto._setEvents = function(events) {
+        if (isFunction(events)) {
+            this.on("message", events);
+        } else if (Object.prototype.toString.call(events) === Object.prototype.toString.call({})) {
+            var knownEvents = ["message", "join", "leave", "error", "subscribe", "unsubscribe"];
+            for (var i in knownEvents) {
+                var ev = knownEvents[i];
+                if (ev in events) {
+                    this.on(ev, events[ev]);
+                }
+            }
+        }
     };
 
-    subscriptionProto.subscribe = function () {
-        /*
-        If channel name does not start with privateChannelPrefix - then we
-        can just send subscription message to Centrifuge. If channel name
-        starts with privateChannelPrefix - then this is a private channel
-        and we should ask web application backend for permission first.
-         */
-        if (!this._centrifuge.isConnected()) {
+    subProto._isNew = function() {
+        return this._status === _STATE_NEW;
+    };
+
+    subProto._isUnsubscribed = function() {
+        return this._status === _STATE_UNSUBSCRIBED;
+    };
+
+    subProto._isSubscribing = function() {
+        return this._status === _STATE_SUBSCRIBING;
+    }
+
+    subProto._isReady = function() {
+        return this._status === _STATE_SUCCESS || this._status === _STATE_ERROR;
+    };
+
+    subProto._isSuccess = function() {
+        return this._status === _STATE_SUCCESS;
+    };
+
+    subProto._isError = function() {
+        return this._status === _STATE_ERROR;
+    };
+
+    subProto._setNew = function() {
+        this._status = _STATE_NEW;
+    };
+
+    subProto._setSubscribing = function() {
+        this._status = _STATE_SUBSCRIBING;
+    };
+
+    subProto._setSubscribeSuccess = function() {
+        if (this._status == _STATE_SUCCESS) {
             return;
         }
-        
-        var centrifugeMessage = {
-            "method": "subscribe",
-            "params": {
-                "channel": this.channel
-            }
-        };
-
-        if (startsWith(this.channel, this._centrifuge._config.privateChannelPrefix)) {
-            // private channel
-            if (this._centrifuge._isAuthBatching) {
-                this._centrifuge._authChannels[this.channel] = true;
-            } else {
-                this._centrifuge.startAuthBatching();
-                this.subscribe();
-                this._centrifuge.stopAuthBatching();
-            }
+        this._status = _STATE_SUCCESS;
+        if (this._ready) {
+            this.trigger("resubscribe", [this]);
         } else {
-            var recover = this._centrifuge._recover(this.channel);
-            if (recover === true) {
-                centrifugeMessage["params"]["recover"] = true;
-                centrifugeMessage["params"]["last"] = this._centrifuge._getLastID(this.channel);
+            this.trigger("subscribe");
+        }
+        this._resolve(this);
+    };
+
+    subProto._setSubscribeError = function(err) {
+        if (this._status == _STATE_ERROR) {
+            return;
+        }
+        this._status = _STATE_ERROR;
+        this._error = err;
+        if (this._ready) {
+            this.trigger("resubscribe:error", err);
+        } else {
+            this.trigger("subscribe:error", err);
+        }
+        this.trigger("error", err);
+        this._reject(err);
+    };
+
+    subProto._setUnsubscribed = function() {
+        if (this._status == _STATE_UNSUBSCRIBED) {
+            return;
+        }
+        this._status = _STATE_UNSUBSCRIBED;
+        this.trigger("unsubscribe", [this]);
+    };
+
+    subProto.ready = function() {
+        if (this._isReady()) {
+            if (this._isSuccess()) {
+                return Promise.resolve(this);
             }
-            this._centrifuge.send(centrifugeMessage);
+            return Promise.resolve(this._error);
         }
+        return this.promise;
     };
 
-    subscriptionProto.unsubscribe = function () {
-        this._centrifuge._removeSubscription(this.channel);
-        if (this._centrifuge.isConnected()) {
-            var centrifugeMessage = {
-                "method": "unsubscribe",
-                "params": {
-                    "channel": this.channel
-                }
-            };
-            this._centrifuge.send(centrifugeMessage);
-        }
+    subProto.getStatus = function () {
+        return this._status;
     };
 
-    subscriptionProto.publish = function (data, callback) {
-        var centrifugeMessage = {
+    subProto.getError = function() {
+        return this._error;
+    };
+
+    subProto.subscribe = function() {
+        if (this._status == _STATE_SUCCESS) {
+            return;
+        }
+        this._centrifuge._subscribe(this);
+        return this;
+    };
+
+    subProto.unsubscribe = function () {
+        this._setUnsubscribed();
+        this._centrifuge._unsubscribe(this);
+    };
+
+    subProto.publish = function (data, callback, errback) {
+        var msg = {
             "method": "publish",
             "params": {
                 "channel": this.channel,
                 "data": data
             }
         };
-        if (callback) {
-            this.on('publish:success', callback);
-        }
-        this._centrifuge.send(centrifugeMessage);
+        var uid = this._centrifuge._addMessage(msg);
+        this._centrifuge._registerCall(uid, callback, errback);
     };
 
-    subscriptionProto.presence = function (callback) {
-        var centrifugeMessage = {
+    subProto.presence = function (callback, errback) {
+        var msg = {
             "method": "presence",
             "params": {
                 "channel": this.channel
             }
         };
-        if (callback) {
-            this.on('presence', callback);
-        }
-        this._centrifuge.send(centrifugeMessage);
+        var uid = this._centrifuge._addMessage(msg);
+        this._centrifuge._registerCall(uid, callback, errback);
     };
 
-    subscriptionProto.history = function (callback) {
-        var centrifugeMessage = {
+    subProto.history = function (callback, errback) {
+        var msg = {
             "method": "history",
             "params": {
                 "channel": this.channel
             }
         };
-        if (callback) {
-            this.on('history', callback);
-        }
-        this._centrifuge.send(centrifugeMessage);
+        var uid = this._centrifuge._addMessage(msg);
+        this._centrifuge._registerCall(uid, callback, errback);
     };
 
     // Expose the class either via AMD, CommonJS or the global object

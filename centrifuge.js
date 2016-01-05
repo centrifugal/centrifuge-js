@@ -1263,8 +1263,8 @@
         } else if (Object.prototype.toString.call(events) === Object.prototype.toString.call({})) {
             var knownEvents = [
                 "message", "join", "leave",
-                "subscribe", "resubscribe", "unsubscribe",
-                "error", "subscribe:error", "resubscribe:error"
+                "unsubscribe", "subscribe", "error", "subscribe:success",
+                "subscribe:error", "resubscribe:success", "resubscribe:error"
             ];
             for (var i in knownEvents) {
                 var ev = knownEvents[i];

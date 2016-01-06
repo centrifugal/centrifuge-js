@@ -143,8 +143,6 @@
         this._status = 'disconnected';
         this._reconnect = true;
         this._transport = null;
-        this._latency = null;
-        this._latencyStart = null;
         this._messageId = 0;
         this._clientID = null;
         this._subs = {};
@@ -159,23 +157,13 @@
         this._config = {
             retry: 1000,
             maxRetry: 20000,
+            timeout: 5000,
             info: "",
             resubscribe: true,
             debug: false,
             insecure: false,
             server: null,
             privateChannelPrefix: "$",
-            protocols_whitelist: [
-                'websocket',
-                'xdr-streaming',
-                'xhr-streaming',
-                'iframe-eventsource',
-                'iframe-htmlfile',
-                'xdr-polling',
-                'xhr-polling',
-                'iframe-xhr-polling',
-                'jsonp-polling'
-            ],
             transports: [
                 'websocket',
                 'xdr-streaming',
@@ -188,11 +176,11 @@
                 'iframe-xhr-polling',
                 'jsonp-polling'
             ],
-            refreshEndpoint: "/centrifuge/refresh",
+            refreshEndpoint: "/centrifuge/refresh/",
             refreshHeaders: {},
             refreshParams: {},
             refreshTransport: "ajax",
-            authEndpoint: "/centrifuge/auth",
+            authEndpoint: "/centrifuge/auth/",
             authHeaders: {},
             authParams: {},
             authTransport: "ajax"
@@ -277,14 +265,14 @@
                         data = JSON.parse(xhr.responseText);
                         parsed = true;
                     } catch (e) {
-                        callback(true, 'JSON returned from webapp was invalid, yet status code was 200. Data was: ' + xhr.responseText);
+                        callback(true, 'JSON returned was invalid, yet status code was 200. Data was: ' + xhr.responseText);
                     }
 
                     if (parsed) { // prevents double execution.
                         callback(false, data);
                     }
                 } else {
-                    self._log("Couldn't get auth info from your webapp", xhr.status);
+                    self._log("Couldn't get auth info from application", xhr.status);
                     callback(true, xhr.status);
                 }
             }
@@ -353,7 +341,6 @@
                 throw 'include SockJS client library before Centrifuge javascript client library or use raw Websocket connection endpoint';
             }
             this._sockjs = true;
-            this._sockjsVersion = SockJS.version;
         } else if (endsWith(this._config.url, 'connection/websocket')) {
             this._debug("client will connect to raw Websocket endpoint");
             this._config.url = this._config.url.replace("http://", "ws://");
@@ -369,7 +356,6 @@
                 this._debug("SockJS found, client will connect to SockJS endpoint");
                 this._config.url += "/connection";
                 this._sockjs = true;
-                this._sockjsVersion = SockJS.version;
             }
         }
     };
@@ -405,6 +391,7 @@
     };
 
     centrifugeProto._clearConnectedState = function () {
+        self._clientID = null;
         this._fireUnsubscribeEvents();
         if (!this._config.resubscribe) {
             // completely clear connected state
@@ -439,14 +426,9 @@
 
         // detect transport to use - SockJS or raw Websocket
         if (this._sockjs === true) {
-            //noinspection JSUnresolvedFunction
-            var sockjsOptions = {};
-            if (startsWith(this._sockjsVersion, "1.")) {
-                sockjsOptions["transports"] = this._config.transports;
-            } else {
-                this._log("SockJS <= 0.3.4 is deprecated, use SockJS >= 1.0.0 instead");
-                sockjsOptions["protocols_whitelist"] = this._config.protocols_whitelist;
-            }
+            var sockjsOptions = {
+                "transports": this._config.transports
+            };
             if (this._config.server !== null) {
                 sockjsOptions['server'] = this._config.server;
             }
@@ -486,7 +468,6 @@
                 }
             }
             self._addMessage(msg);
-            self._latencyStart = new Date();
         };
 
         this._transport.onerror = function (error) {
@@ -494,9 +475,11 @@
         };
 
         this._transport.onclose = function () {
-            self._setStatus('disconnected');
             self._clearConnectedState();
-            self.trigger('disconnect');
+            if (self.isConnected()) {
+                self.trigger('disconnect');
+            }
+            self._setStatus('disconnected');
             if (self._reconnect === true) {
                 var interval = self._getRetryInterval();
                 self._debug("reconnect after " + interval + " milliseconds");
@@ -527,9 +510,6 @@
 
     centrifugeProto._disconnect = function (shouldReconnect) {
         var reconnect = shouldReconnect || false;
-        this._clearConnectedState();
-        this._clientID = null;
-        this._setStatus('disconnected');
         if (reconnect === false) {
             this._subs = {};
             this._reconnect = false;
@@ -674,12 +654,6 @@
 
         if (this.isConnected()) {
             return;
-        }
-
-        if (this._latencyStart !== null) {
-            var latencyEnd = new Date();
-            this._latency = latencyEnd.getTime() - this._latencyStart.getTime();
-            this._latencyStart = null;
         }
 
         if (!errorExists(message)) {
@@ -1044,7 +1018,7 @@
             if (isFunction(errback)) {
                 errback(self._createErrorObject("timeout"));
             }
-        }, 5000);
+        }, this._config.timeout);
     };
 
     centrifugeProto._addMessage = function (message) {
@@ -1155,7 +1129,7 @@
                 if (!channelResponse) {
                     // subscription:error
                     self._subscribeResponse({
-                        "error": 404,
+                        "error": "channel not found in authorization response",
                         "body": {
                             "channel": channel
                         }
@@ -1262,9 +1236,9 @@
             this.on("message", events);
         } else if (Object.prototype.toString.call(events) === Object.prototype.toString.call({})) {
             var knownEvents = [
-                "message", "join", "leave",
-                "unsubscribe", "subscribe", "error", "subscribe:success",
-                "subscribe:error", "resubscribe:success", "resubscribe:error"
+                "message", "join", "leave", "unsubscribe",
+                "subscribe", "subscribe:error",
+                "resubscribe", "resubscribe:error"
             ];
             for (var i in knownEvents) {
                 var ev = knownEvents[i];
@@ -1313,9 +1287,7 @@
         }
         this._status = _STATE_SUCCESS;
         if (this._ready) {
-            this.trigger("resubscribe:success", [this]);
-        } else {
-            this.trigger("subscribe:success", [this]);
+            this.trigger("resubscribe", [this]);
         }
         this.trigger("subscribe", [this]);
         this._resolve(this);
@@ -1328,11 +1300,9 @@
         this._status = _STATE_ERROR;
         this._error = err;
         if (this._ready) {
-            this.trigger("resubscribe:error", err);
-        } else {
-            this.trigger("subscribe:error", err);
+            this.trigger("resubscribe:error", [err]);
         }
-        this.trigger("error", err);
+        this.trigger("subscribe:error", [err]);
         this._reject(err);
     };
 
@@ -1345,12 +1315,6 @@
     };
 
     subProto.ready = function() {
-        if (this._isReady()) {
-            if (this._isSuccess()) {
-                return Promise.resolve(this);
-            }
-            return Promise.resolve(this._error);
-        }
         return this.promise;
     };
 
@@ -1375,38 +1339,59 @@
         this._centrifuge._unsubscribe(this);
     };
 
-    subProto.publish = function (data, callback, errback) {
-        var msg = {
-            "method": "publish",
-            "params": {
-                "channel": this.channel,
-                "data": data
-            }
-        };
-        var uid = this._centrifuge._addMessage(msg);
-        this._centrifuge._registerCall(uid, callback, errback);
+    subProto.publish = function (data) {
+        var self = this;
+        return new Promise(function(resolve, reject) {
+            self.promise.then(function(){
+                var msg = {
+                    "method": "publish",
+                    "params": {
+                        "channel": self.channel,
+                        "data": data
+                    }
+                };
+                var uid = self._centrifuge._addMessage(msg);
+                self._centrifuge._registerCall(uid, resolve, reject);
+            }, function(err){
+                reject(err);
+            });
+        });
     };
 
-    subProto.presence = function (callback, errback) {
-        var msg = {
-            "method": "presence",
-            "params": {
-                "channel": this.channel
-            }
-        };
-        var uid = this._centrifuge._addMessage(msg);
-        this._centrifuge._registerCall(uid, callback, errback);
+    subProto.presence = function() {
+        var self = this;
+        return new Promise(function(resolve, reject) {
+            self.promise.then(function(){
+                var msg = {
+                    "method": "presence",
+                    "params": {
+                        "channel": self.channel
+                    }
+                };
+                var uid = self._centrifuge._addMessage(msg);
+                self._centrifuge._registerCall(uid, resolve, reject);
+            }, function(err){
+                reject(err);
+            });
+        });
     };
 
-    subProto.history = function (callback, errback) {
-        var msg = {
-            "method": "history",
-            "params": {
-                "channel": this.channel
-            }
-        };
-        var uid = this._centrifuge._addMessage(msg);
-        this._centrifuge._registerCall(uid, callback, errback);
+    subProto.history = function() {
+        var self = this;
+        return new Promise(function(resolve, reject) {
+            self.promise.then(function(){
+                var msg = {
+                    "method": "history",
+                    "params": {
+                        "channel": self.channel
+                    }
+                };
+                var uid = self._centrifuge._addMessage(msg);
+                self._centrifuge._registerCall(uid, resolve, reject);
+            }, function(err){
+                reject(err);
+            });
+        });
     };
 
     // Expose the class either via AMD, CommonJS or the global object

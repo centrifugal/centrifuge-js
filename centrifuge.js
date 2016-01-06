@@ -1232,6 +1232,9 @@
     var subProto = Sub.prototype;
 
     subProto._setEvents = function(events) {
+        if (!events) {
+            return;
+        }
         if (isFunction(events)) {
             this.on("message", events);
         } else if (Object.prototype.toString.call(events) === Object.prototype.toString.call({})) {

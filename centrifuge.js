@@ -139,10 +139,10 @@
 
     function Centrifuge(options) {
         this._sockjs = false;
-        this._sockjsVersion = null;
         this._status = 'disconnected';
         this._reconnect = true;
         this._transport = null;
+        this._transportName = null;
         this._messageId = 0;
         this._clientID = null;
         this._subs = {};
@@ -439,6 +439,12 @@
 
         this._transport.onopen = function () {
 
+            if (self._sockjs) {
+                self._transportName = self._transport._transport.transportName;
+            } else {
+                self._transportName = "raw-websocket";
+            }
+
             self._resetRetry();
 
             if (!isString(self._config.user)) {
@@ -638,18 +644,6 @@
         return sub;
     };
 
-    centrifugeProto._addSub = function (sub) {
-
-        this._subscribe(sub);
-    };
-
-    centrifugeProto._removeSub = function (sub) {
-        if (channel in this._subs) {
-            delete this._subs[channel];
-        }
-        this._unsubscribe(sub);
-    };
-
     centrifugeProto._connectResponse = function (message) {
 
         if (this.isConnected()) {
@@ -669,7 +663,10 @@
             }
             this._clientID = message.body.client;
             this._setStatus('connected');
-            this.trigger('connect', [message.body]);
+
+            var ctx = {"client": message.body.client};
+            this.trigger('connect', [ctx]);
+
             if (this._refreshTimeout) {
                 window.clearTimeout(this._refreshTimeout);
             }
@@ -1030,6 +1027,10 @@
             this._send([message]);
         }
         return uid;
+    };
+
+    centrifugeProto.getTransportName = function() {
+        return this._transportName;
     };
 
     centrifugeProto.getClientId = function () {

@@ -141,6 +141,7 @@
         this._sockjs = false;
         this._status = 'disconnected';
         this._reconnect = true;
+        this._reconnecting = false;
         this._transport = null;
         this._transportName = null;
         this._messageId = 0;
@@ -368,7 +369,11 @@
     };
 
     centrifugeProto._isDisconnected = function () {
-        return this._isConnected() === false;
+        return this._status === 'disconnected';
+    };
+
+    centrifugeProto._isConnecting = function() {
+        return this._status === 'connecting';
     };
 
     centrifugeProto._isConnected = function () {
@@ -439,6 +444,8 @@
 
         this._transport.onopen = function () {
 
+            self._reconnecting = false;
+
             if (self._sockjs) {
                 self._transportName = self._transport._transport.transportName;
             } else {
@@ -481,20 +488,7 @@
         };
 
         this._transport.onclose = function () {
-            self._clearConnectedState();
-            if (self.isConnected()) {
-                self.trigger('disconnect');
-            }
-            self._setStatus('disconnected');
-            if (self._reconnect === true) {
-                var interval = self._getRetryInterval();
-                self._debug("reconnect after " + interval + " milliseconds");
-                window.setTimeout(function () {
-                    if (self._reconnect === true) {
-                        self._connect.call(self);
-                    }
-                }, interval);
-            }
+            self._disconnect("connection closed", true, false);
         };
 
         this._transport.onmessage = function (event) {
@@ -514,13 +508,41 @@
         }
     };
 
-    centrifugeProto._disconnect = function (shouldReconnect) {
+    centrifugeProto._disconnect = function (reason, shouldReconnect, closeTransport) {
+        this._debug("disconnected:", reason, shouldReconnect);
         var reconnect = shouldReconnect || false;
         if (reconnect === false) {
             this._subs = {};
             this._reconnect = false;
         }
-        this._transport.close();
+        this._clearConnectedState();
+
+        if (!this.isDisconnected()) {
+            this._setStatus('disconnected');
+            var disconnectContext = {
+                "reason": reason,
+                "reconnect": reconnect
+            };
+            if (this._reconnecting === false) {
+                this.trigger('disconnect', [disconnectContext]);
+            }
+        }
+
+        if (closeTransport) {
+            this._transport.close();
+        }
+
+        var self = this;
+        if (shouldReconnect === true && self._reconnect === true) {
+            self._reconnecting = true;
+            var interval = self._getRetryInterval();
+            self._debug("reconnect after " + interval + " milliseconds");
+            window.setTimeout(function () {
+                if (self._reconnect === true) {
+                    self._connect.call(self);
+                }
+            }, interval);
+        }
     };
 
     centrifugeProto._refresh = function () {
@@ -704,10 +726,7 @@
             if ("reason" in message.body) {
                 reason = message.body["reason"];
             }
-            if (reason.length > 0) {
-                this._debug("disconnected:", reason);
-            }
-            this.disconnect(shouldReconnect);
+            this._disconnect(reason, shouldReconnect, true);
         } else {
             this.trigger('error', [message]);
         }
@@ -1047,7 +1066,9 @@
 
     centrifugeProto.connect = centrifugeProto._connect;
 
-    centrifugeProto.disconnect = centrifugeProto._disconnect;
+    centrifugeProto.disconnect = function() {
+        this._disconnect("client", false, true);
+    };
 
     centrifugeProto.ping = centrifugeProto._ping;
 
@@ -1184,8 +1205,8 @@
         if (!isString(channel)) {
             throw 'Illegal argument type: channel must be a string';
         }
-        if (!this._config.resubscribe && this.isDisconnected()) {
-            throw 'Can not subscribe in disconnected state when resubscribe option is off';
+        if (!this._config.resubscribe && !this.isConnected()) {
+            throw 'Can not only subscribe in connected state when resubscribe option is off';
         }
 
         var currentSub = this._getSub(channel);

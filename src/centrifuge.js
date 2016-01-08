@@ -698,7 +698,7 @@
                 }, message.body.ttl * 1000);
             }
         } else {
-            this.trigger('error', [message]);
+            this.trigger('error', [{"message": message}]);
         }
 
         if (this._config.resubscribe) {
@@ -726,7 +726,7 @@
             }
             this._disconnect(reason, shouldReconnect, true);
         } else {
-            this.trigger('error', [message]);
+            this.trigger('error', [{"message": message}]);
         }
     };
 
@@ -761,7 +761,7 @@
                 }
             }
         } else {
-            this.trigger('error', [message]);
+            this.trigger('error', [{"message": message}]);
             sub._setSubscribeError(this._errorObjectFromMessage(message));
         }
     };
@@ -784,7 +784,7 @@
             // ignore client initiated successful unsubscribe responses as we
             // already unsubscribed on client level.
         } else {
-            this.trigger('error', [message]);
+            this.trigger('error', [{"message": message}]);
         }
     };
 
@@ -808,7 +808,7 @@
                 return;
             }
             errback(this._errorObjectFromMessage(message));
-            this.trigger('error', [message]);
+            this.trigger('error', [{"message": message}]);
         }
     };
 
@@ -832,7 +832,7 @@
                 return;
             }
             errback(this._errorObjectFromMessage(message));
-            this.trigger('error', [message]);
+            this.trigger('error', [{"message": message}]);
         }
     };
 
@@ -856,7 +856,7 @@
                 return;
             }
             errback(this._errorObjectFromMessage(message));
-            this.trigger('error', [message]);
+            this.trigger('error', [{"message": message}]);
         }
     };
 
@@ -1320,7 +1320,6 @@
         }
         this._status = _STATE_SUCCESS;
         var subscribeSuccessContext = {
-            "subscription": this,
             "channel": this.channel,
             "resubscribe": this._ready === true
         };
@@ -1338,7 +1337,6 @@
         this._status = _STATE_ERROR;
         this._error = err;
         var subscribeErrorContext = err;
-        subscribeErrorContext["subscription"] = this;
         subscribeErrorContext["channel"] = this.channel;
         subscribeErrorContext["resubscribe"] = this._ready === true;
         if (this._ready) {
@@ -1354,7 +1352,6 @@
         }
         this._status = _STATE_UNSUBSCRIBED;
         var unsubscribeContext = {
-            "subscription": this,
             "channel": this.channel
         };
         this.trigger("unsubscribe", [unsubscribeContext]);

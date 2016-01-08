@@ -397,8 +397,16 @@
 
     centrifugeProto._clearConnectedState = function () {
         self._clientID = null;
-        this._fireUnsubscribeEvents();
-        if (!this._config.resubscribe) {
+
+        // fire unsubscribe events
+        for (var channel in this._subs) {
+            var sub = this._subs[channel];
+            if (sub._isSuccess()) {
+                sub._setUnsubscribed();
+            }
+        }
+
+        if (!this._config.resubscribe || !this._reconnect) {
             // completely clear connected state
             this._subs = {};
         }
@@ -499,22 +507,13 @@
         };
     };
 
-    centrifugeProto._fireUnsubscribeEvents = function() {
-        for (var channel in this._subs) {
-            var sub = this._subs[channel];
-            if (sub._isSuccess()) {
-                sub._setUnsubscribed();
-            }
-        }
-    };
-
     centrifugeProto._disconnect = function (reason, shouldReconnect, closeTransport) {
         this._debug("disconnected:", reason, shouldReconnect);
         var reconnect = shouldReconnect || false;
         if (reconnect === false) {
-            this._subs = {};
             this._reconnect = false;
         }
+
         this._clearConnectedState();
 
         if (!this.isDisconnected()) {
@@ -686,8 +685,8 @@
             this._clientID = message.body.client;
             this._setStatus('connected');
 
-            var ctx = {"client": message.body.client};
-            this.trigger('connect', [ctx]);
+            var connectContext = {"client": message.body.client};
+            this.trigger('connect', [connectContext]);
 
             if (this._refreshTimeout) {
                 window.clearTimeout(this._refreshTimeout);
@@ -700,7 +699,6 @@
             }
         } else {
             this.trigger('error', [message]);
-            this.trigger('connect:error', [this._createErrorObject(message.error)]);
         }
 
         if (this._config.resubscribe) {
@@ -764,7 +762,7 @@
             }
         } else {
             this.trigger('error', [message]);
-            sub._setSubscribeError(this._createErrorObject(message.error));
+            sub._setSubscribeError(this._errorObjectFromMessage(message));
         }
     };
 
@@ -809,7 +807,7 @@
             if (!errback) {
                 return;
             }
-            errback(this._createErrorObject(message.error));
+            errback(this._errorObjectFromMessage(message));
             this.trigger('error', [message]);
         }
     };
@@ -833,7 +831,7 @@
             if (!errback) {
                 return;
             }
-            errback(this._createErrorObject(message.error));
+            errback(this._errorObjectFromMessage(message));
             this.trigger('error', [message]);
         }
     };
@@ -857,7 +855,7 @@
             if (!errback) {
                 return;
             }
-            errback(this._createErrorObject(message.error));
+            errback(this._errorObjectFromMessage(message));
             this.trigger('error', [message]);
         }
     };
@@ -1017,10 +1015,20 @@
         }
     };
 
-    centrifugeProto._createErrorObject = function(text) {
-        return {
-            "error": text
+    centrifugeProto._createErrorObject = function(err, advice) {
+        var errObject = {
+            "error": err
         };
+        if (advice) {
+           errObject["advice"] = advice;
+        }
+        return errObject;
+    };
+
+    centrifugeProto._errorObjectFromMessage = function(message) {
+        var err = message.error;
+        var advice = message["error_advice"];
+        return this._createErrorObject(err, advice);
     };
 
     centrifugeProto._registerCall = function(uid, callback, errback) {
@@ -1032,7 +1040,7 @@
         setTimeout(function() {
             delete self._callbacks[uid];
             if (isFunction(errback)) {
-                errback(self._createErrorObject("timeout"));
+                errback(self._createErrorObject("timeout", "retry"));
             }
         }, this._config.timeout);
     };
@@ -1311,11 +1319,16 @@
             return;
         }
         this._status = _STATE_SUCCESS;
+        var subscribeSuccessContext = {
+            "subscription": this,
+            "channel": this.channel,
+            "resubscribe": this._ready === true
+        };
         if (this._ready) {
-            this.trigger("resubscribe", [this]);
+            this.trigger("resubscribe", [subscribeSuccessContext]);
         }
-        this.trigger("subscribe", [this]);
-        this._resolve(this);
+        this.trigger("subscribe", [subscribeSuccessContext]);
+        this._resolve(subscribeSuccessContext);
     };
 
     subProto._setSubscribeError = function(err) {
@@ -1324,11 +1337,15 @@
         }
         this._status = _STATE_ERROR;
         this._error = err;
+        var subscribeErrorContext = err;
+        subscribeErrorContext["subscription"] = this;
+        subscribeErrorContext["channel"] = this.channel;
+        subscribeErrorContext["resubscribe"] = this._ready === true;
         if (this._ready) {
-            this.trigger("resubscribe:error", [err]);
+            this.trigger("resubscribe:error", [subscribeErrorContext]);
         }
-        this.trigger("subscribe:error", [err]);
-        this._reject(err);
+        this.trigger("subscribe:error", [subscribeErrorContext]);
+        this._reject(subscribeErrorContext);
     };
 
     subProto._setUnsubscribed = function() {
@@ -1336,7 +1353,11 @@
             return;
         }
         this._status = _STATE_UNSUBSCRIBED;
-        this.trigger("unsubscribe", [this]);
+        var unsubscribeContext = {
+            "subscription": this,
+            "channel": this.channel
+        };
+        this.trigger("unsubscribe", [unsubscribeContext]);
     };
 
     subProto.ready = function() {

@@ -1030,7 +1030,7 @@
 
     centrifugeProto._errorObjectFromMessage = function(message) {
         var err = message.error;
-        var advice = message["error_advice"];
+        var advice = message["advice"];
         return this._createErrorObject(err, advice);
     };
 

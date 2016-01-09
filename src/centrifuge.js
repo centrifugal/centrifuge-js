@@ -685,7 +685,10 @@
             this._clientID = message.body.client;
             this._setStatus('connected');
 
-            var connectContext = {"client": message.body.client};
+            var connectContext = {
+                "client": message.body.client,
+                "transport": this.getTransportName()
+            };
             this.trigger('connect', [connectContext]);
 
             if (this._refreshTimeout) {

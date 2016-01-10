@@ -658,15 +658,12 @@
     };
 
     centrifugeProto._unsubscribe = function(sub) {
-
-        var channel = sub.channel;
-
         if (this.isConnected()) {
             // No need to unsubscribe in disconnected state - i.e. client already unsubscribed.
             var msg = {
                 "method": "unsubscribe",
                 "params": {
-                    "channel": channel
+                    "channel": sub.channel
                 }
             };
             this._addMessage(msg);
@@ -701,12 +698,6 @@
             this._clientID = message.body.client;
             this._setStatus('connected');
 
-            var connectContext = {
-                "client": message.body.client,
-                "transport": this.getTransportName()
-            };
-            this.trigger('connect', [connectContext]);
-
             if (this._refreshTimeout) {
                 window.clearTimeout(this._refreshTimeout);
             }
@@ -716,21 +707,27 @@
                     self._refresh.call(self);
                 }, message.body.ttl * 1000);
             }
+
+            if (this._config.resubscribe) {
+                this.startBatching();
+                this.startAuthBatching();
+                for (var channel in this._subs) {
+                    var sub = this._subs[channel];
+                    this._subscribe(sub);
+                }
+                this.stopAuthBatching();
+                this.stopBatching(true);
+            }
+
+            var connectContext = {
+                "client": message.body.client,
+                "transport": this.getTransportName()
+            };
+            this.trigger('connect', [connectContext]);
         } else {
+            this.trigger('connect:error', [this._errorObjectFromMessage(message)]);
             this.trigger('error', [{"message": message}]);
         }
-
-        if (this._config.resubscribe) {
-            this.startBatching();
-            this.startAuthBatching();
-            for (var channel in this._subs) {
-                var sub = this._subs[channel];
-                this._subscribe(sub);
-            }
-            this.stopAuthBatching();
-            this.stopBatching(true);
-        }
-
     };
 
     centrifugeProto._disconnectResponse = function (message) {
@@ -919,19 +916,23 @@
         if (this._refreshTimeout) {
             window.clearTimeout(this._refreshTimeout);
         }
-        if (message.body.expires) {
-            var self = this;
-            var isExpired = message.body.expired;
-            if (isExpired) {
-                self._refreshTimeout = window.setTimeout(function(){
+        if (!errorExists(message)) {
+            if (message.body.expires) {
+                var self = this;
+                var isExpired = message.body.expired;
+                if (isExpired) {
+                    self._refreshTimeout = window.setTimeout(function () {
+                        self._refresh.call(self);
+                    }, 3000 + Math.round(Math.random() * 1000));
+                    return;
+                }
+                this._clientID = message.body.client;
+                self._refreshTimeout = window.setTimeout(function () {
                     self._refresh.call(self);
-                }, 3000 + Math.round(Math.random() * 1000));
-                return;
+                }, message.body.ttl * 1000);
             }
-            this._clientID = message.body.client;
-            self._refreshTimeout = window.setTimeout(function () {
-                self._refresh.call(self);
-            }, message.body.ttl * 1000);
+        } else {
+            this.trigger('error', [{"message": message}]);
         }
     };
 
@@ -1454,7 +1455,7 @@
             }
             self._promise.then(function(){
                 if (!self._centrifuge.isConnected()) {
-                    reject(self._centrifuge._createErrorObject("disconnected", "fix"));
+                    reject(self._centrifuge._createErrorObject("disconnected", "retry"));
                     return;
                 }
                 var msg = {
@@ -1480,7 +1481,7 @@
             }
             self._promise.then(function(){
                 if (!self._centrifuge.isConnected()) {
-                    reject(self._centrifuge._createErrorObject("disconnected", "fix"));
+                    reject(self._centrifuge._createErrorObject("disconnected", "retry"));
                     return;
                 }
                 var msg = {

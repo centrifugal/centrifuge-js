@@ -1162,6 +1162,7 @@
                     var channel = channels[i];
                     self._subscribeResponse({
                         "error": "authorization request failed",
+                        "advice": "fix",
                         "body": {
                             "channel": channel
                         }
@@ -1179,6 +1180,7 @@
                     // subscription:error
                     self._subscribeResponse({
                         "error": "channel not found in authorization response",
+                        "advice": "fix",
                         "body": {
                             "channel": channel
                         }
@@ -1338,6 +1340,7 @@
         if (this._ready === true) {
             // new promise for this subscription
             this._initializePromise();
+            this._isResubscribe = true;
         }
         this._status = _STATE_SUBSCRIBING;
     };
@@ -1350,7 +1353,6 @@
         var successContext = this._getSubscribeSuccessContext();
         this.trigger("subscribe", [successContext]);
         this._resolve(successContext);
-        this._isResubscribe = true;
     };
 
     subProto._setSubscribeError = function(err) {
@@ -1362,7 +1364,6 @@
         var errContext = this._getSubscribeErrorContext();
         this.trigger("subscribe:error", [errContext]);
         this._reject(errContext);
-        this._isResubscribe = true;
     };
 
     subProto._triggerUnsubscribe = function() {

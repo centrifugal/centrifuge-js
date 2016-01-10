@@ -398,6 +398,17 @@
     centrifugeProto._clearConnectedState = function (reconnect) {
         self._clientID = null;
 
+        // fire errbacks of registered calls.
+        for (var uid in this._callbacks) {
+            var callbacks = this._callbacks[uid];
+            var errback = callbacks["errback"];
+            if (!errback) {
+                continue;
+            }
+            errback(this._createErrorObject("disconnected", "retry"));
+        }
+        this._callbacks = {};
+
         // fire unsubscribe events
         for (var channel in this._subs) {
             var sub = this._subs[channel];
@@ -1393,10 +1404,6 @@
         }
     };
 
-    subProto.getStatus = function () {
-        return this._status;
-    };
-
     subProto.subscribe = function() {
         if (this._status == _STATE_SUCCESS) {
             return;
@@ -1419,11 +1426,7 @@
             }
             self._promise.then(function(){
                 if (!self._centrifuge.isConnected()) {
-                    reject(self._centrifuge._createErrorObject("disconnected", "fix"));
-                    return;
-                }
-                if (self._status != _STATE_SUCCESS) {
-                    reject(self._centrifuge._createErrorObject("invalid subscription status", "fix"));
+                    reject(self._centrifuge._createErrorObject("disconnected", "retry"));
                     return;
                 }
                 var msg = {
@@ -1453,10 +1456,6 @@
                     reject(self._centrifuge._createErrorObject("disconnected", "fix"));
                     return;
                 }
-                if (self._status != _STATE_SUCCESS) {
-                    reject(self._centrifuge._createErrorObject("invalid subscription status", "fix"));
-                    return;
-                }
                 var msg = {
                     "method": "presence",
                     "params": {
@@ -1481,10 +1480,6 @@
             self._promise.then(function(){
                 if (!self._centrifuge.isConnected()) {
                     reject(self._centrifuge._createErrorObject("disconnected", "fix"));
-                    return;
-                }
-                if (self._status != _STATE_SUCCESS) {
-                    reject(self._centrifuge._createErrorObject("invalid subscription status", "fix"));
                     return;
                 }
                 var msg = {

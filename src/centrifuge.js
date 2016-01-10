@@ -1454,7 +1454,7 @@
             }
             self._promise.then(function(){
                 if (!self._centrifuge.isConnected()) {
-                    reject(self._centrifuge._createErrorObject("disconnected", "fix"));
+                    reject(self._centrifuge._createErrorObject("disconnected", "retry"));
                     return;
                 }
                 var msg = {
@@ -1480,7 +1480,7 @@
             }
             self._promise.then(function(){
                 if (!self._centrifuge.isConnected()) {
-                    reject(self._centrifuge._createErrorObject("disconnected", "fix"));
+                    reject(self._centrifuge._createErrorObject("disconnected", "retry"));
                     return;
                 }
                 var msg = {

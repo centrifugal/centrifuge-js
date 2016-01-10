@@ -395,13 +395,18 @@
         return interval;
     };
 
-    centrifugeProto._clearConnectedState = function () {
+    centrifugeProto._clearConnectedState = function (reconnect) {
         self._clientID = null;
 
         // fire unsubscribe events
         for (var channel in this._subs) {
             var sub = this._subs[channel];
-            if (sub._isSuccess()) {
+            if (reconnect) {
+                if (sub._isSuccess()) {
+                    sub._triggerUnsubscribe();
+                }
+                sub._setSubscribing();
+            } else {
                 sub._setUnsubscribed();
             }
         }
@@ -514,7 +519,7 @@
             this._reconnect = false;
         }
 
-        this._clearConnectedState();
+        this._clearConnectedState(shouldReconnect);
 
         if (!this.isDisconnected()) {
             this._setStatus('disconnected');
@@ -1245,10 +1250,20 @@
         this._centrifuge = centrifuge;
         this.channel = channel;
         this._setEvents(events);
+        this._isResubscribe = false;
+        this._ready = false;
+        this._promise = null;
+        this._initializePromise();
+    }
 
+    extend(Sub, EventEmitter);
+
+    var subProto = Sub.prototype;
+
+    subProto._initializePromise = function() {
         this._ready = false;
         var self = this;
-        this.promise = new Promise(function(resolve, reject) {
+        this._promise = new Promise(function(resolve, reject) {
             self._resolve = function(value) {
                 self._ready = true;
                 resolve(value);
@@ -1258,11 +1273,7 @@
                 reject(err);
             };
         });
-    }
-
-    extend(Sub, EventEmitter);
-
-    var subProto = Sub.prototype;
+    };
 
     subProto._setEvents = function(events) {
         if (!events) {
@@ -1273,8 +1284,7 @@
         } else if (Object.prototype.toString.call(events) === Object.prototype.toString.call({})) {
             var knownEvents = [
                 "message", "join", "leave", "unsubscribe",
-                "subscribe", "subscribe:error",
-                "resubscribe", "resubscribe:error"
+                "subscribe", "subscribe:error"
             ];
             for (var i in knownEvents) {
                 var ev = knownEvents[i];
@@ -1314,6 +1324,10 @@
     };
 
     subProto._setSubscribing = function() {
+        if (this._ready === true) {
+            // new promise for this subscription
+            this._initializePromise();
+        }
         this._status = _STATE_SUBSCRIBING;
     };
 
@@ -1322,15 +1336,10 @@
             return;
         }
         this._status = _STATE_SUCCESS;
-        var subscribeSuccessContext = {
-            "channel": this.channel,
-            "resubscribe": this._ready === true
-        };
-        if (this._ready) {
-            this.trigger("resubscribe", [subscribeSuccessContext]);
-        }
-        this.trigger("subscribe", [subscribeSuccessContext]);
-        this._resolve(subscribeSuccessContext);
+        var successContext = this._getSubscribeSuccessContext();
+        this.trigger("subscribe", [successContext]);
+        this._resolve(successContext);
+        this._isResubscribe = true;
     };
 
     subProto._setSubscribeError = function(err) {
@@ -1339,14 +1348,17 @@
         }
         this._status = _STATE_ERROR;
         this._error = err;
-        var subscribeErrorContext = err;
-        subscribeErrorContext["channel"] = this.channel;
-        subscribeErrorContext["resubscribe"] = this._ready === true;
-        if (this._ready) {
-            this.trigger("resubscribe:error", [subscribeErrorContext]);
-        }
-        this.trigger("subscribe:error", [subscribeErrorContext]);
-        this._reject(subscribeErrorContext);
+        var errContext = this._getSubscribeErrorContext();
+        this.trigger("subscribe:error", [errContext]);
+        this._reject(errContext);
+        this._isResubscribe = true;
+    };
+
+    subProto._triggerUnsubscribe = function() {
+        var unsubscribeContext = {
+            "channel": this.channel
+        };
+        this.trigger("unsubscribe", [unsubscribeContext]);
     };
 
     subProto._setUnsubscribed = function() {
@@ -1354,22 +1366,35 @@
             return;
         }
         this._status = _STATE_UNSUBSCRIBED;
-        var unsubscribeContext = {
-            "channel": this.channel
-        };
-        this.trigger("unsubscribe", [unsubscribeContext]);
+        this._triggerUnsubscribe();
     };
 
-    subProto.ready = function() {
-        return this.promise;
+    subProto._getSubscribeSuccessContext = function() {
+        return {
+            "channel": this.channel,
+            "isResubscribe": this._isResubscribe
+        };
+    };
+
+    subProto._getSubscribeErrorContext = function() {
+        var subscribeErrorContext = this._error;
+        subscribeErrorContext["channel"] = this.channel;
+        subscribeErrorContext["isResubscribe"] = this._isResubscribe;
+        return subscribeErrorContext;
+    };
+
+    subProto.ready = function(callback, errback) {
+        if (this._ready) {
+            if (this._isSuccess()) {
+                callback(this._getSubscribeSuccessContext());
+            } else {
+                errback(this._getSubscribeErrorContext());
+            }
+        }
     };
 
     subProto.getStatus = function () {
         return this._status;
-    };
-
-    subProto.getError = function() {
-        return this._error;
     };
 
     subProto.subscribe = function() {
@@ -1388,7 +1413,19 @@
     subProto.publish = function (data) {
         var self = this;
         return new Promise(function(resolve, reject) {
-            self.promise.then(function(){
+            if (self._isUnsubscribed()) {
+                reject(self._centrifuge._createErrorObject("subscription unsubscribed", "fix"));
+                return;
+            }
+            self._promise.then(function(){
+                if (!self._centrifuge.isConnected()) {
+                    reject(self._centrifuge._createErrorObject("disconnected", "fix"));
+                    return;
+                }
+                if (self._status != _STATE_SUCCESS) {
+                    reject(self._centrifuge._createErrorObject("invalid subscription status", "fix"));
+                    return;
+                }
                 var msg = {
                     "method": "publish",
                     "params": {
@@ -1407,7 +1444,19 @@
     subProto.presence = function() {
         var self = this;
         return new Promise(function(resolve, reject) {
-            self.promise.then(function(){
+            if (self._isUnsubscribed()) {
+                reject(self._centrifuge._createErrorObject("subscription unsubscribed", "fix"));
+                return;
+            }
+            self._promise.then(function(){
+                if (!self._centrifuge.isConnected()) {
+                    reject(self._centrifuge._createErrorObject("disconnected", "fix"));
+                    return;
+                }
+                if (self._status != _STATE_SUCCESS) {
+                    reject(self._centrifuge._createErrorObject("invalid subscription status", "fix"));
+                    return;
+                }
                 var msg = {
                     "method": "presence",
                     "params": {
@@ -1425,7 +1474,19 @@
     subProto.history = function() {
         var self = this;
         return new Promise(function(resolve, reject) {
-            self.promise.then(function(){
+            if (self._isUnsubscribed()) {
+                reject(self._centrifuge._createErrorObject("subscription unsubscribed", "fix"));
+                return;
+            }
+            self._promise.then(function(){
+                if (!self._centrifuge.isConnected()) {
+                    reject(self._centrifuge._createErrorObject("disconnected", "fix"));
+                    return;
+                }
+                if (self._status != _STATE_SUCCESS) {
+                    reject(self._centrifuge._createErrorObject("invalid subscription status", "fix"));
+                    return;
+                }
                 var msg = {
                     "method": "history",
                     "params": {

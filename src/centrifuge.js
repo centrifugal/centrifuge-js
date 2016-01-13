@@ -1298,7 +1298,7 @@
         } else if (Object.prototype.toString.call(events) === Object.prototype.toString.call({})) {
             var knownEvents = [
                 "message", "join", "leave", "unsubscribe",
-                "subscribe", "subscribe:error"
+                "subscribe", "error"
             ];
             for (var i in knownEvents) {
                 var ev = knownEvents[i];
@@ -1363,7 +1363,7 @@
         this._status = _STATE_ERROR;
         this._error = err;
         var errContext = this._getSubscribeErrorContext();
-        this.trigger("subscribe:error", [errContext]);
+        this.trigger("error", [errContext]);
         this._reject(errContext);
     };
 

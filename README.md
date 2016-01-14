@@ -13,8 +13,8 @@ or
 bower install centrifuge
 ```
 
-or just download `centrifuge.min.js` and include `script` tag into your HTML page.
+or just [download](https://raw.githubusercontent.com/centrifugal/centrifuge-js/master/centrifuge.min.js) `centrifuge.min.js` and include `script` tag into your HTML page.
 
 ```
-<script type="text/javascript" src="https://rawgit.com/centrifugal/centrifuge-js/master/centrifuge.min.js"></script>
+<script type="text/javascript" src="centrifuge.min.js"></script>
 ```

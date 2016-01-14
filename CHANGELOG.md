@@ -1,22 +1,25 @@
 1.3.0
 =====
 
-Client completely refactored in this release. You can still use previous versions to
-communicate with Centrifugo but new implementation much more comfortable to use so
-consider upgrading!
-
-Please, read [new documentation]() for Javascript client.
-
-If you are searching for old API docs (`centrifuge-js` <= 1.2.0) - [look here](https://fzambia.gitbooks.io/centrifugal/content/clients/javascript.html)
+**Client API completely refactored in this release**. You can still use previous versions
+to communicate with Centrifugo server from browser environment but new implementation much
+more comfortable to use in our opinion and will be supported in future releases so consider
+upgrading!
 
 Highlights of this release:
 
 * automatic resubscribe, no need to subscribe manually in `connect` event handler
 * more opaque error handling
 
-Also, I removed DOM plugin from repository as new client API design solves most of problems
-that DOM plugin was for - i.e. abstracting subscribe on many channels and automatically
-resubscribe on them.
+Please, read [new documentation](https://fzambia.gitbooks.io/centrifugal/content/clients/javascript.html)
+for Javascript browser client.
+
+Also, DOM plugin was removed from repository as new client API design solves most of problems
+that DOM plugin existed for - i.e. abstracting subscribe on many channels and automatically
+resubscribe on them. With new client you can have one global connection to Centrifugo and
+subscribe on channels at any moment from any part of your javascript code.
+
+If you are searching for old API docs (`centrifuge-js` <= 1.2.0) - [you can find it here](https://github.com/centrifugal/documentation/tree/c69ca51f21c028a6b9bd582afdbf0a5c13331957/client)
 
 1.2.0
 =====

@@ -721,7 +721,7 @@
 
             var connectContext = {
                 "client": message.body.client,
-                "transport": this.getTransportName()
+                "transport": this._transportName
             };
             this.trigger('connect', [connectContext]);
         } else {
@@ -1073,10 +1073,6 @@
             this._send([message]);
         }
         return uid;
-    };
-
-    centrifugeProto.getTransportName = function() {
-        return this._transportName;
     };
 
     centrifugeProto.getClientId = function () {

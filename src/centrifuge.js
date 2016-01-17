@@ -725,7 +725,6 @@
             };
             this.trigger('connect', [connectContext]);
         } else {
-            this.trigger('connect:error', [this._errorObjectFromMessage(message)]);
             this.trigger('error', [{"message": message}]);
         }
     };

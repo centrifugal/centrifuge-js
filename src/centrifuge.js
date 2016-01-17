@@ -712,6 +712,7 @@
                 this.startBatching();
                 this.startAuthBatching();
                 for (var channel in this._subs) {
+                    console.log(channel);
                     var sub = this._subs[channel];
                     this._subscribe(sub);
                 }
@@ -1121,7 +1122,7 @@
         this._isAuthBatching = true;
     };
 
-    centrifugeProto.stopAuthBatching = function(callback) {
+    centrifugeProto.stopAuthBatching = function() {
         // create request to authEndpoint with collected private channels
         // to ask if this client can subscribe on each channel
         this._isAuthBatching = false;
@@ -1138,9 +1139,6 @@
         }
 
         if (channels.length == 0) {
-            if (callback) {
-                callback();
-            }
             return;
         }
 
@@ -1164,11 +1162,16 @@
                         }
                     });
                 }
-                if (callback) {
-                    callback();
-                }
                 return;
             }
+
+            // try to send all subscriptions in one request.
+            var batch = false;
+            if (!self._isBatching) {
+                self.startBatching();
+                batch = true;
+            }
+
             for (var i in channels) {
                 var channel = channels[i];
                 var channelResponse = data[channel];
@@ -1208,9 +1211,11 @@
                     });
                 }
             }
-            if (callback) {
-                callback();
+
+            if (batch) {
+                self.stopBatching(true);
             }
+
         };
 
         var transport = this._config.authTransport.toLowerCase();

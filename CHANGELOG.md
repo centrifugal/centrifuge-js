@@ -10,6 +10,8 @@ Highlights of this release:
 
 * automatic resubscribe, no need to subscribe manually in `connect` event handler
 * more opaque error handling
+* drop support for SockJS < 1.0.0 (but if you still use SockJS 0.3.4 then feel free to open
+    issue and we will return its support to client)
 
 Please, read [new documentation](https://fzambia.gitbooks.io/centrifugal/content/clients/javascript.html)
 for Javascript browser client.

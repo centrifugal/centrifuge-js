@@ -1,20 +1,6 @@
-centrifuge-js
-=============
+Browser Javascript client for Centrifugo
+========================================
 
-[Documentation](http://fzambia.gitbooks.io/centrifugal/content/client/index.html)
+Please note, that with version 1.3.0 client API was completely refactored ((changelog)[https://github.com/centrifugal/centrifuge-js/blob/master/CHANGELOG.md#130]).
 
-```
-npm install centrifuge
-```
-
-or
-
-```
-bower install centrifuge
-```
-
-or just [download](https://raw.githubusercontent.com/centrifugal/centrifuge-js/master/centrifuge.min.js) `centrifuge.min.js` and include `script` tag into your HTML page.
-
-```
-<script type="text/javascript" src="centrifuge.min.js"></script>
-```
+See client [documentation](http://fzambia.gitbooks.io/centrifugal/content/client/index.html)

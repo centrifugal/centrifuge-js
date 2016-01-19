@@ -21,6 +21,8 @@ that DOM plugin existed for - i.e. abstracting subscribe on many channels and au
 resubscribe on them. With new client you can have one global connection to Centrifugo and
 subscribe on channels at any moment from any part of your javascript code.
 
+Also we updated [examples](https://github.com/centrifugal/examples) to fit new changes.
+
 If you are searching for old API docs (`centrifuge-js` <= 1.2.0) - [you can find it here](https://github.com/centrifugal/documentation/tree/c69ca51f21c028a6b9bd582afdbf0a5c13331957/client)
 
 1.2.0

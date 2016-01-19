@@ -712,7 +712,6 @@
                 this.startBatching();
                 this.startAuthBatching();
                 for (var channel in this._subs) {
-                    console.log(channel);
                     var sub = this._subs[channel];
                     this._subscribe(sub);
                 }

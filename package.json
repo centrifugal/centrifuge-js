@@ -8,7 +8,7 @@
   "scripts": {
     "build-js": "cat src/centrifuge.js > centrifuge.js",
     "build-minified-js": "cat src/centrifuge.js | uglifyjs -cm > centrifuge.min.js",
-    "build": "npm run build-js && npm run build-minified-js",
+    "build": "npm run build-js && npm run build-minified-js"
   },
   "author": "Alexandr Emelin",
   "repository": {

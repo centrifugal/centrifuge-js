@@ -1,3 +1,12 @@
+1.3.1
+=====
+
+* add `latency` field (in milliseconds) to `connect` event context. This measures time passed
+    between sending `connect` client protocol command and receiving connect response.
+
+Also there was debug logging statement in 1.3.0 left in source code occasionally. 1.3.0 was rebuilt
+with fix, but I am not sure that it was not cached somewhere in bower. So here is 1.3.1
+
 1.3.0
 =====
 

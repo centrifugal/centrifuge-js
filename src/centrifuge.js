@@ -155,6 +155,8 @@
         this._refreshTimeout = null;
         this._retries = 0;
         this._callbacks = {};
+        this._latency = null;
+        this._latencyStart = null;
         this._config = {
             retry: 1000,
             maxRetry: 20000,
@@ -505,6 +507,7 @@
                 }
             }
             self._addMessage(msg);
+            self._latencyStart = new Date();
         };
 
         this._transport.onerror = function (error) {
@@ -685,6 +688,12 @@
         }
 
         if (!errorExists(message)) {
+
+            if (this._latencyStart !== null) {
+                this._latency = (new Date()).getTime() - this._latencyStart.getTime();
+                this._latencyStart = null;
+            }
+
             if (!message.body) {
                 return;
             }
@@ -721,7 +730,8 @@
 
             var connectContext = {
                 "client": message.body.client,
-                "transport": this._transportName
+                "transport": this._transportName,
+                "latency": this._latency
             };
             this.trigger('connect', [connectContext]);
         } else {

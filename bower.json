@@ -2,6 +2,7 @@
   "name": "centrifuge",
   "version": "1.3.1",
   "ignore": [
+    "gulp",
     "node_modules",
     "**/.*",
     "bower_components",
@@ -16,7 +17,8 @@
   "keywords": [
     "sockjs",
     "websocket",
-    "centrifugo"
+    "centrifugo",
+    "centrifuge"
   ],
   "license": "MIT",
   "homepage": "https://github.com/centrifugal/centrifuge-js"

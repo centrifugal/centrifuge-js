@@ -1,3 +1,10 @@
+1.3.2
+=====
+
+* use browserify to build library
+* fix import over requirejs introduced in 1.3.0
+
+
 1.3.1
 =====
 

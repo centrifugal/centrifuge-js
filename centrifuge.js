@@ -2760,7 +2760,6 @@ centrifugeProto.subscribe = function (channel, events) {
     if (arguments.length < 1) {
         throw 'Illegal arguments number: required 1, got ' + arguments.length;
     }
-    console.log(channel);
     if (!isString(channel)) {
         throw 'Illegal argument type: channel must be a string';
     }

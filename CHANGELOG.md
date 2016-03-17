@@ -1,3 +1,9 @@
+1.3.3
+=====
+
+* fix `centrifuge.subscribe` method when calling on channel for which subscription
+    already exists but in unsubscribe state. [See this pull](https://github.com/centrifugal/centrifuge-js/pull/11) request for more details.
+
 1.3.2
 =====
 

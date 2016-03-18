@@ -1,6 +1,6 @@
 {
   "name": "centrifuge",
-  "version": "1.3.3",
+  "version": "1.3.4",
   "ignore": [
     "gulp",
     "node_modules",

@@ -1,3 +1,8 @@
+1.3.4
+=====
+
+* only call `subscribe` for existing subscription if its in unsubscribed state.
+
 1.3.3
 =====
 

@@ -497,8 +497,12 @@ centrifugeProto._connect = function (callback) {
         self._debug("transport level error", error);
     };
 
-    this._transport.onclose = function () {
-        self._disconnect("connection closed", true, false);
+    this._transport.onclose = function (closeEvent) {
+        var reason = "connection closed";
+        if (closeEvent && "reason" in closeEvent && closeEvent["reason"]) {
+            reason = closeEvent["reason"];
+        }
+        self._disconnect(reason, true, false);
     };
 
     this._transport.onmessage = function (event) {

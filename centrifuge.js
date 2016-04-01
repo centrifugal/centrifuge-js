@@ -1537,7 +1537,6 @@ process.chdir = function (dir) {
 (function (global){
 var Promise = require('es6-promise').Promise;
 var EventEmitter = require('wolfy87-eventemitter');
-var GlobalContext = typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {};
 
 /**
  * Oliver Caldwell
@@ -1637,10 +1636,10 @@ function isFunction(value) {
 }
 
 function log(level, args) {
-    if (GlobalContext.console) {
-        var logger = GlobalContext.console[level];
+    if (global.console) {
+        var logger = global.console[level];
         if (isFunction(logger)) {
-            logger.apply(GlobalContext.console, args);
+            logger.apply(global.console, args);
         }
     }
 }
@@ -1730,7 +1729,7 @@ centrifugeProto._jsonp = function (url, params, headers, data, callback) {
     var callbackName = Centrifuge._nextAuthCallbackID.toString();
     Centrifuge._nextAuthCallbackID++;
 
-    var document = GlobalContext.document;
+    var document = global.document;
     var script = document.createElement("script");
     Centrifuge._authCallbacks[callbackName] = function (data) {
         callback(false, data);
@@ -1759,7 +1758,7 @@ centrifugeProto._ajax = function (url, params, headers, data, callback) {
     var self = this;
     self._debug("sending AJAX request to", url);
 
-    var xhr = (GlobalContext.XMLHttpRequest ? new GlobalContext.XMLHttpRequest() : new ActiveXObject("Microsoft.XMLHTTP"));
+    var xhr = (global.XMLHttpRequest ? new global.XMLHttpRequest() : new ActiveXObject("Microsoft.XMLHTTP"));
 
     var query = "";
     for (var i in params) {

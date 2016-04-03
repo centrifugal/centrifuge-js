@@ -99,10 +99,10 @@ function isFunction(value) {
 }
 
 function log(level, args) {
-    if (window.console) {
-        var logger = window.console[level];
+    if (global.console) {
+        var logger = global.console[level];
         if (isFunction(logger)) {
-            logger.apply(window.console, args);
+            logger.apply(global.console, args);
         }
     }
 }
@@ -192,7 +192,7 @@ centrifugeProto._jsonp = function (url, params, headers, data, callback) {
     var callbackName = Centrifuge._nextAuthCallbackID.toString();
     Centrifuge._nextAuthCallbackID++;
 
-    var document = window.document;
+    var document = global.document;
     var script = document.createElement("script");
     Centrifuge._authCallbacks[callbackName] = function (data) {
         callback(false, data);
@@ -221,7 +221,7 @@ centrifugeProto._ajax = function (url, params, headers, data, callback) {
     var self = this;
     self._debug("sending AJAX request to", url);
 
-    var xhr = (window.XMLHttpRequest ? new window.XMLHttpRequest() : new ActiveXObject("Microsoft.XMLHTTP"));
+    var xhr = (global.XMLHttpRequest ? new global.XMLHttpRequest() : new ActiveXObject("Microsoft.XMLHTTP"));
 
     var query = "";
     for (var i in params) {
@@ -542,7 +542,7 @@ centrifugeProto._disconnect = function (reason, shouldReconnect, closeTransport)
         self._reconnecting = true;
         var interval = self._getRetryInterval();
         self._debug("reconnect after " + interval + " milliseconds");
-        window.setTimeout(function () {
+        setTimeout(function () {
             if (self._reconnect === true) {
                 self._connect.call(self);
             }
@@ -562,9 +562,9 @@ centrifugeProto._refresh = function () {
             // will disconnect client eventually
             self._debug("error getting connect parameters", data);
             if (self._refreshTimeout) {
-                window.clearTimeout(self._refreshTimeout);
+                clearTimeout(self._refreshTimeout);
             }
-            self._refreshTimeout = window.setTimeout(function(){
+            self._refreshTimeout = setTimeout(function(){
                 self._refresh.call(self);
             }, 3000);
             return;
@@ -695,11 +695,11 @@ centrifugeProto._connectResponse = function (message) {
         this._setStatus('connected');
 
         if (this._refreshTimeout) {
-            window.clearTimeout(this._refreshTimeout);
+            clearTimeout(this._refreshTimeout);
         }
         if (message.body.expires) {
             var self = this;
-            this._refreshTimeout = window.setTimeout(function() {
+            this._refreshTimeout = setTimeout(function() {
                 self._refresh.call(self);
             }, message.body.ttl * 1000);
         }
@@ -910,20 +910,20 @@ centrifugeProto._messageResponse = function (message) {
 
 centrifugeProto._refreshResponse = function (message) {
     if (this._refreshTimeout) {
-        window.clearTimeout(this._refreshTimeout);
+        clearTimeout(this._refreshTimeout);
     }
     if (!errorExists(message)) {
         if (message.body.expires) {
             var self = this;
             var isExpired = message.body.expired;
             if (isExpired) {
-                self._refreshTimeout = window.setTimeout(function () {
+                self._refreshTimeout = setTimeout(function () {
                     self._refresh.call(self);
                 }, 3000 + Math.round(Math.random() * 1000));
                 return;
             }
             this._clientID = message.body.client;
-            self._refreshTimeout = window.setTimeout(function () {
+            self._refreshTimeout = setTimeout(function () {
                 self._refresh.call(self);
             }, message.body.ttl * 1000);
         }

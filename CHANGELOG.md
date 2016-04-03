@@ -1,3 +1,8 @@
+1.3.5
+=====
+
+* fix using centrifuge-js in SharedWorker - there is no `window` object, so using `self` instead of `window` when we in SharedWorker context.
+
 1.3.4
 =====
 

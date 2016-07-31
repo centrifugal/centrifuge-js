@@ -1672,6 +1672,7 @@ function Centrifuge(options) {
     this._isBatching = false;
     this._isAuthBatching = false;
     this._authChannels = {};
+    this._refreshFailed = 0;
     this._refreshTimeout = null;
     this._retries = 0;
     this._callbacks = {};
@@ -1702,7 +1703,10 @@ function Centrifuge(options) {
         refreshEndpoint: "/centrifuge/refresh/",
         refreshHeaders: {},
         refreshParams: {},
+        refreshData: {},
         refreshTransport: "ajax",
+        refreshAttempts: null,
+        onSessionExpired: null,
         authEndpoint: "/centrifuge/auth/",
         authHeaders: {},
         authParams: {},
@@ -1965,6 +1969,13 @@ centrifugeProto._connect = function (callback) {
         return;
     }
 
+    if (this._refreshFailed > 0) {
+        this._debug("can't connect when credentials expired, need to refresh");
+        return;
+    }
+
+    this._debug("start connecting");
+
     this._setStatus('connecting');
     this._clientID = null;
     this._reconnect = true;
@@ -2087,28 +2098,51 @@ centrifugeProto._disconnect = function (reason, shouldReconnect, closeTransport)
     }
 };
 
+centrifugeProto._sessionExpired = function() {
+    if (!this.isDisconnected()) {
+        this._disconnect("refresh failed", false, true);
+    }
+    if (this._config.onSessionExpired !== null) {
+        this._config.onSessionExpired();
+    }
+};
+
 centrifugeProto._refresh = function () {
     // ask web app for connection parameters - user ID,
     // timestamp, info and token
     var self = this;
     this._debug('refresh credentials');
 
+    if (self._config.refreshAttempts === 0) {
+        this._debug('refresh attempts set to 0, do not send refresh request at all');
+        self._sessionExpired();
+        return;
+    }
+
     var cb = function(error, data) {
         if (error === true) {
             // 403 or 500 - does not matter - if connection check activated then Centrifugo
             // will disconnect client eventually
             self._debug("error getting connect parameters", data);
+            self._refreshFailed++;
             if (self._refreshTimeout) {
                 clearTimeout(self._refreshTimeout);
             }
+            if (self._config.refreshAttempts !== null && self._refreshFailed >= self._config.refreshAttempts) {
+                self._sessionExpired();
+                return;
+            }
             self._refreshTimeout = setTimeout(function(){
                 self._refresh.call(self);
-            }, 3000);
+            }, 3000 + Math.round(Math.random() * 1000));
             return;
         }
+        self._refreshFailed = 0;
         self._config.user = data.user;
         self._config.timestamp = data.timestamp;
-        self._config.info = data.info;
+        if ("info" in data) {
+            self._config.info = data.info;
+        }
         self._config.token = data.token;
         if (self.isDisconnected()) {
             self._debug("credentials refreshed, connect from scratch");
@@ -2130,9 +2164,9 @@ centrifugeProto._refresh = function () {
 
     var transport = this._config.refreshTransport.toLowerCase();
     if (transport === "ajax") {
-        this._ajax(this._config.refreshEndpoint, this._config.refreshParams, this._config.refreshHeaders, {}, cb);
+        this._ajax(this._config.refreshEndpoint, this._config.refreshParams, this._config.refreshHeaders, this._config.refreshData, cb);
     } else if (transport === "jsonp") {
-        this._jsonp(this._config.refreshEndpoint, this._config.refreshParams, this._config.refreshHeaders, {}, cb);
+        this._jsonp(this._config.refreshEndpoint, this._config.refreshParams, this._config.refreshHeaders, this._config.refreshData, cb);
     } else {
         throw 'Unknown refresh transport ' + transport;
     }

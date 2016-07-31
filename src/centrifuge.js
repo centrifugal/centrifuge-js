@@ -135,7 +135,7 @@ function Centrifuge(options) {
     this._isBatching = false;
     this._isAuthBatching = false;
     this._authChannels = {};
-    this._refreshFailed = 0;
+    this._numRefreshFailed = 0;
     this._refreshTimeout = null;
     this._retries = 0;
     this._callbacks = {};
@@ -169,7 +169,7 @@ function Centrifuge(options) {
         refreshData: {},
         refreshTransport: "ajax",
         refreshAttempts: null,
-        onSessionExpired: null,
+        refreshFailed: null,
         authEndpoint: "/centrifuge/auth/",
         authHeaders: {},
         authParams: {},
@@ -432,7 +432,7 @@ centrifugeProto._connect = function (callback) {
         return;
     }
 
-    if (this._refreshFailed > 0) {
+    if (this._numRefreshFailed > 0) {
         this._debug("can't connect when credentials expired, need to refresh");
         return;
     }
@@ -561,12 +561,12 @@ centrifugeProto._disconnect = function (reason, shouldReconnect, closeTransport)
     }
 };
 
-centrifugeProto._sessionExpired = function() {
+centrifugeProto._refreshFailed = function() {
     if (!this.isDisconnected()) {
         this._disconnect("refresh failed", false, true);
     }
-    if (this._config.onSessionExpired !== null) {
-        this._config.onSessionExpired();
+    if (this._config.refreshFailed !== null) {
+        this._config.refreshFailed();
     }
 };
 
@@ -578,7 +578,7 @@ centrifugeProto._refresh = function () {
 
     if (self._config.refreshAttempts === 0) {
         this._debug('refresh attempts set to 0, do not send refresh request at all');
-        self._sessionExpired();
+        self._refreshFailed();
         return;
     }
 
@@ -587,12 +587,12 @@ centrifugeProto._refresh = function () {
             // 403 or 500 - does not matter - if connection check activated then Centrifugo
             // will disconnect client eventually
             self._debug("error getting connect parameters", data);
-            self._refreshFailed++;
+            self._numRefreshFailed++;
             if (self._refreshTimeout) {
                 clearTimeout(self._refreshTimeout);
             }
-            if (self._config.refreshAttempts !== null && self._refreshFailed >= self._config.refreshAttempts) {
-                self._sessionExpired();
+            if (self._config.refreshAttempts !== null && self._numRefreshFailed >= self._config.refreshAttempts) {
+                self._refreshFailed();
                 return;
             }
             self._refreshTimeout = setTimeout(function(){
@@ -600,7 +600,7 @@ centrifugeProto._refresh = function () {
             }, 3000 + Math.round(Math.random() * 1000));
             return;
         }
-        self._refreshFailed = 0;
+        self._numRefreshFailed = 0;
         self._config.user = data.user;
         self._config.timestamp = data.timestamp;
         if ("info" in data) {

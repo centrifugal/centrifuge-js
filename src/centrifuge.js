@@ -165,6 +165,7 @@ function Centrifuge(options) {
         refreshEndpoint: "/centrifuge/refresh/",
         refreshHeaders: {},
         refreshParams: {},
+        refreshData: {},
         refreshTransport: "ajax",
         authEndpoint: "/centrifuge/auth/",
         authHeaders: {},
@@ -593,9 +594,9 @@ centrifugeProto._refresh = function () {
 
     var transport = this._config.refreshTransport.toLowerCase();
     if (transport === "ajax") {
-        this._ajax(this._config.refreshEndpoint, this._config.refreshParams, this._config.refreshHeaders, {}, cb);
+        this._ajax(this._config.refreshEndpoint, this._config.refreshParams, this._config.refreshHeaders, this._config.refreshData, cb);
     } else if (transport === "jsonp") {
-        this._jsonp(this._config.refreshEndpoint, this._config.refreshParams, this._config.refreshHeaders, {}, cb);
+        this._jsonp(this._config.refreshEndpoint, this._config.refreshParams, this._config.refreshHeaders, this._config.refreshData, cb);
     } else {
         throw 'Unknown refresh transport ' + transport;
     }

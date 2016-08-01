@@ -2,7 +2,7 @@
   "name": "centrifuge",
   "version": "1.3.6",
   "description": "Centrifuge javascript client",
-  "main": "centrifuge.js",
+  "main": "src/centrifuge.js",
   "dependencies": {
     "wolfy87-eventemitter": "4.3.0",
     "es6-promise": "3.0.2"

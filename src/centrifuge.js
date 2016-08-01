@@ -121,7 +121,7 @@ function errorExists(data) {
 }
 
 function Centrifuge(options) {
-    this._sockjs = false;
+    this._useSockJS = false;
     this._status = 'disconnected';
     this._reconnect = true;
     this._reconnecting = false;
@@ -142,6 +142,7 @@ function Centrifuge(options) {
     this._latency = null;
     this._latencyStart = null;
     this._config = {
+        sockJS: null,
         retry: 1000,
         maxRetry: 20000,
         timeout: 5000,
@@ -327,25 +328,37 @@ centrifugeProto._configure = function (configuration) {
 
     if (endsWith(this._config.url, 'connection')) {
         this._debug("client will connect to SockJS endpoint");
-        if (typeof SockJS === 'undefined') {
+        if (this._config.sockJS !== null) {
+            this._debug("SockJS explicitly provided in options");
+            this._useSockJS = true;
+        } else if (typeof SockJS === 'undefined') {
             throw 'include SockJS client library before Centrifuge javascript client library or use raw Websocket connection endpoint';
+        } else {
+            this._debug("use globally defined SockJS");
+            this._config.sockJS = SockJS;
+            this._useSockJS = true;
         }
-        this._sockjs = true;
     } else if (endsWith(this._config.url, 'connection/websocket')) {
         this._debug("client will connect to raw Websocket endpoint");
         this._config.url = this._config.url.replace("http://", "ws://");
         this._config.url = this._config.url.replace("https://", "wss://");
     } else {
         this._debug("client will detect connection endpoint itself");
-        if (typeof SockJS === 'undefined') {
+        if (this._config.sockJS === null && typeof SockJS === 'undefined') {
             this._debug("no SockJS found, client will connect to raw Websocket endpoint");
             this._config.url += "/connection/websocket";
             this._config.url = this._config.url.replace("http://", "ws://");
             this._config.url = this._config.url.replace("https://", "wss://");
         } else {
             this._debug("SockJS found, client will connect to SockJS endpoint");
+            if (this._config.sockJS !== null) {
+                this._debug("SockJS explicitly provided in options");
+            } else {
+                this._debug("use globally defined SockJS");
+                this._config.sockJS = SockJS;
+            }
             this._config.url += "/connection";
-            this._sockjs = true;
+            this._useSockJS = true;
         }
     }
 };
@@ -450,14 +463,14 @@ centrifugeProto._connect = function (callback) {
     }
 
     // detect transport to use - SockJS or raw Websocket
-    if (this._sockjs === true) {
+    if (this._useSockJS === true) {
         var sockjsOptions = {
             "transports": this._config.transports
         };
         if (this._config.server !== null) {
             sockjsOptions['server'] = this._config.server;
         }
-        this._transport = new SockJS(this._config.url, null, sockjsOptions);
+        this._transport = new this._config.sockJS(this._config.url, null, sockjsOptions);
     } else {
         this._transport = new WebSocket(this._config.url);
     }
@@ -466,7 +479,7 @@ centrifugeProto._connect = function (callback) {
 
         self._reconnecting = false;
 
-        if (self._sockjs) {
+        if (self._useSockJS) {
             self._transportName = self._transport._transport.transportName;
         } else {
             self._transportName = "raw-websocket";
@@ -1532,5 +1545,3 @@ subProto.history = function() {
 };
 
 module.exports = Centrifuge;
-
-

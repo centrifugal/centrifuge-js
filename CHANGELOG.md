@@ -1,3 +1,10 @@
+1.3.6
+=====
+
+* `refreshData` option to send extra data in body when sending AJAX POST refresh request
+* `refreshAttempts` option to limit amount of refresh requests before giving up
+* `refreshFailed` options to set callback function called when `refreshAttempts` came to the end.
+
 1.3.5
 =====
 

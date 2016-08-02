@@ -1,3 +1,27 @@
+1.3.7
+=====
+
+* Adapt to use in ES6 style
+* new `sockJS` option to explicitly provide SockJS client object
+* npm entry point is `src/centrifuge.js` now to prevent webpack warning.
+
+ES6 example:
+
+```javascript
+import Centrifuge from 'centrifuge'
+import SockJS from 'sockjs-client'
+
+var c = new Centrifuge({
+    "url": "...",
+    "user": "...",
+    "token": "...",
+    "timestamp": "...",
+    "sockJS": SockJS
+});
+
+c.connect();
+```
+
 1.3.6
 =====
 

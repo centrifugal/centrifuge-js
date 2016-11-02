@@ -526,7 +526,7 @@ centrifugeProto._connect = function (callback) {
         if (closeEvent && "reason" in closeEvent && closeEvent["reason"]) {
             reason = closeEvent["reason"];
         }
-        self._disconnect(reason, true, false);
+        self._disconnect(reason, false, false);
     };
 
     this._transport.onmessage = function (event) {

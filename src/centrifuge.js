@@ -445,6 +445,10 @@ centrifugeProto._connect = function (callback) {
         return;
     }
 
+    if (this._status == 'connecting') {
+        return;
+    }
+
     if (this._numRefreshFailed > 0) {
         this._debug("can't connect when credentials expired, need to refresh");
         return;
@@ -453,6 +457,7 @@ centrifugeProto._connect = function (callback) {
     this._debug("start connecting");
 
     this._setStatus('connecting');
+
     this._clientID = null;
     this._reconnect = true;
 
@@ -523,10 +528,20 @@ centrifugeProto._connect = function (callback) {
 
     this._transport.onclose = function (closeEvent) {
         var reason = "connection closed";
+        var needReconnect = true;
         if (closeEvent && "reason" in closeEvent && closeEvent["reason"]) {
-            reason = closeEvent["reason"];
+            try {
+                var advice = JSON.parse(closeEvent["reason"]);
+                self._debug("reason is an advice object", advice);
+                reason = advice.reason;
+                needReconnect = advice.reconnect;
+            } catch (e) {
+                reason = closeEvent["reason"];
+                self._debug("reason is a plain string", reason);
+                needReconnect = reason !== "disconnect";
+            }
         }
-        self._disconnect(reason, true, false);
+        self._disconnect(reason, needReconnect, false);
     };
 
     this._transport.onmessage = function (event) {
@@ -538,6 +553,9 @@ centrifugeProto._connect = function (callback) {
 };
 
 centrifugeProto._disconnect = function (reason, shouldReconnect, closeTransport) {
+    if (this.isDisconnected()) {
+        return;
+    }
     this._debug("disconnected:", reason, shouldReconnect);
     var reconnect = shouldReconnect || false;
     if (reconnect === false) {
@@ -559,6 +577,7 @@ centrifugeProto._disconnect = function (reason, shouldReconnect, closeTransport)
 
     if (closeTransport) {
         this._transport.close();
+        this._transport = null;
     }
 
     var self = this;

@@ -1,3 +1,9 @@
+1.3.8
+=====
+
+* properly handle disconnect API command - do not reconnect.
+
+
 1.3.7
 =====
 

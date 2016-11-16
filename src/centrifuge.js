@@ -127,6 +127,7 @@ function Centrifuge(options) {
     this._reconnecting = false;
     this._transport = null;
     this._transportName = null;
+    this._transportClosed = true;
     this._messageId = 0;
     this._clientID = null;
     this._subs = {};
@@ -486,7 +487,7 @@ centrifugeProto._connect = function (callback) {
     }
 
     this._transport.onopen = function () {
-
+        self._transportClosed = false;
         self._reconnecting = false;
 
         if (self._useSockJS) {
@@ -532,6 +533,7 @@ centrifugeProto._connect = function (callback) {
     };
 
     this._transport.onclose = function (closeEvent) {
+        self._transportClosed = true;
         var reason = "connection closed";
         var needReconnect = true;
         if (closeEvent && "reason" in closeEvent && closeEvent["reason"]) {
@@ -547,7 +549,7 @@ centrifugeProto._connect = function (callback) {
             }
         }
 
-        self._disconnect(reason, needReconnect, false);
+        self._disconnect(reason, needReconnect);
 
         if (self._reconnect === true) {
             self._reconnecting = true;
@@ -571,7 +573,7 @@ centrifugeProto._connect = function (callback) {
     };
 };
 
-centrifugeProto._disconnect = function (reason, shouldReconnect, closeTransport) {
+centrifugeProto._disconnect = function (reason, shouldReconnect) {
 
     if (this.isDisconnected()) {
         return;
@@ -597,7 +599,7 @@ centrifugeProto._disconnect = function (reason, shouldReconnect, closeTransport)
         }
     }
 
-    if (closeTransport) {
+    if (!this._transportClosed) {
         this._transport.close();
         this._transport = null;
     }
@@ -605,7 +607,7 @@ centrifugeProto._disconnect = function (reason, shouldReconnect, closeTransport)
 
 centrifugeProto._refreshFailed = function() {
     if (!this.isDisconnected()) {
-        this._disconnect("refresh failed", false, true);
+        this._disconnect("refresh failed", false);
     }
     if (this._config.refreshFailed !== null) {
         this._config.refreshFailed();
@@ -832,7 +834,7 @@ centrifugeProto._startPing = function() {
         }
         self.ping();
         self._pongTimeout = setTimeout(function() {
-            self._disconnect("no ping", true, true);
+            self._disconnect("no ping", true);
         }, self._config.pongWaitTimeout);
     }, this._config.pingInterval);
 };
@@ -852,7 +854,7 @@ centrifugeProto._disconnectResponse = function (message) {
         if ("reason" in message.body) {
             reason = message.body["reason"];
         }
-        this._disconnect(reason, shouldReconnect, true);
+        this._disconnect(reason, shouldReconnect);
     } else {
         this.trigger('error', [{"message": message}]);
     }
@@ -1203,7 +1205,7 @@ centrifugeProto.configure = function (configuration) {
 centrifugeProto.connect = centrifugeProto._connect;
 
 centrifugeProto.disconnect = function() {
-    this._disconnect("client", false, true);
+    this._disconnect("client", false);
 };
 
 centrifugeProto.ping = centrifugeProto._ping;

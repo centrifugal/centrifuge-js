@@ -440,6 +440,11 @@ centrifugeProto._send = function (messages) {
     if (messages.length === 0) {
         return;
     }
+    if (messages.length == 1) {
+        // small optimization to send single object to server to reduce allocations required
+        // to parse array compared to parse single object client request.
+        messages = messages[0];
+    }
     this._debug('Send', messages);
     this._transport.send(JSON.stringify(messages));
 };
@@ -601,7 +606,6 @@ centrifugeProto._disconnect = function (reason, shouldReconnect) {
 
     if (!this._transportClosed) {
         this._transport.close();
-        this._transport = null;
     }
 };
 

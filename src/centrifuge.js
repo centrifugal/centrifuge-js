@@ -449,35 +449,11 @@ centrifugeProto._send = function (messages) {
     this._transport.send(JSON.stringify(messages));
 };
 
-centrifugeProto._connect = function (callback) {
-
-    if (this.isConnected()) {
-        this._debug("connect called when already connected");
-        return;
+centrifugeProto._setupTransport = function() {
+    if (this._transport !== null) {
+        this._transport.close();
+        this._transport = null;
     }
-
-    if (this._status == 'connecting') {
-        return;
-    }
-
-    if (this._numRefreshFailed > 0) {
-        this._debug("can't connect when credentials expired, need to refresh");
-        return;
-    }
-
-    this._debug("start connecting");
-
-    this._setStatus('connecting');
-
-    this._clientID = null;
-    this._reconnect = true;
-
-    var self = this;
-
-    if (callback) {
-        this.on('connect', callback);
-    }
-
     // detect transport to use - SockJS or raw Websocket
     if (this._useSockJS === true) {
         var sockjsOptions = {
@@ -490,6 +466,8 @@ centrifugeProto._connect = function (callback) {
     } else {
         this._transport = new WebSocket(this._config.url);
     }
+
+    var self = this;
 
     this._transport.onopen = function () {
         self._transportClosed = false;
@@ -522,6 +500,7 @@ centrifugeProto._connect = function (callback) {
             // in insecure client mode we don't need timestamp and token.
             msg["params"]["timestamp"] = self._config.timestamp;
             msg["params"]["token"] = self._config.token;
+            msg["params"]["ping"] = self._config.ping;
             if (!isString(self._config.timestamp)) {
                 self._log("timestamp expected to be string");
             }
@@ -576,6 +555,36 @@ centrifugeProto._connect = function (callback) {
         self._receive(data);
         self._restartPing();
     };
+};
+
+centrifugeProto._connect = function (callback) {
+
+    if (this.isConnected()) {
+        this._debug("connect called when already connected");
+        return;
+    }
+
+    if (this._status == 'connecting') {
+        return;
+    }
+
+    if (this._numRefreshFailed > 0) {
+        this._debug("can't connect when credentials expired, need to refresh");
+        return;
+    }
+
+    this._debug("start connecting");
+
+    this._setStatus('connecting');
+
+    this._clientID = null;
+    this._reconnect = true;
+
+    if (callback) {
+        this.on('connect', callback);
+    }
+
+    this._setupTransport();
 };
 
 centrifugeProto._disconnect = function (reason, shouldReconnect) {
@@ -1132,8 +1141,7 @@ centrifugeProto._flush = function() {
 
 centrifugeProto._ping = function () {
     var msg = {
-        "method": "ping",
-        "params": {}
+        "method": "ping"
     };
     this._addMessage(msg);
 };

@@ -458,6 +458,23 @@ centrifugeProto._setupTransport = function() {
         if (this._config.server !== null) {
             sockjsOptions['server'] = this._config.server;
         }
+
+        this._config.sockJS.prototype._transportClose = function (code, reason) {
+            if (this._transport) {
+                this._transport.removeAllListeners();
+                this._transport.close();
+                this._transport = null;
+                this.transport = null;
+            }
+            var userSetCode = function(code) {
+              return code === 1000 || (code >= 3000 && code <= 4999);
+            };
+            if (!userSetCode(code) && code !== 2000 && this.readyState === this.CONNECTING) {
+                this._connect();
+                return;
+            }
+            this._close(code, reason);
+        };
         this._transport = new this._config.sockJS(this._config.url, null, sockjsOptions);
     } else {
         this._transport = new WebSocket(this._config.url);

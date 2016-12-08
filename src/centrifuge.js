@@ -450,10 +450,6 @@ centrifugeProto._send = function (messages) {
 };
 
 centrifugeProto._setupTransport = function() {
-    if (this._transport !== null) {
-        this._transport.close();
-        this._transport = null;
-    }
     // detect transport to use - SockJS or raw Websocket
     if (this._useSockJS === true) {
         var sockjsOptions = {

@@ -1664,6 +1664,7 @@ function Centrifuge(options) {
     this._reconnecting = false;
     this._transport = null;
     this._transportName = null;
+    this._transportClosed = true;
     this._messageId = 0;
     this._clientID = null;
     this._subs = {};
@@ -1674,6 +1675,8 @@ function Centrifuge(options) {
     this._authChannels = {};
     this._numRefreshFailed = 0;
     this._refreshTimeout = null;
+    this._pingInterval = null;
+    this._pongTimeout = null;
     this._retries = 0;
     this._callbacks = {};
     this._latency = null;
@@ -1685,6 +1688,9 @@ function Centrifuge(options) {
         timeout: 5000,
         info: "",
         resubscribe: true,
+        ping: true,
+        pingInterval: 25000,
+        pongWaitTimeout: 5000,
         debug: false,
         insecure: false,
         server: null,
@@ -1971,6 +1977,11 @@ centrifugeProto._send = function (messages) {
     if (messages.length === 0) {
         return;
     }
+    if (messages.length == 1) {
+        // small optimization to send single object to server to reduce allocations required
+        // to parse array compared to parse single object client request.
+        messages = messages[0];
+    }
     this._debug('Send', messages);
     this._transport.send(JSON.stringify(messages));
 };
@@ -2018,7 +2029,7 @@ centrifugeProto._connect = function (callback) {
     }
 
     this._transport.onopen = function () {
-
+        self._transportClosed = false;
         self._reconnecting = false;
 
         if (self._useSockJS) {
@@ -2064,6 +2075,7 @@ centrifugeProto._connect = function (callback) {
     };
 
     this._transport.onclose = function (closeEvent) {
+        self._transportClosed = true;
         var reason = "connection closed";
         var needReconnect = true;
         if (closeEvent && "reason" in closeEvent && closeEvent["reason"]) {
@@ -2078,7 +2090,20 @@ centrifugeProto._connect = function (callback) {
                 needReconnect = reason !== "disconnect";
             }
         }
-        self._disconnect(reason, needReconnect, false);
+
+        self._disconnect(reason, needReconnect);
+
+        if (self._reconnect === true) {
+            self._reconnecting = true;
+            var interval = self._getRetryInterval();
+            self._debug("reconnect after " + interval + " milliseconds");
+            setTimeout(function () {
+                if (self._reconnect === true) {
+                    self._connect.call(self);
+                }
+            }, interval);
+        }
+
     };
 
     this._transport.onmessage = function (event) {
@@ -2086,14 +2111,18 @@ centrifugeProto._connect = function (callback) {
         data = JSON.parse(event.data);
         self._debug('Received', data);
         self._receive(data);
+        self._restartPing();
     };
 };
 
-centrifugeProto._disconnect = function (reason, shouldReconnect, closeTransport) {
+centrifugeProto._disconnect = function (reason, shouldReconnect) {
+
     if (this.isDisconnected()) {
         return;
     }
+
     this._debug("disconnected:", reason, shouldReconnect);
+
     var reconnect = shouldReconnect || false;
     if (reconnect === false) {
         this._reconnect = false;
@@ -2107,32 +2136,22 @@ centrifugeProto._disconnect = function (reason, shouldReconnect, closeTransport)
             "reason": reason,
             "reconnect": reconnect
         };
+        if (this._refreshTimeout) {
+            clearTimeout(this._refreshTimeout);
+        }
         if (this._reconnecting === false) {
             this.trigger('disconnect', [disconnectContext]);
         }
     }
 
-    if (closeTransport) {
+    if (!this._transportClosed) {
         this._transport.close();
-        this._transport = null;
-    }
-
-    var self = this;
-    if (shouldReconnect === true && self._reconnect === true) {
-        self._reconnecting = true;
-        var interval = self._getRetryInterval();
-        self._debug("reconnect after " + interval + " milliseconds");
-        setTimeout(function () {
-            if (self._reconnect === true) {
-                self._connect.call(self);
-            }
-        }, interval);
     }
 };
 
 centrifugeProto._refreshFailed = function() {
     if (!this.isDisconnected()) {
-        this._disconnect("refresh failed", false, true);
+        this._disconnect("refresh failed", false);
     }
     if (this._config.refreshFailed !== null) {
         this._config.refreshFailed();
@@ -2300,8 +2319,10 @@ centrifugeProto._connectResponse = function (message) {
         if (this._refreshTimeout) {
             clearTimeout(this._refreshTimeout);
         }
+
+        var self = this;
+
         if (message.body.expires) {
-            var self = this;
             this._refreshTimeout = setTimeout(function() {
                 self._refresh.call(self);
             }, message.body.ttl * 1000);
@@ -2323,10 +2344,48 @@ centrifugeProto._connectResponse = function (message) {
             "transport": this._transportName,
             "latency": this._latency
         };
+
+        this._restartPing();
         this.trigger('connect', [connectContext]);
     } else {
         this.trigger('error', [{"message": message}]);
     }
+};
+
+centrifugeProto._stopPing = function() {
+    if (this._pongTimeout !== null) {
+        clearTimeout(this._pongTimeout);
+    }
+    if (this._pingInterval !== null) {
+        clearInterval(this._pingInterval);
+    }
+};
+
+centrifugeProto._startPing = function() {
+    if (this._config.ping !== true || this._config.pingInterval <= 0) {
+        return;
+    }
+    if (!this.isConnected()) {
+        return;
+    }
+
+    var self = this;
+
+    this._pingInterval = setInterval(function() {
+        if (!self.isConnected()) {
+            self._stopPing();
+            return;
+        }
+        self.ping();
+        self._pongTimeout = setTimeout(function() {
+            self._disconnect("no ping", true);
+        }, self._config.pongWaitTimeout);
+    }, this._config.pingInterval);
+};
+
+centrifugeProto._restartPing = function() {
+    this._stopPing();
+    this._startPing();
 };
 
 centrifugeProto._disconnectResponse = function (message) {
@@ -2339,7 +2398,7 @@ centrifugeProto._disconnectResponse = function (message) {
         if ("reason" in message.body) {
             reason = message.body["reason"];
         }
-        this._disconnect(reason, shouldReconnect, true);
+        this._disconnect(reason, shouldReconnect);
     } else {
         this.trigger('error', [{"message": message}]);
     }
@@ -2690,7 +2749,7 @@ centrifugeProto.configure = function (configuration) {
 centrifugeProto.connect = centrifugeProto._connect;
 
 centrifugeProto.disconnect = function() {
-    this._disconnect("client", false, true);
+    this._disconnect("client", false);
 };
 
 centrifugeProto.ping = centrifugeProto._ping;

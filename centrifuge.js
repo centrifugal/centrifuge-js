@@ -2107,6 +2107,9 @@ centrifugeProto._disconnect = function (reason, shouldReconnect, closeTransport)
             "reason": reason,
             "reconnect": reconnect
         };
+        if (this._refreshTimeout) {
+            clearTimeout(this._refreshTimeout);
+        }
         if (this._reconnecting === false) {
             this.trigger('disconnect', [disconnectContext]);
         }

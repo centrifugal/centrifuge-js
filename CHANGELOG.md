@@ -1,3 +1,8 @@
+1.3.9
+=====
+
+* do not try to refresh after disconnected. See #24
+
 1.3.8
 =====
 

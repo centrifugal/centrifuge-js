@@ -10,6 +10,12 @@ You can disable automatic pings using `"ping": false` option. Also there is an a
 control how long to wait for pong response before closing connection.
 
 
+1.3.9
+=====
+
+* do not try to refresh after disconnected. See #24
+
+
 1.3.8
 =====
 

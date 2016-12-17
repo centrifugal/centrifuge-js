@@ -1717,7 +1717,8 @@ function Centrifuge(options) {
         authEndpoint: "/centrifuge/auth/",
         authHeaders: {},
         authParams: {},
-        authTransport: "ajax"
+        authTransport: "ajax",
+        doNotPatchSockJS: false // This is hopefully a temporary option until https://github.com/sockjs/sockjs-client/issues/342 resolved
     };
     if (options) {
         this.configure(options);
@@ -1904,6 +1905,30 @@ centrifugeProto._configure = function (configuration) {
             this._useSockJS = true;
         }
     }
+
+    // temporary fix, can be removed after resolving https://github.com/sockjs/sockjs-client/issues/342
+    if (this._useSockJS === true && this._config.doNotPatchSockJS === false) {
+        var versionsToPatch = ["1.0.0", "1.0.1", "1.0.2", "1.0.3", "1.1.0", "1.1.1"];
+        if (versionsToPatch.indexOf(this._config.sockJS.version) !== -1) {
+            this._debug("patch SockJS transport closing to fix https://github.com/sockjs/sockjs-client/issues/342");
+            this._config.sockJS.prototype._transportClose = function (code, reason) {
+                if (this._transport) {
+                    this._transport.removeAllListeners();
+                    this._transport.close(); // This is the only line we added in this patch.
+                    this._transport = null;
+                    this.transport = null;
+                }
+                var userSetCode = function (code) {
+                    return code === 1000 || (code >= 3000 && code <= 4999);
+                };
+                if (!userSetCode(code) && code !== 2000 && this.readyState === this.CONNECTING) {
+                    this._connect();
+                    return;
+                }
+                this._close(code, reason);
+            };
+        }
+    }
 };
 
 centrifugeProto._setStatus = function (newStatus) {
@@ -1986,35 +2011,7 @@ centrifugeProto._send = function (messages) {
     this._transport.send(JSON.stringify(messages));
 };
 
-centrifugeProto._connect = function (callback) {
-
-    if (this.isConnected()) {
-        this._debug("connect called when already connected");
-        return;
-    }
-
-    if (this._status == 'connecting') {
-        return;
-    }
-
-    if (this._numRefreshFailed > 0) {
-        this._debug("can't connect when credentials expired, need to refresh");
-        return;
-    }
-
-    this._debug("start connecting");
-
-    this._setStatus('connecting');
-
-    this._clientID = null;
-    this._reconnect = true;
-
-    var self = this;
-
-    if (callback) {
-        this.on('connect', callback);
-    }
-
+centrifugeProto._setupTransport = function() {
     // detect transport to use - SockJS or raw Websocket
     if (this._useSockJS === true) {
         var sockjsOptions = {
@@ -2027,6 +2024,8 @@ centrifugeProto._connect = function (callback) {
     } else {
         this._transport = new WebSocket(this._config.url);
     }
+
+    var self = this;
 
     this._transport.onopen = function () {
         self._transportClosed = false;
@@ -2059,6 +2058,7 @@ centrifugeProto._connect = function (callback) {
             // in insecure client mode we don't need timestamp and token.
             msg["params"]["timestamp"] = self._config.timestamp;
             msg["params"]["token"] = self._config.token;
+            msg["params"]["ping"] = self._config.ping;
             if (!isString(self._config.timestamp)) {
                 self._log("timestamp expected to be string");
             }
@@ -2113,6 +2113,36 @@ centrifugeProto._connect = function (callback) {
         self._receive(data);
         self._restartPing();
     };
+};
+
+centrifugeProto._connect = function (callback) {
+
+    if (this.isConnected()) {
+        this._debug("connect called when already connected");
+        return;
+    }
+
+    if (this._status == 'connecting') {
+        return;
+    }
+
+    if (this._numRefreshFailed > 0) {
+        this._debug("can't connect when credentials expired, need to refresh");
+        return;
+    }
+
+    this._debug("start connecting");
+
+    this._setStatus('connecting');
+
+    this._clientID = null;
+    this._reconnect = true;
+
+    if (callback) {
+        this.on('connect', callback);
+    }
+
+    this._setupTransport();
 };
 
 centrifugeProto._disconnect = function (reason, shouldReconnect) {
@@ -2672,8 +2702,7 @@ centrifugeProto._flush = function() {
 
 centrifugeProto._ping = function () {
     var msg = {
-        "method": "ping",
-        "params": {}
+        "method": "ping"
     };
     this._addMessage(msg);
 };

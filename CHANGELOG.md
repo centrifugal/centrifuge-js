@@ -1,13 +1,18 @@
-1.4.0 (not released yet)
-========================
+1.4.0
+=====
 
-* add automatic client to server pings. See [issue](https://github.com/centrifugal/centrifugo/issues/117) to read about motivation for this.
+This release works with Centrifugo >= 1.6.0
 
-Ping sent to server only for idle connection - i.e. if there was no wire activity for `pingInterval` period so it should
-not affect performance a lot.
+* automatic client to server pings.
 
-You can disable automatic pings using `"ping": false` option. Also there is an adjustable `pongWaitTimeout` option to
-control how long to wait for pong response before closing connection.
+Ping will be sent to server only when connection was idle - i.e. if there was no wire activity
+for `pingInterval` period so it should not affect performance much.
+
+You can disable automatic pings using `"ping": false` option. But before turning it off make
+sure you've read [chapter about pings in docs](https://fzambia.gitbooks.io/centrifugal/content/mixed/ping.html).
+
+Also there is an adjustable `pongWaitTimeout` option to control how long to wait for pong
+response before closing connection.
 
 
 1.3.9

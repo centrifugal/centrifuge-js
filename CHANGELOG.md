@@ -1,3 +1,8 @@
+1.4.1
+=====
+
+* fix ReferenceError - see #25
+
 1.4.0
 =====
 

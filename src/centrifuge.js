@@ -429,7 +429,7 @@ centrifugeProto._getRetryInterval = function() {
 };
 
 centrifugeProto._clearConnectedState = function (reconnect) {
-    self._clientID = null;
+    this._clientID = null;
 
     // fire errbacks of registered calls.
     for (var uid in this._callbacks) {

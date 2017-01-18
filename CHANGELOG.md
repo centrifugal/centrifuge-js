@@ -1,3 +1,8 @@
+1.4.2
+=====
+
+* Do not send ping to server for a while after receiving SockJS heartbeat frame.
+
 1.4.1
 =====
 

@@ -152,7 +152,7 @@ function Centrifuge(options) {
         info: "",
         resubscribe: true,
         ping: true,
-        pingInterval: 25000,
+        pingInterval: 30000,
         pongWaitTimeout: 5000,
         debug: false,
         insecure: false,
@@ -496,6 +496,9 @@ centrifugeProto._setupTransport = function() {
 
         if (self._useSockJS) {
             self._transportName = self._transport._transport.transportName;
+            self._transport.onheartbeat = function(){
+                self._restartPing();
+            };
         } else {
             self._transportName = "raw-websocket";
         }

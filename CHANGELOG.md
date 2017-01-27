@@ -1,3 +1,8 @@
+1.4.3
+=====
+
+* Use public SockJS API to get transport name.
+
 1.4.2
 =====
 

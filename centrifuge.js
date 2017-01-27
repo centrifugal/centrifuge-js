@@ -1717,8 +1717,7 @@ function Centrifuge(options) {
         authEndpoint: "/centrifuge/auth/",
         authHeaders: {},
         authParams: {},
-        authTransport: "ajax",
-        doNotPatchSockJS: false // This is hopefully a temporary option until https://github.com/sockjs/sockjs-client/issues/342 resolved
+        authTransport: "ajax"
     };
     if (options) {
         this.configure(options);
@@ -1905,30 +1904,6 @@ centrifugeProto._configure = function (configuration) {
             this._useSockJS = true;
         }
     }
-
-    // temporary fix, can be removed after resolving https://github.com/sockjs/sockjs-client/issues/342
-    if (this._useSockJS === true && this._config.doNotPatchSockJS === false) {
-        var versionsToPatch = ["1.0.0", "1.0.1", "1.0.2", "1.0.3", "1.1.0", "1.1.1"];
-        if (versionsToPatch.indexOf(this._config.sockJS.version) !== -1) {
-            this._debug("patch SockJS transport closing to fix https://github.com/sockjs/sockjs-client/issues/342");
-            this._config.sockJS.prototype._transportClose = function (code, reason) {
-                if (this._transport) {
-                    this._transport.removeAllListeners();
-                    this._transport.close(); // This is the only line we added in this patch.
-                    this._transport = null;
-                    this.transport = null;
-                }
-                var userSetCode = function (code) {
-                    return code === 1000 || (code >= 3000 && code <= 4999);
-                };
-                if (!userSetCode(code) && code !== 2000 && this.readyState === this.CONNECTING) {
-                    this._connect();
-                    return;
-                }
-                this._close(code, reason);
-            };
-        }
-    }
 };
 
 centrifugeProto._setStatus = function (newStatus) {
@@ -2032,7 +2007,7 @@ centrifugeProto._setupTransport = function() {
         self._reconnecting = false;
 
         if (self._useSockJS) {
-            self._transportName = self._transport._transport.transportName;
+            self._transportName = self._transport.transport;
             self._transport.onheartbeat = function(){
                 self._restartPing();
             };

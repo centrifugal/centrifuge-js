@@ -1,7 +1,9 @@
 1.4.3
 =====
 
-* Use public SockJS API to get transport name.
+It's recommended to update SockJS library to latest version - 1.1.2
+
+* Use public SockJS API to get transport name. See [#26](https://github.com/centrifugal/centrifuge-js/issues/26)
 
 1.4.2
 =====

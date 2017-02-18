@@ -1,6 +1,6 @@
 {
   "name": "centrifuge",
-  "version": "1.4.3",
+  "version": "1.4.4",
   "description": "Centrifuge javascript client",
   "main": "src/centrifuge.js",
   "dependencies": {

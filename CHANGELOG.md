@@ -1,3 +1,8 @@
+1.4.4
+=====
+
+* removing `ping` field from connect message as it not used by Centrifugo >= 1.6.3
+
 1.4.3
 =====
 

@@ -499,7 +499,6 @@ centrifugeProto._setupTransport = function() {
             // in insecure client mode we don't need timestamp and token.
             msg["params"]["timestamp"] = self._config.timestamp;
             msg["params"]["token"] = self._config.token;
-            msg["params"]["ping"] = self._config.ping;
             if (!isString(self._config.timestamp)) {
                 self._log("timestamp expected to be string");
             }

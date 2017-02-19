@@ -184,7 +184,8 @@ function Centrifuge(options) {
         authHeaders: {},
         authParams: {},
         authTransport: "ajax",
-        preferRawWebsocket: true
+        preferRawWebsocket: false,
+        preferRawWebsocketConnectTimeout: 1000
     };
     if (options) {
         this.configure(options);
@@ -485,6 +486,7 @@ centrifugeProto._setupTransport = function() {
 
     // detect transport to use - SockJS or raw Websocket
     if (this._config.preferRawWebsocket) {
+        this._debug("Trying raw websocket before SockJS");
         if (!this._websocketSupported()) {
             if (!this._sockJS) {
                 this._debug("No Websocket support and no SockJS, can't connect");
@@ -497,8 +499,16 @@ centrifugeProto._setupTransport = function() {
             if (!this._rawWebsocketFailed || this._sockJS === null) {
                 this._transport = new WebSocket(this._rawWebsocketEndpoint());
                 this._rawWebsocketTimeout = setTimeout(function() {
-                    self._rawWebsocketFailed = true;
-                }, 1000);
+                    if (self._sockJS !== null) {
+                        self._transport.onopen = null;
+                        self._transport.onerror = null;
+                        self._transport.onclose = null;
+                        self._rawWebsocketFailed = true;
+                        self._setStatus('disconnected');
+                        // Try to connect using SockJS.
+                        self._connect.call(self);
+                    }
+                }, this._config.preferRawWebsocketConnectTimeout);
             } else {
                 this._isSockJS = true;
                 this._transport = new this._sockJS(this._sockjsEndpoint(), null, sockjsOptions);
@@ -514,8 +524,11 @@ centrifugeProto._setupTransport = function() {
     }
 
     this._transport.onopen = function () {
-        if (self._rawWebsocketTimeout !== null) {
-            clearTimeout(self._rawWebsocketTimeout);
+        if (self._config.preferRawWebsocket) {
+            if (self._rawWebsocketTimeout !== null) {
+                clearTimeout(self._rawWebsocketTimeout);
+            }
+            self._rawWebsocketFailed = false;
         }
 
         self._transportClosed = false;
@@ -583,17 +596,27 @@ centrifugeProto._setupTransport = function() {
             }
         }
 
-        self._disconnect(reason, needReconnect);
+        if (self._config.preferRawWebsocket && !self._rawWebsocketFailed && !self._isSockJS && self._sockJS) {
+            self._rawWebsocketFailed = true;
+            if (self._rawWebsocketTimeout !== null) {
+                clearTimeout(self._rawWebsocketTimeout);
+            }
+            self._setStatus('disconnected');
+            // Now try connecting using SockJS.
+            self._connect.call(self);
+        } else {
+            self._disconnect(reason, needReconnect);
 
-        if (self._reconnect === true) {
-            self._reconnecting = true;
-            var interval = self._getRetryInterval();
-            self._debug("reconnect after " + interval + " milliseconds");
-            setTimeout(function () {
-                if (self._reconnect === true) {
-                    self._connect.call(self);
-                }
-            }, interval);
+            if (self._reconnect === true) {
+                self._reconnecting = true;
+                var interval = self._getRetryInterval();
+                self._debug("reconnect after " + interval + " milliseconds");
+                setTimeout(function () {
+                    if (self._reconnect === true) {
+                        self._connect.call(self);
+                    }
+                }, interval);
+            }
         }
 
     };

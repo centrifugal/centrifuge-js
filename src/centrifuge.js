@@ -121,7 +121,8 @@ function errorExists(data) {
 }
 
 function Centrifuge(options) {
-    this._useSockJS = false;
+    this._sockJS = null;
+    this._isSockJS = false;
     this._status = 'disconnected';
     this._reconnect = true;
     this._reconnecting = false;
@@ -144,6 +145,8 @@ function Centrifuge(options) {
     this._callbacks = {};
     this._latency = null;
     this._latencyStart = null;
+    this._rawWebsocketFailed = false;
+    this._rawWebsocketTimeout = null;
     this._config = {
         sockJS: null,
         retry: 1000,
@@ -180,7 +183,9 @@ function Centrifuge(options) {
         authEndpoint: "/centrifuge/auth/",
         authHeaders: {},
         authParams: {},
-        authTransport: "ajax"
+        authTransport: "ajax",
+        preferRawWebsocket: false,
+        preferRawWebsocketConnectTimeout: 1000
     };
     if (options) {
         this.configure(options);
@@ -292,6 +297,32 @@ centrifugeProto._debug = function () {
     }
 };
 
+centrifugeProto._websocketSupported = function() {
+    return !(typeof WebSocket !== 'function' && typeof WebSocket !== 'object')
+};
+
+centrifugeProto._sockjsEndpoint = function() {
+    var url = this._config.url;
+    url = url.replace("ws://", "http://");
+    url = url.replace("wss://", "https://");
+    url = stripSlash(url);
+    if (!endsWith(this._config.url, 'connection')) {
+        url = url + "/connection";
+    }
+    return url;
+};
+
+centrifugeProto._rawWebsocketEndpoint = function() {
+    var url = this._config.url;
+    url = url.replace("http://", "ws://");
+    url = url.replace("https://", "wss://");
+    url = stripSlash(url);
+    if (!endsWith(this._config.url, 'connection/websocket')) {
+        url = url + "/connection/websocket";
+    }
+    return url;
+};
+
 centrifugeProto._configure = function (configuration) {
     this._debug('Configuring centrifuge object with', configuration);
 
@@ -336,35 +367,28 @@ centrifugeProto._configure = function (configuration) {
         this._debug("client will connect to SockJS endpoint");
         if (this._config.sockJS !== null) {
             this._debug("SockJS explicitly provided in options");
-            this._useSockJS = true;
-        } else if (typeof SockJS === 'undefined') {
-            throw 'include SockJS client library before Centrifuge javascript client library or use raw Websocket connection endpoint';
+            this._sockJS = this._config.sockJS;
         } else {
+            if (typeof SockJS === 'undefined') {
+                throw 'include SockJS client library before Centrifuge javascript client library or use raw Websocket connection endpoint';
+            }
             this._debug("use globally defined SockJS");
-            this._config.sockJS = SockJS;
-            this._useSockJS = true;
+            this._sockJS = SockJS;
         }
     } else if (endsWith(this._config.url, 'connection/websocket')) {
         this._debug("client will connect to raw Websocket endpoint");
-        this._config.url = this._config.url.replace("http://", "ws://");
-        this._config.url = this._config.url.replace("https://", "wss://");
     } else {
         this._debug("client will detect connection endpoint itself");
-        if (this._config.sockJS === null && typeof SockJS === 'undefined') {
-            this._debug("no SockJS found, client will connect to raw Websocket endpoint");
-            this._config.url += "/connection/websocket";
-            this._config.url = this._config.url.replace("http://", "ws://");
-            this._config.url = this._config.url.replace("https://", "wss://");
+        if (this._config.sockJS !== null) {
+            this._debug("SockJS explicitly provided in options");
+            this._sockJS = this._config.sockJS;
         } else {
-            this._debug("SockJS found, client will connect to SockJS endpoint");
-            if (this._config.sockJS !== null) {
-                this._debug("SockJS explicitly provided in options");
+            if (typeof SockJS === 'undefined') {
+                this._debug("SockJS not found");
             } else {
                 this._debug("use globally defined SockJS");
-                this._config.sockJS = SockJS;
+                this._sockJS = SockJS;
             }
-            this._config.url += "/connection";
-            this._useSockJS = true;
         }
     }
 };
@@ -450,26 +474,67 @@ centrifugeProto._send = function (messages) {
 };
 
 centrifugeProto._setupTransport = function() {
-    // detect transport to use - SockJS or raw Websocket
-    if (this._useSockJS === true) {
-        var sockjsOptions = {
-            "transports": this._config.transports
-        };
-        if (this._config.server !== null) {
-            sockjsOptions['server'] = this._config.server;
-        }
-        this._transport = new this._config.sockJS(this._config.url, null, sockjsOptions);
-    } else {
-        this._transport = new WebSocket(this._config.url);
+    var sockjsOptions = {
+        "transports": this._config.transports
+    };
+    if (this._config.server !== null) {
+        sockjsOptions['server'] = this._config.server;
     }
+    this._isSockJS = false;
 
     var self = this;
 
+    // detect transport to use - SockJS or raw Websocket
+    if (this._config.preferRawWebsocket) {
+        this._debug("Trying raw websocket before SockJS");
+        if (!this._websocketSupported()) {
+            if (!this._sockJS) {
+                this._debug("No Websocket support and no SockJS, can't connect");
+                return;
+            } else {
+                this._isSockJS = true;
+                this._transport = new this._sockJS(this._sockjsEndpoint(), null, sockjsOptions);
+            }
+        } else {
+            if (!this._rawWebsocketFailed || this._sockJS === null) {
+                this._transport = new WebSocket(this._rawWebsocketEndpoint());
+                this._rawWebsocketTimeout = setTimeout(function() {
+                    if (self._sockJS !== null) {
+                        self._transport.onopen = null;
+                        self._transport.onerror = null;
+                        self._transport.onclose = null;
+                        self._rawWebsocketFailed = true;
+                        self._setStatus('disconnected');
+                        // Try to connect using SockJS.
+                        self._connect.call(self);
+                    }
+                }, this._config.preferRawWebsocketConnectTimeout);
+            } else {
+                this._isSockJS = true;
+                this._transport = new this._sockJS(this._sockjsEndpoint(), null, sockjsOptions);
+            }
+        }
+    } else {
+        if (this._sockJS !== null) {
+            this._isSockJS = true;
+            this._transport = new this._sockJS(this._sockjsEndpoint(), null, sockjsOptions);
+        } else {
+            this._transport = new WebSocket(this._rawWebsocketEndpoint());
+        }
+    }
+
     this._transport.onopen = function () {
+        if (self._config.preferRawWebsocket) {
+            if (self._rawWebsocketTimeout !== null) {
+                clearTimeout(self._rawWebsocketTimeout);
+            }
+            self._rawWebsocketFailed = false;
+        }
+
         self._transportClosed = false;
         self._reconnecting = false;
 
-        if (self._useSockJS) {
+        if (self._isSockJS) {
             self._transportName = self._transport.transport;
             self._transport.onheartbeat = function(){
                 self._restartPing();
@@ -531,17 +596,27 @@ centrifugeProto._setupTransport = function() {
             }
         }
 
-        self._disconnect(reason, needReconnect);
+        if (self._config.preferRawWebsocket && !self._rawWebsocketFailed && !self._isSockJS && self._sockJS) {
+            self._rawWebsocketFailed = true;
+            if (self._rawWebsocketTimeout !== null) {
+                clearTimeout(self._rawWebsocketTimeout);
+            }
+            self._setStatus('disconnected');
+            // Now try connecting using SockJS.
+            self._connect.call(self);
+        } else {
+            self._disconnect(reason, needReconnect);
 
-        if (self._reconnect === true) {
-            self._reconnecting = true;
-            var interval = self._getRetryInterval();
-            self._debug("reconnect after " + interval + " milliseconds");
-            setTimeout(function () {
-                if (self._reconnect === true) {
-                    self._connect.call(self);
-                }
-            }, interval);
+            if (self._reconnect === true) {
+                self._reconnecting = true;
+                var interval = self._getRetryInterval();
+                self._debug("reconnect after " + interval + " milliseconds");
+                setTimeout(function () {
+                    if (self._reconnect === true) {
+                        self._connect.call(self);
+                    }
+                }, interval);
+            }
         }
 
     };

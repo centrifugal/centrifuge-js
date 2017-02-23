@@ -1,3 +1,8 @@
+1.4.5
+=====
+
+* update `es6-promise` dependency to `^4.0.5`
+
 1.4.4
 =====
 

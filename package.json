@@ -1,11 +1,11 @@
 {
   "name": "centrifuge",
-  "version": "1.4.4",
+  "version": "1.4.5",
   "description": "Centrifuge javascript client",
   "main": "src/centrifuge.js",
   "dependencies": {
     "wolfy87-eventemitter": "4.3.0",
-    "es6-promise": "3.0.2"
+    "es6-promise": "^4.0.5"
   },
   "devDependencies": {
     "browserify": "^6.1.0",

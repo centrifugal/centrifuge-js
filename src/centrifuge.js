@@ -919,7 +919,6 @@ centrifugeProto._subscribeResponse = function (message) {
     }
 
     if (!errorExists(message)) {
-        sub._setSubscribeSuccess();
         var messages = body["messages"];
         if (messages && messages.length > 0) {
             // handle missed messages
@@ -932,6 +931,11 @@ centrifugeProto._subscribeResponse = function (message) {
                 this._lastMessageID[channel] = body["last"];
             }
         }
+        var recovered = false;
+        if ("recovered" in body) {
+            recovered = body["recovered"]
+        }
+        sub._setSubscribeSuccess(recovered);
     } else {
         this.trigger('error', [{"message": message}]);
         sub._setSubscribeError(this._errorObjectFromMessage(message));
@@ -1423,6 +1427,7 @@ function Sub(centrifuge, channel, events) {
     this.channel = channel;
     this._setEvents(events);
     this._isResubscribe = false;
+    this._recovered = false;
     this._ready = false;
     this._promise = null;
     this._initializePromise();
@@ -1504,12 +1509,13 @@ subProto._setSubscribing = function() {
     this._status = _STATE_SUBSCRIBING;
 };
 
-subProto._setSubscribeSuccess = function() {
+subProto._setSubscribeSuccess = function(recovered) {
     if (this._status == _STATE_SUCCESS) {
         return;
     }
+    this._recovered = recovered;
     this._status = _STATE_SUCCESS;
-    var successContext = this._getSubscribeSuccessContext();
+    var successContext = this._getSubscribeSuccessContext(recovered);
     this.trigger("subscribe", [successContext]);
     this._resolve(successContext);
 };
@@ -1543,7 +1549,8 @@ subProto._setUnsubscribed = function() {
 subProto._getSubscribeSuccessContext = function() {
     return {
         "channel": this.channel,
-        "isResubscribe": this._isResubscribe
+        "isResubscribe": this._isResubscribe,
+        "recovered": this._recovered
     };
 };
 

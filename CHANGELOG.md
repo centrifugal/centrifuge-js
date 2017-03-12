@@ -1,3 +1,26 @@
+Master
+======
+
+* export `recovered` flag that indicates that Centrifugo thinks all messages were successfully recovered after successful resubscribe on channel during reconnect.
+
+So it's possible to use it like this:
+
+```
+function handleSubscribe(ctx) {
+    console.log('Subscribed on channel ' + ctx.channel);
+    if (ctx.isResubscribe && !ctx.recovered) {
+        console.log("you need to restore messages from app backend");
+    } else {
+        console.log("no need to restore state");
+    }
+}
+
+var sub = centrifuge.subscribe(channel, handleMessage).on("subscribe", handleSubscribe)
+```
+
+Note that asking your backend about actual state after every reconnect is still the most reliable way to recover your app state. Relying on `recovered` flag can be an acceptable trade off for some applications though.
+
+
 1.4.5
 =====
 

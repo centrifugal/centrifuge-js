@@ -931,7 +931,10 @@ centrifugeProto._subscribeResponse = function (message) {
                 this._lastMessageID[channel] = body["last"];
             }
         }
-        var recovered = body["recovered"];
+        var recovered = false;
+        if ("recovered" in body) {
+            recovered = body["recovered"]
+        }
         sub._setSubscribeSuccess(recovered);
     } else {
         this.trigger('error', [{"message": message}]);

@@ -1847,7 +1847,8 @@ function errorExists(data) {
 }
 
 function Centrifuge(options) {
-    this._useSockJS = false;
+    this._sockJS = null;
+    this._isSockJS = false;
     this._status = 'disconnected';
     this._reconnect = true;
     this._reconnecting = false;
@@ -2018,6 +2019,32 @@ centrifugeProto._debug = function () {
     }
 };
 
+centrifugeProto._websocketSupported = function () {
+    return !(typeof WebSocket !== 'function' && typeof WebSocket !== 'object')
+};
+
+centrifugeProto._sockjsEndpoint = function () {
+    var url = this._config.url;
+    url = url.replace("ws://", "http://");
+    url = url.replace("wss://", "https://");
+    url = stripSlash(url);
+    if (!endsWith(this._config.url, 'connection')) {
+        url = url + "/connection";
+    }
+    return url;
+};
+
+centrifugeProto._rawWebsocketEndpoint = function () {
+    var url = this._config.url;
+    url = url.replace("http://", "ws://");
+    url = url.replace("https://", "wss://");
+    url = stripSlash(url);
+    if (!endsWith(this._config.url, 'connection/websocket')) {
+        url = url + "/connection/websocket";
+    }
+    return url;
+};
+
 centrifugeProto._configure = function (configuration) {
     this._debug('Configuring centrifuge object with', configuration);
 
@@ -2062,35 +2089,28 @@ centrifugeProto._configure = function (configuration) {
         this._debug("client will connect to SockJS endpoint");
         if (this._config.sockJS !== null) {
             this._debug("SockJS explicitly provided in options");
-            this._useSockJS = true;
-        } else if (typeof SockJS === 'undefined') {
-            throw 'include SockJS client library before Centrifuge javascript client library or use raw Websocket connection endpoint';
+            this._sockJS = this._config.sockJS;
         } else {
+            if (typeof SockJS === 'undefined') {
+                throw 'include SockJS client library before Centrifuge javascript client library or provide SockJS object in options or use raw Websocket connection endpoint';
+            }
             this._debug("use globally defined SockJS");
-            this._config.sockJS = SockJS;
-            this._useSockJS = true;
+            this._sockJS = SockJS;
         }
     } else if (endsWith(this._config.url, 'connection/websocket')) {
         this._debug("client will connect to raw Websocket endpoint");
-        this._config.url = this._config.url.replace("http://", "ws://");
-        this._config.url = this._config.url.replace("https://", "wss://");
     } else {
         this._debug("client will detect connection endpoint itself");
-        if (this._config.sockJS === null && typeof SockJS === 'undefined') {
-            this._debug("no SockJS found, client will connect to raw Websocket endpoint");
-            this._config.url += "/connection/websocket";
-            this._config.url = this._config.url.replace("http://", "ws://");
-            this._config.url = this._config.url.replace("https://", "wss://");
+        if (this._config.sockJS !== null) {
+            this._debug("SockJS explicitly provided in options");
+            this._sockJS = this._config.sockJS;
         } else {
-            this._debug("SockJS found, client will connect to SockJS endpoint");
-            if (this._config.sockJS !== null) {
-                this._debug("SockJS explicitly provided in options");
+            if (typeof SockJS === 'undefined') {
+                this._debug("SockJS not found");
             } else {
                 this._debug("use globally defined SockJS");
-                this._config.sockJS = SockJS;
+                this._sockJS = SockJS;
             }
-            this._config.url += "/connection";
-            this._useSockJS = true;
         }
     }
 };
@@ -2176,26 +2196,34 @@ centrifugeProto._send = function (messages) {
 };
 
 centrifugeProto._setupTransport = function() {
+
+    var self = this;
+
+    this._isSockJS = false;
+
     // detect transport to use - SockJS or raw Websocket
-    if (this._useSockJS === true) {
+    if (this._sockJS !== null) {
         var sockjsOptions = {
             "transports": this._config.transports
         };
         if (this._config.server !== null) {
             sockjsOptions['server'] = this._config.server;
         }
-        this._transport = new this._config.sockJS(this._config.url, null, sockjsOptions);
+        this._isSockJS = true;
+        this._transport = new this._sockJS(this._sockjsEndpoint(), null, sockjsOptions);
     } else {
-        this._transport = new WebSocket(this._config.url);
+        if (!this._websocketSupported()) {
+            this._debug("No Websocket support and no SockJS configured, can't connect");
+            return;
+        }
+        this._transport = new WebSocket(this._rawWebsocketEndpoint());
     }
-
-    var self = this;
 
     this._transport.onopen = function () {
         self._transportClosed = false;
         self._reconnecting = false;
 
-        if (self._useSockJS) {
+        if (self._isSockJS) {
             self._transportName = self._transport.transport;
             self._transport.onheartbeat = function(){
                 self._restartPing();
@@ -2617,7 +2645,6 @@ centrifugeProto._subscribeResponse = function (message) {
     }
 
     if (!errorExists(message)) {
-        sub._setSubscribeSuccess();
         var messages = body["messages"];
         if (messages && messages.length > 0) {
             // handle missed messages
@@ -2630,6 +2657,11 @@ centrifugeProto._subscribeResponse = function (message) {
                 this._lastMessageID[channel] = body["last"];
             }
         }
+        var recovered = false;
+        if ("recovered" in body) {
+            recovered = body["recovered"]
+        }
+        sub._setSubscribeSuccess(recovered);
     } else {
         this.trigger('error', [{"message": message}]);
         sub._setSubscribeError(this._errorObjectFromMessage(message));
@@ -3121,6 +3153,7 @@ function Sub(centrifuge, channel, events) {
     this.channel = channel;
     this._setEvents(events);
     this._isResubscribe = false;
+    this._recovered = false;
     this._ready = false;
     this._promise = null;
     this._initializePromise();
@@ -3202,12 +3235,13 @@ subProto._setSubscribing = function() {
     this._status = _STATE_SUBSCRIBING;
 };
 
-subProto._setSubscribeSuccess = function() {
+subProto._setSubscribeSuccess = function(recovered) {
     if (this._status == _STATE_SUCCESS) {
         return;
     }
+    this._recovered = recovered;
     this._status = _STATE_SUCCESS;
-    var successContext = this._getSubscribeSuccessContext();
+    var successContext = this._getSubscribeSuccessContext(recovered);
     this.trigger("subscribe", [successContext]);
     this._resolve(successContext);
 };
@@ -3241,7 +3275,8 @@ subProto._setUnsubscribed = function() {
 subProto._getSubscribeSuccessContext = function() {
     return {
         "channel": this.channel,
-        "isResubscribe": this._isResubscribe
+        "isResubscribe": this._isResubscribe,
+        "recovered": this._recovered
     };
 };
 

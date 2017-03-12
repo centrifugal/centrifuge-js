@@ -1,7 +1,7 @@
-Master
-======
+1.4.6
+=====
 
-* export `recovered` flag that indicates that Centrifugo thinks all messages were successfully recovered after successful resubscribe on channel during reconnect.
+* export `recovered` flag in successful subscribe event context. It indicates that Centrifugo thinks all messages were successfully recovered (i.e. client did not miss any messages) after successful resubscribe on channel. See https://github.com/centrifugal/centrifugo/issues/165 for motivation.
 
 So it's possible to use it like this:
 

@@ -2292,6 +2292,7 @@ centrifugeProto._setupTransport = function() {
         // event again).
         if (self._config.onTransportClose !== null) {
             self._config.onTransportClose({
+                "event": closeEvent,
                 "reason": reason,
                 "reconnect": needReconnect
             });

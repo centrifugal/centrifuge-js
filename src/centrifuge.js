@@ -1582,6 +1582,7 @@ subProto.subscribe = function() {
 subProto.unsubscribe = function () {
     this._setUnsubscribed();
     this._centrifuge._unsubscribe(this);
+    this.removeAllListeners();
 };
 
 subProto.publish = function (data) {

@@ -159,6 +159,7 @@ function Centrifuge(options) {
         insecure: false,
         server: null,
         privateChannelPrefix: "$",
+        onTransportClose: null,
         transports: [
             'websocket',
             'xdr-streaming',
@@ -557,6 +558,18 @@ centrifugeProto._setupTransport = function() {
                 self._debug("reason is a plain string", reason);
                 needReconnect = reason !== "disconnect";
             }
+        }
+
+        // onTransportClose callback should be executed every time transport was closed.
+        // This can be helpful to catch failed connection events (because our disconnect
+        // event only called once and every future attempts to connect do not fire disconnect
+        // event again).
+        if (self._config.onTransportClose !== null) {
+            self._config.onTransportClose({
+                "event": closeEvent,
+                "reason": reason,
+                "reconnect": needReconnect
+            });
         }
 
         self._disconnect(reason, needReconnect);

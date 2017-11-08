@@ -1408,7 +1408,7 @@ centrifugeProto.stopAuthBatching = function() {
     }
 };
 
-centrifugeProto.subscribe = function (channel, events) {
+centrifugeProto.subscribe = function (channel, events, lastMessageID) {
     if (arguments.length < 1) {
         throw 'Illegal arguments number: required 1, got ' + arguments.length;
     }
@@ -1417,6 +1417,10 @@ centrifugeProto.subscribe = function (channel, events) {
     }
     if (!this._config.resubscribe && !this.isConnected()) {
         throw 'Can not only subscribe in connected state when resubscribe option is off';
+    }
+
+    if (lastMessageID) {
+        this._lastMessageID[channel] = lastMessageID;
     }
 
     var currentSub = this._getSub(channel);

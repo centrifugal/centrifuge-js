@@ -177,13 +177,15 @@ function Centrifuge(options) {
         refreshParams: {},
         refreshData: {},
         refreshTransport: "ajax",
+        refreshCallback: null,
         refreshAttempts: null,
         refreshInterval: 3000,
         refreshFailed: null,
         authEndpoint: "/centrifuge/auth/",
         authHeaders: {},
         authParams: {},
-        authTransport: "ajax"
+        authTransport: "ajax",
+        authCallback: null
     };
     if (options) {
         this.configure(options);
@@ -735,6 +737,11 @@ centrifugeProto._refresh = function () {
         this._ajax(this._config.refreshEndpoint, this._config.refreshParams, this._config.refreshHeaders, this._config.refreshData, cb);
     } else if (transport === "jsonp") {
         this._jsonp(this._config.refreshEndpoint, this._config.refreshParams, this._config.refreshHeaders, this._config.refreshData, cb);
+    } else if (transport === "custom") {
+        if (!this._config.refreshCallback) {
+            throw 'Missing \'authCallback\' for custom refresh transport';
+        }
+        this._config.refreshCallback(this._config.refreshEndpoint, this._config.refreshParams, this._config.refreshHeaders, data, cb);
     } else {
         throw 'Unknown refresh transport ' + transport;
     }
@@ -1403,6 +1410,11 @@ centrifugeProto.stopAuthBatching = function() {
         this._ajax(this._config.authEndpoint, this._config.authParams, this._config.authHeaders, data, cb);
     } else if (transport === "jsonp") {
         this._jsonp(this._config.authEndpoint, this._config.authParams, this._config.authHeaders, data, cb);
+    } else if (transport === "custom") {
+        if (!this._config.authCallback) {
+            throw 'Missing \'authCallback\' for custom auth transport';
+        }
+        this._config.authCallback(this._config.authEndpoint, this._config.authParams, this._config.authHeaders, data, cb);
     } else {
         throw 'Unknown auth transport ' + transport;
     }

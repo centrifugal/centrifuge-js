@@ -177,13 +177,15 @@ function Centrifuge(options) {
         refreshParams: {},
         refreshData: {},
         refreshTransport: "ajax",
+        refreshCallback: null,
         refreshAttempts: null,
         refreshInterval: 3000,
         refreshFailed: null,
         authEndpoint: "/centrifuge/auth/",
         authHeaders: {},
         authParams: {},
-        authTransport: "ajax"
+        authTransport: "ajax",
+        authCallback: null
     };
     if (options) {
         this.configure(options);

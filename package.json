@@ -1,43 +1,39 @@
 {
-  "name": "centrifuge",
-  "version": "1.4.6",
-  "description": "Centrifuge javascript client",
-  "main": "src/centrifuge.js",
-  "dependencies": {
-    "wolfy87-eventemitter": "4.3.0",
-    "es6-promise": "^4.0.5"
-  },
-  "devDependencies": {
-    "browserify": "^6.1.0",
-    "gulp": "^3.8.8",
-    "gulp-util": "^3.0.3",
-    "gulp-notify": "^2.2.0",
-    "gulp-plumber": "^0.6.6",
-    "gulp-sourcemaps": "~1.2.4",
-    "gulp-uglify": "~1.0.1",
-    "vinyl-buffer": "~1.0.0",
-    "vinyl-source-stream": "^1.0.0",
-    "require-dir": "^0.1.0"
-  },
-  "scripts": {
-    "build-js": "browserify --standalone Centrifuge --entry=src/centrifuge.js src/centrifuge.js -o centrifuge.js",
-    "build-minified-js": "browserify --standalone Centrifuge --entry=src/centrifuge.js src/centrifuge.js | uglifyjs -cm > centrifuge.min.js",
-    "build": "npm run build-js && npm run build-minified-js"
-  },
-  "author": "Alexandr Emelin",
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/centrifugal/centrifuge-js.git"
-  },
-  "license": "MIT",
-  "bugs": {
-    "url": "https://github.com/centrifugal/centrifuge-js/issues"
-  },
-  "homepage": "https://github.com/centrifugal/centrifuge-js",
-  "keywords": [
-    "sockjs",
-    "websocket",
-    "centrifugo",
-    "centrifuge"
-  ]
+    "name": "centrifuge",
+    "version": "1.4.6",
+    "description": "Centrifuge javascript client",
+    "main": "dist/centrifuge.js",
+    "author": "Alexandr Emelin",
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/centrifugal/centrifuge-js.git"
+    },
+    "license": "MIT",
+    "bugs": {
+        "url": "https://github.com/centrifugal/centrifuge-js/issues"
+    },
+    "homepage": "https://github.com/centrifugal/centrifuge-js",
+    "keywords": [
+        "sockjs",
+        "websocket",
+        "centrifugo",
+        "centrifuge"
+    ],
+    "scripts": {
+        "build:dev": "node_modules/.bin/webpack",
+        "build:prod": "node_modules/.bin/webpack -p"
+    },
+    "dependencies": {
+        "es6-promise": "^4.1.1",
+        "wolfy87-eventemitter": "^5.2.4"
+    },
+    "devDependencies": {
+        "babel-core": "*",
+        "babel-loader": "*",
+        "babel-preset-es2015": "*",
+        "ts-loader": "*",
+        "typescript": "*",
+        "uglify-js": "*",
+        "webpack": "*"
+    }
 }

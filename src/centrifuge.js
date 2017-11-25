@@ -739,9 +739,10 @@ centrifugeProto._refresh = function () {
         this._jsonp(this._config.refreshEndpoint, this._config.refreshParams, this._config.refreshHeaders, this._config.refreshData, cb);
     } else if (transport === "custom") {
         if (!this._config.refreshCallback) {
-            throw 'Missing \'authCallback\' for custom refresh transport';
+            throw 'Missing \'refreshCallback\' for custom refresh transport';
         }
-        this._config.refreshCallback(this._config.refreshEndpoint, this._config.refreshParams, this._config.refreshHeaders, data, cb);
+        context = {};
+        this._config.refreshCallback(context, cb);
     } else {
         throw 'Unknown refresh transport ' + transport;
     }
@@ -859,7 +860,9 @@ centrifugeProto._connectResponse = function (message) {
             this.startAuthBatching();
             for (var channel in this._subs) {
                 var sub = this._subs[channel];
-                this._subscribe(sub);
+                if (sub._shouldResubscribe()) {
+                    this._subscribe(sub);
+                }
             }
             this.stopAuthBatching();
             this.stopBatching(true);
@@ -983,7 +986,7 @@ centrifugeProto._unsubscribeResponse = function (message) {
     if (!errorExists(message)) {
         if (!uid) {
             // unsubscribe command from server – unsubscribe all current subs
-            sub._setUnsubscribed();
+            sub._setUnsubscribed(true);
         }
         // ignore client initiated successful unsubscribe responses as we
         // already unsubscribed on client level.
@@ -1414,7 +1417,10 @@ centrifugeProto.stopAuthBatching = function() {
         if (!this._config.authCallback) {
             throw 'Missing \'authCallback\' for custom auth transport';
         }
-        this._config.authCallback(this._config.authEndpoint, this._config.authParams, this._config.authHeaders, data, cb);
+        context = {
+            "data": data
+        };
+        this._config.authCallback(context, cb);
     } else {
         throw 'Unknown auth transport ' + transport;
     }
@@ -1463,6 +1469,7 @@ function Sub(centrifuge, channel, events) {
     this._recovered = false;
     this._ready = false;
     this._promise = null;
+    this._noResubscribe = false;
     this._initializePromise();
 }
 
@@ -1571,13 +1578,20 @@ subProto._triggerUnsubscribe = function() {
     this.trigger("unsubscribe", [unsubscribeContext]);
 };
 
-subProto._setUnsubscribed = function() {
+subProto._setUnsubscribed = function(noResubscribe) {
     if (this._status == _STATE_UNSUBSCRIBED) {
         return;
     }
     this._status = _STATE_UNSUBSCRIBED;
+    if (noResubscribe === true) {
+        this._noResubscribe = true;
+    }
     this._triggerUnsubscribe();
 };
+
+subProto._shouldResubscribe = function() {
+    return !this._noResubscribe;
+}
 
 subProto._getSubscribeSuccessContext = function() {
     return {
@@ -1613,7 +1627,7 @@ subProto.subscribe = function() {
 };
 
 subProto.unsubscribe = function () {
-    this._setUnsubscribed();
+    this._setUnsubscribed(true);
     this._centrifuge._unsubscribe(this);
 };
 

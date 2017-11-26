@@ -1,3 +1,9 @@
+1.4.7
+=====
+
+* fix undesired resubscribe after reconnect. See [#45](https://github.com/centrifugal/centrifuge-js/issues/46)
+* add `onRefresh` and `onPrivateChannelAuth` callback functions to config to replace built-in refresh and private channel auth behaviour with you own logic. See [#45](https://github.com/centrifugal/centrifuge-js/pull/45) for motivation and initial pull request sent by @skyborn8 
+
 1.4.6
 =====
 

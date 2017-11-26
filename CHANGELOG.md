@@ -3,6 +3,8 @@
 
 * fix undesired resubscribe after reconnect. See [#45](https://github.com/centrifugal/centrifuge-js/issues/46)
 * add `onRefresh` and `onPrivateChannelAuth` callback functions to config to replace built-in refresh and private channel auth behaviour with you own logic. See [#45](https://github.com/centrifugal/centrifuge-js/pull/45) for motivation and initial pull request sent by @skyborn8 
+* `onTransportClose` callback should be executed every time transport was closed - see [#33](https://github.com/centrifugal/centrifuge-js/issues/33) for motivation.
+* fix refresh workflow in case client offline for a while
 
 1.4.6
 =====

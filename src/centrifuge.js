@@ -1,4 +1,3 @@
-var Promise = require('es6-promise').Promise;
 var EventEmitter = require('wolfy87-eventemitter');
 
 /**
@@ -189,7 +188,8 @@ function Centrifuge(options) {
         authHeaders: {},
         authParams: {},
         authTransport: 'ajax',
-        authCallback: null
+        authCallback: null,
+        decodeJSON: true
     };
     if (options) {
         this.configure(options);
@@ -608,8 +608,7 @@ Centrifuge.prototype = {
         };
 
         this._transport.onmessage = function (event) {
-            // TODO: do not parse JSON by some option
-            var data = JSON.parse(event.data);
+            var data = this._config.decodeJSON ? JSON.parse(event.data) : event.data;
             console.log(event);
             self._debug('Received', data);
             self._receive(data);

@@ -24,16 +24,15 @@
         "build:prod": "node_modules/.bin/webpack -p"
     },
     "dependencies": {
-        "es6-promise": "^4.1.1",
         "wolfy87-eventemitter": "^5.2.4"
     },
     "devDependencies": {
-        "babel-core": "*",
-        "babel-loader": "*",
-        "babel-preset-es2015": "*",
-        "ts-loader": "*",
-        "typescript": "*",
-        "uglify-js": "*",
-        "webpack": "*"
+        "babel-core": "^6.26.0",
+        "babel-loader": "^7.1.2",
+        "babel-preset-es2017": "^6.24.1",
+        "ts-loader": "^3.1.1",
+        "typescript": "^2.6.1",
+        "uglify-js": "^3.2.0",
+        "webpack": "^3.8.1"
     }
 }

@@ -1,19 +1,25 @@
 {
-    "name": "centrifuge",
-    "version": "1.4.6",
-    "ignore": [
-    ],
-    "main": "dist/centrifuge.js",
-    "authors": [
-        "FZambia <frvzmb@gmail.com>"
-    ],
-    "description": "Centrifuge javascript client",
-    "keywords": [
-        "sockjs",
-        "websocket",
-        "centrifugo",
-        "centrifuge"
-    ],
-    "license": "MIT",
-    "homepage": "https://github.com/centrifugal/centrifuge-js"
+  "name": "centrifuge",
+  "version": "1.4.7",
+  "ignore": [
+    "gulp",
+    "node_modules",
+    "**/.*",
+    "bower_components",
+    "test",
+    "tests"
+  ],
+  "main": "centrifuge.js",
+  "authors": [
+    "FZambia <frvzmb@gmail.com>"
+  ],
+  "description": "Centrifuge javascript client",
+  "keywords": [
+    "sockjs",
+    "websocket",
+    "centrifugo",
+    "centrifuge"
+  ],
+  "license": "MIT",
+  "homepage": "https://github.com/centrifugal/centrifuge-js"
 }

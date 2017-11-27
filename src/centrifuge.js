@@ -25,25 +25,46 @@ function extend(destination, source) {
     return source.prototype;
 }
 
+/**
+ * Array.prototype.indexOf polyfill from
+ * https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Array/indexOf
+ */
 if (!Array.prototype.indexOf) {
-    Array.prototype.indexOf = function (r) {
-        if (null === this) {
-            throw new TypeError;
+    Array.prototype.indexOf = function (vMember, nStartFrom) {
+        /*
+        In non-strict mode, if the `this` variable is null or undefined, then it is
+        set the window object. Otherwise, `this` is automaticly converted to an
+        object. In strict mode if the `this` variable is null or undefined a
+        `TypeError` is thrown.
+        */
+        if (!this) {
+            throw new TypeError('Array.prototype.indexOf() - can not convert "' + this + '" to object');
         }
-        var t,
-            e,
-            n = Object(this),
-            a = n.length >>> 0;
-        if (0 === a) {
+        var nIdx = isFinite(nStartFrom) ? Math.floor(nStartFrom) : 0,
+            oThis = this instanceof Object ? this : new Object(this),
+            nLen = isFinite(oThis.length) ? Math.floor(oThis.length) : 0;
+        if (nIdx >= nLen) {
             return -1;
         }
-        if (t = 0, arguments.length > 1 && (t = Number(arguments[1]), t != t ? t = 0 : 0 != t && 1 / 0 != t && t != -1 / 0 && (t = (t > 0 || -1) * Math.floor(Math.abs(t)))), t >= a) {
-            return -1;
+        if (nIdx < 0) {
+            nIdx = Math.max(nLen + nIdx, 0);
         }
-        for (e = t >= 0 ? t : Math.max(a - Math.abs(t), 0); a > e; e++) {
-            if (e in n && n[e] === r) {
-                return e;
-            }
+        if (vMember === undefined) {
+            /*
+            Since `vMember` is undefined, keys that don't exist will have the same
+            value as `vMember`, and thus do need to be checked.
+            */
+            do {
+                if (nIdx in oThis && oThis[nIdx] === undefined) {
+                    return nIdx;
+                }
+            } while (++nIdx < nLen);
+        } else {
+            do {
+                if (oThis[nIdx] === vMember) {
+                    return nIdx;
+                }
+            } while (++nIdx < nLen);
         }
         return -1;
     };

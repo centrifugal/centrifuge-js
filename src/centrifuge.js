@@ -92,25 +92,23 @@ function mixin(deep, target, objects) {
             continue;
         }
         for (var propName in object) {
-            if (object.hasOwnProperty(propName)) {
-                var prop = fieldValue(object, propName);
-                var targ = fieldValue(result, propName);
-                if (prop === target) {
-                    continue; // Avoid infinite loops
-                }
-                if (prop === undefined) {
-                    continue; // Do not mixin undefined values
-                }
-                if (deep && typeof prop === 'object' && prop !== null) {
-                    if (prop instanceof Array) {
-                        result[propName] = mixin(deep, targ instanceof Array ? targ : [], prop);
-                    } else {
-                        var source = typeof targ === 'object' && !(targ instanceof Array) ? targ : {};
-                        result[propName] = mixin(deep, source, prop);
-                    }
+            var prop = fieldValue(object, propName);
+            var targ = fieldValue(result, propName);
+            if (prop === target) {
+                continue; // Avoid infinite loops
+            }
+            if (prop === undefined) {
+                continue; // Do not mixin undefined values
+            }
+            if (deep && typeof prop === 'object' && prop !== null) {
+                if (prop instanceof Array) {
+                    result[propName] = mixin(deep, targ instanceof Array ? targ : [], prop);
                 } else {
-                    result[propName] = prop;
+                    var source = typeof targ === 'object' && !(targ instanceof Array) ? targ : {};
+                    result[propName] = mixin(deep, source, prop);
                 }
+            } else {
+                result[propName] = prop;
             }
         }
     }
@@ -1056,7 +1054,7 @@ centrifugeProto._unsubscribeResponse = function (message) {
     if (!errorExists(message)) {
         if (!uid) {
             // unsubscribe command from server – unsubscribe all current subs
-            sub._setUnsubscribed(true);
+            sub._setUnsubscribed();
         }
         // ignore client initiated successful unsubscribe responses as we
         // already unsubscribed on client level.

@@ -1,3 +1,9 @@
+1.4.8
+=====
+
+* `withCredentials` support for XHR requests - [#39](https://github.com/centrifugal/centrifuge-js/issues/39).
+* fix resubscribe bug introduced in 1.4.7
+
 1.4.7
 =====
 

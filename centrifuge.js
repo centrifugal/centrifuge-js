@@ -1,22 +1,109 @@
 !function(e){if("object"==typeof exports&&"undefined"!=typeof module)module.exports=e();else if("function"==typeof define&&define.amd)define([],e);else{var f;"undefined"!=typeof window?f=window:"undefined"!=typeof global?f=global:"undefined"!=typeof self&&(f=self),f.Centrifuge=e()}}(function(){var define,module,exports;return (function e(t,n,r){function s(o,u){if(!n[o]){if(!t[o]){var a=typeof require=="function"&&require;if(!u&&a)return a(o,!0);if(i)return i(o,!0);var f=new Error("Cannot find module '"+o+"'");throw f.code="MODULE_NOT_FOUND",f}var l=n[o]={exports:{}};t[o][0].call(l.exports,function(e){var n=t[o][1][e];return s(n?n:e)},l,l.exports,e,t,n,r)}return n[o].exports}var i=typeof require=="function"&&require;for(var o=0;o<r.length;o++)s(r[o]);return s})({1:[function(require,module,exports){
+// shim for using process in browser
+
+var process = module.exports = {};
+
+process.nextTick = (function () {
+    var canSetImmediate = typeof window !== 'undefined'
+    && window.setImmediate;
+    var canMutationObserver = typeof window !== 'undefined'
+    && window.MutationObserver;
+    var canPost = typeof window !== 'undefined'
+    && window.postMessage && window.addEventListener
+    ;
+
+    if (canSetImmediate) {
+        return function (f) { return window.setImmediate(f) };
+    }
+
+    var queue = [];
+
+    if (canMutationObserver) {
+        var hiddenDiv = document.createElement("div");
+        var observer = new MutationObserver(function () {
+            var queueList = queue.slice();
+            queue.length = 0;
+            queueList.forEach(function (fn) {
+                fn();
+            });
+        });
+
+        observer.observe(hiddenDiv, { attributes: true });
+
+        return function nextTick(fn) {
+            if (!queue.length) {
+                hiddenDiv.setAttribute('yes', 'no');
+            }
+            queue.push(fn);
+        };
+    }
+
+    if (canPost) {
+        window.addEventListener('message', function (ev) {
+            var source = ev.source;
+            if ((source === window || source === null) && ev.data === 'process-tick') {
+                ev.stopPropagation();
+                if (queue.length > 0) {
+                    var fn = queue.shift();
+                    fn();
+                }
+            }
+        }, true);
+
+        return function nextTick(fn) {
+            queue.push(fn);
+            window.postMessage('process-tick', '*');
+        };
+    }
+
+    return function nextTick(fn) {
+        setTimeout(fn, 0);
+    };
+})();
+
+process.title = 'browser';
+process.browser = true;
+process.env = {};
+process.argv = [];
+
+function noop() {}
+
+process.on = noop;
+process.addListener = noop;
+process.once = noop;
+process.off = noop;
+process.removeListener = noop;
+process.removeAllListeners = noop;
+process.emit = noop;
+
+process.binding = function (name) {
+    throw new Error('process.binding is not supported');
+};
+
+// TODO(shtylman)
+process.cwd = function () { return '/' };
+process.chdir = function (dir) {
+    throw new Error('process.chdir is not supported');
+};
+
+},{}],2:[function(require,module,exports){
 (function (process,global){
 /*!
  * @overview es6-promise - a tiny implementation of Promises/A+.
  * @copyright Copyright (c) 2014 Yehuda Katz, Tom Dale, Stefan Penner and contributors (Conversion to ES6 API by Jake Archibald)
  * @license   Licensed under MIT license
  *            See https://raw.githubusercontent.com/stefanpenner/es6-promise/master/LICENSE
- * @version   4.1.1
+ * @version   4.0.5
  */
 
 (function (global, factory) {
-	typeof exports === 'object' && typeof module !== 'undefined' ? module.exports = factory() :
-	typeof define === 'function' && define.amd ? define(factory) :
-	(global.ES6Promise = factory());
+    typeof exports === 'object' && typeof module !== 'undefined' ? module.exports = factory() :
+    typeof define === 'function' && define.amd ? define(factory) :
+    (global.ES6Promise = factory());
 }(this, (function () { 'use strict';
 
 function objectOrFunction(x) {
-  var type = typeof x;
-  return x !== null && (type === 'object' || type === 'function');
+  return typeof x === 'function' || typeof x === 'object' && x !== null;
 }
 
 function isFunction(x) {
@@ -24,12 +111,12 @@ function isFunction(x) {
 }
 
 var _isArray = undefined;
-if (Array.isArray) {
-  _isArray = Array.isArray;
-} else {
+if (!Array.isArray) {
   _isArray = function (x) {
     return Object.prototype.toString.call(x) === '[object Array]';
   };
+} else {
+  _isArray = Array.isArray;
 }
 
 var isArray = _isArray;
@@ -217,7 +304,7 @@ function then(onFulfillment, onRejection) {
   @return {Promise} a promise that will become fulfilled with the given
   `value`
 */
-function resolve$1(object) {
+function resolve(object) {
   /*jshint validthis:true */
   var Constructor = this;
 
@@ -226,7 +313,7 @@ function resolve$1(object) {
   }
 
   var promise = new Constructor(noop);
-  resolve(promise, object);
+  _resolve(promise, object);
   return promise;
 }
 
@@ -257,24 +344,24 @@ function getThen(promise) {
   }
 }
 
-function tryThen(then$$1, value, fulfillmentHandler, rejectionHandler) {
+function tryThen(then, value, fulfillmentHandler, rejectionHandler) {
   try {
-    then$$1.call(value, fulfillmentHandler, rejectionHandler);
+    then.call(value, fulfillmentHandler, rejectionHandler);
   } catch (e) {
     return e;
   }
 }
 
-function handleForeignThenable(promise, thenable, then$$1) {
+function handleForeignThenable(promise, thenable, then) {
   asap(function (promise) {
     var sealed = false;
-    var error = tryThen(then$$1, thenable, function (value) {
+    var error = tryThen(then, thenable, function (value) {
       if (sealed) {
         return;
       }
       sealed = true;
       if (thenable !== value) {
-        resolve(promise, value);
+        _resolve(promise, value);
       } else {
         fulfill(promise, value);
       }
@@ -284,12 +371,12 @@ function handleForeignThenable(promise, thenable, then$$1) {
       }
       sealed = true;
 
-      reject(promise, reason);
+      _reject(promise, reason);
     }, 'Settle: ' + (promise._label || ' unknown promise'));
 
     if (!sealed && error) {
       sealed = true;
-      reject(promise, error);
+      _reject(promise, error);
     }
   }, promise);
 }
@@ -298,36 +385,35 @@ function handleOwnThenable(promise, thenable) {
   if (thenable._state === FULFILLED) {
     fulfill(promise, thenable._result);
   } else if (thenable._state === REJECTED) {
-    reject(promise, thenable._result);
+    _reject(promise, thenable._result);
   } else {
     subscribe(thenable, undefined, function (value) {
-      return resolve(promise, value);
+      return _resolve(promise, value);
     }, function (reason) {
-      return reject(promise, reason);
+      return _reject(promise, reason);
     });
   }
 }
 
-function handleMaybeThenable(promise, maybeThenable, then$$1) {
-  if (maybeThenable.constructor === promise.constructor && then$$1 === then && maybeThenable.constructor.resolve === resolve$1) {
+function handleMaybeThenable(promise, maybeThenable, then$$) {
+  if (maybeThenable.constructor === promise.constructor && then$$ === then && maybeThenable.constructor.resolve === resolve) {
     handleOwnThenable(promise, maybeThenable);
   } else {
-    if (then$$1 === GET_THEN_ERROR) {
-      reject(promise, GET_THEN_ERROR.error);
-      GET_THEN_ERROR.error = null;
-    } else if (then$$1 === undefined) {
+    if (then$$ === GET_THEN_ERROR) {
+      _reject(promise, GET_THEN_ERROR.error);
+    } else if (then$$ === undefined) {
       fulfill(promise, maybeThenable);
-    } else if (isFunction(then$$1)) {
-      handleForeignThenable(promise, maybeThenable, then$$1);
+    } else if (isFunction(then$$)) {
+      handleForeignThenable(promise, maybeThenable, then$$);
     } else {
       fulfill(promise, maybeThenable);
     }
   }
 }
 
-function resolve(promise, value) {
+function _resolve(promise, value) {
   if (promise === value) {
-    reject(promise, selfFulfillment());
+    _reject(promise, selfFulfillment());
   } else if (objectOrFunction(value)) {
     handleMaybeThenable(promise, value, getThen(value));
   } else {
@@ -356,7 +442,7 @@ function fulfill(promise, value) {
   }
 }
 
-function reject(promise, reason) {
+function _reject(promise, reason) {
   if (promise._state !== PENDING) {
     return;
   }
@@ -435,13 +521,13 @@ function invokeCallback(settled, promise, callback, detail) {
     if (value === TRY_CATCH_ERROR) {
       failed = true;
       error = value.error;
-      value.error = null;
+      value = null;
     } else {
       succeeded = true;
     }
 
     if (promise === value) {
-      reject(promise, cannotReturnOwn());
+      _reject(promise, cannotReturnOwn());
       return;
     }
   } else {
@@ -452,25 +538,25 @@ function invokeCallback(settled, promise, callback, detail) {
   if (promise._state !== PENDING) {
     // noop
   } else if (hasCallback && succeeded) {
-      resolve(promise, value);
+      _resolve(promise, value);
     } else if (failed) {
-      reject(promise, error);
+      _reject(promise, error);
     } else if (settled === FULFILLED) {
       fulfill(promise, value);
     } else if (settled === REJECTED) {
-      reject(promise, value);
+      _reject(promise, value);
     }
 }
 
 function initializePromise(promise, resolver) {
   try {
     resolver(function resolvePromise(value) {
-      resolve(promise, value);
+      _resolve(promise, value);
     }, function rejectPromise(reason) {
-      reject(promise, reason);
+      _reject(promise, reason);
     });
   } catch (e) {
-    reject(promise, e);
+    _reject(promise, e);
   }
 }
 
@@ -486,7 +572,7 @@ function makePromise(promise) {
   promise._subscribers = [];
 }
 
-function Enumerator$1(Constructor, input) {
+function Enumerator(Constructor, input) {
   this._instanceConstructor = Constructor;
   this.promise = new Constructor(noop);
 
@@ -495,6 +581,7 @@ function Enumerator$1(Constructor, input) {
   }
 
   if (isArray(input)) {
+    this._input = input;
     this.length = input.length;
     this._remaining = input.length;
 
@@ -504,31 +591,34 @@ function Enumerator$1(Constructor, input) {
       fulfill(this.promise, this._result);
     } else {
       this.length = this.length || 0;
-      this._enumerate(input);
+      this._enumerate();
       if (this._remaining === 0) {
         fulfill(this.promise, this._result);
       }
     }
   } else {
-    reject(this.promise, validationError());
+    _reject(this.promise, validationError());
   }
 }
 
 function validationError() {
   return new Error('Array Methods must be provided an Array');
-}
+};
 
-Enumerator$1.prototype._enumerate = function (input) {
-  for (var i = 0; this._state === PENDING && i < input.length; i++) {
-    this._eachEntry(input[i], i);
+Enumerator.prototype._enumerate = function () {
+  var length = this.length;
+  var _input = this._input;
+
+  for (var i = 0; this._state === PENDING && i < length; i++) {
+    this._eachEntry(_input[i], i);
   }
 };
 
-Enumerator$1.prototype._eachEntry = function (entry, i) {
+Enumerator.prototype._eachEntry = function (entry, i) {
   var c = this._instanceConstructor;
-  var resolve$$1 = c.resolve;
+  var resolve$$ = c.resolve;
 
-  if (resolve$$1 === resolve$1) {
+  if (resolve$$ === resolve) {
     var _then = getThen(entry);
 
     if (_then === then && entry._state !== PENDING) {
@@ -536,28 +626,28 @@ Enumerator$1.prototype._eachEntry = function (entry, i) {
     } else if (typeof _then !== 'function') {
       this._remaining--;
       this._result[i] = entry;
-    } else if (c === Promise$2) {
+    } else if (c === Promise) {
       var promise = new c(noop);
       handleMaybeThenable(promise, entry, _then);
       this._willSettleAt(promise, i);
     } else {
-      this._willSettleAt(new c(function (resolve$$1) {
-        return resolve$$1(entry);
+      this._willSettleAt(new c(function (resolve$$) {
+        return resolve$$(entry);
       }), i);
     }
   } else {
-    this._willSettleAt(resolve$$1(entry), i);
+    this._willSettleAt(resolve$$(entry), i);
   }
 };
 
-Enumerator$1.prototype._settledAt = function (state, i, value) {
+Enumerator.prototype._settledAt = function (state, i, value) {
   var promise = this.promise;
 
   if (promise._state === PENDING) {
     this._remaining--;
 
     if (state === REJECTED) {
-      reject(promise, value);
+      _reject(promise, value);
     } else {
       this._result[i] = value;
     }
@@ -568,7 +658,7 @@ Enumerator$1.prototype._settledAt = function (state, i, value) {
   }
 };
 
-Enumerator$1.prototype._willSettleAt = function (promise, i) {
+Enumerator.prototype._willSettleAt = function (promise, i) {
   var enumerator = this;
 
   subscribe(promise, undefined, function (value) {
@@ -625,8 +715,8 @@ Enumerator$1.prototype._willSettleAt = function (promise, i) {
   fulfilled, or rejected if any of them become rejected.
   @static
 */
-function all$1(entries) {
-  return new Enumerator$1(this, entries).promise;
+function all(entries) {
+  return new Enumerator(this, entries).promise;
 }
 
 /**
@@ -694,7 +784,7 @@ function all$1(entries) {
   @return {Promise} a promise which settles in the same way as the first passed
   promise to settle.
 */
-function race$1(entries) {
+function race(entries) {
   /*jshint validthis:true */
   var Constructor = this;
 
@@ -746,11 +836,11 @@ function race$1(entries) {
   Useful for tooling.
   @return {Promise} a promise rejected with the given `reason`.
 */
-function reject$1(reason) {
+function reject(reason) {
   /*jshint validthis:true */
   var Constructor = this;
   var promise = new Constructor(noop);
-  reject(promise, reason);
+  _reject(promise, reason);
   return promise;
 }
 
@@ -865,27 +955,27 @@ function needsNew() {
   Useful for tooling.
   @constructor
 */
-function Promise$2(resolver) {
+function Promise(resolver) {
   this[PROMISE_ID] = nextId();
   this._result = this._state = undefined;
   this._subscribers = [];
 
   if (noop !== resolver) {
     typeof resolver !== 'function' && needsResolver();
-    this instanceof Promise$2 ? initializePromise(this, resolver) : needsNew();
+    this instanceof Promise ? initializePromise(this, resolver) : needsNew();
   }
 }
 
-Promise$2.all = all$1;
-Promise$2.race = race$1;
-Promise$2.resolve = resolve$1;
-Promise$2.reject = reject$1;
-Promise$2._setScheduler = setScheduler;
-Promise$2._setAsap = setAsap;
-Promise$2._asap = asap;
+Promise.all = all;
+Promise.race = race;
+Promise.resolve = resolve;
+Promise.reject = reject;
+Promise._setScheduler = setScheduler;
+Promise._setAsap = setAsap;
+Promise._asap = asap;
 
-Promise$2.prototype = {
-  constructor: Promise$2,
+Promise.prototype = {
+  constructor: Promise,
 
   /**
     The primary way of interacting with a promise is through its `then` method,
@@ -1114,8 +1204,7 @@ Promise$2.prototype = {
   }
 };
 
-/*global self*/
-function polyfill$1() {
+function polyfill() {
     var local = undefined;
 
     if (typeof global !== 'undefined') {
@@ -1145,109 +1234,19 @@ function polyfill$1() {
         }
     }
 
-    local.Promise = Promise$2;
+    local.Promise = Promise;
 }
 
 // Strange compat..
-Promise$2.polyfill = polyfill$1;
-Promise$2.Promise = Promise$2;
+Promise.polyfill = polyfill;
+Promise.Promise = Promise;
 
-return Promise$2;
+return Promise;
 
 })));
-
 //# sourceMappingURL=es6-promise.map
-
 }).call(this,require('_process'),typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"_process":2}],2:[function(require,module,exports){
-// shim for using process in browser
-
-var process = module.exports = {};
-
-process.nextTick = (function () {
-    var canSetImmediate = typeof window !== 'undefined'
-    && window.setImmediate;
-    var canMutationObserver = typeof window !== 'undefined'
-    && window.MutationObserver;
-    var canPost = typeof window !== 'undefined'
-    && window.postMessage && window.addEventListener
-    ;
-
-    if (canSetImmediate) {
-        return function (f) { return window.setImmediate(f) };
-    }
-
-    var queue = [];
-
-    if (canMutationObserver) {
-        var hiddenDiv = document.createElement("div");
-        var observer = new MutationObserver(function () {
-            var queueList = queue.slice();
-            queue.length = 0;
-            queueList.forEach(function (fn) {
-                fn();
-            });
-        });
-
-        observer.observe(hiddenDiv, { attributes: true });
-
-        return function nextTick(fn) {
-            if (!queue.length) {
-                hiddenDiv.setAttribute('yes', 'no');
-            }
-            queue.push(fn);
-        };
-    }
-
-    if (canPost) {
-        window.addEventListener('message', function (ev) {
-            var source = ev.source;
-            if ((source === window || source === null) && ev.data === 'process-tick') {
-                ev.stopPropagation();
-                if (queue.length > 0) {
-                    var fn = queue.shift();
-                    fn();
-                }
-            }
-        }, true);
-
-        return function nextTick(fn) {
-            queue.push(fn);
-            window.postMessage('process-tick', '*');
-        };
-    }
-
-    return function nextTick(fn) {
-        setTimeout(fn, 0);
-    };
-})();
-
-process.title = 'browser';
-process.browser = true;
-process.env = {};
-process.argv = [];
-
-function noop() {}
-
-process.on = noop;
-process.addListener = noop;
-process.once = noop;
-process.off = noop;
-process.removeListener = noop;
-process.removeAllListeners = noop;
-process.emit = noop;
-
-process.binding = function (name) {
-    throw new Error('process.binding is not supported');
-};
-
-// TODO(shtylman)
-process.cwd = function () { return '/' };
-process.chdir = function (dir) {
-    throw new Error('process.chdir is not supported');
-};
-
-},{}],3:[function(require,module,exports){
+},{"_process":1}],3:[function(require,module,exports){
 /*!
  * EventEmitter v4.2.11 - git.io/ee
  * Unlicense - http://unlicense.org/
@@ -1752,25 +1751,46 @@ function extend(destination, source) {
     return source.prototype;
 }
 
+/**
+ * Array.prototype.indexOf polyfill from
+ * https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Array/indexOf
+ */
 if (!Array.prototype.indexOf) {
-    Array.prototype.indexOf = function (r) {
-        if (null === this) {
-            throw new TypeError;
+    Array.prototype.indexOf = function (vMember, nStartFrom) {
+        /*
+        In non-strict mode, if the `this` variable is null or undefined, then it is
+        set the window object. Otherwise, `this` is automaticly converted to an
+        object. In strict mode if the `this` variable is null or undefined a
+        `TypeError` is thrown.
+        */
+        if (!this) {
+            throw new TypeError('Array.prototype.indexOf() - can not convert "' + this + '" to object');
         }
-        var t,
-            e,
-            n = Object(this),
-            a = n.length >>> 0;
-        if (0 === a) {
+        var nIdx = isFinite(nStartFrom) ? Math.floor(nStartFrom) : 0,
+            oThis = this instanceof Object ? this : new Object(this),
+            nLen = isFinite(oThis.length) ? Math.floor(oThis.length) : 0;
+        if (nIdx >= nLen) {
             return -1;
         }
-        if (t = 0, arguments.length > 1 && (t = Number(arguments[1]), t != t ? t = 0 : 0 != t && 1 / 0 != t && t != -1 / 0 && (t = (t > 0 || -1) * Math.floor(Math.abs(t)))), t >= a) {
-            return -1;
+        if (nIdx < 0) {
+            nIdx = Math.max(nLen + nIdx, 0);
         }
-        for (e = t >= 0 ? t : Math.max(a - Math.abs(t), 0); a > e; e++) {
-            if (e in n && n[e] === r) {
-                return e;
-            }
+        if (vMember === undefined) {
+            /*
+            Since `vMember` is undefined, keys that don't exist will have the same
+            value as `vMember`, and thus do need to be checked.
+            */
+            do {
+                if (nIdx in oThis && oThis[nIdx] === undefined) {
+                    return nIdx;
+                }
+            } while (++nIdx < nLen);
+        } else {
+            do {
+                if (oThis[nIdx] === vMember) {
+                    return nIdx;
+                }
+            } while (++nIdx < nLen);
         }
         return -1;
     };
@@ -1792,31 +1812,29 @@ function fieldValue(object, name) {
  */
 function mixin(deep, target, objects) {
     var result = target || {};
-    for (var i = 2; i < arguments.length; ++i) { // Skip first 2 parameters (deep and target), and loop over the others
+    for (var i = 2, l = arguments.length; i < l; i++) { // Skip first 2 parameters (deep and target), and loop over the others
         var object = arguments[i];
         if (object === undefined || object === null) {
             continue;
         }
         for (var propName in object) {
-            if (object.hasOwnProperty(propName)) {
-                var prop = fieldValue(object, propName);
-                var targ = fieldValue(result, propName);
-                if (prop === target) {
-                    continue; // Avoid infinite loops
-                }
-                if (prop === undefined) {
-                    continue; // Do not mixin undefined values
-                }
-                if (deep && typeof prop === 'object' && prop !== null) {
-                    if (prop instanceof Array) {
-                        result[propName] = mixin(deep, targ instanceof Array ? targ : [], prop);
-                    } else {
-                        var source = typeof targ === 'object' && !(targ instanceof Array) ? targ : {};
-                        result[propName] = mixin(deep, source, prop);
-                    }
+            var prop = fieldValue(object, propName);
+            var targ = fieldValue(result, propName);
+            if (prop === target) {
+                continue; // Avoid infinite loops
+            }
+            if (prop === undefined) {
+                continue; // Do not mixin undefined values
+            }
+            if (deep && typeof prop === 'object' && prop !== null) {
+                if (prop instanceof Array) {
+                    result[propName] = mixin(deep, targ instanceof Array ? targ : [], prop);
                 } else {
-                    result[propName] = prop;
+                    var source = typeof targ === 'object' && !(targ instanceof Array) ? targ : {};
+                    result[propName] = mixin(deep, source, prop);
                 }
+            } else {
+                result[propName] = prop;
             }
         }
     }
@@ -1906,7 +1924,6 @@ function Centrifuge(options) {
         timeout: 5000,
         info: '',
         resubscribe: true,
-        parseJSON: true,
         ping: true,
         pingInterval: 30000,
         pongWaitTimeout: 5000,
@@ -2018,6 +2035,9 @@ centrifugeProto._ajax = function (url, params, headers, data, callback) {
         query = '?' + query;
     }
     xhr.open('POST', url + query, true);
+    if ('withCredentials' in xhr) {
+        xhr.withCredentials = true;
+    }
 
     // add request headers
     xhr.setRequestHeader('X-Requested-With', 'XMLHttpRequest');
@@ -2203,7 +2223,7 @@ centrifugeProto._clearConnectedState = function (reconnect) {
     for (var uid in this._callbacks) {
         if (this._callbacks.hasOwnProperty(uid)) {
             var callbacks = this._callbacks[uid];
-            var errback = callbacks['errback'];
+            var errback = callbacks.errback;
             if (!errback) {
                 continue;
             }
@@ -2365,7 +2385,7 @@ centrifugeProto._setupTransport = function () {
 
     this._transport.onmessage = function (event) {
         var data;
-        data = self._config.parseJSON ? JSON.parse(event.data) : event.data;
+        data = JSON.parse(event.data);
         self._debug('Received', data);
         self._receive(data);
         self._restartPing();
@@ -2760,7 +2780,7 @@ centrifugeProto._unsubscribeResponse = function (message) {
     if (!errorExists(message)) {
         if (!uid) {
             // unsubscribe command from server – unsubscribe all current subs
-            sub._setUnsubscribed(true);
+            sub._setUnsubscribed();
         }
         // ignore client initiated successful unsubscribe responses as we
         // already unsubscribed on client level.
@@ -3493,5 +3513,5 @@ subProto.history = function () {
 module.exports = Centrifuge;
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"es6-promise":1,"wolfy87-eventemitter":3}]},{},[4])(4)
+},{"es6-promise":2,"wolfy87-eventemitter":3}]},{},[4])(4)
 });

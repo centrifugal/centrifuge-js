@@ -86,7 +86,7 @@ function fieldValue(object, name) {
  */
 function mixin(deep, target, objects) {
     var result = target || {};
-    for (var i = 2; i < arguments.length; ++i) { // Skip first 2 parameters (deep and target), and loop over the others
+    for (var i = 2, l = arguments.length; i < l; i++) { // Skip first 2 parameters (deep and target), and loop over the others
         var object = arguments[i];
         if (object === undefined || object === null) {
             continue;
@@ -200,7 +200,6 @@ function Centrifuge(options) {
         timeout: 5000,
         info: '',
         resubscribe: true,
-        parseJSON: true,
         ping: true,
         pingInterval: 30000,
         pongWaitTimeout: 5000,
@@ -497,7 +496,7 @@ centrifugeProto._clearConnectedState = function (reconnect) {
     for (var uid in this._callbacks) {
         if (this._callbacks.hasOwnProperty(uid)) {
             var callbacks = this._callbacks[uid];
-            var errback = callbacks['errback'];
+            var errback = callbacks.errback;
             if (!errback) {
                 continue;
             }
@@ -659,7 +658,7 @@ centrifugeProto._setupTransport = function () {
 
     this._transport.onmessage = function (event) {
         var data;
-        data = self._config.parseJSON ? JSON.parse(event.data) : event.data;
+        data = JSON.parse(event.data);
         self._debug('Received', data);
         self._receive(data);
         self._restartPing();

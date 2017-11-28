@@ -148,9 +148,6 @@ function isFunction(value) {
 
 function log(level, args) {
     if (global.console) {
-        if (level === 'debug') {
-            level = 'log';
-        }
         var logger = global.console[level];
         if (isFunction(logger)) {
             logger.apply(global.console, args);

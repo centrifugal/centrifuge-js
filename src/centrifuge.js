@@ -929,6 +929,7 @@ centrifugeProto._connectResponse = function (message) {
 
         this._restartPing();
         this.trigger('connect', [{
+            version: message.body.version,
             client: message.body.client,
             transport: this._transportName,
             latency: this._latency

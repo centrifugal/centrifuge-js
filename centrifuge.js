@@ -2581,6 +2581,8 @@ centrifugeProto._subscribe = function (sub) {
 
 centrifugeProto._unsubscribe = function (sub) {
     if (this.isConnected()) {
+        // remove unsubscribed channel in _subs
+        delete this._subs[sub.channel];
         // No need to unsubscribe in disconnected state - i.e. client already unsubscribed.
         this._addMessage({
             method: 'unsubscribe',

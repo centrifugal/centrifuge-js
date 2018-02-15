@@ -1892,6 +1892,18 @@ function errorExists(data) {
     return 'error' in data && data.error !== null && data.error !== '';
 }
 
+var CONNECT = 0;
+var REFRESH = 1;
+var SUBSCRIBE = 2;
+var UNSUBSCRIBE = 3;
+var PUBLISH = 4;
+var PRESENCE = 5;
+var PRESENCE_STATS = 6;
+var HISTORY = 7;
+var PING = 8;
+var RPC = 9;
+var MESSAGE = 10;
+
 function Centrifuge(options) {
     this._sockJS = null;
     this._isSockJS = false;
@@ -2293,7 +2305,6 @@ centrifugeProto._setupTransport = function () {
     this._transport.onopen = function () {
         self._transportClosed = false;
         self._reconnecting = false;
-
         if (self._isSockJS) {
             self._transportName = self._transport.transport;
             self._transport.onheartbeat = function () {
@@ -2313,7 +2324,7 @@ centrifugeProto._setupTransport = function () {
         }
 
         var msg = {
-            method: 'connect',
+            method: CONNECT,
             params: {
                 user: self._config.user,
                 info: self._config.info
@@ -2388,15 +2399,16 @@ centrifugeProto._setupTransport = function () {
     };
 
     this._transport.onmessage = function (event) {
-        console.log(event.data);
         var replies = event.data.split("\n");
         for (var i in replies) {
-            if (!replies[i]) {
-                continue;
+            if (replies.hasOwnProperty(i)) {
+                if (!replies[i]) {
+                    continue;
+                }
+                var data = JSON.parse(replies[i]);
+                self._debug('Received', data);
+                self._receive(data);
             }
-            var data = JSON.parse(replies[i]);
-            self._debug('Received', data);
-            self._receive(data);
         }
         self._restartPing();
     };
@@ -2404,10 +2416,22 @@ centrifugeProto._setupTransport = function () {
 
 centrifugeProto.rpc = function(data) {
     var msg = {
-        method: "rpc",
+        method: RPC,
         params: data
     }
     return this._call(msg);
+}
+
+centrifugeProto.send = function(data) {
+    var msg = {
+        method: MESSAGE,
+        params: data
+    }
+    return this._callAsync(msg);
+}
+
+centrifugeProto._callAsync = function (msg) {
+    this._addMessage(msg, true);
 }
 
 centrifugeProto._call = function (msg) {
@@ -2533,7 +2557,7 @@ centrifugeProto._refresh = function () {
         } else {
             self._debug('send refreshed credentials');
             self._addMessage({
-                method: 'refresh',
+                method: REFRESH,
                 params: {
                     user: self._config.user,
                     timestamp: self._config.timestamp,
@@ -2576,7 +2600,7 @@ centrifugeProto._subscribe = function (sub) {
     sub._setSubscribing();
 
     var msg = {
-        method: 'subscribe',
+        method: SUBSCRIBE,
         params: {
             channel: channel
         }
@@ -2614,7 +2638,7 @@ centrifugeProto._unsubscribe = function (sub) {
     if (this.isConnected()) {
         // No need to unsubscribe in disconnected state - i.e. client already unsubscribed.
         this._addMessage({
-            method: 'unsubscribe',
+            method: UNSUBSCRIBE,
             params: {
                 channel: sub.channel
             }
@@ -2842,15 +2866,15 @@ centrifugeProto._leaveResponse = function (channel, data) {
     sub.trigger('leave', [data]);
 };
 
-centrifugeProto._messageResponse = function (channel, data) {
+centrifugeProto._messageResponse = function (channel, message) {
     // keep last uid received from channel.
-    this._lastMessageID[channel] = data.uid;
+    this._lastMessageID[channel] = message.uid;
 
     var sub = this._getSub(channel);
     if (!sub) {
         return;
     }
-    sub.trigger('message', [data]);
+    sub.trigger('message', [message]);
 };
 
 centrifugeProto._refreshResponse = function (message) {
@@ -2882,16 +2906,16 @@ centrifugeProto._refreshResponse = function (message) {
 centrifugeProto._handleAsyncMessage = function(message) {
     result = message.result;
     var type = 0;
-    if ("t" in result) {
-        type = result["t"];
+    if ("type" in result) {
+        type = result["type"];
     }
-    var channel = result.c;
+    var channel = result.channel;
     if (type === 0) {
-        this._messageResponse(channel, result.d);
+        this._messageResponse(channel, result.data);
     } else if (type === 1) {
-        this._joinResponse(channel, result.d);
+        this._joinResponse(channel, result.data);
     } else if (type === 2) {
-        this._leaveResponse(channel, result.d);
+        this._leaveResponse(channel, result.data);
     }
     console.log("ASYNC MESSAGE", result);
 }
@@ -2933,7 +2957,7 @@ centrifugeProto._flush = function () {
 
 centrifugeProto._ping = function () {
     this._addMessage({
-        method: 'ping'
+        method: PING
     });
 };
 
@@ -2980,15 +3004,20 @@ centrifugeProto._registerCall = function (id, callback, errback) {
     }, this._config.timeout);
 };
 
-centrifugeProto._addMessage = function (message) {
-    var id = this._nextMessageId();
-    message.id = id;
+centrifugeProto._addMessage = function (message, async) {
+    if (!async) {
+        var id = this._nextMessageId();
+        message.id = id;
+    }
     if (this._isBatching === true) {
         this._messages.push(message);
     } else {
         this._send([message]);
     }
-    return id;
+    if (!async) {
+        return id;
+    }
+    return 0;
 };
 
 centrifugeProto.getClientId = function () {
@@ -3111,7 +3140,7 @@ centrifugeProto.stopAuthBatching = function () {
                 }
                 if (!channelResponse.status || channelResponse.status === 200) {
                     var msg = {
-                        method: 'subscribe',
+                        method: SUBSCRIBE,
                         params: {
                             channel: channel,
                             client: self.getClientId(),
@@ -3376,7 +3405,7 @@ subProto.publish = function (data) {
                 return;
             }
             var uid = self._centrifuge._addMessage({
-                method: 'publish',
+                method: PUBLISH,
                 params: {
                     channel: self.channel,
                     data: data
@@ -3402,7 +3431,7 @@ subProto.presence = function () {
                 return;
             }
             var uid = self._centrifuge._addMessage({
-                method: 'presence',
+                method: PRESENCE,
                 params: {
                     channel: self.channel
                 }
@@ -3427,7 +3456,7 @@ subProto.history = function () {
                 return;
             }
             var uid = self._centrifuge._addMessage({
-                method: 'history',
+                method: HISTORY,
                 params: {
                     channel: self.channel
                 }

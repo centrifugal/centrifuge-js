@@ -178,9 +178,23 @@ var PING = 8;
 var RPC = 9;
 var MESSAGE = 10;
 
-function Centrifuge(options) {
-    this._sockJS = null;
-    this._isSockJS = false;
+var commandMethods = {
+    CONNECT: "connect",
+    REFRESH: "refresh",
+    SUBSCRIBE: "subscribe",
+    UNSUBSCRIBE: "unsubscribe",
+    PUBLISH: "publish",
+    PRESENCE: "presence",
+    PRESENCE_STATS: "presence_stats",
+    HISTORY: "history",
+    PING: "ping",
+    RPC: "rpc",
+    MESSAGE: "message",
+}
+
+function Centrifuge(url, options) {
+    this._sockjs = null;
+    this._isSockjs = false;
     this._status = 'disconnected';
     this._reconnect = true;
     this._reconnecting = false;
@@ -204,11 +218,12 @@ function Centrifuge(options) {
     this._latency = null;
     this._latencyStart = null;
     this._config = {
-        sockJS: null,
+        url: null,
+        sockjs: null,
         retry: 1000,
         maxRetry: 20000,
         timeout: 5000,
-        info: '',
+        credentials: null,
         resubscribe: true,
         ping: true,
         pingInterval: 30000,
@@ -218,7 +233,7 @@ function Centrifuge(options) {
         server: null,
         privateChannelPrefix: '$',
         onTransportClose: null,
-        transports: [
+        sockjsTransports: [
             'websocket',
             'xdr-streaming',
             'xhr-streaming',
@@ -245,9 +260,7 @@ function Centrifuge(options) {
         authParams: {},
         authTransport: 'ajax'
     };
-    if (options) {
-        this.configure(options);
-    }
+    this._configure(url, options);
 }
 
 extend(Centrifuge, EventEmitter);
@@ -398,41 +411,43 @@ centrifugeProto._rawWebsocketEndpoint = function () {
     return url;
 };
 
-centrifugeProto._configure = function (configuration) {
-    this._debug('Configuring centrifuge object with', configuration);
-
-    if (!configuration) {
-        configuration = {};
-    }
-
-    this._config = mixin(false, this._config, configuration);
+centrifugeProto._configure = function (url, configuration) {
+    this._config.url = url;
+    this._config = mixin(false, this._config, configuration||{});
+    this._debug('centrifuge config', this._config);
 
     if (!this._config.url) {
         throw 'Missing required configuration parameter \'url\' specifying server URL';
     }
 
-    if (!this._config.user && this._config.user !== '') {
-        if (!this._config.insecure) {
-            throw 'Missing required configuration parameter \'user\' specifying user\'s unique ID in your application';
-        } else {
-            this._debug('user not found but this is OK for insecure mode - anonymous access will be used');
-            this._config.user = '';
+    if (this._config.credentials !== null) {
+        if (!this._config.credentials.user && this._config.credentials.user !== '') {
+            if (!this._config.insecure) {
+                throw 'Missing required credentials parameter \'user\' specifying user\'s unique ID in your application';
+            } else {
+                this._debug('user not found but this is OK for insecure mode - anonymous access will be used');
+                this._config.user = '';
+            }
         }
-    }
 
-    if (!this._config.exp) {
-        if (!this._config.insecure) {
-            throw 'Missing required configuration parameter \'exp\'';
-        } else {
-            this._debug('exp not found but this is OK for insecure mode');
+        if (!this._config.credentials.info) {
+            this._config.credentials.info = "";
         }
-    }
 
-    if (!this._config.sign) {
-        if (!this._config.insecure) {
-            throw 'Missing required configuration parameter \'sign\' specifying the sign of authentication credentials';
-        } else {
-            this._debug('sign not found but this is OK for insecure mode');
+        if (!this._config.credentials.exp) {
+            if (!this._config.insecure) {
+                throw 'Missing required credentials parameter \'exp\'';
+            } else {
+                this._debug('exp not found but this is OK for insecure mode');
+            }
+        }
+
+        if (!this._config.credentials.sign) {
+            if (!this._config.insecure) {
+                throw 'Missing required credentials parameter \'sign\' specifying the sign of authentication credentials';
+            } else {
+                this._debug('sign not found but this is OK for insecure mode');
+            }
         }
     }
 
@@ -440,29 +455,29 @@ centrifugeProto._configure = function (configuration) {
 
     if (endsWith(this._config.url, 'connection/sockjs')) {
         this._debug('client will connect to SockJS endpoint');
-        if (this._config.sockJS !== null) {
+        if (this._config.sockjs !== null) {
             this._debug('SockJS explicitly provided in options');
-            this._sockJS = this._config.sockJS;
+            this._sockjs = this._config.sockjs;
         } else {
             if (typeof SockJS === 'undefined') {
                 throw 'include SockJS client library before Centrifuge javascript client library or provide SockJS object in options or use raw Websocket connection endpoint';
             }
             this._debug('use globally defined SockJS');
-            this._sockJS = SockJS;
+            this._sockjs = SockJS;
         }
     } else if (endsWith(this._config.url, 'connection/websocket')) {
         this._debug('client will connect to raw Websocket endpoint');
     } else {
         this._debug('client will detect connection endpoint itself');
-        if (this._config.sockJS !== null) {
+        if (this._config.sockjs !== null) {
             this._debug('SockJS explicitly provided in options');
-            this._sockJS = this._config.sockJS;
+            this._sockjs = this._config.sockjs;
         } else {
             if (typeof SockJS === 'undefined') {
                 this._debug('SockJS not found');
             } else {
                 this._debug('use globally defined SockJS');
-                this._sockJS = SockJS;
+                this._sockjs = SockJS;
             }
         }
     }
@@ -513,7 +528,7 @@ centrifugeProto._clearConnectedState = function (reconnect) {
             if (!errback) {
                 continue;
             }
-            errback(this._createErrorObject('disconnected', 'retry'));
+            errback(this._createErrorObject('disconnected'));
         }
     }
     this._callbacks = {};
@@ -556,18 +571,18 @@ centrifugeProto._setupTransport = function () {
 
     var self = this;
 
-    this._isSockJS = false;
+    this._isSockjs = false;
 
     // detect transport to use - SockJS or raw Websocket
-    if (this._sockJS !== null) {
+    if (this._sockjs !== null) {
         var sockjsOptions = {
-            transports: this._config.transports
+            transports: this._config.sockjsTransports
         };
         if (this._config.server !== null) {
             sockjsOptions.server = this._config.server;
         }
-        this._isSockJS = true;
-        this._transport = new this._sockJS(this._sockjsEndpoint(), null, sockjsOptions);
+        this._isSockjs = true;
+        this._transport = new this._sockjs(this._sockjsEndpoint(), null, sockjsOptions);
     } else {
         if (!this._websocketSupported()) {
             this._debug('No Websocket support and no SockJS configured, can not connect');
@@ -579,7 +594,7 @@ centrifugeProto._setupTransport = function () {
     this._transport.onopen = function () {
         self._transportClosed = false;
         self._reconnecting = false;
-        if (self._isSockJS) {
+        if (self._isSockjs) {
             self._transportName = self._transport.transport;
             self._transport.onheartbeat = function () {
                 self._restartPing();
@@ -598,24 +613,14 @@ centrifugeProto._setupTransport = function () {
         }
 
         var msg = {
-            method: CONNECT,
-            params: {
-                user: self._config.user,
-                info: self._config.info
-            }
+            method: commandMethods.CONNECT
         };
 
-        if (!self._config.insecure) {
-            // in insecure client mode we don't need exp and sign.
-            msg.params.exp = self._config.exp;
-            msg.params.sign = self._config.sign;
-            if (!isString(self._config.exp)) {
-                self._log('exp expected to be string');
-            }
-            if (!isString(self._config.sign)) {
-                self._log('sign expected to be string');
-            }
+        if (self._config.credentials) {
+            alert(1);
+            msg.params = self._config.credentials;
         }
+
         self._latencyStart = new Date();
         self._call(msg).then(function(result){
             self._connectResponse(result);
@@ -690,16 +695,27 @@ centrifugeProto._setupTransport = function () {
 
 centrifugeProto.rpc = function(data) {
     var msg = {
-        method: RPC,
-        params: data
+        method: commandMethods.RPC,
+        params: {
+            data: data
+        }
     }
-    return this._call(msg);
+    var promise = this._call(msg);
+    return new Promise(function (resolve, reject) {
+        promise.then(function(message){
+            resolve(message.data);
+        }, function(error) {
+            reject(error);
+        })
+    });
 }
 
 centrifugeProto.send = function(data) {
     var msg = {
-        method: MESSAGE,
-        params: data
+        method: commandMethods.MESSAGE,
+        params: {
+            data: data
+        }
     }
     return this._callAsync(msg);
 }
@@ -831,7 +847,7 @@ centrifugeProto._refresh = function () {
         } else {
             self._debug('send refreshed credentials');
             self._addMessage({
-                method: REFRESH,
+                method: commandMethods.REFRESH,
                 params: {
                     user: self._config.user,
                     timestamp: self._config.timestamp,
@@ -874,7 +890,7 @@ centrifugeProto._subscribe = function (sub) {
     sub._setSubscribing();
 
     var msg = {
-        method: SUBSCRIBE,
+        method: commandMethods.SUBSCRIBE,
         params: {
             channel: channel
         }
@@ -912,7 +928,7 @@ centrifugeProto._unsubscribe = function (sub) {
     if (this.isConnected()) {
         // No need to unsubscribe in disconnected state - i.e. client already unsubscribed.
         this._addMessage({
-            method: UNSUBSCRIBE,
+            method: commandMethods.UNSUBSCRIBE,
             params: {
                 channel: sub.channel
             }
@@ -1117,7 +1133,7 @@ centrifugeProto._handleResponse = function(message) {
         if (!errback) {
             return;
         }
-        errback(this._errorObjectFromMessage(message));
+        errback(message.error);
         this.trigger('error', [{
             message: message
         }]);
@@ -1231,7 +1247,7 @@ centrifugeProto._flush = function () {
 
 centrifugeProto._ping = function () {
     this._addMessage({
-        method: PING
+        method: commandMethods.PING
     });
 };
 
@@ -1250,18 +1266,18 @@ centrifugeProto._getLastID = function (channel) {
     }
 };
 
-centrifugeProto._createErrorObject = function (err, advice) {
+centrifugeProto._createErrorObject = function (message, code) {
     var errObject = {
-        error: err
+        error: {
+            message: message,
+            code: code || 0,
+        }
     };
-    if (advice) {
-        errObject.advice = advice;
-    }
     return errObject;
 };
 
 centrifugeProto._errorObjectFromMessage = function (message) {
-    return this._createErrorObject(message.error, message.advice);
+    return this._createErrorObject(message.error, message.code);
 };
 
 centrifugeProto._registerCall = function (id, callback, errback) {
@@ -1273,7 +1289,7 @@ centrifugeProto._registerCall = function (id, callback, errback) {
     setTimeout(function () {
         delete self._callbacks[id];
         if (isFunction(errback)) {
-            errback(self._createErrorObject('timeout', 'retry'));
+            errback(self._createErrorObject('timeout'));
         }
     }, this._config.timeout);
 };
@@ -1301,10 +1317,6 @@ centrifugeProto.getClientId = function () {
 centrifugeProto.isConnected = centrifugeProto._isConnected;
 
 centrifugeProto.isDisconnected = centrifugeProto._isDisconnected;
-
-centrifugeProto.configure = function (configuration) {
-    this._configure.call(this, configuration);
-};
 
 centrifugeProto.connect = centrifugeProto._connect;
 
@@ -1414,7 +1426,7 @@ centrifugeProto.stopAuthBatching = function () {
                 }
                 if (!channelResponse.status || channelResponse.status === 200) {
                     var msg = {
-                        method: SUBSCRIBE,
+                        method: commandMethods.SUBSCRIBE,
                         params: {
                             channel: channel,
                             client: self.getClientId(),
@@ -1670,16 +1682,16 @@ subProto.publish = function (data) {
     var self = this;
     return new Promise(function (resolve, reject) {
         if (self._isUnsubscribed()) {
-            reject(self._centrifuge._createErrorObject('subscription unsubscribed', 'fix'));
+            reject(self._centrifuge._createErrorObject('subscription unsubscribed'));
             return;
         }
         self._promise.then(function () {
             if (!self._centrifuge.isConnected()) {
-                reject(self._centrifuge._createErrorObject('disconnected', 'retry'));
+                reject(self._centrifuge._createErrorObject('disconnected'));
                 return;
             }
             var uid = self._centrifuge._addMessage({
-                method: PUBLISH,
+                method: commandMethods.PUBLISH,
                 params: {
                     channel: self.channel,
                     data: data
@@ -1696,16 +1708,16 @@ subProto.presence = function () {
     var self = this;
     return new Promise(function (resolve, reject) {
         if (self._isUnsubscribed()) {
-            reject(self._centrifuge._createErrorObject('subscription unsubscribed', 'fix'));
+            reject(self._centrifuge._createErrorObject('subscription unsubscribed'));
             return;
         }
         self._promise.then(function () {
             if (!self._centrifuge.isConnected()) {
-                reject(self._centrifuge._createErrorObject('disconnected', 'retry'));
+                reject(self._centrifuge._createErrorObject('disconnected'));
                 return;
             }
             var uid = self._centrifuge._addMessage({
-                method: PRESENCE,
+                method: commandMethods.PRESENCE,
                 params: {
                     channel: self.channel
                 }
@@ -1721,16 +1733,16 @@ subProto.history = function () {
     var self = this;
     return new Promise(function (resolve, reject) {
         if (self._isUnsubscribed()) {
-            reject(self._centrifuge._createErrorObject('subscription unsubscribed', 'fix'));
+            reject(self._centrifuge._createErrorObject('subscription unsubscribed'));
             return;
         }
         self._promise.then(function () {
             if (!self._centrifuge.isConnected()) {
-                reject(self._centrifuge._createErrorObject('disconnected', 'retry'));
+                reject(self._centrifuge._createErrorObject('disconnected'));
                 return;
             }
             var uid = self._centrifuge._addMessage({
-                method: HISTORY,
+                method: commandMethods.HISTORY,
                 params: {
                     channel: self.channel
                 }

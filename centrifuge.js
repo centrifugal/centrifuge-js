@@ -1774,51 +1774,6 @@ function extend(destination, source) {
     return source.prototype;
 }
 
-/**
- * Array.prototype.indexOf polyfill from
- * https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Array/indexOf
- */
-if (!Array.prototype.indexOf) {
-    Array.prototype.indexOf = function (vMember, nStartFrom) {
-        /*
-        In non-strict mode, if the `this` variable is null or undefined, then it is
-        set the window object. Otherwise, `this` is automaticly converted to an
-        object. In strict mode if the `this` variable is null or undefined a
-        `TypeError` is thrown.
-        */
-        if (!this) {
-            throw new TypeError('Array.prototype.indexOf() - can not convert "' + this + '" to object');
-        }
-        var nIdx = isFinite(nStartFrom) ? Math.floor(nStartFrom) : 0,
-            oThis = this instanceof Object ? this : new Object(this),
-            nLen = isFinite(oThis.length) ? Math.floor(oThis.length) : 0;
-        if (nIdx >= nLen) {
-            return -1;
-        }
-        if (nIdx < 0) {
-            nIdx = Math.max(nLen + nIdx, 0);
-        }
-        if (vMember === undefined) {
-            /*
-            Since `vMember` is undefined, keys that don't exist will have the same
-            value as `vMember`, and thus do need to be checked.
-            */
-            do {
-                if (nIdx in oThis && oThis[nIdx] === undefined) {
-                    return nIdx;
-                }
-            } while (++nIdx < nLen);
-        } else {
-            do {
-                if (oThis[nIdx] === vMember) {
-                    return nIdx;
-                }
-            } while (++nIdx < nLen);
-        }
-        return -1;
-    };
-}
-
 function fieldValue(object, name) {
     try {
         return object[name];
@@ -1864,11 +1819,11 @@ function mixin(deep, target, objects) {
     return result;
 }
 
-function endsWith(value, suffix) {
+function _endsWith(value, suffix) {
     return value.indexOf(suffix, value.length - suffix.length) !== -1;
 }
 
-function startsWith(value, prefix) {
+function _startsWith(value, prefix) {
     return value.lastIndexOf(prefix, 0) === 0;
 }
 
@@ -1912,7 +1867,7 @@ function backoff(step, min, max) {
 }
 
 function errorExists(data) {
-    return 'error' in data && data.error !== null && data.error !== '';
+    return 'error' in data && data.error !== null;
 }
 
 var CONNECT = 0;
@@ -1968,18 +1923,17 @@ function Centrifuge(url, options) {
     this._latencyStart = null;
     this._config = {
         url: null,
+        credentials: null,
         sockjs: null,
         retry: 1000,
         maxRetry: 20000,
         timeout: 5000,
-        credentials: null,
         resubscribe: true,
         ping: true,
         pingInterval: 30000,
         pongWaitTimeout: 5000,
         debug: false,
         insecure: false,
-        server: null,
         privateChannelPrefix: '$',
         onTransportClose: null,
         sockjsTransports: [
@@ -1994,75 +1948,26 @@ function Centrifuge(url, options) {
             'iframe-xhr-polling',
             'jsonp-polling'
         ],
-        onRefresh: null,
+        sockjsServer: null,
         refreshEndpoint: '/centrifuge/refresh/',
         refreshHeaders: {},
         refreshParams: {},
         refreshData: {},
-        refreshTransport: 'ajax',
         refreshAttempts: null,
         refreshInterval: 3000,
         refreshFailed: null,
+        onRefresh: null,
         onPrivateChannelAuth: null,
         authEndpoint: '/centrifuge/auth/',
         authHeaders: {},
-        authParams: {},
-        authTransport: 'ajax'
+        authParams: {}
     };
     this._configure(url, options);
 }
 
 extend(Centrifuge, EventEmitter);
 
-Centrifuge._jsonpCallbacks = {};
-Centrifuge._jsonpTimeouts = {};
-Centrifuge._nextJSONPCallbackID = 1;
-
 var centrifugeProto = Centrifuge.prototype;
-
-centrifugeProto._jsonp = function (url, params, headers, data, callback) {
-    if (Object.keys(headers).length > 0) {
-        this._log('Only AJAX request allows to send custom headers, it is not possible with JSONP.');
-    }
-    this._debug('sending JSONP request to', url);
-
-    var callbackName = 'centrifuge_jsonp_' + Centrifuge._nextJSONPCallbackID.toString();
-    Centrifuge._nextJSONPCallbackID++;
-
-    var document = global.document;
-    var script = document.createElement('script');
-
-    var timeoutTrigger = setTimeout(function () {
-        Centrifuge._jsonpCallbacks[callbackName] = function () {
-        };
-        callback(true, 'timeout');
-    }, 3000);
-
-    Centrifuge._jsonpCallbacks[callbackName] = function (data) {
-        clearTimeout(timeoutTrigger);
-        callback(false, data);
-        delete Centrifuge._jsonpCallbacks[callbackName];
-    };
-
-    var query = '';
-    for (var i in params) {
-        if (params.hasOwnProperty(i)) {
-            if (query.length > 0) {
-                query += '&';
-            }
-            query += encodeURIComponent(i) + '=' + encodeURIComponent(params[i]);
-        }
-    }
-
-    var callback_name = 'Centrifuge._jsonpCallbacks[\'' + callbackName + '\']';
-    script.src = this._config.authEndpoint +
-        '?callback=' + encodeURIComponent(callback_name) +
-        '&data=' + encodeURIComponent(JSON.stringify(data)) +
-        '&' + query;
-
-    var head = document.getElementsByTagName('head')[0] || document.documentElement;
-    head.insertBefore(script, head.firstChild);
-};
 
 centrifugeProto._ajax = function (url, params, headers, data, callback) {
     var self = this;
@@ -2142,7 +2047,7 @@ centrifugeProto._sockjsEndpoint = function () {
         .replace('ws://', 'http://')
         .replace('wss://', 'https://');
     url = stripSlash(url);
-    if (!endsWith(this._config.url, 'connection/sockjs')) {
+    if (!_endsWith(this._config.url, 'connection/sockjs')) {
         url = url + '/connection/sockjs';
     }
     return url;
@@ -2154,7 +2059,7 @@ centrifugeProto._rawWebsocketEndpoint = function () {
         .replace('http://', 'ws://')
         .replace('https://', 'wss://');
     url = stripSlash(url);
-    if (!endsWith(this._config.url, 'connection/websocket')) {
+    if (!_endsWith(this._config.url, 'connection/websocket')) {
         url = url + '/connection/websocket';
     }
     return url;
@@ -2202,7 +2107,7 @@ centrifugeProto._configure = function (url, configuration) {
 
     this._config.url = stripSlash(this._config.url);
 
-    if (endsWith(this._config.url, 'connection/sockjs')) {
+    if (_endsWith(this._config.url, 'connection/sockjs')) {
         this._debug('client will connect to SockJS endpoint');
         if (this._config.sockjs !== null) {
             this._debug('SockJS explicitly provided in options');
@@ -2214,7 +2119,7 @@ centrifugeProto._configure = function (url, configuration) {
             this._debug('use globally defined SockJS');
             this._sockjs = SockJS;
         }
-    } else if (endsWith(this._config.url, 'connection/websocket')) {
+    } else if (_endsWith(this._config.url, 'connection/websocket')) {
         this._debug('client will connect to raw Websocket endpoint');
     } else {
         this._debug('client will detect connection endpoint itself');
@@ -2327,8 +2232,8 @@ centrifugeProto._setupTransport = function () {
         var sockjsOptions = {
             transports: this._config.sockjsTransports
         };
-        if (this._config.server !== null) {
-            sockjsOptions.server = this._config.server;
+        if (this._config.sockjsServer !== null) {
+            sockjsOptions.server = this._config.sockjsServer;
         }
         this._isSockjs = true;
         this._transport = new this._sockjs(this._sockjsEndpoint(), null, sockjsOptions);
@@ -2344,29 +2249,21 @@ centrifugeProto._setupTransport = function () {
         self._transportClosed = false;
         self._reconnecting = false;
         if (self._isSockjs) {
-            self._transportName = self._transport.transport;
+            self._transportName = "sockjs-" + self._transport.transport;
             self._transport.onheartbeat = function () {
                 self._restartPing();
             };
         } else {
-            self._transportName = 'raw-websocket';
+            self._transportName = 'websocket';
         }
 
         self._resetRetry();
-
-        if (!isString(self._config.user)) {
-            self._log('user expected to be string');
-        }
-        if (!isString(self._config.info)) {
-            self._log('info expected to be string');
-        }
 
         var msg = {
             method: commandMethods.CONNECT
         };
 
         if (self._config.credentials) {
-            alert(1);
             msg.params = self._config.credentials;
         }
 
@@ -2374,7 +2271,7 @@ centrifugeProto._setupTransport = function () {
         self._call(msg).then(function(result){
             self._connectResponse(result);
         }, function(err){
-            console.log(err);
+            self._disconnect("connect error", true);
         });
     };
 
@@ -2482,20 +2379,16 @@ centrifugeProto._call = function (msg) {
 }
 
 centrifugeProto._connect = function (callback) {
-
     if (this.isConnected()) {
         this._debug('connect called when already connected');
         return;
     }
-
     if (this._status === 'connecting') {
         return;
     }
 
     this._debug('start connecting');
-
     this._setStatus('connecting');
-
     this._clientID = null;
     this._reconnect = true;
 
@@ -2584,12 +2477,15 @@ centrifugeProto._refresh = function () {
             return;
         }
         self._numRefreshFailed = 0;
-        self._config.user = data.user;
-        self._config.timestamp = data.timestamp;
-        if ('info' in data) {
-            self._config.info = data.info;
+        if (self._config.credentials === null) {
+            return;
         }
-        self._config.token = data.token;
+        self._config.credentials.user = data.user;
+        self._config.credentials.exp = data.exp;
+        if ('info' in data) {
+            self._config.credentials.info = data.info;
+        }
+        self._config.credentials.sign = data.sign;
         if (self.isDisconnected()) {
             self._debug('credentials refreshed, connect from scratch');
             self._connect();
@@ -2597,12 +2493,7 @@ centrifugeProto._refresh = function () {
             self._debug('send refreshed credentials');
             self._addMessage({
                 method: commandMethods.REFRESH,
-                params: {
-                    user: self._config.user,
-                    timestamp: self._config.timestamp,
-                    info: self._config.info,
-                    token: self._config.token
-                }
+                params: self._config.credentials
             });
         }
     };
@@ -2611,14 +2502,7 @@ centrifugeProto._refresh = function () {
         var context = {};
         this._config.onRefresh(context, cb);
     } else {
-        var transport = this._config.refreshTransport.toLowerCase();
-        if (transport === 'ajax') {
-            this._ajax(this._config.refreshEndpoint, this._config.refreshParams, this._config.refreshHeaders, this._config.refreshData, cb);
-        } else if (transport === 'jsonp') {
-            this._jsonp(this._config.refreshEndpoint, this._config.refreshParams, this._config.refreshHeaders, this._config.refreshData, cb);
-        } else {
-            throw 'Unknown refresh transport ' + transport;
-        }
+        this._ajax(this._config.refreshEndpoint, this._config.refreshParams, this._config.refreshHeaders, this._config.refreshData, cb);
     }
 };
 
@@ -2649,7 +2533,7 @@ centrifugeProto._subscribe = function (sub) {
     // can just send subscription message to Centrifuge. If channel name
     // starts with privateChannelPrefix - then this is a private channel
     // and we should ask web application backend for permission first.
-    if (startsWith(channel, this._config.privateChannelPrefix)) {
+    if (_startsWith(channel, this._config.privateChannelPrefix)) {
         // private channel
         if (this._isAuthBatching) {
             this._authChannels[channel] = true;
@@ -2786,31 +2670,11 @@ centrifugeProto._restartPing = function () {
     this._startPing();
 };
 
-centrifugeProto._disconnectResponse = function (message) {
-    if (!errorExists(message)) {
-        var shouldReconnect = false;
-        if ('reconnect' in message.body) {
-            shouldReconnect = message.body.reconnect;
-        }
-        var reason = '';
-        if ('reason' in message.body) {
-            reason = message.body.reason;
-        }
-        this._disconnect(reason, shouldReconnect);
-    } else {
-        this.trigger('error', [{
-            message: message
-        }]);
-    }
-};
-
 centrifugeProto._subscribeResponse = function (channel, result) {
-
     var sub = this._getSub(channel);
     if (!sub) {
         return;
     }
-
     if (!sub._isSubscribing()) {
         return;
     }
@@ -2956,7 +2820,6 @@ centrifugeProto._handleAsyncMessage = function(message) {
     } else if (type === 2) {
         this._leaveResponse(channel, result.data);
     }
-    console.log("ASYNC MESSAGE", result);
 }
 
 centrifugeProto._dispatchMessage = function (message) {
@@ -3215,14 +3078,7 @@ centrifugeProto.stopAuthBatching = function () {
             data: data
         }, cb);
     } else {
-        var transport = this._config.authTransport.toLowerCase();
-        if (transport === 'ajax') {
-            this._ajax(this._config.authEndpoint, this._config.authParams, this._config.authHeaders, data, cb);
-        } else if (transport === 'jsonp') {
-            this._jsonp(this._config.authEndpoint, this._config.authParams, this._config.authHeaders, data, cb);
-        } else {
-            throw 'Unknown private channel auth transport ' + transport;
-        }
+        this._ajax(this._config.authEndpoint, this._config.authParams, this._config.authHeaders, data, cb);
     }
 };
 
@@ -3427,7 +3283,7 @@ subProto.unsubscribe = function () {
     this._centrifuge._unsubscribe(this);
 };
 
-subProto.publish = function (data) {
+subProto._methodCall = function(message) {
     var self = this;
     return new Promise(function (resolve, reject) {
         if (self._isUnsubscribed()) {
@@ -3439,67 +3295,48 @@ subProto.publish = function (data) {
                 reject(self._centrifuge._createErrorObject('disconnected'));
                 return;
             }
-            var uid = self._centrifuge._addMessage({
-                method: commandMethods.PUBLISH,
-                params: {
-                    channel: self.channel,
-                    data: data
-                }
-            });
+            var uid = self._centrifuge._addMessage(message);
             self._centrifuge._registerCall(uid, resolve, reject);
         }, function (err) {
             reject(err);
         });
+    });
+}
+
+subProto.publish = function (data) {
+    return this._methodCall({
+        method: commandMethods.PUBLISH,
+        params: {
+            channel: self.channel,
+            data: data
+        }
     });
 };
 
 subProto.presence = function () {
-    var self = this;
-    return new Promise(function (resolve, reject) {
-        if (self._isUnsubscribed()) {
-            reject(self._centrifuge._createErrorObject('subscription unsubscribed'));
-            return;
+    return this._methodCall({
+        method: commandMethods.PRESENCE,
+        params: {
+            channel: self.channel
         }
-        self._promise.then(function () {
-            if (!self._centrifuge.isConnected()) {
-                reject(self._centrifuge._createErrorObject('disconnected'));
-                return;
-            }
-            var uid = self._centrifuge._addMessage({
-                method: commandMethods.PRESENCE,
-                params: {
-                    channel: self.channel
-                }
-            });
-            self._centrifuge._registerCall(uid, resolve, reject);
-        }, function (err) {
-            reject(err);
-        });
+    });
+};
+
+subProto.presenceStats = function () {
+    return this._methodCall({
+        method: commandMethods.PRESENCE_STATS,
+        params: {
+            channel: self.channel
+        }
     });
 };
 
 subProto.history = function () {
-    var self = this;
-    return new Promise(function (resolve, reject) {
-        if (self._isUnsubscribed()) {
-            reject(self._centrifuge._createErrorObject('subscription unsubscribed'));
-            return;
+    return this._methodCall({
+        method: commandMethods.HISTORY,
+        params: {
+            channel: self.channel
         }
-        self._promise.then(function () {
-            if (!self._centrifuge.isConnected()) {
-                reject(self._centrifuge._createErrorObject('disconnected'));
-                return;
-            }
-            var uid = self._centrifuge._addMessage({
-                method: commandMethods.HISTORY,
-                params: {
-                    channel: self.channel
-                }
-            });
-            self._centrifuge._registerCall(uid, resolve, reject);
-        }, function (err) {
-            reject(err);
-        });
     });
 };
 

@@ -5,7 +5,7 @@
   "main": "src/centrifuge.js",
   "dependencies": {
     "wolfy87-eventemitter": "4.3.0",
-    "es6-promise": "^4.0.5"
+    "es6-promise": "^4.2.4"
   },
   "devDependencies": {
     "browserify": "^6.1.0",

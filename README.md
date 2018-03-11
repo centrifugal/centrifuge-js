@@ -1,15 +1,15 @@
 # Centrifuge client for NodeJS and browser
 
-This client can connect to Centrifuge server (and Centrifugo) using Websocket or SockJS transports.
+This client can connect to Centrifuge server (and Centrifugo in particular) using Websocket or SockJS transports.
 
-At moment only JSON protocol supported. 
+At moment only JSON protocol supported.
 
 * [Install and quick start](#install-and-quick-start)
-* [Connection parameters](#connection-parameters)
+* [Credentials](#credentials)
 * [Configuration parameters](#configuration-parameters)
 * [Client API](#client-api)
 * [Private channels](#private-channels)
-* [Connection check](#connection-check)
+* [Connection expiration](#connection-check)
 
 Javascript client can connect to the server in two ways: using pure Websockets or using [SockJS](https://github.com/sockjs/sockjs-client) library to be able to use various available fallback transports if client browser does not support Websockets.
 
@@ -30,23 +30,10 @@ Browser client is also available via `npm`. So you can use:
 npm install centrifuge
 ```
 
-If you want to use SockJS you must also import SockJS client before centrifuge.js
-
-```html
-<script src="//cdn.jsdelivr.net/sockjs/1.1/sockjs.min.js" type="text/javascript"></script>
-<script src="centrifuge.js" type="text/javascript"></script>
-```
-
 As soon as you included all libraries you can create new `Centrifuge` object instance, subscribe on channel and call `.connect()` method to make actual connection to server:
 
 ```javascript
-var centrifuge = new Centrifuge('http://centrifuge.example.com/connection/websocket', {
-  'credentials': {
-    user: "42",
-    exp: "1520772440",
-    sign: "SHA-256 HMAC TOKEN"
-  }
-});
+var centrifuge = new Centrifuge('ws://centrifuge.example.com/connection/websocket');
 
 centrifuge.subscribe("news", function(message) {
     console.log(message);
@@ -57,37 +44,50 @@ centrifuge.connect();
 
 In example above we initialize `Centrifuge` object instance, subscribe on channel `news`, print all new messages received from channel `news` into console and actually make connection to Centrifugo. And that's all code which required for simple real-time messaging handling on client side!
 
-***`Centrifuge` object is an instance of [EventEmitter](https://nodejs.org/api/events.html#events_class_eventemitter).***
+If you want to use SockJS you must also import SockJS client before centrifuge.js
 
-Parameters `user`, `exp` and `sign` are required. Let's look at these
-connection parameters and other configuration options in detail.
+```html
+<script src="//cdn.jsdelivr.net/sockjs/1.1/sockjs.min.js" type="text/javascript"></script>
+<script src="centrifuge.js" type="text/javascript"></script>
+```
 
-## Connection parameters
+or provide it explicitly:
 
-As we showed above to initialize `Centrifuge` object you must provide connection
-parameters: `url`, `user`, `timestamp`, `token`, optional `info`.
+```javascript
+var Centrifuge = require("centrifuge");
+var SockJS = require('sockjs-client');
 
-**Note that all connection parameters (except url maybe) must come to your Javascript code from
-your application backend**. You can render template with these connection parameters, or you can
-pass them in cookie, or even make an AJAX GET request from your Javascript code to get  `user`,
-`timestamp`, `info` and `token`.
+var centrifuge = new Centrifuge("http://localhost:8000/connection/sockjs", {
+  sockjs: SockJS
+})
+```
 
-Let's see for what each option is responsible for.
+**`Centrifuge` object is an instance of [EventEmitter](https://nodejs.org/api/events.html#events_class_eventemitter).**
 
-#### url (required)
+## Credentials
 
-`url` – is an endpoint of Centrifugo server to connect to.
+If you are connecting to Centrifugo you must also provide connection credentials:
 
-If your Centrifugo server sits on domain `centrifugo.example.com` then:
+```javascript
+var centrifuge = new Centrifuge('ws://centrifuge.example.com/connection/websocket');
 
-* SockJS endpoint is `http://centrifugo.example.com/connection/sockjs`
-* Websocket endpoint is `ws://centrifugo.example.com/connection/websocket`
+centrifuge.setCredentials({
+  'user': '42',
+  'exp': '1520776930',
+  'info': '',
+  'sign': 'XXX'
+})
 
-Remember to include SockJS library on your page when you want to use SockJS.
+centrifuge.subscribe("news", function(message) {
+    console.log(message);
+});
 
-If your Centrifugo works through SSL (**this is recommended btw**) then endpoint addresses must start with `https` (SockJS) and `wss` (Websocket) instead of `http` and `ws`.
+centrifuge.connect();
+```
 
-You can also set `url` to just `http://centrifugo.example.com` and javascript client will detect which endpoint to use (SockJS or Websocket) automatically based on SockJS library availability.
+**Note that all connection credentials must come to your Javascript code from your application backend**. You can render template with these connection parameters, or you can pass them in cookie, or even make an AJAX GET request from your Javascript code to get  `user`, `exp`, `info` and `sign`.
+
+Let's see on each credentials field in detail.
 
 #### user (required)
 
@@ -101,7 +101,7 @@ Just convert that user ID number to string.
 
 #### exp (required)
 
-`timestamp` string is UNIX time in seconds when connection token must be considered expired.
+`exp` string is UNIX time in seconds when connection token must be considered expired.
 
 Note, that most programming languages by default return UNIX timestamp as float value. Or with microseconds included. Centrifugo server **expects only timestamp seconds represented as string**. For example for Python to get timestamp in a correct format use `"%.0f" % time.time()` (or just `str(int(time.time()))`) so the result be something like `"1520772440"`.
 
@@ -121,26 +121,11 @@ with confidential data.
 
 #### info (optional)
 
-You can optionally provide extra parameter `info` when connecting to Centrifugo, i.e.:
+You can optionally provide extra parameter `info` when connecting to Centrifugo.
 
-```javascript
-var centrifuge = new Centrifuge('ws://centrifuge.example.com/connection/websocket', {
-    credentials: { 
-      user: '42',
-      exp: '1520772440',
-      info: '{"first_name": "Alexandr", "last_name": "Emelin"}',
-      sign: 'XXX'
-    }
-});
-```
+`info` is an additional information about connection. It must be **valid JSON encoded as UTF-8 string**. But to prevent client sending wrong `info` **this JSON string must be used while generating sign on backend**.
 
-`info` is an additional information about connection. It must be **valid encoded JSON string**.
-But to prevent client sending wrong `info` **this JSON string must be used while generating
-token**.
-
-If you don't want to use `info` - you can just omit this parameter while connecting to Centrifugo.
-But if you omit it then make sure that info string have not been used in token generation
-(i.e. `info` must be empty string).
+If you don't want to use `info` - you can just omit this parameter while connecting to Centrifugo. If you omit it then make sure that info string have not been used in `sign` generation.
 
 ## Configuration parameters
 
@@ -153,12 +138,20 @@ In case of using SockJS additional configuration parameter can be used - `sockjs
 It defines allowed SockJS transports and by default equals
 
 ```javascript
-var centrifuge = new Centrifuge('ws://centrifuge.example.com/connection/websocket', {
-    ...
+var centrifuge = new Centrifuge(
+  'ws://centrifuge.example.com/connection/websocket', 
+  {
     sockjsTransports: [
-        'websocket', 'xdr-streaming', 'xhr-streaming',
-        'eventsource', 'iframe-eventsource', 'iframe-htmlfile',
-        'xdr-polling', 'xhr-polling', 'iframe-xhr-polling', 'jsonp-polling'
+        'websocket', 
+        'xdr-streaming',
+        'xhr-streaming',
+        'eventsource',
+        'iframe-eventsource',
+        'iframe-htmlfile',
+        'xdr-polling',
+        'xhr-polling',
+        'iframe-xhr-polling',
+        'jsonp-polling'
     ]
 });
 ```
@@ -170,25 +163,21 @@ using SockJS endpoint:
 
 ```javascript
 var centrifuge = new Centrifuge('ws://centrifuge.example.com/connection/websocket', {
-    credentials: {
-      ...
-    },
     sockjsTransports: ["websocket", "xhr-streaming"]
 });
 ```
 
 #### sockjs
 
-**new in 1.3.7**. `sockjs` option allows to explicitly provide SockJS client object to Centrifuge client.
+`sockjs` option allows to explicitly provide SockJS client object to Centrifuge client.
 
-For example this can be useful if you develop in ES6 using imports.
+For example this can be useful if you develop in ES6 with imports:
 
 ```javascript
 import Centrifuge from 'centrifuge'
 import SockJS from 'sockjs-client'
 
 var centrifuge = new Centrifuge('ws://centrifuge.example.com/connection/websocket', {
-  ...
   sockjs: SockJS
 });
 ```
@@ -462,8 +451,7 @@ subscription.on("subscribe", subscribeHandlerFunction);
 subscription.on("error", subscribeErrorHandlerFunction);
 ```
 
-***Subscription objects are instances of [EventEmitter](https://github.com/Olical/EventEmitter/blob/master/docs/api.md).***
-
+**`Subscription` objects are instances of [EventEmitter](https://nodejs.org/api/events.html#events_class_eventemitter).**
 
 ### join and leave events of subscription
 
@@ -475,12 +463,11 @@ Just set event handlers on `join` and `leave` events of subscription.
 var subscription = centrifuge.subscribe("news", function(message) {
     // handle message
 }).on("join", function(message) {
-    console.log("Client joined channel");
+    console.log("Client joined channel", message);
 }).on("leave", function(message) {
-    console.log("Client left channel");
+    console.log("Client left channel", message);
 });
 ```
-
 
 ### subscription event context formats
 
@@ -493,8 +480,7 @@ Let's look at message format of new message received from channel:
 
 ```javascript
 {
-    "uid":"6778c79f-ccb2-4a1b-5768-2e7381bc5410",
-    "channel":"$public:chat",
+    "uid":"6778c79fccb2",
     "data":{"input":"hello"},
 }
 ```
@@ -506,8 +492,7 @@ it was provided when publishing new message:
 
 ```javascript
 {
-    "uid":"6778c79f-ccb2-4a1b-5768-2e7381bc5410",
-    "channel":"$public:chat",
+    "uid":"6778c79fccb2",
     "data":{"input":"hello"},
     "client":"7080fd2a-bd69-4f1f-6648-5f3ceba4b643"
 }
@@ -525,12 +510,10 @@ published by javascript client directly using `publish` method (see details belo
         "default_info":{"name":"Alexandr"},
         "channel_info":{"extra":"extra JSON data when authorizing private channel"}
     },
-    "channel":"$public:chat",
     "data":{"input":"hello"},
     "client":"7080fd2a-bd69-4f1f-6648-5f3ceba4b643"
 }
 ```
-
 
 #### format of join/leave event message
 
@@ -538,18 +521,16 @@ I.e. `on("join", function(message) {...})` or `on("leave", function(message) {..
 
 ```javascript
 {
-    "channel":"$public:chat",
-    "data":{
+    "info":{
         "user":"2694",
         "client":"2724adea-6e9b-460b-4430-a9f999e94c36",
-        "default_info":{"first_name":"Alexandr"},
-        "channel_info":{"extra":"extra JSON data when authorizing"}
+        "conn_info":{"first_name":"Alexandr"},
+        "chan_info":{"extra":"extra JSON data when authorizing"}
     }
 }
 ```
 
-`default_info` and `channel_info` exist in message only if not empty.
-
+`conn_info` and `chan_info` exist in message only if not empty.
 
 #### format of subscribe event context
 
@@ -564,7 +545,6 @@ I.e. `on("subscribe", function(context) {...})`
 
 `isResubscribe` – flag showing if this was initial subscribe (`false`) or resubscribe (`true`)
 
-
 #### format of subscription error event context
 
 I.e. `on("error", function(err) {...})`
@@ -572,29 +552,23 @@ I.e. `on("error", function(err) {...})`
 ```javascript
 {
     "error": "permission denied",
-    "advice": "fix",
     "channel": "$public:chat",
     "isResubscribe": true
 }
 ```
 
 `error` - error description
-`advice` - optional advice (`retry` or `fix` at moment)
 `isResubscribe` – flag showing if this was initial subscribe (`false`) or resubscribe (`true`)
-
 
 #### format of unsubscribe event context
 
 I.e `on("unsubscribe", function(context) {...})`
 
-```
+```javascript
 {
     "channel": "$public:chat"
 }
 ```
-
-I.e. it contains only `channel` at moment.
-
 
 ### presence method of subscription
 
@@ -625,13 +599,11 @@ Format of success callback `message`:
     "data":{
         "2724adea-6e9b-460b-4430-a9f999e94c36": {
             "user":"2694",
-            "client":"2724adea-6e9b-460b-4430-a9f999e94c36",
-            "default_info":{"first_name":"Alexandr"}
+            "client":"2724adea-6e9b-460b-4430-a9f999e94c36"
         },
         "d274505c-ce63-4e24-77cf-971fd8a59f00":{
             "user":"2694",
-            "client":"d274505c-ce63-4e24-77cf-971fd8a59f00",
-            "default_info":{"first_name":"Alexandr"}
+            "client":"d274505c-ce63-4e24-77cf-971fd8a59f00"
         }
     }
 }
@@ -645,13 +617,10 @@ Format of `err` in error callback:
 ```javascript
 {
     "error": "timeout",
-    "advice": "retry"
 }
 ```
 
 * `error` – error description (string)
-* `advice` – error advice (string, "fix" or "retry" at moment)
-
 
 ### history method of subscription
 
@@ -680,12 +649,10 @@ Success callback `message` format:
     "data": [
         {
             "uid": "87219102-a31d-44ed-489d-52b1a7fa520c",
-            "channel": "$public:chat",
             "data": {"input": "hello2"}
         },
         {
             "uid": "71617557-7466-4cbb-760e-639042a5cade",
-            "channel": "$public:chat",
             "data": {"input": "hello1"}
         }
     ]
@@ -815,7 +782,6 @@ Call `stopBatching(true)` to flush all messages and stop batching:
 centrifuge.stopBatching(true);
 ```
 
-
 ## Private channels
 
 If channel name starts with `$` then subscription on this channel will be checked via
@@ -841,3 +807,8 @@ channels sending only one POST request to your web application backend: `startAu
 and `stopAuthBatching`. When you `startAuthBatching` javascript client will collect
 private subscriptions until `stopAuthBatching()` called – and then send them all at
 once.
+
+
+## Connection expiration
+
+When connection expiration mechanism is on on server client will automatically ask your backend for updated connection credentials sending AJAX HTTP POST request to `/centrifuge/refresh` endpoint (by default). Client will send that request when connection ttl is close to the end.

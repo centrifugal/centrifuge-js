@@ -20,6 +20,7 @@ export default class Centrifuge extends EventEmitter {
 
   constructor(url, options) {
     super();
+    this._url = url;
     this._sockjs = null;
     this._isSockjs = false;
     this._status = 'disconnected';
@@ -44,9 +45,8 @@ export default class Centrifuge extends EventEmitter {
     this._callbacks = {};
     this._latency = null;
     this._latencyStart = null;
+    this._credentials = null;
     this._config = {
-      url: null,
-      credentials: null,
       sockjs: null,
       retry: 1000,
       maxRetry: 20000,
@@ -80,12 +80,16 @@ export default class Centrifuge extends EventEmitter {
       refreshInterval: 3000,
       onRefreshFailed: null,
       onRefresh: null,
-      onAuth: null,
       authEndpoint: '/centrifuge/auth',
       authHeaders: {},
-      authParams: {}
+      authParams: {},
+      onAuth: null
     };
-    this._configure(url, options);
+    this._configure(options);
+  }
+
+  setCredentials(credentials) {
+    this._credentials = credentials;
   }
 
   _ajax(url, params, headers, data, callback) {
@@ -163,55 +167,53 @@ export default class Centrifuge extends EventEmitter {
   };
 
   _sockjsEndpoint() {
-    var url = this._config.url;
+    var url = this._url;
 
     url = url
       .replace('ws://', 'http://')
       .replace('wss://', 'https://');
     url = stripSlash(url);
-    if (!endsWith(this._config.url, 'connection/sockjs')) {
+    if (!endsWith(this._url, 'connection/sockjs')) {
       url = url + '/connection/sockjs';
     }
     return url;
   };
 
   _websocketEndpoint() {
-    var url = this._config.url;
+    var url = this._url;
 
     url = url
       .replace('http://', 'ws://')
       .replace('https://', 'wss://');
     url = stripSlash(url);
-    if (!endsWith(this._config.url, 'connection/websocket')) {
+    if (!endsWith(this._url, 'connection/websocket')) {
       url = url + '/connection/websocket';
     }
     return url;
   };
 
-  _configure(url, configuration) {
-    this._config.url = url;
+  _configure(configuration) {
     Object.assign(this._config, configuration || {});
     this._debug('centrifuge config', this._config);
 
-    if (!this._config.url) {
-      throw new Error('Missing required configuration parameter url specifying server URL');
+    if (!this._url) {
+      throw new Error('url required');
     }
 
-    if (this._config.credentials !== null) {
-      if (!this._config.credentials.user && this._config.credentials.user !== '') {
+    if (this._credentials !== null) {
+      if (!this._credentials.user && this._credentials.user !== '') {
         if (!this._config.insecure) {
           throw new Error('Missing required credentials parameter user');
         } else {
-          this._debug('user not found but this is OK for insecure mode - anonymous access will be used');
-          this._config.user = '';
+          this._debug('user not found but this is OK for insecure mode');
         }
       }
 
-      if (!this._config.credentials.info) {
-        this._config.credentials.info = '';
+      if (!this._credentials.info) {
+        this._credentials.info = '';
       }
 
-      if (!this._config.credentials.exp) {
+      if (!this._credentials.exp) {
         if (!this._config.insecure) {
           throw new Error('Missing required credentials parameter exp');
         } else {
@@ -219,7 +221,7 @@ export default class Centrifuge extends EventEmitter {
         }
       }
 
-      if (!this._config.credentials.sign) {
+      if (!this._credentials.sign) {
         if (!this._config.insecure) {
           throw new Error('Missing required credentials parameter sign');
         } else {
@@ -228,9 +230,7 @@ export default class Centrifuge extends EventEmitter {
       }
     }
 
-    this._config.url = stripSlash(this._config.url);
-
-    if (endsWith(this._config.url, 'connection/sockjs')) {
+    if (endsWith(this._url, 'connection/sockjs')) {
       this._debug('client will connect to SockJS endpoint');
       if (this._config.sockjs !== null) {
         this._debug('SockJS explicitly provided in options');
@@ -242,7 +242,7 @@ export default class Centrifuge extends EventEmitter {
         this._debug('use globally defined SockJS');
         this._sockjs = global.SockJS;
       }
-    } else if (endsWith(this._config.url, 'connection/websocket')) {
+    } else if (endsWith(this._url, 'connection/websocket')) {
       this._debug('client will connect to websocket endpoint');
     } else {
       this._debug('client will detect connection endpoint itself');
@@ -392,8 +392,8 @@ export default class Centrifuge extends EventEmitter {
         method: Commands.CONNECT
       };
 
-      if (self._config.credentials) {
-        msg.params = self._config.credentials;
+      if (self._credentials) {
+        msg.params = self._credentials;
       }
 
       self._latencyStart = new Date();
@@ -617,15 +617,15 @@ export default class Centrifuge extends EventEmitter {
         return;
       }
       self._numRefreshFailed = 0;
-      if (self._config.credentials === null) {
+      if (self._credentials === null) {
         return;
       }
-      self._config.credentials.user = data.user;
-      self._config.credentials.exp = data.exp;
+      self._credentials.user = data.user;
+      self._credentials.exp = data.exp;
       if ('info' in data) {
-        self._config.credentials.info = data.info;
+        self._credentials.info = data.info;
       }
-      self._config.credentials.sign = data.sign;
+      self._credentials.sign = data.sign;
       if (self.isDisconnected()) {
         self._debug('credentials refreshed, connect from scratch');
         self._connect();
@@ -633,7 +633,7 @@ export default class Centrifuge extends EventEmitter {
         self._debug('send refreshed credentials');
         self._addMessage({
           method: Commands.REFRESH,
-          params: self._config.credentials
+          params: self._credentials
         });
       }
     };

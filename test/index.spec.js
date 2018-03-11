@@ -15,7 +15,7 @@ describe('Given an instance of my Centrifuge', () => {
   });
   describe('when I need the url', () => {
     it('should return the url', () => {
-      expect(centrifuge._config.url).to.be.equal("ws://localhost:8000/connection/websocket");
+      expect(centrifuge._url).to.be.equal("ws://localhost:8000/connection/websocket");
     });
   });
 });

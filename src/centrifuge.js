@@ -1,5 +1,6 @@
 const EventEmitter = require('events');
 const Promise = require('es6-promise');
+const Subscription = require('./subscription');
 
 import {
   isFunction,
@@ -14,7 +15,7 @@ import {
 
 import {Commands} from './protocol';
 
-const Subscription = require('./subscription');
+const _ErrorTimeout = 'timeout';
 
 export default class Centrifuge extends EventEmitter {
 
@@ -168,7 +169,6 @@ export default class Centrifuge extends EventEmitter {
 
   _sockjsEndpoint() {
     var url = this._url;
-
     url = url
       .replace('ws://', 'http://')
       .replace('wss://', 'https://');
@@ -181,7 +181,6 @@ export default class Centrifuge extends EventEmitter {
 
   _websocketEndpoint() {
     var url = this._url;
-
     url = url
       .replace('http://', 'ws://')
       .replace('https://', 'wss://');
@@ -298,7 +297,7 @@ export default class Centrifuge extends EventEmitter {
   _clearConnectedState(reconnect) {
     this._clientID = null;
 
-    // fire errbacks of registered calls.
+    // fire errbacks of registered outgoing calls.
     for (let uid in this._callbacks) {
       if (this._callbacks.hasOwnProperty(uid)) {
         const callbacks = this._callbacks[uid];
@@ -516,7 +515,7 @@ export default class Centrifuge extends EventEmitter {
     });
   }
 
-  _connect(callback) {
+  _connect() {
     if (this.isConnected()) {
       this._debug('connect called when already connected');
       return;
@@ -529,11 +528,6 @@ export default class Centrifuge extends EventEmitter {
     this._setStatus('connecting');
     this._clientID = null;
     this._reconnect = true;
-
-    if (callback) {
-      this.on('connect', callback);
-    }
-
     this._setupTransport();
   };
 
@@ -631,9 +625,16 @@ export default class Centrifuge extends EventEmitter {
         self._connect();
       } else {
         self._debug('send refreshed credentials');
-        self._addMessage({
+
+        const msg = {
           method: Commands.REFRESH,
           params: self._credentials
+        };
+
+        self._call(msg).then(function (result) {
+          self._refreshResponse(result);
+        }, function () {
+          self._disconnect('refresh error', true);
         });
       }
     };
@@ -697,8 +698,8 @@ export default class Centrifuge extends EventEmitter {
       }
       const self = this;
 
-      this._call(msg).then(function (message) {
-        self._subscribeResponse(channel, message);
+      this._call(msg).then(function (result) {
+        self._subscribeResponse(channel, result);
       }, function (err) {
         self._subscribeError(err);
       });
@@ -821,9 +822,23 @@ export default class Centrifuge extends EventEmitter {
     this._startPing();
   };
 
+  _subscribeError(channel, error) {
+    const sub = this._getSub(channel);
+    if (!sub) {
+      return;
+    }
+    if (!sub._isSubscribing()) {
+      return;
+    }
+    if (error.code === 0 && error.message === _ErrorTimeout) { // client side timeout.
+      this._disconnect('timeout', true);
+      return;
+    }
+    sub._setSubscribeError(error);
+  };
+
   _subscribeResponse(channel, result) {
     const sub = this._getSub(channel);
-
     if (!sub) {
       return;
     }
@@ -838,14 +853,14 @@ export default class Centrifuge extends EventEmitter {
       publications = publications.reverse();
       for (let i in publications) {
         if (publications.hasOwnProperty(i)) {
-          this._messageResponse({
+          this._handlePublication({
             body: publications[i]
           });
         }
       }
     } else {
       if ('last' in result) {
-        // no missed messages found so set last message id from body.
+        // no missed messages found so set last message id from result.
         this._lastPublicationUID[channel] = result.last;
       }
     }
@@ -858,32 +873,7 @@ export default class Centrifuge extends EventEmitter {
     sub._setSubscribeSuccess(recovered);
   };
 
-  _unsubscribeResponse(message) {
-    const uid = message.uid;
-    const body = message.body;
-    const channel = body.channel;
-
-    const sub = this._getSub(channel);
-
-    if (!sub) {
-      return;
-    }
-
-    if (!errorExists(message)) {
-      if (!uid) {
-        // unsubscribe command from server – unsubscribe all current subs
-        sub._setUnsubscribed();
-      }
-      // ignore client initiated successful unsubscribe responses as we
-      // already unsubscribed on client level.
-    } else {
-      this.emit('error', {
-        message: message
-      });
-    }
-  };
-
-  _handleResponse(message) {
+  _handleCommandReply(message) {
     const id = message.id;
     const result = message.result;
 
@@ -891,86 +881,71 @@ export default class Centrifuge extends EventEmitter {
       return;
     }
     const callbacks = this._callbacks[id];
-
     delete this._callbacks[id];
+
     if (!errorExists(message)) {
       const callback = callbacks.callback;
-
       if (!callback) {
         return;
       }
       callback(result);
     } else {
       const errback = callbacks.errback;
-
       if (!errback) {
         return;
       }
       errback(message.error);
-      this.emit('error', {
-        message: message
-      });
     }
   }
 
-  _joinResponse(channel, data) {
+  _handleJoin(channel, data) {
     const sub = this._getSub(channel);
-
     if (!sub) {
       return;
     }
     sub.emit('join', data);
   };
 
-  _leaveResponse(channel, data) {
+  _handleLeave(channel, data) {
     const sub = this._getSub(channel);
-
     if (!sub) {
       return;
     }
     sub.emit('leave', data);
   };
 
-  _messageResponse(channel, message) {
+  _handlePublication(channel, publication) {
     // keep last uid received from channel.
-    this._lastPublicationUID[channel] = message.uid;
-
+    this._lastPublicationUID[channel] = publication.uid;
     const sub = this._getSub(channel);
-
     if (!sub) {
       return;
     }
-    sub.emit('message', message);
+    sub.emit('message', publication);
   };
 
-  _refreshResponse(message) {
+  _refreshResponse(result) {
     if (this._refreshTimeout) {
       clearTimeout(this._refreshTimeout);
     }
-    if (!errorExists(message)) {
-      if (message.body.expires) {
-        const self = this;
-        const isExpired = message.body.expired;
+    if (result.expires) {
+      const self = this;
+      const expired = result.expired;
 
-        if (isExpired) {
-          self._refreshTimeout = setTimeout(function () {
-            self._refresh.call(self);
-          }, self._config.refreshInterval + Math.round(Math.random() * 1000));
-          return;
-        }
-        this._clientID = message.body.client;
+      if (expired) {
         self._refreshTimeout = setTimeout(function () {
           self._refresh.call(self);
-        }, message.body.ttl * 1000);
+        }, self._config.refreshInterval + Math.round(Math.random() * 1000));
+        return;
       }
-    } else {
-      this.emit('error', {
-        message: message
-      });
+      this._clientID = result.client;
+      self._refreshTimeout = setTimeout(function () {
+        self._refresh.call(self);
+      }, result.ttl * 1000);
     }
   };
 
-  _handleAsyncMessage(message) {
+  _handleAsyncReply(message) {
     const result = message.result;
     let type = 0;
     if ('type' in result) {
@@ -979,11 +954,11 @@ export default class Centrifuge extends EventEmitter {
     const channel = result.channel;
 
     if (type === 0) {
-      this._messageResponse(channel, result.data);
+      this._handlePublication(channel, result.data);
     } else if (type === 1) {
-      this._joinResponse(channel, result.data);
+      this._handleJoin(channel, result.data);
     } else if (type === 2) {
-      this._leaveResponse(channel, result.data);
+      this._handleLeave(channel, result.data);
     }
   }
 
@@ -996,22 +971,22 @@ export default class Centrifuge extends EventEmitter {
     const id = message.id;
 
     if (id && id > 0) {
-      this._handleResponse(message);
+      this._handleCommandReply(message);
     } else {
-      this._handleAsyncMessage(message);
+      this._handleAsyncReply(message);
     }
   };
 
   _receive(data) {
     if (Object.prototype.toString.call(data) === Object.prototype.toString.call([])) {
-      // array of responses received
+      // array of replies received.
       for (let i in data) {
         if (data.hasOwnProperty(i)) {
           this._dispatchMessage(data[i]);
         }
       }
     } else if (Object.prototype.toString.call(data) === Object.prototype.toString.call({})) {
-      // one response received
+      // one reply received.
       this._dispatchMessage(data);
     }
   };
@@ -1055,10 +1030,6 @@ export default class Centrifuge extends EventEmitter {
     return errObject;
   };
 
-  _errorObjectFromMessage(message) {
-    return this._createErrorObject(message.error, message.code);
-  };
-
   _registerCall(id, callback, errback) {
     const self = this;
 
@@ -1069,7 +1040,7 @@ export default class Centrifuge extends EventEmitter {
     setTimeout(function () {
       delete self._callbacks[id];
       if (isFunction(errback)) {
-        errback(self._createErrorObject('timeout'));
+        errback(self._createErrorObject(_ErrorTimeout));
       }
     }, this._config.timeout);
   };
@@ -1223,8 +1194,8 @@ export default class Centrifuge extends EventEmitter {
               msg.params.recover = true;
               msg.params.last = self._getLastID(channel);
             }
-            self._call(msg).then(function (message) {
-              self._subscribeResponse(channel, message);
+            self._call(msg).then(function (result) {
+              self._subscribeResponse(channel, result);
             }, function (err) {
               self._subscribeError(channel, err);
             });
@@ -1278,6 +1249,5 @@ export default class Centrifuge extends EventEmitter {
     this._subs[channel] = sub;
     sub.subscribe();
     return sub;
-
   };
 }

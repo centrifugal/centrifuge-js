@@ -16,8 +16,8 @@ const _STATE_UNSUBSCRIBED = 4;
 export default class Subscription extends EventEmitter {
   constructor(centrifuge, channel, events) {
     super();
-    this._centrifuge = centrifuge;
     this.channel = channel;
+    this._centrifuge = centrifuge;
     this._status = _STATE_NEW;
     this._error = null;
     this._isResubscribe = false;
@@ -30,6 +30,9 @@ export default class Subscription extends EventEmitter {
   }
 
   _initializePromise() {
+    // this helps us to wait until subscription will successfully
+    // subscribe and call actions such as presence, history etc in
+    // synchronous way.
     var self = this;
 
     this._ready = false;
@@ -51,13 +54,12 @@ export default class Subscription extends EventEmitter {
       return;
     }
     if (isFunction(events)) {
+      // events is just a function to handle publication received from channel.
       this.on('message', events);
     } else if (Object.prototype.toString.call(events) === Object.prototype.toString.call({})) {
       const knownEvents = ['message', 'join', 'leave', 'unsubscribe', 'subscribe', 'error'];
-
       for (let i = 0, l = knownEvents.length; i < l; i++) {
         const ev = knownEvents[i];
-
         if (ev in events) {
           this.on(ev, events[ev]);
         }
@@ -156,8 +158,7 @@ export default class Subscription extends EventEmitter {
   };
 
   _getSubscribeErrorContext() {
-    var subscribeErrorContext = this._error;
-
+    let subscribeErrorContext = this._error;
     subscribeErrorContext.channel = this.channel;
     subscribeErrorContext.isResubscribe = this._isResubscribe;
     return subscribeErrorContext;
@@ -187,7 +188,6 @@ export default class Subscription extends EventEmitter {
 
   _methodCall(message) {
     var self = this;
-
     return new Promise(function (resolve, reject) {
       if (self._isUnsubscribed()) {
         reject(self._centrifuge._createErrorObject('subscription unsubscribed'));

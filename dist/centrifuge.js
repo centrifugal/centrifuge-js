@@ -1741,8 +1741,9 @@ function _inherits(subClass, superClass) { if (typeof superClass !== "function" 
 
 var EventEmitter = __webpack_require__(3);
 var Promise = __webpack_require__(4);
-
 var Subscription = __webpack_require__(8);
+
+var _ErrorTimeout = 'timeout';
 
 var Centrifuge = function (_EventEmitter) {
   _inherits(Centrifuge, _EventEmitter);
@@ -1899,7 +1900,6 @@ var Centrifuge = function (_EventEmitter) {
     key: '_sockjsEndpoint',
     value: function _sockjsEndpoint() {
       var url = this._url;
-
       url = url.replace('ws://', 'http://').replace('wss://', 'https://');
       url = (0, _utils.stripSlash)(url);
       if (!(0, _utils.endsWith)(this._url, 'connection/sockjs')) {
@@ -1911,7 +1911,6 @@ var Centrifuge = function (_EventEmitter) {
     key: '_websocketEndpoint',
     value: function _websocketEndpoint() {
       var url = this._url;
-
       url = url.replace('http://', 'ws://').replace('https://', 'wss://');
       url = (0, _utils.stripSlash)(url);
       if (!(0, _utils.endsWith)(this._url, 'connection/websocket')) {
@@ -2035,7 +2034,7 @@ var Centrifuge = function (_EventEmitter) {
     value: function _clearConnectedState(reconnect) {
       this._clientID = null;
 
-      // fire errbacks of registered calls.
+      // fire errbacks of registered outgoing calls.
       for (var uid in this._callbacks) {
         if (this._callbacks.hasOwnProperty(uid)) {
           var callbacks = this._callbacks[uid];
@@ -2259,7 +2258,7 @@ var Centrifuge = function (_EventEmitter) {
     }
   }, {
     key: '_connect',
-    value: function _connect(callback) {
+    value: function _connect() {
       if (this.isConnected()) {
         this._debug('connect called when already connected');
         return;
@@ -2272,11 +2271,6 @@ var Centrifuge = function (_EventEmitter) {
       this._setStatus('connecting');
       this._clientID = null;
       this._reconnect = true;
-
-      if (callback) {
-        this.on('connect', callback);
-      }
-
       this._setupTransport();
     }
   }, {
@@ -2377,9 +2371,16 @@ var Centrifuge = function (_EventEmitter) {
           self._connect();
         } else {
           self._debug('send refreshed credentials');
-          self._addMessage({
+
+          var msg = {
             method: _protocol.Commands.REFRESH,
             params: self._credentials
+          };
+
+          self._call(msg).then(function (result) {
+            self._refreshResponse(result);
+          }, function () {
+            self._disconnect('refresh error', true);
           });
         }
       };
@@ -2438,8 +2439,8 @@ var Centrifuge = function (_EventEmitter) {
         }
         var self = this;
 
-        this._call(msg).then(function (message) {
-          self._subscribeResponse(channel, message);
+        this._call(msg).then(function (result) {
+          self._subscribeResponse(channel, result);
         }, function (err) {
           self._subscribeError(err);
         });
@@ -2568,10 +2569,26 @@ var Centrifuge = function (_EventEmitter) {
       this._startPing();
     }
   }, {
+    key: '_subscribeError',
+    value: function _subscribeError(channel, error) {
+      var sub = this._getSub(channel);
+      if (!sub) {
+        return;
+      }
+      if (!sub._isSubscribing()) {
+        return;
+      }
+      if (error.code === 0 && error.message === _ErrorTimeout) {
+        // client side timeout.
+        this._disconnect('timeout', true);
+        return;
+      }
+      sub._setSubscribeError(error);
+    }
+  }, {
     key: '_subscribeResponse',
     value: function _subscribeResponse(channel, result) {
       var sub = this._getSub(channel);
-
       if (!sub) {
         return;
       }
@@ -2586,14 +2603,14 @@ var Centrifuge = function (_EventEmitter) {
         publications = publications.reverse();
         for (var i in publications) {
           if (publications.hasOwnProperty(i)) {
-            this._messageResponse({
+            this._handlePublication({
               body: publications[i]
             });
           }
         }
       } else {
         if ('last' in result) {
-          // no missed messages found so set last message id from body.
+          // no missed messages found so set last message id from result.
           this._lastPublicationUID[channel] = result.last;
         }
       }
@@ -2606,34 +2623,8 @@ var Centrifuge = function (_EventEmitter) {
       sub._setSubscribeSuccess(recovered);
     }
   }, {
-    key: '_unsubscribeResponse',
-    value: function _unsubscribeResponse(message) {
-      var uid = message.uid;
-      var body = message.body;
-      var channel = body.channel;
-
-      var sub = this._getSub(channel);
-
-      if (!sub) {
-        return;
-      }
-
-      if (!(0, _utils.errorExists)(message)) {
-        if (!uid) {
-          // unsubscribe command from server – unsubscribe all current subs
-          sub._setUnsubscribed();
-        }
-        // ignore client initiated successful unsubscribe responses as we
-        // already unsubscribed on client level.
-      } else {
-        this.emit('error', {
-          message: message
-        });
-      }
-    }
-  }, {
-    key: '_handleResponse',
-    value: function _handleResponse(message) {
+    key: '_handleCommandReply',
+    value: function _handleCommandReply(message) {
       var id = message.id;
       var result = message.result;
 
@@ -2641,91 +2632,76 @@ var Centrifuge = function (_EventEmitter) {
         return;
       }
       var callbacks = this._callbacks[id];
-
       delete this._callbacks[id];
+
       if (!(0, _utils.errorExists)(message)) {
         var callback = callbacks.callback;
-
         if (!callback) {
           return;
         }
         callback(result);
       } else {
         var errback = callbacks.errback;
-
         if (!errback) {
           return;
         }
         errback(message.error);
-        this.emit('error', {
-          message: message
-        });
       }
     }
   }, {
-    key: '_joinResponse',
-    value: function _joinResponse(channel, data) {
+    key: '_handleJoin',
+    value: function _handleJoin(channel, data) {
       var sub = this._getSub(channel);
-
       if (!sub) {
         return;
       }
       sub.emit('join', data);
     }
   }, {
-    key: '_leaveResponse',
-    value: function _leaveResponse(channel, data) {
+    key: '_handleLeave',
+    value: function _handleLeave(channel, data) {
       var sub = this._getSub(channel);
-
       if (!sub) {
         return;
       }
       sub.emit('leave', data);
     }
   }, {
-    key: '_messageResponse',
-    value: function _messageResponse(channel, message) {
+    key: '_handlePublication',
+    value: function _handlePublication(channel, publication) {
       // keep last uid received from channel.
-      this._lastPublicationUID[channel] = message.uid;
-
+      this._lastPublicationUID[channel] = publication.uid;
       var sub = this._getSub(channel);
-
       if (!sub) {
         return;
       }
-      sub.emit('message', message);
+      sub.emit('message', publication);
     }
   }, {
     key: '_refreshResponse',
-    value: function _refreshResponse(message) {
+    value: function _refreshResponse(result) {
       if (this._refreshTimeout) {
         clearTimeout(this._refreshTimeout);
       }
-      if (!(0, _utils.errorExists)(message)) {
-        if (message.body.expires) {
-          var self = this;
-          var isExpired = message.body.expired;
+      if (result.expires) {
+        var self = this;
+        var expired = result.expired;
 
-          if (isExpired) {
-            self._refreshTimeout = setTimeout(function () {
-              self._refresh.call(self);
-            }, self._config.refreshInterval + Math.round(Math.random() * 1000));
-            return;
-          }
-          this._clientID = message.body.client;
+        if (expired) {
           self._refreshTimeout = setTimeout(function () {
             self._refresh.call(self);
-          }, message.body.ttl * 1000);
+          }, self._config.refreshInterval + Math.round(Math.random() * 1000));
+          return;
         }
-      } else {
-        this.emit('error', {
-          message: message
-        });
+        this._clientID = result.client;
+        self._refreshTimeout = setTimeout(function () {
+          self._refresh.call(self);
+        }, result.ttl * 1000);
       }
     }
   }, {
-    key: '_handleAsyncMessage',
-    value: function _handleAsyncMessage(message) {
+    key: '_handleAsyncReply',
+    value: function _handleAsyncReply(message) {
       var result = message.result;
       var type = 0;
       if ('type' in result) {
@@ -2734,11 +2710,11 @@ var Centrifuge = function (_EventEmitter) {
       var channel = result.channel;
 
       if (type === 0) {
-        this._messageResponse(channel, result.data);
+        this._handlePublication(channel, result.data);
       } else if (type === 1) {
-        this._joinResponse(channel, result.data);
+        this._handleJoin(channel, result.data);
       } else if (type === 2) {
-        this._leaveResponse(channel, result.data);
+        this._handleLeave(channel, result.data);
       }
     }
   }, {
@@ -2752,23 +2728,23 @@ var Centrifuge = function (_EventEmitter) {
       var id = message.id;
 
       if (id && id > 0) {
-        this._handleResponse(message);
+        this._handleCommandReply(message);
       } else {
-        this._handleAsyncMessage(message);
+        this._handleAsyncReply(message);
       }
     }
   }, {
     key: '_receive',
     value: function _receive(data) {
       if (Object.prototype.toString.call(data) === Object.prototype.toString.call([])) {
-        // array of responses received
+        // array of replies received.
         for (var i in data) {
           if (data.hasOwnProperty(i)) {
             this._dispatchMessage(data[i]);
           }
         }
       } else if (Object.prototype.toString.call(data) === Object.prototype.toString.call({})) {
-        // one response received
+        // one reply received.
         this._dispatchMessage(data);
       }
     }
@@ -2816,11 +2792,6 @@ var Centrifuge = function (_EventEmitter) {
       return errObject;
     }
   }, {
-    key: '_errorObjectFromMessage',
-    value: function _errorObjectFromMessage(message) {
-      return this._createErrorObject(message.error, message.code);
-    }
-  }, {
     key: '_registerCall',
     value: function _registerCall(id, callback, errback) {
       var self = this;
@@ -2832,7 +2803,7 @@ var Centrifuge = function (_EventEmitter) {
       setTimeout(function () {
         delete self._callbacks[id];
         if ((0, _utils.isFunction)(errback)) {
-          errback(self._createErrorObject('timeout'));
+          errback(self._createErrorObject(_ErrorTimeout));
         }
       }, this._config.timeout);
     }
@@ -2995,8 +2966,8 @@ var Centrifuge = function (_EventEmitter) {
                 msg.params.recover = true;
                 msg.params.last = self._getLastID(channel);
               }
-              self._call(msg).then(function (message) {
-                self._subscribeResponse(channel, message);
+              self._call(msg).then(function (result) {
+                self._subscribeResponse(channel, result);
               }, function (err) {
                 self._subscribeError(channel, err);
               });
@@ -3290,8 +3261,8 @@ var Subscription = function (_EventEmitter) {
 
     var _this = _possibleConstructorReturn(this, (Subscription.__proto__ || Object.getPrototypeOf(Subscription)).call(this));
 
-    _this._centrifuge = centrifuge;
     _this.channel = channel;
+    _this._centrifuge = centrifuge;
     _this._status = _STATE_NEW;
     _this._error = null;
     _this._isResubscribe = false;
@@ -3307,6 +3278,9 @@ var Subscription = function (_EventEmitter) {
   _createClass(Subscription, [{
     key: '_initializePromise',
     value: function _initializePromise() {
+      // this helps us to wait until subscription will successfully
+      // subscribe and call actions such as presence, history etc in
+      // synchronous way.
       var self = this;
 
       this._ready = false;
@@ -3329,13 +3303,12 @@ var Subscription = function (_EventEmitter) {
         return;
       }
       if ((0, _utils.isFunction)(events)) {
+        // events is just a function to handle publication received from channel.
         this.on('message', events);
       } else if (Object.prototype.toString.call(events) === Object.prototype.toString.call({})) {
         var knownEvents = ['message', 'join', 'leave', 'unsubscribe', 'subscribe', 'error'];
-
         for (var i = 0, l = knownEvents.length; i < l; i++) {
           var ev = knownEvents[i];
-
           if (ev in events) {
             this.on(ev, events[ev]);
           }
@@ -3450,7 +3423,6 @@ var Subscription = function (_EventEmitter) {
     key: '_getSubscribeErrorContext',
     value: function _getSubscribeErrorContext() {
       var subscribeErrorContext = this._error;
-
       subscribeErrorContext.channel = this.channel;
       subscribeErrorContext.isResubscribe = this._isResubscribe;
       return subscribeErrorContext;
@@ -3484,7 +3456,6 @@ var Subscription = function (_EventEmitter) {
     key: '_methodCall',
     value: function _methodCall(message) {
       var self = this;
-
       return new Promise(function (resolve, reject) {
         if (self._isUnsubscribed()) {
           reject(self._centrifuge._createErrorObject('subscription unsubscribed'));

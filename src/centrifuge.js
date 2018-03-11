@@ -78,7 +78,7 @@ function _startsWith(value, prefix) {
     return value.lastIndexOf(prefix, 0) === 0;
 }
 
-function stripSlash(value) {
+function _stripSlash(value) {
     if (value.substring(value.length - 1) === '/') {
         value = value.substring(0, value.length - 1);
     }
@@ -297,7 +297,7 @@ centrifugeProto._sockjsEndpoint = function () {
     url = url
         .replace('ws://', 'http://')
         .replace('wss://', 'https://');
-    url = stripSlash(url);
+    url = _stripSlash(url);
     if (!_endsWith(this._config.url, 'connection/sockjs')) {
         url = url + '/connection/sockjs';
     }
@@ -309,7 +309,7 @@ centrifugeProto._websocketEndpoint = function () {
     url = url
         .replace('http://', 'ws://')
         .replace('https://', 'wss://');
-    url = stripSlash(url);
+    url = _stripSlash(url);
     if (!_endsWith(this._config.url, 'connection/websocket')) {
         url = url + '/connection/websocket';
     }
@@ -322,13 +322,13 @@ centrifugeProto._configure = function (url, configuration) {
     this._debug('centrifuge config', this._config);
 
     if (!this._config.url) {
-        throw 'Missing required configuration parameter \'url\' specifying server URL';
+        throw "Missing required configuration parameter 'url' specifying server URL";
     }
 
     if (this._config.credentials !== null) {
         if (!this._config.credentials.user && this._config.credentials.user !== '') {
             if (!this._config.insecure) {
-                throw 'Missing required credentials parameter \'user\' specifying user\'s unique ID in your application';
+                throw "Missing required credentials parameter 'user'";
             } else {
                 this._debug('user not found but this is OK for insecure mode - anonymous access will be used');
                 this._config.user = '';
@@ -341,7 +341,7 @@ centrifugeProto._configure = function (url, configuration) {
 
         if (!this._config.credentials.exp) {
             if (!this._config.insecure) {
-                throw 'Missing required credentials parameter \'exp\'';
+                throw "Missing required credentials parameter 'exp'";
             } else {
                 this._debug('exp not found but this is OK for insecure mode');
             }
@@ -349,14 +349,14 @@ centrifugeProto._configure = function (url, configuration) {
 
         if (!this._config.credentials.sign) {
             if (!this._config.insecure) {
-                throw 'Missing required credentials parameter \'sign\' specifying the sign of authentication credentials';
+                throw "Missing required credentials parameter 'sign'";
             } else {
                 this._debug('sign not found but this is OK for insecure mode');
             }
         }
     }
 
-    this._config.url = stripSlash(this._config.url);
+    this._config.url = _stripSlash(this._config.url);
 
     if (_endsWith(this._config.url, 'connection/sockjs')) {
         this._debug('client will connect to SockJS endpoint');
@@ -1173,13 +1173,7 @@ centrifugeProto._addMessage = function (message, async) {
     return 0;
 };
 
-centrifugeProto.getClientId = function () {
-    return this._clientID;
-};
-
 centrifugeProto.isConnected = centrifugeProto._isConnected;
-
-centrifugeProto.isDisconnected = centrifugeProto._isDisconnected;
 
 centrifugeProto.connect = centrifugeProto._connect;
 
@@ -1241,7 +1235,7 @@ centrifugeProto.stopAuthBatching = function () {
     }
 
     var data = {
-        client: this.getClientId(),
+        client: this._clientID,
         channels: channels
     };
 
@@ -1255,7 +1249,6 @@ centrifugeProto.stopAuthBatching = function () {
                     channel = channels[i];
                     self._subscribeResponse({
                         error: 'authorization request failed',
-                        advice: 'fix',
                         body: {
                             channel: channel
                         }
@@ -1280,7 +1273,6 @@ centrifugeProto.stopAuthBatching = function () {
                     // subscription:error
                     self._subscribeResponse({
                         error: 'channel not found in authorization response',
-                        advice: 'fix',
                         body: {
                             channel: channel
                         }
@@ -1292,7 +1284,7 @@ centrifugeProto.stopAuthBatching = function () {
                         method: commandMethods.SUBSCRIBE,
                         params: {
                             channel: channel,
-                            client: self.getClientId(),
+                            client: self._clientID,
                             info: channelResponse.info,
                             sign: channelResponse.sign
                         }

@@ -1,11 +1,12 @@
 const EventEmitter = require('events');
 const Promise = require('es6-promise');
+const protobuf = require('protobufjs/light');
 
 import {
   isFunction
 } from './utils';
 
-import {Commands} from './protocol';
+const proto = protobuf.Root.fromJSON(require('./client.proto.json'));
 
 const _STATE_NEW = 0;
 const _STATE_SUBSCRIBING = 1;
@@ -186,7 +187,7 @@ export default class Subscription extends EventEmitter {
     this._centrifuge._unsubscribe(this);
   };
 
-  _methodCall(message) {
+  _methodCall(message, type) {
     var self = this;
     return new Promise(function (resolve, reject) {
       if (self._isUnsubscribed()) {
@@ -198,9 +199,11 @@ export default class Subscription extends EventEmitter {
           reject(self._centrifuge._createErrorObject('disconnected'));
           return;
         }
-        const uid = self._centrifuge._addMessage(message);
-
-        self._centrifuge._registerCall(uid, resolve, reject);
+        self._centrifuge._call(message).then(function (result) {
+          resolve(self._centrifuge._decode(result, type));
+        }, function (err) {
+          reject(err);
+        });
       }, function (err) {
         reject(err);
       });
@@ -209,38 +212,38 @@ export default class Subscription extends EventEmitter {
 
   publish(data) {
     return this._methodCall({
-      method: Commands.PUBLISH,
+      method: proto.lookupEnum('MethodType').values.PUBLISH,
       params: {
         channel: self.channel,
         data: data
       }
-    });
+    }, proto.lookupType('proto.PublishResult'));
   };
 
   presence() {
     return this._methodCall({
-      method: Commands.PRESENCE,
+      method: proto.lookupEnum('MethodType').values.PRESENCE,
       params: {
         channel: self.channel
       }
-    });
+    }, proto.lookupType('proto.PresenceResult'));
   };
 
   presenceStats() {
     return this._methodCall({
-      method: Commands.PRESENCE_STATS,
+      method: proto.lookupEnum('MethodType').values.PRESENCE_STATS,
       params: {
         channel: self.channel
       }
-    });
+    }, proto.lookupType('proto.PresenceStatsResult'));
   };
 
   history() {
     return this._methodCall({
-      method: Commands.HISTORY,
+      method: proto.lookupEnum('MethodType').values.HISTORY,
       params: {
         channel: self.channel
       }
-    });
+    }, proto.lookupType('proto.HistoryResult'));
   };
 }

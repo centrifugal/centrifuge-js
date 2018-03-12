@@ -20,13 +20,17 @@
     "centrifuge"
   ],
   "author": "Alexander Emelin",
+  "contributors": [
+    "Oleg V. Kuzmin"
+  ],
   "license": "MIT",
   "bugs": {
     "url": "https://github.com/centrifugal/centrifuge-js/issues"
   },
   "homepage": "https://github.com/centrifugal/centrifuge-js",
   "dependencies": {
-    "es6-promise": "^4.2.4"
+    "es6-promise": "^4.2.4",
+    "protobufjs": "^6.8.6"
   },
   "devDependencies": {
     "babel-cli": "^6.26.0",

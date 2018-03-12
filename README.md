@@ -305,44 +305,6 @@ What's in `context`?
 * `reason` – the reason of client's disconnect (string)
 * `reconnect` – flag indicating if client will reconnect or not (boolean)
 
-
-#### error event
-
-`error` event called every time on centrifuge object when response with error received.
-In normal workflow it will never be happen. But it's better to log these errors to detect
-where problem with connection is.
-
-This event handler is a general error messages sink - it will receives all messages received
-from Centrifugo containing error so it could also receive message resulting in `error` event
-for subscription (see below). The difference is that this event handler exists mostly for
-logging purposes to help developer fix possible problems - while other errors (subscription
-error or `publish`, `presence`, `history` call errors) can be theoretically handled to retry
-call or resubscribe maybe.
-
-```javascript
-centrifuge.on('error', function(error) {
-    // handle error in a way you want, here we just log it into browser console.
-    console.log(error)
-});
-```
-
-What's in `error`?
-
-```javascript
-{
-    "message": {
-        "method": "METHOD",
-        "error": "ERROR DESCRIPTION",
-        "advice": "OPTIONAL ERROR ADVICE"
-    }
-}
-```
-
-`message` – message from server containing error. It's a raw protocol message resulted in
-error event because it contains `error` field. At bare minimum it's recommended to log these
-errors. In normal workflow such errors should never exist and must be a signal for developer
-that something goes wrong.
-
 #### disconnect method
 
 In some cases you may need to disconnect your client from server, use `disconnect` method to
@@ -377,18 +339,15 @@ var subscription = centrifuge.subscribe("news", function(message) {
 And that's all! For lots of cases it's enough! But let's look at possible events that
 can happen with subscription:
 
-* `message` – called when new message received (callback function in our previous example is `message`
-    event callback btw)
+* `message` – called when new publication message received (callback function in our previous example is   
+    `message` event callback btw)
 * `join` – called when someone joined channel
 * `leave` – called when someone left channel
 * `subscribe` – called when subscription on channel successful and acknowledged by Centrifugo
-    server. It can be called several times during javascript code lifetime as browser client
-    automatically resubscribes on channels after successful reconnect (caused by temporary
-    network disconnect for example or Centrifugo server restart).
-* `error` – called when subscription on channel failed with error. It can called several times
-    during javascript code lifetime as browser client automatically resubscribes on channels
-    after successful reconnect (caused by temporary network disconnect for example or Centrifugo
-    server restart).
+    server. It can be called several times during lifetime as browser client automatically resubscribes on channels after successful reconnect (caused by temporary network disconnect for example or Centrifugo server restart)
+* `error` – called when subscription on channel failed with error. It can be called several times
+    during lifetime as browser client automatically resubscribes on channels after successful reconnect 
+    (caused by temporary network disconnect for example or Centrifugo server restart)
 * `unsubscribe` – called every time subscription that was successfully subscribed
     unsubscribes from channel (can be caused by network disconnect or by calling
     `unsubscribe` method of subscription object)

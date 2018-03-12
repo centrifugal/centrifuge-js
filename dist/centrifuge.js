@@ -7692,7 +7692,9 @@ var Centrifuge = function (_EventEmitter) {
                 command.params = proto.lookupType('proto.HistoryRequest').encode(command.params).finish();
                 break;
               case proto.lookupEnum('proto.MethodType').values.PING:
-                command.params = proto.lookupType('proto.PingRequest').encode(command.params).finish();
+                if (command.params) {
+                  command.params = proto.lookupType('proto.PingRequest').encode(command.params).finish();
+                }
                 break;
               case proto.lookupEnum('proto.MethodType').values.RPC:
                 command.params = proto.lookupType('proto.RPCRequest').encode(command.params).finish();
@@ -7833,7 +7835,6 @@ var Centrifuge = function (_EventEmitter) {
           var reader = protobuf.Reader.create(new Uint8Array(event.data));
           while (reader.pos < reader.len) {
             var reply = proto.lookupType('proto.Reply').decodeDelimited(reader);
-            console.log(reply);
             self._dispatchReply(reply);
           }
         } else {

@@ -1521,7 +1521,6 @@ centrifugeProto.subscribe = function (channel, events) {
     var currentSub = this._getSub(channel);
 
     if (currentSub !== null) {
-        currentSub._setEvents(events);
         if (currentSub._isUnsubscribed()) {
             currentSub.subscribe();
         }

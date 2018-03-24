@@ -1,12 +1,11 @@
 const EventEmitter = require('events');
 const Promise = require('es6-promise');
-const protobuf = require('protobufjs/light');
 
 import {
   isFunction
 } from './utils';
 
-const proto = protobuf.Root.fromJSON(require('./client.proto.json'));
+import {MethodType} from './protocol';
 
 const _STATE_NEW = 0;
 const _STATE_SUBSCRIBING = 1;
@@ -200,7 +199,7 @@ export default class Subscription extends EventEmitter {
           return;
         }
         self._centrifuge._call(message).then(function (result) {
-          resolve(self._centrifuge._decode(result, type));
+          resolve(self._centrifuge._decoder.decodeCommandResult(type, result));
         }, function (err) {
           reject(err);
         });
@@ -212,38 +211,38 @@ export default class Subscription extends EventEmitter {
 
   publish(data) {
     return this._methodCall({
-      method: proto.lookupEnum('MethodType').values.PUBLISH,
+      method: MethodType.PUBLISH,
       params: {
         channel: self.channel,
         data: data
       }
-    }, proto.lookupType('proto.PublishResult'));
+    }, MethodType.PUBLISH);
   };
 
   presence() {
     return this._methodCall({
-      method: proto.lookupEnum('MethodType').values.PRESENCE,
+      method: MethodType.PRESENCE,
       params: {
         channel: self.channel
       }
-    }, proto.lookupType('proto.PresenceResult'));
+    }, MethodType.PRESENCE);
   };
 
   presenceStats() {
     return this._methodCall({
-      method: proto.lookupEnum('MethodType').values.PRESENCE_STATS,
+      method: MethodType.PRESENCE_STATS,
       params: {
         channel: self.channel
       }
-    }, proto.lookupType('proto.PresenceStatsResult'));
+    }, MethodType.PRESENCE_STATS);
   };
 
   history() {
     return this._methodCall({
-      method: proto.lookupEnum('MethodType').values.HISTORY,
+      method: MethodType.HISTORY,
       params: {
         channel: self.channel
       }
-    }, proto.lookupType('proto.HistoryResult'));
+    }, MethodType.HISTORY);
   };
 }

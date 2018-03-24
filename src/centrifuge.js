@@ -1,9 +1,15 @@
 const EventEmitter = require('events');
 const Promise = require('es6-promise');
 const Subscription = require('./subscription');
-const protobuf = require('protobufjs/light');
 
-const proto = protobuf.Root.fromJSON(require('./client.proto.json'));
+import {
+  JsonEncoder,
+  ProtobufEncoder,
+  JsonDecoder,
+  ProtobufDecoder,
+  MethodType,
+  MessageType
+} from './protocol';
 
 import {
   isFunction,
@@ -25,6 +31,9 @@ export default class Centrifuge extends EventEmitter {
     this._url = url;
     this._sockjs = null;
     this._isSockjs = false;
+    this._format = 'json';
+    this._encoder = new JsonEncoder();
+    this._decoder = new JsonDecoder();
     this._status = 'disconnected';
     this._reconnect = true;
     this._reconnecting = false;
@@ -48,7 +57,6 @@ export default class Centrifuge extends EventEmitter {
     this._latency = null;
     this._latencyStart = null;
     this._credentials = null;
-    this._format = 'json';
     this._config = {
       sockjs: null,
       retry: 1000,
@@ -62,6 +70,7 @@ export default class Centrifuge extends EventEmitter {
       insecure: false,
       privateChannelPrefix: '$',
       onTransportClose: null,
+      sockjsServer: null,
       sockjsTransports: [
         'websocket',
         'xdr-streaming',
@@ -74,7 +83,6 @@ export default class Centrifuge extends EventEmitter {
         'iframe-xhr-polling',
         'jsonp-polling'
       ],
-      sockjsServer: null,
       refreshEndpoint: '/centrifuge/refresh',
       refreshHeaders: {},
       refreshParams: {},
@@ -119,7 +127,6 @@ export default class Centrifuge extends EventEmitter {
       xhr.withCredentials = true;
     }
 
-    // add request headers
     xhr.setRequestHeader('X-Requested-With', 'XMLHttpRequest');
     xhr.setRequestHeader('Content-Type', 'application/json');
     for (let headerName in headers) {
@@ -197,6 +204,8 @@ export default class Centrifuge extends EventEmitter {
 
     if (this._url.indexOf('format=protobuf') > -1) {
       this._format = 'protobuf';
+      this._encoder = new ProtobufEncoder();
+      this._decoder = new ProtobufDecoder();
     }
 
     if (this._credentials !== null) {
@@ -336,75 +345,11 @@ export default class Centrifuge extends EventEmitter {
     if (!commands.length) {
       return;
     }
-    const isProto = this._format === 'protobuf';
-    const encodedCommands = [];
-    let writer;
-    if (isProto) {
-      writer = protobuf.Writer.create();
-    }
-    for (const i in commands) {
-      if (commands.hasOwnProperty(i)) {
-        const command = Object.assign({}, commands[i]);
-        if (isProto) {
-          switch (command.method) {
-            case proto.lookupEnum('proto.MethodType').values.CONNECT:
-              if (command.params) {
-                command.params = proto.lookupType('proto.ConnectRequest').encode(command.params).finish();
-              }
-              break;
-            case proto.lookupEnum('proto.MethodType').values.REFRESH:
-              command.params = proto.lookupType('proto.RefreshRequest').encode(command.params).finish();
-              break;
-            case proto.lookupEnum('proto.MethodType').values.SUBSCRIBE:
-              command.params = proto.lookupType('proto.SubscribeRequest').encode(command.params).finish();
-              break;
-            case proto.lookupEnum('proto.MethodType').values.UNSUBSCRIBE:
-              command.params = proto.lookupType('proto.UnsubscribeRequest').encode(command.params).finish();
-              break;
-            case proto.lookupEnum('proto.MethodType').values.PUBLISH:
-              command.params = proto.lookupType('proto.PublishRequest').encode(command.params).finish();
-              break;
-            case proto.lookupEnum('proto.MethodType').values.PRESENCE:
-              command.params = proto.lookupType('proto.PresenceRequest').encode(command.params).finish();
-              break;
-            case proto.lookupEnum('proto.MethodType').values.PRESENCE_STATS:
-              command.params = proto.lookupType('proto.PresenceStatsRequest').encode(command.params).finish();
-              break;
-            case proto.lookupEnum('proto.MethodType').values.HISTORY:
-              command.params = proto.lookupType('proto.HistoryRequest').encode(command.params).finish();
-              break;
-            case proto.lookupEnum('proto.MethodType').values.PING:
-              if (command.params) {
-                command.params = proto.lookupType('proto.PingRequest').encode(command.params).finish();
-              }
-              break;
-            case proto.lookupEnum('proto.MethodType').values.RPC:
-              command.params = proto.lookupType('proto.RPCRequest').encode(command.params).finish();
-              break;
-            case proto.lookupEnum('proto.MethodType').values.MESSAGE:
-              command.params = proto.lookupType('proto.MessageRequest').encode(command.params).finish();
-              break;
-          }
-          proto.lookupType('proto.Command').encodeDelimited(command, writer);
-        } else {
-          encodedCommands.push(JSON.stringify(command));
-        }
-        if (this._config.debug === true) {
-          this.log('Sent', command.method, commands[i]);
-        }
-      }
-    }
-    if (isProto) {
-      this._transport.send(writer.finish());
-    } else {
-      this._transport.send(encodedCommands.join('\n'));
-    }
+    this._transport.send(this._encoder.encodeCommands(commands));
   }
 
   _setupTransport() {
-
     var self = this;
-
     this._isSockjs = false;
 
     // detect transport to use - SockJS or Websocket
@@ -445,7 +390,7 @@ export default class Centrifuge extends EventEmitter {
       self._resetRetry();
 
       let msg = {
-        method: proto.lookupEnum('MethodType').values.CONNECT
+        method: MethodType.CONNECT
       };
 
       if (self._credentials) {
@@ -454,7 +399,7 @@ export default class Centrifuge extends EventEmitter {
 
       self._latencyStart = new Date();
       self._call(msg).then(function (result) {
-        self._connectResponse(self._decode(result, proto.lookupType('proto.ConnectResult')));
+        self._connectResponse(self._decoder.decodeCommandResult(MethodType.CONNECT, result));
       }, function () {
         self._disconnect('connect error', true);
       });
@@ -511,24 +456,11 @@ export default class Centrifuge extends EventEmitter {
     };
 
     this._transport.onmessage = function (event) {
-      const isProtobuf = self._format === 'protobuf';
-      if (isProtobuf) {
-        const reader = protobuf.Reader.create(new Uint8Array(event.data));
-        while (reader.pos < reader.len) {
-          const reply = proto.lookupType('proto.Reply').decodeDelimited(reader);
-          self._dispatchReply(reply);
-        }
-      } else {
-        const replies = event.data.split('\n');
-        for (let i in replies) {
-          if (replies.hasOwnProperty(i)) {
-            if (!replies[i]) {
-              continue;
-            }
-            const data = JSON.parse(replies[i]);
-            self._debug('Received', data);
-            self._dispatchReply(data);
-          }
+      const replies = self._decoder.decodeReplies(event.data);
+      for (let i in replies) {
+        if (replies.hasOwnProperty(i)) {
+          self._debug('Received reply', replies[i]);
+          self._dispatchReply(replies[i]);
         }
       }
       self._restartPing();
@@ -538,7 +470,7 @@ export default class Centrifuge extends EventEmitter {
   rpc(data) {
     const self = this;
     const msg = {
-      method: proto.lookupEnum('MethodType').values.RPC,
+      method: MethodType.RPC,
       params: {
         data: data
       }
@@ -547,7 +479,7 @@ export default class Centrifuge extends EventEmitter {
 
     return new Promise(function (resolve, reject) {
       promise.then(function (result) {
-        resolve(self._decode(result, proto.lookupType('proto.RPCResult')));
+        resolve(self._decoder.decodeCommandResult(MethodType.RPC, result));
       }, function (error) {
         reject(error);
       });
@@ -556,7 +488,7 @@ export default class Centrifuge extends EventEmitter {
 
   send(data) {
     const msg = {
-      method: proto.lookupEnum('MethodType').values.MESSAGE,
+      method: MethodType.MESSAGE,
       params: {
         data: data
       }
@@ -690,12 +622,12 @@ export default class Centrifuge extends EventEmitter {
         self._debug('send refreshed credentials');
 
         const msg = {
-          method: proto.lookupEnum('MethodType').values.REFRESH,
+          method: MethodType.REFRESH,
           params: self._credentials
         };
 
         self._call(msg).then(function (result) {
-          self._refreshResponse(self._decode(result, proto.lookupType('proto.RefreshResult')));
+          self._refreshResponse(self._decoder.decodeCommandResult(MethodType.REFRESH, result));
         }, function () {
           self._disconnect('refresh error', true);
         });
@@ -733,7 +665,7 @@ export default class Centrifuge extends EventEmitter {
     sub._setSubscribing();
 
     const msg = {
-      method: proto.lookupEnum('MethodType').values.SUBSCRIBE,
+      method: MethodType.SUBSCRIBE,
       params: {
         channel: channel
       }
@@ -762,7 +694,7 @@ export default class Centrifuge extends EventEmitter {
       const self = this;
 
       this._call(msg).then(function (result) {
-        self._subscribeResponse(channel, self._decode(result, proto.lookupType('proto.SubscribeResult')));
+        self._subscribeResponse(channel, self._decoder.decodeCommandResult(MethodType.SUBSCRIBE, result));
       }, function (err) {
         self._subscribeError(err);
       });
@@ -773,13 +705,17 @@ export default class Centrifuge extends EventEmitter {
     if (this.isConnected()) {
       // No need to unsubscribe in disconnected state - i.e. client already unsubscribed.
       this._addMessage({
-        method: proto.lookupEnum('MethodType').values.UNSUBSCRIBE,
+        method: MethodType.UNSUBSCRIBE,
         params: {
           channel: sub.channel
         }
       });
     }
   };
+
+  getSub(channel) {
+    return this._getSub(channel);
+  }
 
   _getSub(channel) {
     const sub = this._subs[channel];
@@ -977,7 +913,7 @@ export default class Centrifuge extends EventEmitter {
   }
 
   _handleJoin(channel, data) {
-    const join = this._decode(data, proto.lookupType('proto.Join'));
+    const join = this._decoder.decodeMessageData(MessageType.JOIN, data);
     const sub = this._getSub(channel);
     if (!sub) {
       return;
@@ -986,7 +922,7 @@ export default class Centrifuge extends EventEmitter {
   };
 
   _handleLeave(channel, data) {
-    const leave = this._decode(data, proto.lookupType('proto.Leave'));
+    const leave = this._decoder.decodeMessageData(MessageType.LEAVE, data);
     const sub = this._getSub(channel);
     if (!sub) {
       return;
@@ -994,8 +930,16 @@ export default class Centrifuge extends EventEmitter {
     sub.emit('leave', leave);
   };
 
+  _handleUnsub(channel) {
+    const sub = this._getSub(channel);
+    if (!sub) {
+      return;
+    }
+    sub.unsubscribe();
+  };
+
   _handlePublication(channel, data) {
-    const publication = this._decode(data, proto.lookupType('proto.Publication'));
+    const publication = this._decoder.decodeMessageData(MessageType.PUBLICATION, data);
     // keep last uid received from channel.
     this._lastPublicationUID[channel] = publication.uid;
     const sub = this._getSub(channel);
@@ -1027,7 +971,7 @@ export default class Centrifuge extends EventEmitter {
   };
 
   _handleAsyncReply(reply) {
-    const result = this._decode(reply.result, proto.lookupType('proto.Message'));
+    const result = this._decoder.decodeMessage(reply.result);
     let type = 0;
     if ('type' in result) {
       type = result['type'];
@@ -1040,6 +984,8 @@ export default class Centrifuge extends EventEmitter {
       this._handleJoin(channel, result.data);
     } else if (type === 2) {
       this._handleLeave(channel, result.data);
+    } else if (type === 3) {
+      this._handleUnsub(channel);
     }
   }
 
@@ -1058,20 +1004,6 @@ export default class Centrifuge extends EventEmitter {
     }
   };
 
-  // _receive(data) {
-  //   if (Object.prototype.toString.call(data) === Object.prototype.toString.call([])) {
-  //     // array of replies received.
-  //     for (let i in data) {
-  //       if (data.hasOwnProperty(i)) {
-  //         this._dispatchMessage(data[i]);
-  //       }
-  //     }
-  //   } else if (Object.prototype.toString.call(data) === Object.prototype.toString.call({})) {
-  //     // one reply received.
-  //     this._dispatchMessage(data);
-  //   }
-  // };
-
   _flush() {
     const messages = this._messages.slice(0);
     this._messages = [];
@@ -1080,7 +1012,7 @@ export default class Centrifuge extends EventEmitter {
 
   _ping() {
     this._addMessage({
-      method: proto.lookupEnum('MethodType').values.PING
+      method: MethodType.PING
     });
   };
 
@@ -1261,7 +1193,7 @@ export default class Centrifuge extends EventEmitter {
           }
           if (!channelResponse.status || channelResponse.status === 200) {
             const msg = {
-              method: proto.lookupEnum('MethodType').values.SUBSCRIBE,
+              method: MethodType.SUBSCRIBE,
               params: {
                 channel: channel,
                 client: self._clientID,
@@ -1276,7 +1208,7 @@ export default class Centrifuge extends EventEmitter {
               msg.params.last = self._getLastID(channel);
             }
             self._call(msg).then(function (result) {
-              self._subscribeResponse(channel, self._decode(result, proto.lookupType('proto.SubscribeResult')));
+              self._subscribeResponse(channel, self._decoder.decodeCommandResult(MethodType.SUBSCRIBE, result));
             }, function (err) {
               self._subscribeError(channel, err);
             });

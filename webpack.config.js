@@ -6,20 +6,21 @@ const path = require('path');
 const env = require('yargs').argv.env; // use --env with webpack 2
 const pkg = require('./package.json');
 
-let libraryName = 'centrifuge';
 let library = 'Centrifuge';
 
 let plugins = [], outputFile;
 
 if (env === 'build') {
   plugins.push(new UglifyJsPlugin({ minimize: true }));
-  outputFile = libraryName + '.min.js';
+  outputFile = '[name].min.js';
 } else {
-  outputFile = libraryName + '.js';
+  outputFile = '[name].js';
 }
 
 const config = {
-  entry: __dirname + '/src/index.js',
+  entry: {
+    'centrifuge': __dirname + '/src/index.js'
+  },
   devtool: 'source-map',
   output: {
     path: __dirname + '/dist',

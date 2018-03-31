@@ -8279,7 +8279,6 @@ var Centrifuge = function (_EventEmitter) {
     key: '_getSub',
     value: function _getSub(channel) {
       var sub = this._subs[channel];
-
       if (!sub) {
         return null;
       }

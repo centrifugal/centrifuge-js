@@ -4,8 +4,8 @@ const Subscription = require('./subscription');
 
 import {
   JsonEncoder,
-  ProtobufEncoder,
   JsonDecoder,
+  ProtobufEncoder,
   ProtobufDecoder,
   MethodType,
   MessageType
@@ -719,7 +719,6 @@ export default class Centrifuge extends EventEmitter {
 
   _getSub(channel) {
     const sub = this._subs[channel];
-
     if (!sub) {
       return null;
     }

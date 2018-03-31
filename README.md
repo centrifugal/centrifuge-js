@@ -662,6 +662,14 @@ You can call `unsubscribe` method to unsubscribe from subscription:
 subscription.unsubscribe();
 ```
 
+### subscribe method of subscription
+
+You can restore subscription after unsubscribing calling `.subscribe()` method:
+
+```javascript
+subscription.subscribe();
+```
+
 ### ready method of subscription
 
 A small drawback of setting event handlers on subscription using `on` method is that event

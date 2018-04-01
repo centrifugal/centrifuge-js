@@ -3395,11 +3395,10 @@ var JsonEncoder = exports.JsonEncoder = function () {
       var encodedCommands = [];
       for (var i in commands) {
         if (commands.hasOwnProperty(i)) {
-          var command = Object.assign({}, commands[i]);
-          encodedCommands.push(command);
+          encodedCommands.push(JSON.stringify(commands[i]));
         }
       }
-      return this._transport.send(encodedCommands.join('\n'));
+      return encodedCommands.join('\n');
     }
   }]);
 
@@ -3500,7 +3499,7 @@ var JsonDecoder = exports.JsonDecoder = function () {
     }
   }, {
     key: 'decodeMessageData',
-    value: function decodeMessageData(data) {
+    value: function decodeMessageData(messageType, data) {
       return data;
     }
   }]);

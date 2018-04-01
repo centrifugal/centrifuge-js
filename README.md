@@ -1,8 +1,6 @@
 # Centrifuge client for NodeJS and browser
 
-This client can connect to Centrifuge server (and Centrifugo in particular) using Websocket or SockJS transports.
-
-At moment only JSON protocol supported.
+This client can connect to [Centrifuge](https://github.com/centrifugal/centrifuge) server (and [Centrifugo](https://github.com/centrifugal/centrifugo) in particular) using Websocket or SockJS transports from web browser or NodeJS environments.
 
 * [Install and quick start](#install-and-quick-start)
 * [Credentials](#credentials)
@@ -10,6 +8,7 @@ At moment only JSON protocol supported.
 * [Client API](#client-api)
 * [Private channels authorization](#private-channels-authorization)
 * [Connection expiration](#connection-expiration)
+* [Browser support](#browser-support)
 
 Javascript client can connect to the server in two ways: using pure Websockets or using [SockJS](https://github.com/sockjs/sockjs-client) library to be able to use various available fallback transports if client browser does not support Websockets.
 
@@ -24,10 +23,22 @@ The simplest way to use javascript client is download it from `dist` folder and 
 <script src="centrifuge.js"></script>
 ```
 
-Browser client is also available via `npm`. So you can use:
+Or using cdn (replace `X` to concrete version number):
+
+```html
+<script src="//cdn.rawgit.com/centrifugal/centrifuge-js/2.X.X/dist/centrifuge.min.js"></script>
+```
+
+Client is also available via `npm`:
 
 ```bash
 npm install centrifuge
+```
+
+And then:
+
+```javascript
+var Centrifuge = require("centrifuge");
 ```
 
 As soon as you included all libraries you can create new `Centrifuge` object instance, subscribe on channel and call `.connect()` method to make actual connection to server:
@@ -51,7 +62,7 @@ If you want to use SockJS you must also import SockJS client before centrifuge.j
 <script src="centrifuge.js" type="text/javascript"></script>
 ```
 
-or provide it explicitly:
+Or provide it explicitly:
 
 ```javascript
 var Centrifuge = require("centrifuge");
@@ -66,7 +77,7 @@ var centrifuge = new Centrifuge("http://localhost:8000/connection/sockjs", {
 
 ## Credentials
 
-If you are connecting to Centrifugo you must also provide connection credentials:
+If you are connecting to Centrifugo you must also provide signed connection credentials:
 
 ```javascript
 var centrifuge = new Centrifuge('ws://centrifuge.example.com/connection/websocket');
@@ -173,7 +184,7 @@ For example this can be useful if you develop in ES6 with imports:
 import Centrifuge from 'centrifuge'
 import SockJS from 'sockjs-client'
 
-var centrifuge = new Centrifuge('ws://centrifuge.example.com/connection/websocket', {
+var centrifuge = new Centrifuge('https://centrifuge.example.com/connection/sockjs', {
   sockjs: SockJS
 });
 ```
@@ -195,7 +206,7 @@ troubleshooting.
 to server in insecure mode - read about this mode in [special docs chapter](../mixed/insecure_modes.md).
 
 This option nice if you want to use Centrifugo for quick real-time ideas prototyping, demos as
-it allows to connect to Centrifugo without `sign`, `timestamp` and `user`. And moreover without
+it allows to connect to Centrifugo without `sign`, `exp` and `user`. And moreover without
 application backend! Please, [read separate chapter about insecure modes](../mixed/insecure_modes.md).
 
 #### retry
@@ -224,7 +235,6 @@ on private channel. By default `/centrifuge/auth`. See also useful related optio
 
 * `authHeaders` - map of headers to send with auth request (default `{}``)
 * `authParams` - map of params to include in auth url (default `{}`)
-* `authTransport` - transport to use for auth request (default `ajax`, possible value `jsonp`)
 
 #### refreshEndpoint
 
@@ -232,7 +242,6 @@ on private channel. By default `/centrifuge/auth`. See also useful related optio
 
 * `refreshHeaders` - map of headers to send with refresh request (default `{}``)
 * `refreshParams` - map of params to include in refresh url (default `{}`)
-* `refreshTransport` - transport to use for refresh request (default `ajax`, possible value `jsonp`)
 * `refreshData` - send extra data in body (as JSON payload) when sending AJAX POST refresh request.
 * `refreshAttempts` - limit amount of refresh requests before giving up (by default `null` - unlimited)
 * `onRefreshFailed` - callback function called when `refreshAttempts` came to the end. By default `null` - i.e. nothing called.
@@ -767,3 +776,9 @@ once.
 ## Connection expiration
 
 When connection expiration mechanism is on on server client will automatically ask your backend for updated connection credentials sending AJAX HTTP POST request to `/centrifuge/refresh` endpoint (by default). Client will send that request when connection ttl is close to the end.
+
+## Browser support
+
+This client intended to work in all browsers with Websocket support: https://caniuse.com/#search=websocket.
+
+Older browsers can work (due to SockJS polyfill) but not oficially supported by library and can stop working with new releases. SockJS support exists for polyfilling cases when Websocket connection can't be established for some reason even though client browser supports Websocket (proxies, firewalls, browser extensions blocking websocket traffic).

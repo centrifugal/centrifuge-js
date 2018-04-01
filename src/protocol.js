@@ -27,11 +27,10 @@ export class JsonEncoder {
     const encodedCommands = [];
     for (const i in commands) {
       if (commands.hasOwnProperty(i)) {
-        const command = Object.assign({}, commands[i]);
-        encodedCommands.push(command);
+        encodedCommands.push(JSON.stringify(commands[i]));
       }
     }
-    return this._transport.send(encodedCommands.join('\n'));
+    return encodedCommands.join('\n');
   }
 }
 
@@ -111,7 +110,7 @@ export class JsonDecoder {
     return data;
   }
 
-  decodeMessageData(data) {
+  decodeMessageData(messageType, data) {
     return data;
   }
 }

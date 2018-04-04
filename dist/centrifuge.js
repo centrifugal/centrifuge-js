@@ -3363,43 +3363,51 @@ function _classCallCheck(instance, Constructor) { if (!(instance instanceof Cons
 var protobuf = __webpack_require__(32);
 var proto = protobuf.Root.fromJSON(__webpack_require__(47));
 
-var MethodType = exports.MethodType = proto.lookupEnum('MethodType').values;
+var MethodType = exports.MethodType = {
+  CONNECT: proto.lookupEnum('MethodType').values.CONNECT,
+  REFRESH: proto.lookupEnum('MethodType').values.REFRESH,
+  SUBSCRIBE: proto.lookupEnum('MethodType').values.SUBSCRIBE,
+  UNSUBSCRIBE: proto.lookupEnum('MethodType').values.UNSUBSCRIBE,
+  PUBLISH: proto.lookupEnum('MethodType').values.PUBLISH,
+  PRESENCE: proto.lookupEnum('MethodType').values.PRESENCE,
+  PRESENCE_STATS: proto.lookupEnum('MethodType').values.PRESENCE_STATS,
+  HISTORY: proto.lookupEnum('MethodType').values.HISTORY,
+  PING: proto.lookupEnum('MethodType').values.PING,
+  RPC: proto.lookupEnum('MethodType').values.RPC,
+  MESSAGE: proto.lookupEnum('MethodType').values.MESSAGE
+};
+
+var MethodSchema = {
+  CONNECT: [proto.lookupType('proto.ConnectRequest'), proto.lookupType('proto.ConnectResult')],
+  REFRESH: [proto.lookupType('proto.RefreshRequest'), proto.lookupType('proto.RefreshResult')],
+  SUBSCRIBE: [proto.lookupType('proto.SubscribeRequest'), proto.lookupType('proto.SubscribeResult')],
+  UNSUBSCRIBE: [proto.lookupType('proto.UnsubscribeRequest'), proto.lookupType('proto.UnsubscribeResult')],
+  PUBLISH: [proto.lookupType('proto.PublishRequest'), proto.lookupType('proto.PublishResult')],
+  PRESENCE: [proto.lookupType('proto.PresenceRequest'), proto.lookupType('proto.PresenceResult')],
+  PRESENCE_STATS: [proto.lookupType('proto.PresenceStatsRequest'), proto.lookupType('proto.PresenceStatsResult')],
+  HISTORY: [proto.lookupType('proto.HistoryRequest'), proto.lookupType('proto.HistoryResult')],
+  PING: [proto.lookupType('proto.PingRequest'), proto.lookupType('proto.PingResult')],
+  RPC: [proto.lookupType('proto.RPCRequest'), proto.lookupType('proto.RPCResult')],
+  MESSAGE: [proto.lookupType('proto.MessageRequest'), null]
+};
+
+var MessageType = exports.MessageType = {
+  PUBLICATION: proto.lookupEnum('MessageType').values.PUBLICATION,
+  JOIN: proto.lookupEnum('MessageType').values.JOIN,
+  LEAVE: proto.lookupEnum('MessageType').values.LEAVE,
+  UNSUB: proto.lookupEnum('MessageType').values.UNSUB
+};
+
+var MessageSchema = {
+  PUBLICATION: proto.lookupType('proto.Publication'),
+  JOIN: proto.lookupType('proto.Join'),
+  LEAVE: proto.lookupType('proto.Leave'),
+  UNSUB: proto.lookupType('proto.Unsub')
+};
 
 var Message = proto.lookupType('proto.Message');
-
-var MessageType = exports.MessageType = proto.lookupEnum('MessageType').values;
-
-var MessageTypePublication = proto.lookupType('proto.Publication');
-var MessageTypeJoin = proto.lookupType('proto.Join');
-var MessageTypeLeave = proto.lookupType('proto.Leave');
-var MessageTypeUnsub = proto.lookupType('proto.Unsub');
-
 var Command = proto.lookupType('proto.Command');
-
-var ConnectRequest = proto.lookupType('proto.ConnectRequest');
-var RefreshRequest = proto.lookupType('proto.RefreshRequest');
-var SubscribeRequest = proto.lookupType('proto.SubscribeRequest');
-var UnsubscribeRequest = proto.lookupType('proto.UnsubscribeRequest');
-var PublishRequest = proto.lookupType('proto.PublishRequest');
-var PresenceRequest = proto.lookupType('proto.PresenceRequest');
-var PresenceStatsRequest = proto.lookupType('proto.PresenceStatsRequest');
-var HistoryRequest = proto.lookupType('proto.HistoryRequest');
-var PingRequest = proto.lookupType('proto.PingRequest');
-var RPCRequest = proto.lookupType('proto.RPCRequest');
-var MessageRequest = proto.lookupType('proto.MessageRequest');
-
 var Reply = proto.lookupType('proto.Reply');
-
-var ConnectResult = proto.lookupType('proto.ConnectResult');
-var RefreshResult = proto.lookupType('proto.RefreshResult');
-var SubscribeResult = proto.lookupType('proto.SubscribeResult');
-var UnsubscribeResult = proto.lookupType('proto.UnsubscribeResult');
-var PublishResult = proto.lookupType('proto.PublishResult');
-var PresenceResult = proto.lookupType('proto.PresenceResult');
-var PresenceStatsResult = proto.lookupType('proto.PresenceStatsResult');
-var HistoryResult = proto.lookupType('proto.HistoryResult');
-var PingResult = proto.lookupType('proto.PingResult');
-var RPCResult = proto.lookupType('proto.RPCResult');
 
 var JsonEncoder = exports.JsonEncoder = function () {
   function JsonEncoder() {
@@ -3438,37 +3446,37 @@ var ProtobufEncoder = exports.ProtobufEncoder = function () {
             var type = void 0;
             switch (command.method) {
               case MethodType.CONNECT:
-                type = ConnectRequest;
+                type = MethodSchema.CONNECT[0];
                 break;
               case MethodType.REFRESH:
-                type = RefreshRequest;
+                type = MethodSchema.REFRESH;
                 break;
               case MethodType.SUBSCRIBE:
-                type = SubscribeRequest;
+                type = MethodSchema.SUBSCRIBE[0];
                 break;
               case MethodType.UNSUBSCRIBE:
-                type = UnsubscribeRequest;
+                type = MethodSchema.UNSUBSCRIBE[0];
                 break;
               case MethodType.PUBLISH:
-                type = PublishRequest;
+                type = MethodSchema.PUBLISH[0];
                 break;
               case MethodType.PRESENCE:
-                type = PresenceRequest;
+                type = MethodSchema.PRESENCE[0];
                 break;
               case MethodType.PRESENCE_STATS:
-                type = PresenceStatsRequest;
+                type = MethodSchema.PRESENCE_STATS[0];
                 break;
               case MethodType.HISTORY:
-                type = HistoryRequest;
+                type = MethodSchema.HISTORY[0];
                 break;
               case MethodType.PING:
-                type = PingRequest;
+                type = MethodSchema.PING[0];
                 break;
               case MethodType.RPC:
-                type = RPCRequest;
+                type = MethodSchema.RPC[0];
                 break;
               case MethodType.Message:
-                type = MessageRequest;
+                type = MethodSchema.MESSAGE[0];
                 break;
             }
             command.params = type.encode(command.params).finish();
@@ -3546,34 +3554,34 @@ var ProtobufDecoder = exports.ProtobufDecoder = function () {
       var type;
       switch (methodType) {
         case MethodType.CONNECT:
-          type = ConnectResult;
+          type = MethodSchema.CONNECT[1];
           break;
         case MethodType.REFRESH:
-          type = RefreshResult;
+          type = MethodSchema.REFRESH[1];
           break;
         case MethodType.SUBSCRIBE:
-          type = SubscribeResult;
+          type = MethodSchema.SUBSCRIBE[1];
           break;
         case MethodType.UNSUBSCRIBE:
-          type = UnsubscribeResult;
+          type = MethodSchema.UNSUBSCRIBE[1];
           break;
         case MethodType.PUBLISH:
-          type = PublishResult;
+          type = MethodSchema.PUBLISH[1];
           break;
         case MethodType.PRESENCE:
-          type = PresenceResult;
+          type = MethodSchema.PRESENCE[1];
           break;
         case MethodType.PRESENCE_STATS:
-          type = PresenceStatsResult;
+          type = MethodSchema.PRESENCE_STATS[1];
           break;
         case MethodType.HISTORY:
-          type = HistoryResult;
+          type = MethodSchema.HISTORY[1];
           break;
         case MethodType.PING:
-          type = PingResult;
+          type = MethodSchema.PING[1];
           break;
         case MethodType.RPC:
-          type = RPCResult;
+          type = MethodSchema.RPC[1];
           break;
       }
       return this._decode(type, data);
@@ -3589,16 +3597,16 @@ var ProtobufDecoder = exports.ProtobufDecoder = function () {
       var type;
       switch (messageType) {
         case MessageType.PUBLICATION:
-          type = MessageTypePublication;
+          type = MessageSchema.PUBLICATION;
           break;
         case MessageType.JOIN:
-          type = MessageTypeJoin;
+          type = MessageSchema.JOIN;
           break;
         case MessageType.LEAVE:
-          type = MessageTypeLeave;
+          type = MessageSchema.LEAVE;
           break;
         case MessageType.UNSUB:
-          type = MessageTypeUnsub;
+          type = MessageSchema.UNSUB;
           break;
       }
       return this._decode(type, data);

@@ -11,7 +11,6 @@ let library = 'Centrifuge';
 let plugins = [], outputFile;
 
 if (env === 'build') {
-  plugins.push(new UglifyJsPlugin({ minimize: true }));
   outputFile = '[name].min.js';
 } else {
   outputFile = '[name].js';

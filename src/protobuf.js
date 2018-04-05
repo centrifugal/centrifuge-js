@@ -1,21 +1,23 @@
 const protobuf = require('protobufjs/light');
 const proto = protobuf.Root.fromJSON(require('./client.proto.json'));
 
-export const MethodType = {
-  CONNECT: proto.lookupEnum('MethodType').values.CONNECT,
-  REFRESH: proto.lookupEnum('MethodType').values.REFRESH,
-  SUBSCRIBE: proto.lookupEnum('MethodType').values.SUBSCRIBE,
-  UNSUBSCRIBE: proto.lookupEnum('MethodType').values.UNSUBSCRIBE,
-  PUBLISH: proto.lookupEnum('MethodType').values.PUBLISH,
-  PRESENCE: proto.lookupEnum('MethodType').values.PRESENCE,
-  PRESENCE_STATS: proto.lookupEnum('MethodType').values.PRESENCE_STATS,
-  HISTORY: proto.lookupEnum('MethodType').values.HISTORY,
-  PING: proto.lookupEnum('MethodType').values.PING,
-  RPC: proto.lookupEnum('MethodType').values.RPC,
-  MESSAGE: proto.lookupEnum('MethodType').values.MESSAGE
+const methodValues = proto.lookupEnum('MethodType').values;
+
+export const methodType = {
+  CONNECT: methodValues.CONNECT,
+  REFRESH: methodValues.REFRESH,
+  SUBSCRIBE: methodValues.SUBSCRIBE,
+  UNSUBSCRIBE: methodValues.UNSUBSCRIBE,
+  PUBLISH: methodValues.PUBLISH,
+  PRESENCE: methodValues.PRESENCE,
+  PRESENCE_STATS: methodValues.PRESENCE_STATS,
+  HISTORY: methodValues.HISTORY,
+  PING: methodValues.PING,
+  RPC: methodValues.RPC,
+  MESSAGE: methodValues.MESSAGE
 };
 
-const MethodSchema = {
+const methodSchema = {
   CONNECT: [
     proto.lookupType('proto.ConnectRequest'),
     proto.lookupType('proto.ConnectResult')
@@ -62,7 +64,7 @@ const MethodSchema = {
   ]
 };
 
-export const MessageType = {
+export const messageType = {
   PUBLICATION: proto.lookupEnum('MessageType').values.PUBLICATION,
   JOIN: proto.lookupEnum('MessageType').values.JOIN,
   LEAVE: proto.lookupEnum('MessageType').values.LEAVE,
@@ -101,38 +103,38 @@ export class ProtobufEncoder {
         if (command.params) {
           let type;
           switch (command.method) {
-            case MethodType.CONNECT:
-              type = MethodSchema.CONNECT[0];
+            case methodType.CONNECT:
+              type = methodSchema.CONNECT[0];
               break;
-            case MethodType.REFRESH:
-              type = MethodSchema.REFRESH;
+            case methodType.REFRESH:
+              type = methodSchema.REFRESH;
               break;
-            case MethodType.SUBSCRIBE:
-              type = MethodSchema.SUBSCRIBE[0];
+            case methodType.SUBSCRIBE:
+              type = methodSchema.SUBSCRIBE[0];
               break;
-            case MethodType.UNSUBSCRIBE:
-              type = MethodSchema.UNSUBSCRIBE[0];
+            case methodType.UNSUBSCRIBE:
+              type = methodSchema.UNSUBSCRIBE[0];
               break;
-            case MethodType.PUBLISH:
-              type = MethodSchema.PUBLISH[0];
+            case methodType.PUBLISH:
+              type = methodSchema.PUBLISH[0];
               break;
-            case MethodType.PRESENCE:
-              type = MethodSchema.PRESENCE[0];
+            case methodType.PRESENCE:
+              type = methodSchema.PRESENCE[0];
               break;
-            case MethodType.PRESENCE_STATS:
-              type = MethodSchema.PRESENCE_STATS[0];
+            case methodType.PRESENCE_STATS:
+              type = methodSchema.PRESENCE_STATS[0];
               break;
-            case MethodType.HISTORY:
-              type = MethodSchema.HISTORY[0];
+            case methodType.HISTORY:
+              type = methodSchema.HISTORY[0];
               break;
-            case MethodType.PING:
-              type = MethodSchema.PING[0];
+            case methodType.PING:
+              type = methodSchema.PING[0];
               break;
-            case MethodType.RPC:
-              type = MethodSchema.RPC[0];
+            case methodType.RPC:
+              type = methodSchema.RPC[0];
               break;
-            case MethodType.Message:
-              type = MethodSchema.MESSAGE[0];
+            case methodType.Message:
+              type = methodSchema.MESSAGE[0];
               break;
           }
           command.params = type.encode(command.params).finish();
@@ -187,35 +189,35 @@ export class ProtobufDecoder {
   decodeCommandResult(methodType, data) {
     var type;
     switch (methodType) {
-      case MethodType.CONNECT:
-        type = MethodSchema.CONNECT[1];
+      case methodType.CONNECT:
+        type = methodSchema.CONNECT[1];
         break;
-      case MethodType.REFRESH:
-        type = MethodSchema.REFRESH[1];
+      case methodType.REFRESH:
+        type = methodSchema.REFRESH[1];
         break;
-      case MethodType.SUBSCRIBE:
-        type = MethodSchema.SUBSCRIBE[1];
+      case methodType.SUBSCRIBE:
+        type = methodSchema.SUBSCRIBE[1];
         break;
-      case MethodType.UNSUBSCRIBE:
-        type = MethodSchema.UNSUBSCRIBE[1];
+      case methodType.UNSUBSCRIBE:
+        type = methodSchema.UNSUBSCRIBE[1];
         break;
-      case MethodType.PUBLISH:
-        type = MethodSchema.PUBLISH[1];
+      case methodType.PUBLISH:
+        type = methodSchema.PUBLISH[1];
         break;
-      case MethodType.PRESENCE:
-        type = MethodSchema.PRESENCE[1];
+      case methodType.PRESENCE:
+        type = methodSchema.PRESENCE[1];
         break;
-      case MethodType.PRESENCE_STATS:
-        type = MethodSchema.PRESENCE_STATS[1];
+      case methodType.PRESENCE_STATS:
+        type = methodSchema.PRESENCE_STATS[1];
         break;
-      case MethodType.HISTORY:
-        type = MethodSchema.HISTORY[1];
+      case methodType.HISTORY:
+        type = methodSchema.HISTORY[1];
         break;
-      case MethodType.PING:
-        type = MethodSchema.PING[1];
+      case methodType.PING:
+        type = methodSchema.PING[1];
         break;
-      case MethodType.RPC:
-        type = MethodSchema.RPC[1];
+      case methodType.RPC:
+        type = methodSchema.RPC[1];
         break;
     }
     return this._decode(type, data);
@@ -228,16 +230,16 @@ export class ProtobufDecoder {
   decodeMessageData(messageType, data) {
     var type;
     switch (messageType) {
-      case MessageType.PUBLICATION:
+      case messageType.PUBLICATION:
         type = MessageSchema.PUBLICATION;
         break;
-      case MessageType.JOIN:
+      case messageType.JOIN:
         type = MessageSchema.JOIN;
         break;
-      case MessageType.LEAVE:
+      case messageType.LEAVE:
         type = MessageSchema.LEAVE;
         break;
-      case MessageType.UNSUB:
+      case messageType.UNSUB:
         type = MessageSchema.UNSUB;
         break;
     }

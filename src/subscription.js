@@ -5,8 +5,6 @@ import {
   isFunction
 } from './utils';
 
-import {MethodType} from './protocol';
-
 const _STATE_NEW = 0;
 const _STATE_SUBSCRIBING = 1;
 const _STATE_SUCCESS = 2;
@@ -211,38 +209,38 @@ export default class Subscription extends EventEmitter {
 
   publish(data) {
     return this._methodCall({
-      method: MethodType.PUBLISH,
+      method: this._centrifuge._methodType.PUBLISH,
       params: {
         channel: self.channel,
         data: data
       }
-    }, MethodType.PUBLISH);
+    }, this._centrifuge._methodType.PUBLISH);
   };
 
   presence() {
     return this._methodCall({
-      method: MethodType.PRESENCE,
+      method: this._centrifuge._methodType.PRESENCE,
       params: {
         channel: self.channel
       }
-    }, MethodType.PRESENCE);
+    }, this._centrifuge._methodType.PRESENCE);
   };
 
   presenceStats() {
     return this._methodCall({
-      method: MethodType.PRESENCE_STATS,
+      method: this._centrifuge._methodType.PRESENCE_STATS,
       params: {
         channel: self.channel
       }
-    }, MethodType.PRESENCE_STATS);
+    }, this._centrifuge._methodType.PRESENCE_STATS);
   };
 
   history() {
     return this._methodCall({
-      method: MethodType.HISTORY,
+      method: this._centrifuge._methodType.HISTORY,
       params: {
         channel: self.channel
       }
-    }, MethodType.HISTORY);
+    }, this._centrifuge._methodType.HISTORY);
   };
 }

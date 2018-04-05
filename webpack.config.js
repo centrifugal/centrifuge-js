@@ -1,10 +1,5 @@
-/* global __dirname, require, module*/
-
-const webpack = require('webpack');
-const UglifyJsPlugin = webpack.optimize.UglifyJsPlugin;
 const path = require('path');
-const env = require('yargs').argv.env; // use --env with webpack 2
-const pkg = require('./package.json');
+const env = require('yargs').argv.env;
 
 let library = 'Centrifuge';
 
@@ -18,7 +13,8 @@ if (env === 'build') {
 
 const config = {
   entry: {
-    'centrifuge': __dirname + '/src/index.js'
+    'centrifuge': __dirname + '/src/index.js',
+    'centrifuge.protobuf': __dirname + '/src/index_protobuf.js'
   },
   devtool: 'source-map',
   output: {

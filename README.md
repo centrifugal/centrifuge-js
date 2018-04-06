@@ -8,6 +8,7 @@ This client can connect to [Centrifuge](https://github.com/centrifugal/centrifug
 * [Client API](#client-api)
 * [Private channels authorization](#private-channels-authorization)
 * [Connection expiration](#connection-expiration)
+* [Protobuf support](#protobuf-support)
 * [Browser support](#browser-support)
 
 Javascript client can connect to the server in two ways: using pure Websockets or using [SockJS](https://github.com/sockjs/sockjs-client) library to be able to use various available fallback transports if client browser does not support Websockets.
@@ -40,6 +41,8 @@ And then:
 ```javascript
 var Centrifuge = require("centrifuge");
 ```
+
+Default library works with JSON only, see `Protobuf support` section to see how to import client with Protobuf support.
 
 As soon as you included all libraries you can create new `Centrifuge` object instance, subscribe on channel and call `.connect()` method to make actual connection to server:
 
@@ -776,6 +779,28 @@ once.
 ## Connection expiration
 
 When connection expiration mechanism is on on server client will automatically ask your backend for updated connection credentials sending AJAX HTTP POST request to `/centrifuge/refresh` endpoint (by default). Client will send that request when connection ttl is close to the end.
+
+## Protobuf support
+
+To import client with Protobuf protocol support:
+
+```html
+<script src="//cdn.rawgit.com/centrifugal/centrifuge-js/2.X.X/dist/centrifuge.protobuf.min.js"></script>
+```
+
+Or if you are developing with npm:
+
+```javascript
+import Centrifuge from 'centrifuge/dist/centrifuge.protobuf';
+```
+
+This client uses [protobuf.js](https://github.com/dcodeIO/ProtoBuf.js/) under the hood.
+
+Centrifuge client with Protobuf support also works with JSON. To connect to websocket server endpoint add `format` query param with `protobuf` value:
+
+```javascript
+var centrifuge = new Centrifuge('ws://centrifuge.example.com/connection/websocket?format=protobuf');
+```
 
 ## Browser support
 

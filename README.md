@@ -117,7 +117,13 @@ Just convert that user ID number to string.
 
 `exp` string is UNIX time in seconds when client connection must be considered expired.
 
-Note, that most programming languages by default return UNIX timestamp as float value. Or with microseconds included. Centrifugo server **expects only timestamp seconds represented as string**. For example for Python to get timestamp in a correct format use `"%.0f" % time.time()` (or just `str(int(time.time()))`) so the result be something like `"1520772440"`.
+Note, that most programming languages by default return UNIX timestamp as float value. Or with microseconds included. Centrifugo server **expects only timestamp seconds represented as string**. 
+
+For example for Python. You want connection to be valid for one hour:
+
+```python
+exp = str(int(time.time()) + 3600)
+```
 
 #### sign (required)
 
@@ -133,9 +139,11 @@ Correct sign guarantees that connection request to Centrifugo contains valid unm
 
 You can optionally provide extra parameter `info` when connecting to Centrifugo.
 
-`info` is an additional information about connection. It must be **valid JSON encoded as UTF-8 string**. But to prevent client sending wrong `info` **this JSON string must be used while generating sign on backend**.
+`info` is an additional information about connection. It must be **valid JSON encoded to BASE64 string**. This `info` string must be used while generating sign on backend. Motivation behind using BASE64 here is that this encoding allows to safely pass `info` from your backend to Javascript code and then set as one of credentials for Centrifuge client. Server will decode this string to valid JSON after validating sign and will include it to presence, join/leave messages and will be part of publication if it was sent from client using `publish` method.
 
-If you don't want to use `info` - you can just omit this parameter while connecting to Centrifugo. If you omit it then make sure that info string have not been used in `sign` generation.
+If you don't want to use `info` - you can just omit this parameter in credentials. If you omit it then make sure that info string have not been used in `sign` generation on backend side.
+
+Info adds additional traffic as it's automatically appended to many things. Consider not using it in situations when you need to control amount of traffic. User ID will be enough – you can always implement endpoint in your backend that returns extended user information based on user ID. 
 
 ## Configuration parameters
 
@@ -796,7 +804,7 @@ import Centrifuge from 'centrifuge/dist/centrifuge.protobuf';
 
 This client uses [protobuf.js](https://github.com/dcodeIO/ProtoBuf.js/) under the hood.
 
-Centrifuge client with Protobuf support also works with JSON. To connect to websocket server endpoint add `format` query param with `protobuf` value:
+Centrifuge client with Protobuf support also works with JSON. To enable binary websocket add `format` query param with `protobuf` value to Websocket endpoint URL:
 
 ```javascript
 var centrifuge = new Centrifuge('ws://centrifuge.example.com/connection/websocket?format=protobuf');

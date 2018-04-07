@@ -1479,19 +1479,8 @@ Field._configure = function configure(Type_) {
 Object.defineProperty(exports, "__esModule", {
   value: true
 });
-var endsWith = exports.endsWith = function endsWith(value, suffix) {
-  return value.indexOf(suffix, value.length - suffix.length) !== -1;
-};
-
 var startsWith = exports.startsWith = function startsWith(value, prefix) {
   return value.lastIndexOf(prefix, 0) === 0;
-};
-
-var stripSlash = exports.stripSlash = function stripSlash(value) {
-  if (value.substring(value.length - 1) === '/') {
-    value = value.substring(0, value.length - 1);
-  }
-  return value;
 };
 
 var isString = exports.isString = function isString(value) {
@@ -3839,7 +3828,6 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
     _this._credentials = null;
     _this._config = {
       debug: false,
-      insecure: false,
       sockjs: null,
       retry: 1000,
       maxRetry: 20000,
@@ -3954,22 +3942,6 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
       return !(typeof WebSocket !== 'function' && (typeof WebSocket === 'undefined' ? 'undefined' : _typeof(WebSocket)) !== 'object');
     }
   }, {
-    key: '_sockjsEndpoint',
-    value: function _sockjsEndpoint() {
-      var url = this._url;
-      url = url.replace('ws://', 'http://').replace('wss://', 'https://');
-      url = (0, _utils.stripSlash)(url);
-      return url;
-    }
-  }, {
-    key: '_websocketEndpoint',
-    value: function _websocketEndpoint() {
-      var url = this._url;
-      url = url.replace('http://', 'ws://').replace('https://', 'wss://');
-      url = (0, _utils.stripSlash)(url);
-      return url;
-    }
-  }, {
     key: '_setFormat',
     value: function _setFormat(format) {
       if (format === 'protobuf') {
@@ -3997,61 +3969,37 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
 
       if (this._credentials !== null) {
         if (!this._credentials.user && this._credentials.user !== '') {
-          if (!this._config.insecure) {
-            throw new Error('Missing required credentials parameter user');
-          } else {
-            this._debug('user not found but this is OK for insecure mode');
-          }
-        }
-
-        if (!this._credentials.info) {
-          this._credentials.info = '';
+          this._debug('user not set in credentials');
         }
 
         if (!this._credentials.exp) {
-          if (!this._config.insecure) {
-            throw new Error('Missing required credentials parameter exp');
-          } else {
-            this._debug('exp not found but this is OK for insecure mode');
-          }
+          this._debug('exp not set in credentials');
+        }
+
+        if (!this._credentials.info) {
+          this._debug('info not set in credentials');
+          this._credentials.info = '';
         }
 
         if (!this._credentials.sign) {
-          if (!this._config.insecure) {
-            throw new Error('Missing required credentials parameter sign');
-          } else {
-            this._debug('sign not found but this is OK for insecure mode');
-          }
+          this._debug('sign not set in credentials');
         }
       }
 
-      if ((0, _utils.endsWith)(this._url, 'connection/sockjs')) {
-        this._debug('client will connect to SockJS endpoint');
+      if ((0, _utils.startsWith)(this._url, 'http')) {
+        this._debug('client will try to connect to SockJS endpoint');
         if (this._config.sockjs !== null) {
           this._debug('SockJS explicitly provided in options');
           this._sockjs = this._config.sockjs;
         } else {
           if (typeof global.SockJS === 'undefined') {
-            throw new Error('SockJS not found');
+            throw new Error('SockJS not found, use ws:// in url or include SockJS');
           }
           this._debug('use globally defined SockJS');
           this._sockjs = global.SockJS;
         }
-      } else if ((0, _utils.endsWith)(this._url, 'connection/websocket')) {
-        this._debug('client will connect to websocket endpoint');
       } else {
-        this._debug('client will detect connection endpoint itself');
-        if (this._config.sockjs !== null) {
-          this._debug('SockJS explicitly provided in options');
-          this._sockjs = this._config.sockjs;
-        } else {
-          if (typeof global.SockJS === 'undefined') {
-            this._debug('SockJS not found');
-          } else {
-            this._debug('use globally defined SockJS');
-            this._sockjs = global.SockJS;
-          }
-        }
+        this._debug('client will connect to websocket endpoint');
       }
     }
   }, {
@@ -4159,13 +4107,13 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
           sockjsOptions.server = this._config.sockjsServer;
         }
         this._isSockjs = true;
-        this._transport = new this._sockjs(this._sockjsEndpoint(), null, sockjsOptions);
+        this._transport = new this._sockjs(this._url, null, sockjsOptions);
       } else {
         if (!this._websocketSupported()) {
           this._debug('No Websocket support and no SockJS configured, can not connect');
           return;
         }
-        this._transport = new WebSocket(this._websocketEndpoint());
+        this._transport = new WebSocket(this._url);
         if (this._binary === true) {
           this._transport.binaryType = 'arraybuffer';
         }

@@ -1,16 +1,5 @@
-export const endsWith = function (value, suffix) {
-  return value.indexOf(suffix, value.length - suffix.length) !== -1;
-};
-
 export const startsWith = function (value, prefix) {
   return value.lastIndexOf(prefix, 0) === 0;
-};
-
-export const stripSlash = function (value) {
-  if (value.substring(value.length - 1) === '/') {
-    value = value.substring(0, value.length - 1);
-  }
-  return value;
 };
 
 export const isString = function (value) {

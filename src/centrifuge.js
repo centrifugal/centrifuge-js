@@ -5,8 +5,8 @@ const Subscription = require('./subscription');
 import {
   JsonEncoder,
   JsonDecoder,
-  methodType,
-  messageType
+  JsonMethodType,
+  JsonMessageType
 } from './json';
 
 import {
@@ -24,12 +24,12 @@ export class Centrifuge extends EventEmitter {
 
   constructor(url, options) {
     super();
-    this._methodType = methodType;
-    this._messageType = messageType;
     this._url = url;
     this._sockjs = null;
     this._isSockjs = false;
     this._binary = false;
+    this._methodType = null;
+    this._messageType = null;
     this._encoder = null;
     this._decoder = null;
     this._status = 'disconnected';
@@ -174,12 +174,21 @@ export class Centrifuge extends EventEmitter {
   };
 
   _setFormat(format) {
-    if (format === 'protobuf') {
-      throw new Error('not implemented by JSON only Centrifuge client');
-    } else {
-      this._encoder = new JsonEncoder();
-      this._decoder = new JsonDecoder();
+    if (this._formatOverride(format)) {
+      return;
     }
+    if (format === 'protobuf') {
+      throw new Error('not implemented by JSON only Centrifuge client – use client with Protobuf');
+    }
+    this._binary = false;
+    this._methodType = JsonMethodType;
+    this._messageType = JsonMessageType;
+    this._encoder = new JsonEncoder();
+    this._decoder = new JsonDecoder();
+  }
+
+  _formatOverride(format) {
+    return false;
   }
 
   _configure(configuration) {

@@ -1,18 +1,18 @@
-export const methodType = {
-  CONNECT: 'connect',
-  REFRESH: 'refresh',
-  SUBSCRIBE: 'subscribe',
-  UNSUBSCRIBE: 'unsubscribe',
-  PUBLISH: 'publish',
-  PRESENCE: 'presence',
-  PRESENCE_STATS: 'presence_stats',
-  HISTORY: 'history',
-  PING: 'ping',
-  RPC: 'rpc',
-  MESSAGE: 'message'
+export const JsonMethodType = {
+  CONNECT: 0,
+  REFRESH: 1,
+  SUBSCRIBE: 2,
+  UNSUBSCRIBE: 3,
+  PUBLISH: 4,
+  PRESENCE: 5,
+  PRESENCE_STATS: 6,
+  HISTORY: 7,
+  PING: 8,
+  RPC: 9,
+  MESSAGE: 10
 };
 
-export const messageType = {
+export const JsonMessageType = {
   PUBLICATION: 0,
   JOIN: 1,
   LEAVE: 2,

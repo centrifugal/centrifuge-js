@@ -1,21 +1,34 @@
 /* global describe, it, before */
 
 import chai from 'chai';
-import Centrifuge from '../dist/centrifuge.js';
+import CentrifugeJSON from '../dist/centrifuge.js';
+import CentrifugeProtobuf from '../dist/centrifuge.protobuf.js';
 
 chai.expect();
 
 const expect = chai.expect;
 
-let centrifuge;
+let centrifugeJSON;
+let centrifugeProtobuf;
 
 describe('Given an instance of my Centrifuge', () => {
   before(() => {
-    centrifuge = new Centrifuge('ws://localhost:8000/connection/websocket');
+    centrifugeJSON = new CentrifugeJSON('ws://localhost:8000/connection/websocket');
   });
   describe('when I need the url', () => {
     it('should return the url', () => {
-      expect(centrifuge._url).to.be.equal('ws://localhost:8000/connection/websocket');
+      expect(centrifugeJSON._url).to.be.equal('ws://localhost:8000/connection/websocket');
+    });
+  });
+});
+
+describe('Given an instance of my Centrifuge with Protobuf', () => {
+  before(() => {
+    centrifugeProtobuf = new CentrifugeProtobuf('ws://localhost:8000/connection/websocket');
+  });
+  describe('when I need the url', () => {
+    it('should return the url', () => {
+      expect(centrifugeProtobuf._url).to.be.equal('ws://localhost:8000/connection/websocket');
     });
   });
 });

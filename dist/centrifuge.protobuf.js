@@ -3662,104 +3662,6 @@ types.packed = bake([
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
-
-
-Object.defineProperty(exports, "__esModule", {
-  value: true
-});
-
-var _createClass = function () { function defineProperties(target, props) { for (var i = 0; i < props.length; i++) { var descriptor = props[i]; descriptor.enumerable = descriptor.enumerable || false; descriptor.configurable = true; if ("value" in descriptor) descriptor.writable = true; Object.defineProperty(target, descriptor.key, descriptor); } } return function (Constructor, protoProps, staticProps) { if (protoProps) defineProperties(Constructor.prototype, protoProps); if (staticProps) defineProperties(Constructor, staticProps); return Constructor; }; }();
-
-function _classCallCheck(instance, Constructor) { if (!(instance instanceof Constructor)) { throw new TypeError("Cannot call a class as a function"); } }
-
-var methodType = exports.methodType = {
-  CONNECT: 'connect',
-  REFRESH: 'refresh',
-  SUBSCRIBE: 'subscribe',
-  UNSUBSCRIBE: 'unsubscribe',
-  PUBLISH: 'publish',
-  PRESENCE: 'presence',
-  PRESENCE_STATS: 'presence_stats',
-  HISTORY: 'history',
-  PING: 'ping',
-  RPC: 'rpc',
-  MESSAGE: 'message'
-};
-
-var messageType = exports.messageType = {
-  PUBLICATION: 0,
-  JOIN: 1,
-  LEAVE: 2,
-  UNSUB: 3
-};
-
-var JsonEncoder = exports.JsonEncoder = function () {
-  function JsonEncoder() {
-    _classCallCheck(this, JsonEncoder);
-  }
-
-  _createClass(JsonEncoder, [{
-    key: 'encodeCommands',
-    value: function encodeCommands(commands) {
-      var encodedCommands = [];
-      for (var i in commands) {
-        if (commands.hasOwnProperty(i)) {
-          encodedCommands.push(JSON.stringify(commands[i]));
-        }
-      }
-      return encodedCommands.join('\n');
-    }
-  }]);
-
-  return JsonEncoder;
-}();
-
-var JsonDecoder = exports.JsonDecoder = function () {
-  function JsonDecoder() {
-    _classCallCheck(this, JsonDecoder);
-  }
-
-  _createClass(JsonDecoder, [{
-    key: 'decodeReplies',
-    value: function decodeReplies(data) {
-      var replies = [];
-      var encodedReplies = data.split('\n');
-      for (var i in encodedReplies) {
-        if (encodedReplies.hasOwnProperty(i)) {
-          if (!encodedReplies[i]) {
-            continue;
-          }
-          var reply = JSON.parse(encodedReplies[i]);
-          replies.push(reply);
-        }
-      }
-      return replies;
-    }
-  }, {
-    key: 'decodeCommandResult',
-    value: function decodeCommandResult(methodType, data) {
-      return data;
-    }
-  }, {
-    key: 'decodeMessage',
-    value: function decodeMessage(data) {
-      return data;
-    }
-  }, {
-    key: 'decodeMessageData',
-    value: function decodeMessageData(messageType, data) {
-      return data;
-    }
-  }]);
-
-  return JsonDecoder;
-}();
-
-/***/ }),
-/* 12 */
-/***/ (function(module, exports, __webpack_require__) {
-
-"use strict";
 /* WEBPACK VAR INJECTION */(function(global) {
 
 Object.defineProperty(exports, "__esModule", {
@@ -3771,7 +3673,7 @@ var _typeof = typeof Symbol === "function" && typeof Symbol.iterator === "symbol
 
 var _createClass = function () { function defineProperties(target, props) { for (var i = 0; i < props.length; i++) { var descriptor = props[i]; descriptor.enumerable = descriptor.enumerable || false; descriptor.configurable = true; if ("value" in descriptor) descriptor.writable = true; Object.defineProperty(target, descriptor.key, descriptor); } } return function (Constructor, protoProps, staticProps) { if (protoProps) defineProperties(Constructor.prototype, protoProps); if (staticProps) defineProperties(Constructor, staticProps); return Constructor; }; }();
 
-var _json = __webpack_require__(11);
+var _json = __webpack_require__(12);
 
 var _utils = __webpack_require__(6);
 
@@ -3795,12 +3697,12 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
 
     var _this = _possibleConstructorReturn(this, (Centrifuge.__proto__ || Object.getPrototypeOf(Centrifuge)).call(this));
 
-    _this._methodType = _json.methodType;
-    _this._messageType = _json.messageType;
     _this._url = url;
     _this._sockjs = null;
     _this._isSockjs = false;
     _this._binary = false;
+    _this._methodType = null;
+    _this._messageType = null;
     _this._encoder = null;
     _this._decoder = null;
     _this._status = 'disconnected';
@@ -3944,12 +3846,22 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
   }, {
     key: '_setFormat',
     value: function _setFormat(format) {
-      if (format === 'protobuf') {
-        throw new Error('not implemented by JSON only Centrifuge client');
-      } else {
-        this._encoder = new _json.JsonEncoder();
-        this._decoder = new _json.JsonDecoder();
+      if (this._formatOverride(format)) {
+        return;
       }
+      if (format === 'protobuf') {
+        throw new Error('not implemented by JSON only Centrifuge client – use client with Protobuf');
+      }
+      this._binary = false;
+      this._methodType = _json.JsonMethodType;
+      this._messageType = _json.JsonMessageType;
+      this._encoder = new _json.JsonEncoder();
+      this._decoder = new _json.JsonDecoder();
+    }
+  }, {
+    key: '_formatOverride',
+    value: function _formatOverride(format) {
+      return false;
     }
   }, {
     key: '_configure',
@@ -5030,6 +4942,104 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
   return Centrifuge;
 }(EventEmitter);
 /* WEBPACK VAR INJECTION */}.call(exports, __webpack_require__(3)))
+
+/***/ }),
+/* 12 */
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+
+var _createClass = function () { function defineProperties(target, props) { for (var i = 0; i < props.length; i++) { var descriptor = props[i]; descriptor.enumerable = descriptor.enumerable || false; descriptor.configurable = true; if ("value" in descriptor) descriptor.writable = true; Object.defineProperty(target, descriptor.key, descriptor); } } return function (Constructor, protoProps, staticProps) { if (protoProps) defineProperties(Constructor.prototype, protoProps); if (staticProps) defineProperties(Constructor, staticProps); return Constructor; }; }();
+
+function _classCallCheck(instance, Constructor) { if (!(instance instanceof Constructor)) { throw new TypeError("Cannot call a class as a function"); } }
+
+var JsonMethodType = exports.JsonMethodType = {
+  CONNECT: 0,
+  REFRESH: 1,
+  SUBSCRIBE: 2,
+  UNSUBSCRIBE: 3,
+  PUBLISH: 4,
+  PRESENCE: 5,
+  PRESENCE_STATS: 6,
+  HISTORY: 7,
+  PING: 8,
+  RPC: 9,
+  MESSAGE: 10
+};
+
+var JsonMessageType = exports.JsonMessageType = {
+  PUBLICATION: 0,
+  JOIN: 1,
+  LEAVE: 2,
+  UNSUB: 3
+};
+
+var JsonEncoder = exports.JsonEncoder = function () {
+  function JsonEncoder() {
+    _classCallCheck(this, JsonEncoder);
+  }
+
+  _createClass(JsonEncoder, [{
+    key: 'encodeCommands',
+    value: function encodeCommands(commands) {
+      var encodedCommands = [];
+      for (var i in commands) {
+        if (commands.hasOwnProperty(i)) {
+          encodedCommands.push(JSON.stringify(commands[i]));
+        }
+      }
+      return encodedCommands.join('\n');
+    }
+  }]);
+
+  return JsonEncoder;
+}();
+
+var JsonDecoder = exports.JsonDecoder = function () {
+  function JsonDecoder() {
+    _classCallCheck(this, JsonDecoder);
+  }
+
+  _createClass(JsonDecoder, [{
+    key: 'decodeReplies',
+    value: function decodeReplies(data) {
+      var replies = [];
+      var encodedReplies = data.split('\n');
+      for (var i in encodedReplies) {
+        if (encodedReplies.hasOwnProperty(i)) {
+          if (!encodedReplies[i]) {
+            continue;
+          }
+          var reply = JSON.parse(encodedReplies[i]);
+          replies.push(reply);
+        }
+      }
+      return replies;
+    }
+  }, {
+    key: 'decodeCommandResult',
+    value: function decodeCommandResult(methodType, data) {
+      return data;
+    }
+  }, {
+    key: 'decodeMessage',
+    value: function decodeMessage(data) {
+      return data;
+    }
+  }, {
+    key: 'decodeMessageData',
+    value: function decodeMessageData(messageType, data) {
+      return data;
+    }
+  }]);
+
+  return JsonDecoder;
+}();
 
 /***/ }),
 /* 13 */
@@ -9125,49 +9135,9 @@ Object.defineProperty(exports, "__esModule", {
   value: true
 });
 
-var _createClass = function () { function defineProperties(target, props) { for (var i = 0; i < props.length; i++) { var descriptor = props[i]; descriptor.enumerable = descriptor.enumerable || false; descriptor.configurable = true; if ("value" in descriptor) descriptor.writable = true; Object.defineProperty(target, descriptor.key, descriptor); } } return function (Constructor, protoProps, staticProps) { if (protoProps) defineProperties(Constructor.prototype, protoProps); if (staticProps) defineProperties(Constructor, staticProps); return Constructor; }; }();
-
-var _centrifuge = __webpack_require__(12);
-
 var _protobuf = __webpack_require__(35);
 
-var _json = __webpack_require__(11);
-
-function _classCallCheck(instance, Constructor) { if (!(instance instanceof Constructor)) { throw new TypeError("Cannot call a class as a function"); } }
-
-function _possibleConstructorReturn(self, call) { if (!self) { throw new ReferenceError("this hasn't been initialised - super() hasn't been called"); } return call && (typeof call === "object" || typeof call === "function") ? call : self; }
-
-function _inherits(subClass, superClass) { if (typeof superClass !== "function" && superClass !== null) { throw new TypeError("Super expression must either be null or a function, not " + typeof superClass); } subClass.prototype = Object.create(superClass && superClass.prototype, { constructor: { value: subClass, enumerable: false, writable: true, configurable: true } }); if (superClass) Object.setPrototypeOf ? Object.setPrototypeOf(subClass, superClass) : subClass.__proto__ = superClass; }
-
-var CentrifugeProtobuf = function (_Centrifuge) {
-  _inherits(CentrifugeProtobuf, _Centrifuge);
-
-  function CentrifugeProtobuf() {
-    _classCallCheck(this, CentrifugeProtobuf);
-
-    return _possibleConstructorReturn(this, (CentrifugeProtobuf.__proto__ || Object.getPrototypeOf(CentrifugeProtobuf)).apply(this, arguments));
-  }
-
-  _createClass(CentrifugeProtobuf, [{
-    key: '_setFormat',
-    value: function _setFormat(format) {
-      if (format === 'protobuf') {
-        this._binary = true;
-        this._methodType = _protobuf.methodType;
-        this._messageType = _protobuf.messageType;
-        this._encoder = new _protobuf.ProtobufEncoder();
-        this._decoder = new _protobuf.ProtobufDecoder();
-      } else {
-        this._encoder = new _json.JsonEncoder();
-        this._decoder = new _json.JsonDecoder();
-      }
-    }
-  }]);
-
-  return CentrifugeProtobuf;
-}(_centrifuge.Centrifuge);
-
-exports.default = CentrifugeProtobuf;
+exports.default = _protobuf.CentrifugeProtobuf;
 module.exports = exports['default'];
 
 /***/ }),
@@ -9180,8 +9150,15 @@ module.exports = exports['default'];
 Object.defineProperty(exports, "__esModule", {
   value: true
 });
+exports.CentrifugeProtobuf = exports.ProtobufDecoder = exports.ProtobufEncoder = undefined;
 
 var _createClass = function () { function defineProperties(target, props) { for (var i = 0; i < props.length; i++) { var descriptor = props[i]; descriptor.enumerable = descriptor.enumerable || false; descriptor.configurable = true; if ("value" in descriptor) descriptor.writable = true; Object.defineProperty(target, descriptor.key, descriptor); } } return function (Constructor, protoProps, staticProps) { if (protoProps) defineProperties(Constructor.prototype, protoProps); if (staticProps) defineProperties(Constructor, staticProps); return Constructor; }; }();
+
+var _centrifuge = __webpack_require__(11);
+
+function _possibleConstructorReturn(self, call) { if (!self) { throw new ReferenceError("this hasn't been initialised - super() hasn't been called"); } return call && (typeof call === "object" || typeof call === "function") ? call : self; }
+
+function _inherits(subClass, superClass) { if (typeof superClass !== "function" && superClass !== null) { throw new TypeError("Super expression must either be null or a function, not " + typeof superClass); } subClass.prototype = Object.create(superClass && superClass.prototype, { constructor: { value: subClass, enumerable: false, writable: true, configurable: true } }); if (superClass) Object.setPrototypeOf ? Object.setPrototypeOf(subClass, superClass) : subClass.__proto__ = superClass; }
 
 function _classCallCheck(instance, Constructor) { if (!(instance instanceof Constructor)) { throw new TypeError("Cannot call a class as a function"); } }
 
@@ -9190,7 +9167,7 @@ var proto = protobuf.Root.fromJSON(__webpack_require__(51));
 
 var methodValues = proto.lookupEnum('MethodType').values;
 
-var methodType = exports.methodType = {
+var protobufMethodType = {
   CONNECT: methodValues.CONNECT,
   REFRESH: methodValues.REFRESH,
   SUBSCRIBE: methodValues.SUBSCRIBE,
@@ -9218,7 +9195,7 @@ var methodSchema = {
   MESSAGE: [proto.lookupType('proto.MessageRequest'), null]
 };
 
-var messageType = exports.messageType = {
+var protobufMessageType = {
   PUBLICATION: proto.lookupEnum('MessageType').values.PUBLICATION,
   JOIN: proto.lookupEnum('MessageType').values.JOIN,
   LEAVE: proto.lookupEnum('MessageType').values.LEAVE,
@@ -9236,27 +9213,6 @@ var Message = proto.lookupType('proto.Message');
 var Command = proto.lookupType('proto.Command');
 var Reply = proto.lookupType('proto.Reply');
 
-var JsonEncoder = exports.JsonEncoder = function () {
-  function JsonEncoder() {
-    _classCallCheck(this, JsonEncoder);
-  }
-
-  _createClass(JsonEncoder, [{
-    key: 'encodeCommands',
-    value: function encodeCommands(commands) {
-      var encodedCommands = [];
-      for (var i in commands) {
-        if (commands.hasOwnProperty(i)) {
-          encodedCommands.push(JSON.stringify(commands[i]));
-        }
-      }
-      return encodedCommands.join('\n');
-    }
-  }]);
-
-  return JsonEncoder;
-}();
-
 var ProtobufEncoder = exports.ProtobufEncoder = function () {
   function ProtobufEncoder() {
     _classCallCheck(this, ProtobufEncoder);
@@ -9272,37 +9228,37 @@ var ProtobufEncoder = exports.ProtobufEncoder = function () {
           if (command.params) {
             var type = void 0;
             switch (command.method) {
-              case methodType.CONNECT:
+              case protobufMethodType.CONNECT:
                 type = methodSchema.CONNECT[0];
                 break;
-              case methodType.REFRESH:
+              case protobufMethodType.REFRESH:
                 type = methodSchema.REFRESH;
                 break;
-              case methodType.SUBSCRIBE:
+              case protobufMethodType.SUBSCRIBE:
                 type = methodSchema.SUBSCRIBE[0];
                 break;
-              case methodType.UNSUBSCRIBE:
+              case protobufMethodType.UNSUBSCRIBE:
                 type = methodSchema.UNSUBSCRIBE[0];
                 break;
-              case methodType.PUBLISH:
+              case protobufMethodType.PUBLISH:
                 type = methodSchema.PUBLISH[0];
                 break;
-              case methodType.PRESENCE:
+              case protobufMethodType.PRESENCE:
                 type = methodSchema.PRESENCE[0];
                 break;
-              case methodType.PRESENCE_STATS:
+              case protobufMethodType.PRESENCE_STATS:
                 type = methodSchema.PRESENCE_STATS[0];
                 break;
-              case methodType.HISTORY:
+              case protobufMethodType.HISTORY:
                 type = methodSchema.HISTORY[0];
                 break;
-              case methodType.PING:
+              case protobufMethodType.PING:
                 type = methodSchema.PING[0];
                 break;
-              case methodType.RPC:
+              case protobufMethodType.RPC:
                 type = methodSchema.RPC[0];
                 break;
-              case methodType.Message:
+              case protobufMethodType.Message:
                 type = methodSchema.MESSAGE[0];
                 break;
             }
@@ -9316,47 +9272,6 @@ var ProtobufEncoder = exports.ProtobufEncoder = function () {
   }]);
 
   return ProtobufEncoder;
-}();
-
-var JsonDecoder = exports.JsonDecoder = function () {
-  function JsonDecoder() {
-    _classCallCheck(this, JsonDecoder);
-  }
-
-  _createClass(JsonDecoder, [{
-    key: 'decodeReplies',
-    value: function decodeReplies(data) {
-      var replies = [];
-      var encodedReplies = data.split('\n');
-      for (var i in encodedReplies) {
-        if (encodedReplies.hasOwnProperty(i)) {
-          if (!encodedReplies[i]) {
-            continue;
-          }
-          var reply = JSON.parse(encodedReplies[i]);
-          replies.push(reply);
-        }
-      }
-      return replies;
-    }
-  }, {
-    key: 'decodeCommandResult',
-    value: function decodeCommandResult(methodType, data) {
-      return data;
-    }
-  }, {
-    key: 'decodeMessage',
-    value: function decodeMessage(data) {
-      return data;
-    }
-  }, {
-    key: 'decodeMessageData',
-    value: function decodeMessageData(messageType, data) {
-      return data;
-    }
-  }]);
-
-  return JsonDecoder;
 }();
 
 var ProtobufDecoder = exports.ProtobufDecoder = function () {
@@ -9380,34 +9295,34 @@ var ProtobufDecoder = exports.ProtobufDecoder = function () {
     value: function decodeCommandResult(methodType, data) {
       var type;
       switch (methodType) {
-        case methodType.CONNECT:
+        case protobufMethodType.CONNECT:
           type = methodSchema.CONNECT[1];
           break;
-        case methodType.REFRESH:
+        case protobufMethodType.REFRESH:
           type = methodSchema.REFRESH[1];
           break;
-        case methodType.SUBSCRIBE:
+        case protobufMethodType.SUBSCRIBE:
           type = methodSchema.SUBSCRIBE[1];
           break;
-        case methodType.UNSUBSCRIBE:
+        case protobufMethodType.UNSUBSCRIBE:
           type = methodSchema.UNSUBSCRIBE[1];
           break;
-        case methodType.PUBLISH:
+        case protobufMethodType.PUBLISH:
           type = methodSchema.PUBLISH[1];
           break;
-        case methodType.PRESENCE:
+        case protobufMethodType.PRESENCE:
           type = methodSchema.PRESENCE[1];
           break;
-        case methodType.PRESENCE_STATS:
+        case protobufMethodType.PRESENCE_STATS:
           type = methodSchema.PRESENCE_STATS[1];
           break;
-        case methodType.HISTORY:
+        case protobufMethodType.HISTORY:
           type = methodSchema.HISTORY[1];
           break;
-        case methodType.PING:
+        case protobufMethodType.PING:
           type = methodSchema.PING[1];
           break;
-        case methodType.RPC:
+        case protobufMethodType.RPC:
           type = methodSchema.RPC[1];
           break;
       }
@@ -9423,16 +9338,16 @@ var ProtobufDecoder = exports.ProtobufDecoder = function () {
     value: function decodeMessageData(messageType, data) {
       var type;
       switch (messageType) {
-        case messageType.PUBLICATION:
+        case protobufMessageType.PUBLICATION:
           type = MessageSchema.PUBLICATION;
           break;
-        case messageType.JOIN:
+        case protobufMessageType.JOIN:
           type = MessageSchema.JOIN;
           break;
-        case messageType.LEAVE:
+        case protobufMessageType.LEAVE:
           type = MessageSchema.LEAVE;
           break;
-        case messageType.UNSUB:
+        case protobufMessageType.UNSUB:
           type = MessageSchema.UNSUB;
           break;
       }
@@ -9453,6 +9368,33 @@ var ProtobufDecoder = exports.ProtobufDecoder = function () {
 
   return ProtobufDecoder;
 }();
+
+var CentrifugeProtobuf = exports.CentrifugeProtobuf = function (_Centrifuge) {
+  _inherits(CentrifugeProtobuf, _Centrifuge);
+
+  function CentrifugeProtobuf() {
+    _classCallCheck(this, CentrifugeProtobuf);
+
+    return _possibleConstructorReturn(this, (CentrifugeProtobuf.__proto__ || Object.getPrototypeOf(CentrifugeProtobuf)).apply(this, arguments));
+  }
+
+  _createClass(CentrifugeProtobuf, [{
+    key: '_formatOverride',
+    value: function _formatOverride(format) {
+      if (format === 'protobuf') {
+        this._binary = true;
+        this._methodType = protobufMethodType;
+        this._messageType = protobufMessageType;
+        this._encoder = new ProtobufEncoder();
+        this._decoder = new ProtobufDecoder();
+        return true;
+      }
+      return false;
+    }
+  }]);
+
+  return CentrifugeProtobuf;
+}(_centrifuge.Centrifuge);
 
 /***/ }),
 /* 36 */

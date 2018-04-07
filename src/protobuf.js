@@ -1,9 +1,11 @@
+import {Centrifuge} from './centrifuge.js';
+
 const protobuf = require('protobufjs/light');
 const proto = protobuf.Root.fromJSON(require('./client.proto.json'));
 
 const methodValues = proto.lookupEnum('MethodType').values;
 
-export const methodType = {
+const protobufMethodType = {
   CONNECT: methodValues.CONNECT,
   REFRESH: methodValues.REFRESH,
   SUBSCRIBE: methodValues.SUBSCRIBE,
@@ -64,7 +66,7 @@ const methodSchema = {
   ]
 };
 
-export const messageType = {
+const protobufMessageType = {
   PUBLICATION: proto.lookupEnum('MessageType').values.PUBLICATION,
   JOIN: proto.lookupEnum('MessageType').values.JOIN,
   LEAVE: proto.lookupEnum('MessageType').values.LEAVE,
@@ -82,18 +84,6 @@ const Message = proto.lookupType('proto.Message');
 const Command = proto.lookupType('proto.Command');
 const Reply = proto.lookupType('proto.Reply');
 
-export class JsonEncoder {
-  encodeCommands(commands) {
-    const encodedCommands = [];
-    for (const i in commands) {
-      if (commands.hasOwnProperty(i)) {
-        encodedCommands.push(JSON.stringify(commands[i]));
-      }
-    }
-    return encodedCommands.join('\n');
-  }
-}
-
 export class ProtobufEncoder {
   encodeCommands(commands) {
     let writer = protobuf.Writer.create();
@@ -103,37 +93,37 @@ export class ProtobufEncoder {
         if (command.params) {
           let type;
           switch (command.method) {
-            case methodType.CONNECT:
+            case protobufMethodType.CONNECT:
               type = methodSchema.CONNECT[0];
               break;
-            case methodType.REFRESH:
+            case protobufMethodType.REFRESH:
               type = methodSchema.REFRESH;
               break;
-            case methodType.SUBSCRIBE:
+            case protobufMethodType.SUBSCRIBE:
               type = methodSchema.SUBSCRIBE[0];
               break;
-            case methodType.UNSUBSCRIBE:
+            case protobufMethodType.UNSUBSCRIBE:
               type = methodSchema.UNSUBSCRIBE[0];
               break;
-            case methodType.PUBLISH:
+            case protobufMethodType.PUBLISH:
               type = methodSchema.PUBLISH[0];
               break;
-            case methodType.PRESENCE:
+            case protobufMethodType.PRESENCE:
               type = methodSchema.PRESENCE[0];
               break;
-            case methodType.PRESENCE_STATS:
+            case protobufMethodType.PRESENCE_STATS:
               type = methodSchema.PRESENCE_STATS[0];
               break;
-            case methodType.HISTORY:
+            case protobufMethodType.HISTORY:
               type = methodSchema.HISTORY[0];
               break;
-            case methodType.PING:
+            case protobufMethodType.PING:
               type = methodSchema.PING[0];
               break;
-            case methodType.RPC:
+            case protobufMethodType.RPC:
               type = methodSchema.RPC[0];
               break;
-            case methodType.Message:
+            case protobufMethodType.Message:
               type = methodSchema.MESSAGE[0];
               break;
           }
@@ -143,35 +133,6 @@ export class ProtobufEncoder {
       }
     }
     return writer.finish();
-  }
-}
-
-export class JsonDecoder {
-  decodeReplies(data) {
-    let replies = [];
-    const encodedReplies = data.split('\n');
-    for (let i in encodedReplies) {
-      if (encodedReplies.hasOwnProperty(i)) {
-        if (!encodedReplies[i]) {
-          continue;
-        }
-        const reply = JSON.parse(encodedReplies[i]);
-        replies.push(reply);
-      }
-    }
-    return replies;
-  }
-
-  decodeCommandResult(methodType, data) {
-    return data;
-  }
-
-  decodeMessage(data) {
-    return data;
-  }
-
-  decodeMessageData(messageType, data) {
-    return data;
   }
 }
 
@@ -189,34 +150,34 @@ export class ProtobufDecoder {
   decodeCommandResult(methodType, data) {
     var type;
     switch (methodType) {
-      case methodType.CONNECT:
+      case protobufMethodType.CONNECT:
         type = methodSchema.CONNECT[1];
         break;
-      case methodType.REFRESH:
+      case protobufMethodType.REFRESH:
         type = methodSchema.REFRESH[1];
         break;
-      case methodType.SUBSCRIBE:
+      case protobufMethodType.SUBSCRIBE:
         type = methodSchema.SUBSCRIBE[1];
         break;
-      case methodType.UNSUBSCRIBE:
+      case protobufMethodType.UNSUBSCRIBE:
         type = methodSchema.UNSUBSCRIBE[1];
         break;
-      case methodType.PUBLISH:
+      case protobufMethodType.PUBLISH:
         type = methodSchema.PUBLISH[1];
         break;
-      case methodType.PRESENCE:
+      case protobufMethodType.PRESENCE:
         type = methodSchema.PRESENCE[1];
         break;
-      case methodType.PRESENCE_STATS:
+      case protobufMethodType.PRESENCE_STATS:
         type = methodSchema.PRESENCE_STATS[1];
         break;
-      case methodType.HISTORY:
+      case protobufMethodType.HISTORY:
         type = methodSchema.HISTORY[1];
         break;
-      case methodType.PING:
+      case protobufMethodType.PING:
         type = methodSchema.PING[1];
         break;
-      case methodType.RPC:
+      case protobufMethodType.RPC:
         type = methodSchema.RPC[1];
         break;
     }
@@ -230,16 +191,16 @@ export class ProtobufDecoder {
   decodeMessageData(messageType, data) {
     var type;
     switch (messageType) {
-      case messageType.PUBLICATION:
+      case protobufMessageType.PUBLICATION:
         type = MessageSchema.PUBLICATION;
         break;
-      case messageType.JOIN:
+      case protobufMessageType.JOIN:
         type = MessageSchema.JOIN;
         break;
-      case messageType.LEAVE:
+      case protobufMessageType.LEAVE:
         type = MessageSchema.LEAVE;
         break;
-      case messageType.UNSUB:
+      case protobufMessageType.UNSUB:
         type = MessageSchema.UNSUB;
         break;
     }
@@ -254,5 +215,19 @@ export class ProtobufDecoder {
       return null;
     }
     return res;
+  }
+}
+
+export class CentrifugeProtobuf extends Centrifuge {
+  _formatOverride(format) {
+    if (format === 'protobuf') {
+      this._binary = true;
+      this._methodType = protobufMethodType;
+      this._messageType = protobufMessageType;
+      this._encoder = new ProtobufEncoder();
+      this._decoder = new ProtobufDecoder();
+      return true;
+    }
+    return false;
   }
 }

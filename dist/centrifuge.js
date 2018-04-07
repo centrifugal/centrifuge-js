@@ -79,105 +79,6 @@ return /******/ (function(modules) { // webpackBootstrap
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
-
-
-Object.defineProperty(exports, "__esModule", {
-  value: true
-});
-
-var _createClass = function () { function defineProperties(target, props) { for (var i = 0; i < props.length; i++) { var descriptor = props[i]; descriptor.enumerable = descriptor.enumerable || false; descriptor.configurable = true; if ("value" in descriptor) descriptor.writable = true; Object.defineProperty(target, descriptor.key, descriptor); } } return function (Constructor, protoProps, staticProps) { if (protoProps) defineProperties(Constructor.prototype, protoProps); if (staticProps) defineProperties(Constructor, staticProps); return Constructor; }; }();
-
-function _classCallCheck(instance, Constructor) { if (!(instance instanceof Constructor)) { throw new TypeError("Cannot call a class as a function"); } }
-
-var methodType = exports.methodType = {
-  CONNECT: 'connect',
-  REFRESH: 'refresh',
-  SUBSCRIBE: 'subscribe',
-  UNSUBSCRIBE: 'unsubscribe',
-  PUBLISH: 'publish',
-  PRESENCE: 'presence',
-  PRESENCE_STATS: 'presence_stats',
-  HISTORY: 'history',
-  PING: 'ping',
-  RPC: 'rpc',
-  MESSAGE: 'message'
-};
-
-var messageType = exports.messageType = {
-  PUBLICATION: 0,
-  JOIN: 1,
-  LEAVE: 2,
-  UNSUB: 3
-};
-
-var JsonEncoder = exports.JsonEncoder = function () {
-  function JsonEncoder() {
-    _classCallCheck(this, JsonEncoder);
-  }
-
-  _createClass(JsonEncoder, [{
-    key: 'encodeCommands',
-    value: function encodeCommands(commands) {
-      var encodedCommands = [];
-      for (var i in commands) {
-        if (commands.hasOwnProperty(i)) {
-          encodedCommands.push(JSON.stringify(commands[i]));
-        }
-      }
-      return encodedCommands.join('\n');
-    }
-  }]);
-
-  return JsonEncoder;
-}();
-
-var JsonDecoder = exports.JsonDecoder = function () {
-  function JsonDecoder() {
-    _classCallCheck(this, JsonDecoder);
-  }
-
-  _createClass(JsonDecoder, [{
-    key: 'decodeReplies',
-    value: function decodeReplies(data) {
-      var replies = [];
-      var encodedReplies = data.split('\n');
-      for (var i in encodedReplies) {
-        if (encodedReplies.hasOwnProperty(i)) {
-          if (!encodedReplies[i]) {
-            continue;
-          }
-          var reply = JSON.parse(encodedReplies[i]);
-          replies.push(reply);
-        }
-      }
-      return replies;
-    }
-  }, {
-    key: 'decodeCommandResult',
-    value: function decodeCommandResult(methodType, data) {
-      return data;
-    }
-  }, {
-    key: 'decodeMessage',
-    value: function decodeMessage(data) {
-      return data;
-    }
-  }, {
-    key: 'decodeMessageData',
-    value: function decodeMessageData(messageType, data) {
-      return data;
-    }
-  }]);
-
-  return JsonDecoder;
-}();
-
-/***/ }),
-
-/***/ 12:
-/***/ (function(module, exports, __webpack_require__) {
-
-"use strict";
 /* WEBPACK VAR INJECTION */(function(global) {
 
 Object.defineProperty(exports, "__esModule", {
@@ -189,7 +90,7 @@ var _typeof = typeof Symbol === "function" && typeof Symbol.iterator === "symbol
 
 var _createClass = function () { function defineProperties(target, props) { for (var i = 0; i < props.length; i++) { var descriptor = props[i]; descriptor.enumerable = descriptor.enumerable || false; descriptor.configurable = true; if ("value" in descriptor) descriptor.writable = true; Object.defineProperty(target, descriptor.key, descriptor); } } return function (Constructor, protoProps, staticProps) { if (protoProps) defineProperties(Constructor.prototype, protoProps); if (staticProps) defineProperties(Constructor, staticProps); return Constructor; }; }();
 
-var _json = __webpack_require__(11);
+var _json = __webpack_require__(12);
 
 var _utils = __webpack_require__(6);
 
@@ -213,12 +114,12 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
 
     var _this = _possibleConstructorReturn(this, (Centrifuge.__proto__ || Object.getPrototypeOf(Centrifuge)).call(this));
 
-    _this._methodType = _json.methodType;
-    _this._messageType = _json.messageType;
     _this._url = url;
     _this._sockjs = null;
     _this._isSockjs = false;
     _this._binary = false;
+    _this._methodType = null;
+    _this._messageType = null;
     _this._encoder = null;
     _this._decoder = null;
     _this._status = 'disconnected';
@@ -362,12 +263,22 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
   }, {
     key: '_setFormat',
     value: function _setFormat(format) {
-      if (format === 'protobuf') {
-        throw new Error('not implemented by JSON only Centrifuge client');
-      } else {
-        this._encoder = new _json.JsonEncoder();
-        this._decoder = new _json.JsonDecoder();
+      if (this._formatOverride(format)) {
+        return;
       }
+      if (format === 'protobuf') {
+        throw new Error('not implemented by JSON only Centrifuge client – use client with Protobuf');
+      }
+      this._binary = false;
+      this._methodType = _json.JsonMethodType;
+      this._messageType = _json.JsonMessageType;
+      this._encoder = new _json.JsonEncoder();
+      this._decoder = new _json.JsonDecoder();
+    }
+  }, {
+    key: '_formatOverride',
+    value: function _formatOverride(format) {
+      return false;
     }
   }, {
     key: '_configure',
@@ -1451,6 +1362,105 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
 
 /***/ }),
 
+/***/ 12:
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+
+var _createClass = function () { function defineProperties(target, props) { for (var i = 0; i < props.length; i++) { var descriptor = props[i]; descriptor.enumerable = descriptor.enumerable || false; descriptor.configurable = true; if ("value" in descriptor) descriptor.writable = true; Object.defineProperty(target, descriptor.key, descriptor); } } return function (Constructor, protoProps, staticProps) { if (protoProps) defineProperties(Constructor.prototype, protoProps); if (staticProps) defineProperties(Constructor, staticProps); return Constructor; }; }();
+
+function _classCallCheck(instance, Constructor) { if (!(instance instanceof Constructor)) { throw new TypeError("Cannot call a class as a function"); } }
+
+var JsonMethodType = exports.JsonMethodType = {
+  CONNECT: 0,
+  REFRESH: 1,
+  SUBSCRIBE: 2,
+  UNSUBSCRIBE: 3,
+  PUBLISH: 4,
+  PRESENCE: 5,
+  PRESENCE_STATS: 6,
+  HISTORY: 7,
+  PING: 8,
+  RPC: 9,
+  MESSAGE: 10
+};
+
+var JsonMessageType = exports.JsonMessageType = {
+  PUBLICATION: 0,
+  JOIN: 1,
+  LEAVE: 2,
+  UNSUB: 3
+};
+
+var JsonEncoder = exports.JsonEncoder = function () {
+  function JsonEncoder() {
+    _classCallCheck(this, JsonEncoder);
+  }
+
+  _createClass(JsonEncoder, [{
+    key: 'encodeCommands',
+    value: function encodeCommands(commands) {
+      var encodedCommands = [];
+      for (var i in commands) {
+        if (commands.hasOwnProperty(i)) {
+          encodedCommands.push(JSON.stringify(commands[i]));
+        }
+      }
+      return encodedCommands.join('\n');
+    }
+  }]);
+
+  return JsonEncoder;
+}();
+
+var JsonDecoder = exports.JsonDecoder = function () {
+  function JsonDecoder() {
+    _classCallCheck(this, JsonDecoder);
+  }
+
+  _createClass(JsonDecoder, [{
+    key: 'decodeReplies',
+    value: function decodeReplies(data) {
+      var replies = [];
+      var encodedReplies = data.split('\n');
+      for (var i in encodedReplies) {
+        if (encodedReplies.hasOwnProperty(i)) {
+          if (!encodedReplies[i]) {
+            continue;
+          }
+          var reply = JSON.parse(encodedReplies[i]);
+          replies.push(reply);
+        }
+      }
+      return replies;
+    }
+  }, {
+    key: 'decodeCommandResult',
+    value: function decodeCommandResult(methodType, data) {
+      return data;
+    }
+  }, {
+    key: 'decodeMessage',
+    value: function decodeMessage(data) {
+      return data;
+    }
+  }, {
+    key: 'decodeMessageData',
+    value: function decodeMessageData(messageType, data) {
+      return data;
+    }
+  }]);
+
+  return JsonDecoder;
+}();
+
+/***/ }),
+
 /***/ 13:
 /***/ (function(module, exports) {
 
@@ -1983,7 +1993,7 @@ Object.defineProperty(exports, "__esModule", {
   value: true
 });
 
-var _centrifuge = __webpack_require__(12);
+var _centrifuge = __webpack_require__(11);
 
 exports.default = _centrifuge.Centrifuge;
 module.exports = exports['default'];

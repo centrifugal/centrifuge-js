@@ -131,7 +131,7 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
     _this._messageId = 0;
     _this._clientID = null;
     _this._subs = {};
-    _this._lastPublicationUID = {};
+    _this._lastPubUID = {};
     _this._messages = [];
     _this._isBatching = false;
     _this._isAuthBatching = false;
@@ -462,8 +462,9 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
 
         self._resetRetry();
 
+        // Can omit method here due to zero value.
         var msg = {
-          method: self._methodType.CONNECT
+          // method: self._methodType.CONNECT
         };
 
         if (self._credentials) {
@@ -563,7 +564,7 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
     key: 'send',
     value: function send(data) {
       var msg = {
-        method: self._methodType.MESSAGE,
+        method: this._methodType.MESSAGE,
         params: {
           data: data
         }
@@ -767,12 +768,12 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
           msg.params.recover = true;
           msg.params.last = this._getLastID(channel);
         }
-        var _self = this;
+        var self = this;
 
         this._call(msg).then(function (result) {
-          _self._subscribeResponse(channel, _self._decoder.decodeCommandResult(_self._methodType.SUBSCRIBE, result));
+          self._subscribeResponse(channel, self._decoder.decodeCommandResult(self._methodType.SUBSCRIBE, result));
         }, function (err) {
-          _self._subscribeError(err);
+          self._subscribeError(err);
         });
       }
     }
@@ -782,7 +783,7 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
       if (this.isConnected()) {
         // No need to unsubscribe in disconnected state - i.e. client already unsubscribed.
         this._addMessage({
-          method: self._methodType.UNSUBSCRIBE,
+          method: this._methodType.UNSUBSCRIBE,
           params: {
             channel: sub.channel
           }
@@ -929,22 +930,20 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
         return;
       }
 
-      var publications = result.publications;
+      var pubs = result.pubs;
 
-      if (publications && publications.length > 0) {
-        // handle missed publications.
-        publications = publications.reverse();
-        for (var i in publications) {
-          if (publications.hasOwnProperty(i)) {
-            this._handlePublication({
-              body: publications[i]
-            });
+      if (pubs && pubs.length > 0) {
+        // handle missed pubs.
+        pubs = pubs.reverse();
+        for (var i in pubs) {
+          if (pubs.hasOwnProperty(i)) {
+            this._handlePub(channel, pubs[i]);
           }
         }
       } else {
         if ('last' in result) {
           // no missed messages found so set last message id from result.
-          this._lastPublicationUID[channel] = result.last;
+          this._lastPubUID[channel] = result.last;
         }
       }
 
@@ -956,10 +955,10 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
       sub._setSubscribeSuccess(recovered);
     }
   }, {
-    key: '_handleCommandReply',
-    value: function _handleCommandReply(message) {
-      var id = message.id;
-      var result = message.result;
+    key: '_handleReply',
+    value: function _handleReply(reply) {
+      var id = reply.id;
+      var result = reply.result;
 
       if (!(id in this._callbacks)) {
         return;
@@ -967,7 +966,7 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
       var callbacks = this._callbacks[id];
       delete this._callbacks[id];
 
-      if (!(0, _utils.errorExists)(message)) {
+      if (!(0, _utils.errorExists)(reply)) {
         var callback = callbacks.callback;
         if (!callback) {
           return;
@@ -978,13 +977,12 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
         if (!errback) {
           return;
         }
-        errback(message.error);
+        errback(reply.error);
       }
     }
   }, {
     key: '_handleJoin',
-    value: function _handleJoin(channel, data) {
-      var join = this._decoder.decodeMessageData(this._messageType.JOIN, data);
+    value: function _handleJoin(channel, join) {
       var sub = this._getSub(channel);
       if (!sub) {
         return;
@@ -993,8 +991,7 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
     }
   }, {
     key: '_handleLeave',
-    value: function _handleLeave(channel, data) {
-      var leave = this._decoder.decodeMessageData(this._messageType.LEAVE, data);
+    value: function _handleLeave(channel, leave) {
       var sub = this._getSub(channel);
       if (!sub) {
         return;
@@ -1011,16 +1008,20 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
       sub.unsubscribe();
     }
   }, {
-    key: '_handlePublication',
-    value: function _handlePublication(channel, data) {
-      var publication = this._decoder.decodeMessageData(this._messageType.PUBLICATION, data);
+    key: '_handlePub',
+    value: function _handlePub(channel, pub) {
       // keep last uid received from channel.
-      this._lastPublicationUID[channel] = publication.uid;
+      this._lastPubUID[channel] = pub.uid;
       var sub = this._getSub(channel);
       if (!sub) {
         return;
       }
-      sub.emit('message', publication);
+      sub.emit('message', pub);
+    }
+  }, {
+    key: '_handlePush',
+    value: function _handlePush(push) {
+      this.emit('message', push.data);
     }
   }, {
     key: '_refreshResponse',
@@ -1029,38 +1030,44 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
         clearTimeout(this._refreshTimeout);
       }
       if (result.expires) {
-        var _self2 = this;
+        var self = this;
         var expired = result.expired;
 
         if (expired) {
-          _self2._refreshTimeout = setTimeout(function () {
-            _self2._refresh.call(_self2);
-          }, _self2._config.refreshInterval + Math.round(Math.random() * 1000));
+          self._refreshTimeout = setTimeout(function () {
+            self._refresh.call(self);
+          }, self._config.refreshInterval + Math.round(Math.random() * 1000));
           return;
         }
         this._clientID = result.client;
-        _self2._refreshTimeout = setTimeout(function () {
-          _self2._refresh.call(_self2);
+        self._refreshTimeout = setTimeout(function () {
+          self._refresh.call(self);
         }, result.ttl * 1000);
       }
     }
   }, {
-    key: '_handleAsyncReply',
-    value: function _handleAsyncReply(reply) {
-      var result = this._decoder.decodeMessage(reply.result);
+    key: '_handleMessage',
+    value: function _handleMessage(data) {
+      var message = this._decoder.decodeMessage(data);
       var type = 0;
-      if ('type' in result) {
-        type = result['type'];
+      if ('type' in message) {
+        type = message['type'];
       }
-      var channel = result.channel;
+      var channel = message.channel;
 
-      if (type === 0) {
-        this._handlePublication(channel, result.data);
-      } else if (type === 1) {
-        this._handleJoin(channel, result.data);
-      } else if (type === 2) {
-        this._handleLeave(channel, result.data);
-      } else if (type === 3) {
+      if (type === this._messageType.PUB) {
+        var pub = this._decoder.decodeMessageData(this._messageType.PUB, message.data);
+        this._handlePub(channel, pub);
+      } else if (type === this._messageType.PUSH) {
+        var push = this._decoder.decodeMessageData(this._messageType.PUSH, message.data);
+        this._handlePush(push);
+      } else if (type === this._messageType.JOIN) {
+        var join = this._decoder.decodeMessageData(this._messageType.JOIN, message.data);
+        this._handleJoin(channel, join);
+      } else if (type === this._messageType.LEAVE) {
+        var leave = this._decoder.decodeMessageData(this._messageType.LEAVE, message.data);
+        this._handleLeave(channel, leave);
+      } else if (type === this._messageType.UNSUB) {
         this._handleUnsub(channel);
       }
     }
@@ -1075,9 +1082,9 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
       var id = reply.id;
 
       if (id && id > 0) {
-        this._handleCommandReply(reply);
+        this._handleReply(reply);
       } else {
-        this._handleAsyncReply(reply);
+        this._handleMessage(reply.result);
       }
     }
   }, {
@@ -1097,12 +1104,12 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
   }, {
     key: '_recover',
     value: function _recover(channel) {
-      return channel in this._lastPublicationUID;
+      return channel in this._lastPubUID;
     }
   }, {
     key: '_getLastID',
     value: function _getLastID(channel) {
-      var lastUID = this._lastPublicationUID[channel];
+      var lastUID = this._lastPubUID[channel];
 
       if (lastUID) {
         this._debug('last uid found and sent for channel', channel);
@@ -1115,10 +1122,8 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
     key: '_createErrorObject',
     value: function _createErrorObject(message, code) {
       var errObject = {
-        error: {
-          message: message,
-          code: code || 0
-        }
+        message: message,
+        code: code || 0
       };
 
       return errObject;
@@ -1378,23 +1383,24 @@ function _classCallCheck(instance, Constructor) { if (!(instance instanceof Cons
 
 var JsonMethodType = exports.JsonMethodType = {
   CONNECT: 0,
-  REFRESH: 1,
-  SUBSCRIBE: 2,
-  UNSUBSCRIBE: 3,
-  PUBLISH: 4,
-  PRESENCE: 5,
-  PRESENCE_STATS: 6,
-  HISTORY: 7,
-  PING: 8,
+  SUBSCRIBE: 1,
+  UNSUBSCRIBE: 2,
+  PUBLISH: 3,
+  PRESENCE: 4,
+  PRESENCE_STATS: 5,
+  HISTORY: 6,
+  PING: 7,
+  MESSAGE: 8,
   RPC: 9,
-  MESSAGE: 10
+  REFRESH: 10
 };
 
 var JsonMessageType = exports.JsonMessageType = {
-  PUBLICATION: 0,
+  PUB: 0,
   JOIN: 1,
   LEAVE: 2,
-  UNSUB: 3
+  UNSUB: 3,
+  PUSH: 4
 };
 
 var JsonEncoder = exports.JsonEncoder = function () {
@@ -1827,11 +1833,14 @@ var Subscription = function (_EventEmitter) {
       if (this._status === _STATE_UNSUBSCRIBED) {
         return;
       }
+      var needTrigger = this._status === _STATE_SUCCESS;
       this._status = _STATE_UNSUBSCRIBED;
       if (noResubscribe === true) {
         this._noResubscribe = true;
       }
-      this._triggerUnsubscribe();
+      if (needTrigger) {
+        this._triggerUnsubscribe();
+      }
     }
   }, {
     key: '_shouldResubscribe',
@@ -1885,15 +1894,7 @@ var Subscription = function (_EventEmitter) {
     value: function _methodCall(message, type) {
       var self = this;
       return new Promise(function (resolve, reject) {
-        if (self._isUnsubscribed()) {
-          reject(self._centrifuge._createErrorObject('subscription unsubscribed'));
-          return;
-        }
         self._promise.then(function () {
-          if (!self._centrifuge.isConnected()) {
-            reject(self._centrifuge._createErrorObject('disconnected'));
-            return;
-          }
           self._centrifuge._call(message).then(function (result) {
             resolve(self._centrifuge._decoder.decodeCommandResult(type, result));
           }, function (err) {

@@ -17,16 +17,16 @@
         "MethodType": {
           "values": {
             "CONNECT": 0,
-            "REFRESH": 1,
-            "SUBSCRIBE": 2,
-            "UNSUBSCRIBE": 3,
-            "PUBLISH": 4,
-            "PRESENCE": 5,
-            "PRESENCE_STATS": 6,
-            "HISTORY": 7,
-            "PING": 8,
+            "SUBSCRIBE": 1,
+            "UNSUBSCRIBE": 2,
+            "PUBLISH": 3,
+            "PRESENCE": 4,
+            "PRESENCE_STATS": 5,
+            "HISTORY": 6,
+            "PING": 7,
+            "MESSAGE": 8,
             "RPC": 9,
-            "MESSAGE": 10
+            "REFRESH": 10
           }
         },
         "Command": {
@@ -63,10 +63,11 @@
         },
         "MessageType": {
           "values": {
-            "PUBLICATION": 0,
+            "PUB": 0,
             "JOIN": 1,
             "LEAVE": 2,
-            "UNSUB": 3
+            "UNSUB": 3,
+            "PUSH": 4
           }
         },
         "Message": {
@@ -105,7 +106,15 @@
             }
           }
         },
-        "Publication": {
+        "Push": {
+          "fields": {
+            "data": {
+              "type": "bytes",
+              "id": 1
+            }
+          }
+        },
+        "Pub": {
           "fields": {
             "uid": {
               "type": "string",
@@ -310,9 +319,9 @@
               "type": "bool",
               "id": 2
             },
-            "publications": {
+            "pubs": {
               "rule": "repeated",
-              "type": "Publication",
+              "type": "Pub",
               "id": 3
             }
           }
@@ -450,9 +459,9 @@
         },
         "HistoryResult": {
           "fields": {
-            "publications": {
+            "pubs": {
               "rule": "repeated",
-              "type": "Publication",
+              "type": "Pub",
               "id": 1
             }
           }

@@ -136,11 +136,14 @@ export default class Subscription extends EventEmitter {
     if (this._status === _STATE_UNSUBSCRIBED) {
       return;
     }
+    const needTrigger = this._status === _STATE_SUCCESS;
     this._status = _STATE_UNSUBSCRIBED;
     if (noResubscribe === true) {
       this._noResubscribe = true;
     }
-    this._triggerUnsubscribe();
+    if (needTrigger) {
+      this._triggerUnsubscribe();
+    }
   };
 
   _shouldResubscribe() {
@@ -187,15 +190,7 @@ export default class Subscription extends EventEmitter {
   _methodCall(message, type) {
     var self = this;
     return new Promise(function (resolve, reject) {
-      if (self._isUnsubscribed()) {
-        reject(self._centrifuge._createErrorObject('subscription unsubscribed'));
-        return;
-      }
       self._promise.then(function () {
-        if (!self._centrifuge.isConnected()) {
-          reject(self._centrifuge._createErrorObject('disconnected'));
-          return;
-        }
         self._centrifuge._call(message).then(function (result) {
           resolve(self._centrifuge._decoder.decodeCommandResult(type, result));
         }, function (err) {

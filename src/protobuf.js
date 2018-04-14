@@ -7,7 +7,6 @@ const methodValues = proto.lookupEnum('MethodType').values;
 
 const protobufMethodType = {
   CONNECT: methodValues.CONNECT,
-  REFRESH: methodValues.REFRESH,
   SUBSCRIBE: methodValues.SUBSCRIBE,
   UNSUBSCRIBE: methodValues.UNSUBSCRIBE,
   PUBLISH: methodValues.PUBLISH,
@@ -16,7 +15,8 @@ const protobufMethodType = {
   HISTORY: methodValues.HISTORY,
   PING: methodValues.PING,
   RPC: methodValues.RPC,
-  MESSAGE: methodValues.MESSAGE
+  MESSAGE: methodValues.MESSAGE,
+  REFRESH: methodValues.REFRESH
 };
 
 const methodSchema = {
@@ -67,17 +67,19 @@ const methodSchema = {
 };
 
 const protobufMessageType = {
-  PUBLICATION: proto.lookupEnum('MessageType').values.PUBLICATION,
+  PUB: proto.lookupEnum('MessageType').values.PUB,
   JOIN: proto.lookupEnum('MessageType').values.JOIN,
   LEAVE: proto.lookupEnum('MessageType').values.LEAVE,
-  UNSUB: proto.lookupEnum('MessageType').values.UNSUB
+  UNSUB: proto.lookupEnum('MessageType').values.UNSUB,
+  PUSH: proto.lookupEnum('MessageType').values.PUSH
 };
 
 const MessageSchema = {
-  PUBLICATION: proto.lookupType('proto.Publication'),
+  PUB: proto.lookupType('proto.Pub'),
   JOIN: proto.lookupType('proto.Join'),
   LEAVE: proto.lookupType('proto.Leave'),
-  UNSUB: proto.lookupType('proto.Unsub')
+  UNSUB: proto.lookupType('proto.Unsub'),
+  PUSH: proto.lookupType('proto.Push')
 };
 
 const Message = proto.lookupType('proto.Message');
@@ -123,7 +125,7 @@ export class ProtobufEncoder {
             case protobufMethodType.RPC:
               type = methodSchema.RPC[0];
               break;
-            case protobufMethodType.Message:
+            case protobufMethodType.MESSAGE:
               type = methodSchema.MESSAGE[0];
               break;
           }
@@ -191,8 +193,11 @@ export class ProtobufDecoder {
   decodeMessageData(messageType, data) {
     var type;
     switch (messageType) {
-      case protobufMessageType.PUBLICATION:
-        type = MessageSchema.PUBLICATION;
+      case protobufMessageType.PUB:
+        type = MessageSchema.PUB;
+        break;
+      case protobufMessageType.PUSH:
+        type = MessageSchema.PUSH;
         break;
       case protobufMessageType.JOIN:
         type = MessageSchema.JOIN;

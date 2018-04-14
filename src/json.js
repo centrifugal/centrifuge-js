@@ -1,22 +1,23 @@
 export const JsonMethodType = {
   CONNECT: 0,
-  REFRESH: 1,
-  SUBSCRIBE: 2,
-  UNSUBSCRIBE: 3,
-  PUBLISH: 4,
-  PRESENCE: 5,
-  PRESENCE_STATS: 6,
-  HISTORY: 7,
-  PING: 8,
+  SUBSCRIBE: 1,
+  UNSUBSCRIBE: 2,
+  PUBLISH: 3,
+  PRESENCE: 4,
+  PRESENCE_STATS: 5,
+  HISTORY: 6,
+  PING: 7,
+  MESSAGE: 8,
   RPC: 9,
-  MESSAGE: 10
+  REFRESH: 10
 };
 
 export const JsonMessageType = {
-  PUBLICATION: 0,
+  PUB: 0,
   JOIN: 1,
   LEAVE: 2,
-  UNSUB: 3
+  UNSUB: 3,
+  PUSH: 4
 };
 
 export class JsonEncoder {

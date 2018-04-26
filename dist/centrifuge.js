@@ -930,14 +930,14 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
         return;
       }
 
-      var pubs = result.pubs;
+      var pubs = result.publications;
 
       if (pubs && pubs.length > 0) {
         // handle missed pubs.
         pubs = pubs.reverse();
         for (var i in pubs) {
           if (pubs.hasOwnProperty(i)) {
-            this._handlePub(channel, pubs[i]);
+            this._handlePublication(channel, pubs[i]);
           }
         }
       } else {
@@ -1008,15 +1008,15 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
       sub.unsubscribe();
     }
   }, {
-    key: '_handlePub',
-    value: function _handlePub(channel, pub) {
+    key: '_handlePublication',
+    value: function _handlePublication(channel, pub) {
       // keep last uid received from channel.
       this._lastPubUID[channel] = pub.uid;
       var sub = this._getSub(channel);
       if (!sub) {
         return;
       }
-      sub.emit('message', pub);
+      sub.emit('publication', pub);
     }
   }, {
     key: '_handlePush',
@@ -1055,9 +1055,9 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
       }
       var channel = message.channel;
 
-      if (type === this._messageType.PUB) {
-        var pub = this._decoder.decodeMessageData(this._messageType.PUB, message.data);
-        this._handlePub(channel, pub);
+      if (type === this._messageType.PUBLICATION) {
+        var pub = this._decoder.decodeMessageData(this._messageType.PUBLICATION, message.data);
+        this._handlePublication(channel, pub);
       } else if (type === this._messageType.PUSH) {
         var push = this._decoder.decodeMessageData(this._messageType.PUSH, message.data);
         this._handlePush(push);
@@ -1396,7 +1396,7 @@ var JsonMethodType = exports.JsonMethodType = {
 };
 
 var JsonMessageType = exports.JsonMessageType = {
-  PUB: 0,
+  PUBLICATION: 0,
   JOIN: 1,
   LEAVE: 2,
   UNSUB: 3,
@@ -1738,9 +1738,9 @@ var Subscription = function (_EventEmitter) {
       }
       if ((0, _utils.isFunction)(events)) {
         // events is just a function to handle publication received from channel.
-        this.on('message', events);
+        this.on('publication', events);
       } else if (Object.prototype.toString.call(events) === Object.prototype.toString.call({})) {
-        var knownEvents = ['message', 'join', 'leave', 'unsubscribe', 'subscribe', 'error'];
+        var knownEvents = ['publication', 'join', 'leave', 'unsubscribe', 'subscribe', 'error'];
         for (var i = 0, l = knownEvents.length; i < l; i++) {
           var ev = knownEvents[i];
           if (ev in events) {

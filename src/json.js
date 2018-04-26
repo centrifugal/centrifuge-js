@@ -13,7 +13,7 @@ export const JsonMethodType = {
 };
 
 export const JsonMessageType = {
-  PUB: 0,
+  PUBLICATION: 0,
   JOIN: 1,
   LEAVE: 2,
   UNSUB: 3,

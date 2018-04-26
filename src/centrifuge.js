@@ -816,14 +816,14 @@ export class Centrifuge extends EventEmitter {
       return;
     }
 
-    let pubs = result.pubs;
+    let pubs = result.publications;
 
     if (pubs && pubs.length > 0) {
       // handle missed pubs.
       pubs = pubs.reverse();
       for (let i in pubs) {
         if (pubs.hasOwnProperty(i)) {
-          this._handlePub(channel, pubs[i]);
+          this._handlePublication(channel, pubs[i]);
         }
       }
     } else {
@@ -890,14 +890,14 @@ export class Centrifuge extends EventEmitter {
     sub.unsubscribe();
   };
 
-  _handlePub(channel, pub) {
+  _handlePublication(channel, pub) {
     // keep last uid received from channel.
     this._lastPubUID[channel] = pub.uid;
     const sub = this._getSub(channel);
     if (!sub) {
       return;
     }
-    sub.emit('message', pub);
+    sub.emit('publication', pub);
   };
 
   _handlePush(push) {
@@ -933,9 +933,9 @@ export class Centrifuge extends EventEmitter {
     }
     const channel = message.channel;
 
-    if (type === this._messageType.PUB) {
-      const pub = this._decoder.decodeMessageData(this._messageType.PUB, message.data);
-      this._handlePub(channel, pub);
+    if (type === this._messageType.PUBLICATION) {
+      const pub = this._decoder.decodeMessageData(this._messageType.PUBLICATION, message.data);
+      this._handlePublication(channel, pub);
     } else if (type === this._messageType.PUSH) {
       const push = this._decoder.decodeMessageData(this._messageType.PUSH, message.data);
       this._handlePush(push);

@@ -53,9 +53,9 @@ export default class Subscription extends EventEmitter {
     }
     if (isFunction(events)) {
       // events is just a function to handle publication received from channel.
-      this.on('message', events);
+      this.on('publication', events);
     } else if (Object.prototype.toString.call(events) === Object.prototype.toString.call({})) {
-      const knownEvents = ['message', 'join', 'leave', 'unsubscribe', 'subscribe', 'error'];
+      const knownEvents = ['publication', 'join', 'leave', 'unsubscribe', 'subscribe', 'error'];
       for (let i = 0, l = knownEvents.length; i < l; i++) {
         const ev = knownEvents[i];
         if (ev in events) {

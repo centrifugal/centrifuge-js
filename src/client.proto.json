@@ -63,7 +63,7 @@
         },
         "MessageType": {
           "values": {
-            "PUB": 0,
+            "PUBLICATION": 0,
             "JOIN": 1,
             "LEAVE": 2,
             "UNSUB": 3,
@@ -114,7 +114,7 @@
             }
           }
         },
-        "Pub": {
+        "Publication": {
           "fields": {
             "uid": {
               "type": "string",
@@ -319,9 +319,9 @@
               "type": "bool",
               "id": 2
             },
-            "pubs": {
+            "publications": {
               "rule": "repeated",
-              "type": "Pub",
+              "type": "Publication",
               "id": 3
             }
           }
@@ -459,9 +459,9 @@
         },
         "HistoryResult": {
           "fields": {
-            "pubs": {
+            "publications": {
               "rule": "repeated",
-              "type": "Pub",
+              "type": "Publication",
               "id": 1
             }
           }

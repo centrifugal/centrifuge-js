@@ -359,8 +359,8 @@ var subscription = centrifuge.subscribe("news", function(message) {
 And that's all! For lots of cases it's enough! But let's look at possible events that
 can happen with subscription:
 
-* `message` – called when new publication message received (callback function in our previous example is   
-    `message` event callback btw)
+* `publication` – called when new publication message received (callback function in our previous example is   
+    `publication` event callback btw)
 * `join` – called when someone joined channel
 * `leave` – called when someone left channel
 * `subscribe` – called when subscription on channel successful and acknowledged by Centrifugo
@@ -382,7 +382,7 @@ First is providing object containing event callbacks as second argument to `subs
 
 ```javascript
 var callbacks = {
-    "message": function(message) {
+    "publication": function(message) {
         // See below description of message format
         console.log(message);
     },
@@ -417,7 +417,7 @@ is event emitter so you can simply do the following:
 ```javascript
 var subscription = centrifuge.subscribe("news");
 
-subscription.on("message", messageHandlerFunction);
+subscription.on("publication", publicationHandlerFunction);
 subscription.on("subscribe", subscribeHandlerFunction);
 subscription.on("error", subscribeErrorHandlerFunction);
 ```

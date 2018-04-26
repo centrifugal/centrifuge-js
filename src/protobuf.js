@@ -67,7 +67,7 @@ const methodSchema = {
 };
 
 const protobufMessageType = {
-  PUB: proto.lookupEnum('MessageType').values.PUB,
+  PUBLICATION: proto.lookupEnum('MessageType').values.PUBLICATION,
   JOIN: proto.lookupEnum('MessageType').values.JOIN,
   LEAVE: proto.lookupEnum('MessageType').values.LEAVE,
   UNSUB: proto.lookupEnum('MessageType').values.UNSUB,
@@ -75,7 +75,7 @@ const protobufMessageType = {
 };
 
 const MessageSchema = {
-  PUB: proto.lookupType('proto.Pub'),
+  PUBLICATION: proto.lookupType('proto.Publication'),
   JOIN: proto.lookupType('proto.Join'),
   LEAVE: proto.lookupType('proto.Leave'),
   UNSUB: proto.lookupType('proto.Unsub'),
@@ -193,8 +193,8 @@ export class ProtobufDecoder {
   decodeMessageData(messageType, data) {
     var type;
     switch (messageType) {
-      case protobufMessageType.PUB:
-        type = MessageSchema.PUB;
+      case protobufMessageType.PUBLICATION:
+        type = MessageSchema.PUBLICATION;
         break;
       case protobufMessageType.PUSH:
         type = MessageSchema.PUSH;

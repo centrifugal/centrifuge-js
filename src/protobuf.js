@@ -15,7 +15,7 @@ const protobufMethodType = {
   HISTORY: methodValues.HISTORY,
   PING: methodValues.PING,
   RPC: methodValues.RPC,
-  MESSAGE: methodValues.MESSAGE,
+  SEND: methodValues.SEND,
   REFRESH: methodValues.REFRESH
 };
 
@@ -60,29 +60,29 @@ const methodSchema = {
     proto.lookupType('proto.RPCRequest'),
     proto.lookupType('proto.RPCResult')
   ],
-  MESSAGE: [
-    proto.lookupType('proto.MessageRequest'),
+  SEND: [
+    proto.lookupType('proto.SendRequest'),
     null
   ]
 };
 
-const protobufMessageType = {
-  PUBLICATION: proto.lookupEnum('MessageType').values.PUBLICATION,
-  JOIN: proto.lookupEnum('MessageType').values.JOIN,
-  LEAVE: proto.lookupEnum('MessageType').values.LEAVE,
-  UNSUB: proto.lookupEnum('MessageType').values.UNSUB,
-  PUSH: proto.lookupEnum('MessageType').values.PUSH
+const protobufPushType = {
+  PUBLICATION: proto.lookupEnum('PushType').values.PUBLICATION,
+  JOIN: proto.lookupEnum('PushType').values.JOIN,
+  LEAVE: proto.lookupEnum('PushType').values.LEAVE,
+  UNSUB: proto.lookupEnum('PushType').values.UNSUB,
+  MESSAGE: proto.lookupEnum('PushType').values.MESSAGE
 };
 
-const MessageSchema = {
+const PushSchema = {
   PUBLICATION: proto.lookupType('proto.Publication'),
   JOIN: proto.lookupType('proto.Join'),
   LEAVE: proto.lookupType('proto.Leave'),
   UNSUB: proto.lookupType('proto.Unsub'),
-  PUSH: proto.lookupType('proto.Push')
+  MESSAGE: proto.lookupType('proto.Message')
 };
 
-const Message = proto.lookupType('proto.Message');
+const Push = proto.lookupType('proto.Push');
 const Command = proto.lookupType('proto.Command');
 const Reply = proto.lookupType('proto.Reply');
 
@@ -125,8 +125,8 @@ export class ProtobufEncoder {
             case protobufMethodType.RPC:
               type = methodSchema.RPC[0];
               break;
-            case protobufMethodType.MESSAGE:
-              type = methodSchema.MESSAGE[0];
+            case protobufMethodType.SEND:
+              type = methodSchema.SEND[0];
               break;
           }
           command.params = type.encode(command.params).finish();
@@ -186,27 +186,27 @@ export class ProtobufDecoder {
     return this._decode(type, data);
   }
 
-  decodeMessage(data) {
-    return this._decode(Message, data);
+  decodePush(data) {
+    return this._decode(Push, data);
   }
 
-  decodeMessageData(messageType, data) {
+  decodePushData(pushType, data) {
     var type;
-    switch (messageType) {
-      case protobufMessageType.PUBLICATION:
-        type = MessageSchema.PUBLICATION;
+    switch (pushType) {
+      case protobufPushType.PUBLICATION:
+        type = PushSchema.PUBLICATION;
         break;
-      case protobufMessageType.PUSH:
-        type = MessageSchema.PUSH;
+      case protobufPushType.MESSAGE:
+        type = PushSchema.MESSAGE;
         break;
-      case protobufMessageType.JOIN:
-        type = MessageSchema.JOIN;
+      case protobufPushType.JOIN:
+        type = PushSchema.JOIN;
         break;
-      case protobufMessageType.LEAVE:
-        type = MessageSchema.LEAVE;
+      case protobufPushType.LEAVE:
+        type = PushSchema.LEAVE;
         break;
-      case protobufMessageType.UNSUB:
-        type = MessageSchema.UNSUB;
+      case protobufPushType.UNSUB:
+        type = PushSchema.UNSUB;
         break;
     }
     return this._decode(type, data);
@@ -228,7 +228,7 @@ export class CentrifugeProtobuf extends Centrifuge {
     if (format === 'protobuf') {
       this._binary = true;
       this._methodType = protobufMethodType;
-      this._messageType = protobufMessageType;
+      this._pushType = protobufPushType;
       this._encoder = new ProtobufEncoder();
       this._decoder = new ProtobufDecoder();
       return true;

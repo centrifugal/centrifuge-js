@@ -24,7 +24,7 @@
             "PRESENCE_STATS": 5,
             "HISTORY": 6,
             "PING": 7,
-            "MESSAGE": 8,
+            "SEND": 8,
             "RPC": 9,
             "REFRESH": 10
           }
@@ -61,19 +61,19 @@
             }
           }
         },
-        "MessageType": {
+        "PushType": {
           "values": {
             "PUBLICATION": 0,
             "JOIN": 1,
             "LEAVE": 2,
             "UNSUB": 3,
-            "PUSH": 4
+            "MESSAGE": 4
           }
         },
-        "Message": {
+        "Push": {
           "fields": {
             "type": {
-              "type": "MessageType",
+              "type": "PushType",
               "id": 1
             },
             "channel": {
@@ -103,14 +103,6 @@
             "chanInfo": {
               "type": "bytes",
               "id": 4
-            }
-          }
-        },
-        "Push": {
-          "fields": {
-            "data": {
-              "type": "bytes",
-              "id": 1
             }
           }
         },
@@ -148,6 +140,14 @@
         },
         "Unsub": {
           "fields": {}
+        },
+        "Message": {
+          "fields": {
+            "data": {
+              "type": "bytes",
+              "id": 1
+            }
+          }
         },
         "ConnectRequest": {
           "fields": {
@@ -522,7 +522,7 @@
             }
           }
         },
-        "MessageRequest": {
+        "SendRequest": {
           "fields": {
             "data": {
               "type": "bytes",

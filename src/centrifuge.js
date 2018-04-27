@@ -1,12 +1,12 @@
-const EventEmitter = require('events');
-const Promise = require('es6-promise');
-const Subscription = require('./subscription');
+import EventEmitter from 'events';
+import Promise from 'es6-promise';
+import Subscription from './subscription';
 
 import {
   JsonEncoder,
   JsonDecoder,
   JsonMethodType,
-  JsonMessageType
+  JsonPushType
 } from './json';
 
 import {
@@ -29,7 +29,7 @@ export class Centrifuge extends EventEmitter {
     this._isSockjs = false;
     this._binary = false;
     this._methodType = null;
-    this._messageType = null;
+    this._pushType = null;
     this._encoder = null;
     this._decoder = null;
     this._status = 'disconnected';
@@ -182,7 +182,7 @@ export class Centrifuge extends EventEmitter {
     }
     this._binary = false;
     this._methodType = JsonMethodType;
-    this._messageType = JsonMessageType;
+    this._pushType = JsonPushType;
     this._encoder = new JsonEncoder();
     this._decoder = new JsonDecoder();
   }
@@ -461,7 +461,7 @@ export class Centrifuge extends EventEmitter {
 
   send(data) {
     const msg = {
-      method: this._methodType.MESSAGE,
+      method: this._methodType.SEND,
       params: {
         data: data
       }
@@ -900,8 +900,8 @@ export class Centrifuge extends EventEmitter {
     sub.emit('publication', pub);
   };
 
-  _handlePush(push) {
-    this.emit('message', push.data);
+  _handleMessage(message) {
+    this.emit('message', message.data);
   };
 
   _refreshResponse(result) {
@@ -925,27 +925,27 @@ export class Centrifuge extends EventEmitter {
     }
   };
 
-  _handleMessage(data) {
-    const message = this._decoder.decodeMessage(data);
+  _handlePush(data) {
+    const push = this._decoder.decodePush(data);
     let type = 0;
-    if ('type' in message) {
-      type = message['type'];
+    if ('type' in push) {
+      type = push['type'];
     }
-    const channel = message.channel;
+    const channel = push.channel;
 
-    if (type === this._messageType.PUBLICATION) {
-      const pub = this._decoder.decodeMessageData(this._messageType.PUBLICATION, message.data);
+    if (type === this._pushType.PUBLICATION) {
+      const pub = this._decoder.decodePushData(this._pushType.PUBLICATION, push.data);
       this._handlePublication(channel, pub);
-    } else if (type === this._messageType.PUSH) {
-      const push = this._decoder.decodeMessageData(this._messageType.PUSH, message.data);
-      this._handlePush(push);
-    } else if (type === this._messageType.JOIN) {
-      const join = this._decoder.decodeMessageData(this._messageType.JOIN, message.data);
+    } else if (type === this._pushType.MESSAGE) {
+      const message = this._decoder.decodePushData(this._pushType.MESSAGE, push.data);
+      this._handleMessage(message);
+    } else if (type === this._pushType.JOIN) {
+      const join = this._decoder.decodePushData(this._pushType.JOIN, push.data);
       this._handleJoin(channel, join);
-    } else if (type === this._messageType.LEAVE) {
-      const leave = this._decoder.decodeMessageData(this._messageType.LEAVE, message.data);
+    } else if (type === this._pushType.LEAVE) {
+      const leave = this._decoder.decodePushData(this._pushType.LEAVE, push.data);
       this._handleLeave(channel, leave);
-    } else if (type === this._messageType.UNSUB) {
+    } else if (type === this._pushType.UNSUB) {
       this._handleUnsub(channel);
     }
   }
@@ -961,7 +961,7 @@ export class Centrifuge extends EventEmitter {
     if (id && id > 0) {
       this._handleReply(reply);
     } else {
-      this._handleMessage(reply.result);
+      this._handlePush(reply.result);
     }
   };
 

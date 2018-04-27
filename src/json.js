@@ -7,17 +7,17 @@ export const JsonMethodType = {
   PRESENCE_STATS: 5,
   HISTORY: 6,
   PING: 7,
-  MESSAGE: 8,
+  SEND: 8,
   RPC: 9,
   REFRESH: 10
 };
 
-export const JsonMessageType = {
+export const JsonPushType = {
   PUBLICATION: 0,
   JOIN: 1,
   LEAVE: 2,
   UNSUB: 3,
-  PUSH: 4
+  MESSAGE: 4
 };
 
 export class JsonEncoder {
@@ -52,11 +52,11 @@ export class JsonDecoder {
     return data;
   }
 
-  decodeMessage(data) {
+  decodePush(data) {
     return data;
   }
 
-  decodeMessageData(messageType, data) {
+  decodePushData(pushType, data) {
     return data;
   }
 }

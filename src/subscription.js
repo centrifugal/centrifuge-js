@@ -1,5 +1,5 @@
-const EventEmitter = require('events');
-const Promise = require('es6-promise');
+import EventEmitter from 'events';
+import Promise from 'es6-promise';
 
 import {
   isFunction

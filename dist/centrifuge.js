@@ -90,19 +90,29 @@ var _typeof = typeof Symbol === "function" && typeof Symbol.iterator === "symbol
 
 var _createClass = function () { function defineProperties(target, props) { for (var i = 0; i < props.length; i++) { var descriptor = props[i]; descriptor.enumerable = descriptor.enumerable || false; descriptor.configurable = true; if ("value" in descriptor) descriptor.writable = true; Object.defineProperty(target, descriptor.key, descriptor); } } return function (Constructor, protoProps, staticProps) { if (protoProps) defineProperties(Constructor.prototype, protoProps); if (staticProps) defineProperties(Constructor, staticProps); return Constructor; }; }();
 
-var _json = __webpack_require__(12);
+var _events = __webpack_require__(6);
 
-var _utils = __webpack_require__(6);
+var _events2 = _interopRequireDefault(_events);
+
+var _es6Promise = __webpack_require__(7);
+
+var _es6Promise2 = _interopRequireDefault(_es6Promise);
+
+var _subscription = __webpack_require__(13);
+
+var _subscription2 = _interopRequireDefault(_subscription);
+
+var _json = __webpack_require__(14);
+
+var _utils = __webpack_require__(8);
+
+function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
 
 function _classCallCheck(instance, Constructor) { if (!(instance instanceof Constructor)) { throw new TypeError("Cannot call a class as a function"); } }
 
 function _possibleConstructorReturn(self, call) { if (!self) { throw new ReferenceError("this hasn't been initialised - super() hasn't been called"); } return call && (typeof call === "object" || typeof call === "function") ? call : self; }
 
 function _inherits(subClass, superClass) { if (typeof superClass !== "function" && superClass !== null) { throw new TypeError("Super expression must either be null or a function, not " + typeof superClass); } subClass.prototype = Object.create(superClass && superClass.prototype, { constructor: { value: subClass, enumerable: false, writable: true, configurable: true } }); if (superClass) Object.setPrototypeOf ? Object.setPrototypeOf(subClass, superClass) : subClass.__proto__ = superClass; }
-
-var EventEmitter = __webpack_require__(7);
-var Promise = __webpack_require__(8);
-var Subscription = __webpack_require__(14);
 
 var _errorTimeout = 'timeout';
 
@@ -119,7 +129,7 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
     _this._isSockjs = false;
     _this._binary = false;
     _this._methodType = null;
-    _this._messageType = null;
+    _this._pushType = null;
     _this._encoder = null;
     _this._decoder = null;
     _this._status = 'disconnected';
@@ -271,7 +281,7 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
       }
       this._binary = false;
       this._methodType = _json.JsonMethodType;
-      this._messageType = _json.JsonMessageType;
+      this._pushType = _json.JsonPushType;
       this._encoder = new _json.JsonEncoder();
       this._decoder = new _json.JsonDecoder();
     }
@@ -552,7 +562,7 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
       };
       var promise = this._call(msg);
 
-      return new Promise(function (resolve, reject) {
+      return new _es6Promise2.default(function (resolve, reject) {
         promise.then(function (result) {
           resolve(self._decoder.decodeCommandResult(self._methodType.RPC, result));
         }, function (error) {
@@ -564,7 +574,7 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
     key: 'send',
     value: function send(data) {
       var msg = {
-        method: this._methodType.MESSAGE,
+        method: this._methodType.SEND,
         params: {
           data: data
         }
@@ -582,7 +592,7 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
     value: function _call(msg) {
       var self = this;
 
-      return new Promise(function (resolve, reject) {
+      return new _es6Promise2.default(function (resolve, reject) {
         var id = self._addMessage(msg);
         self._registerCall(id, resolve, reject);
       });
@@ -1019,9 +1029,9 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
       sub.emit('publication', pub);
     }
   }, {
-    key: '_handlePush',
-    value: function _handlePush(push) {
-      this.emit('message', push.data);
+    key: '_handleMessage',
+    value: function _handleMessage(message) {
+      this.emit('message', message.data);
     }
   }, {
     key: '_refreshResponse',
@@ -1046,28 +1056,28 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
       }
     }
   }, {
-    key: '_handleMessage',
-    value: function _handleMessage(data) {
-      var message = this._decoder.decodeMessage(data);
+    key: '_handlePush',
+    value: function _handlePush(data) {
+      var push = this._decoder.decodePush(data);
       var type = 0;
-      if ('type' in message) {
-        type = message['type'];
+      if ('type' in push) {
+        type = push['type'];
       }
-      var channel = message.channel;
+      var channel = push.channel;
 
-      if (type === this._messageType.PUBLICATION) {
-        var pub = this._decoder.decodeMessageData(this._messageType.PUBLICATION, message.data);
+      if (type === this._pushType.PUBLICATION) {
+        var pub = this._decoder.decodePushData(this._pushType.PUBLICATION, push.data);
         this._handlePublication(channel, pub);
-      } else if (type === this._messageType.PUSH) {
-        var push = this._decoder.decodeMessageData(this._messageType.PUSH, message.data);
-        this._handlePush(push);
-      } else if (type === this._messageType.JOIN) {
-        var join = this._decoder.decodeMessageData(this._messageType.JOIN, message.data);
+      } else if (type === this._pushType.MESSAGE) {
+        var message = this._decoder.decodePushData(this._pushType.MESSAGE, push.data);
+        this._handleMessage(message);
+      } else if (type === this._pushType.JOIN) {
+        var join = this._decoder.decodePushData(this._pushType.JOIN, push.data);
         this._handleJoin(channel, join);
-      } else if (type === this._messageType.LEAVE) {
-        var leave = this._decoder.decodeMessageData(this._messageType.LEAVE, message.data);
+      } else if (type === this._pushType.LEAVE) {
+        var leave = this._decoder.decodePushData(this._pushType.LEAVE, push.data);
         this._handleLeave(channel, leave);
-      } else if (type === this._messageType.UNSUB) {
+      } else if (type === this._pushType.UNSUB) {
         this._handleUnsub(channel);
       }
     }
@@ -1084,7 +1094,7 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
       if (id && id > 0) {
         this._handleReply(reply);
       } else {
-        this._handleMessage(reply.result);
+        this._handlePush(reply.result);
       }
     }
   }, {
@@ -1354,7 +1364,7 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
         }
         return currentSub;
       }
-      var sub = new Subscription(this, channel, events);
+      var sub = new _subscription2.default(this, channel, events);
       this._subs[channel] = sub;
       sub.subscribe();
       return sub;
@@ -1362,112 +1372,12 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
   }]);
 
   return Centrifuge;
-}(EventEmitter);
+}(_events2.default);
 /* WEBPACK VAR INJECTION */}.call(exports, __webpack_require__(3)))
 
 /***/ }),
 
 /***/ 12:
-/***/ (function(module, exports, __webpack_require__) {
-
-"use strict";
-
-
-Object.defineProperty(exports, "__esModule", {
-  value: true
-});
-
-var _createClass = function () { function defineProperties(target, props) { for (var i = 0; i < props.length; i++) { var descriptor = props[i]; descriptor.enumerable = descriptor.enumerable || false; descriptor.configurable = true; if ("value" in descriptor) descriptor.writable = true; Object.defineProperty(target, descriptor.key, descriptor); } } return function (Constructor, protoProps, staticProps) { if (protoProps) defineProperties(Constructor.prototype, protoProps); if (staticProps) defineProperties(Constructor, staticProps); return Constructor; }; }();
-
-function _classCallCheck(instance, Constructor) { if (!(instance instanceof Constructor)) { throw new TypeError("Cannot call a class as a function"); } }
-
-var JsonMethodType = exports.JsonMethodType = {
-  CONNECT: 0,
-  SUBSCRIBE: 1,
-  UNSUBSCRIBE: 2,
-  PUBLISH: 3,
-  PRESENCE: 4,
-  PRESENCE_STATS: 5,
-  HISTORY: 6,
-  PING: 7,
-  MESSAGE: 8,
-  RPC: 9,
-  REFRESH: 10
-};
-
-var JsonMessageType = exports.JsonMessageType = {
-  PUBLICATION: 0,
-  JOIN: 1,
-  LEAVE: 2,
-  UNSUB: 3,
-  PUSH: 4
-};
-
-var JsonEncoder = exports.JsonEncoder = function () {
-  function JsonEncoder() {
-    _classCallCheck(this, JsonEncoder);
-  }
-
-  _createClass(JsonEncoder, [{
-    key: 'encodeCommands',
-    value: function encodeCommands(commands) {
-      var encodedCommands = [];
-      for (var i in commands) {
-        if (commands.hasOwnProperty(i)) {
-          encodedCommands.push(JSON.stringify(commands[i]));
-        }
-      }
-      return encodedCommands.join('\n');
-    }
-  }]);
-
-  return JsonEncoder;
-}();
-
-var JsonDecoder = exports.JsonDecoder = function () {
-  function JsonDecoder() {
-    _classCallCheck(this, JsonDecoder);
-  }
-
-  _createClass(JsonDecoder, [{
-    key: 'decodeReplies',
-    value: function decodeReplies(data) {
-      var replies = [];
-      var encodedReplies = data.split('\n');
-      for (var i in encodedReplies) {
-        if (encodedReplies.hasOwnProperty(i)) {
-          if (!encodedReplies[i]) {
-            continue;
-          }
-          var reply = JSON.parse(encodedReplies[i]);
-          replies.push(reply);
-        }
-      }
-      return replies;
-    }
-  }, {
-    key: 'decodeCommandResult',
-    value: function decodeCommandResult(methodType, data) {
-      return data;
-    }
-  }, {
-    key: 'decodeMessage',
-    value: function decodeMessage(data) {
-      return data;
-    }
-  }, {
-    key: 'decodeMessageData',
-    value: function decodeMessageData(messageType, data) {
-      return data;
-    }
-  }]);
-
-  return JsonDecoder;
-}();
-
-/***/ }),
-
-/***/ 13:
 /***/ (function(module, exports) {
 
 // shim for using process in browser
@@ -1658,7 +1568,7 @@ process.umask = function() { return 0; };
 
 /***/ }),
 
-/***/ 14:
+/***/ 13:
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -1670,16 +1580,23 @@ Object.defineProperty(exports, "__esModule", {
 
 var _createClass = function () { function defineProperties(target, props) { for (var i = 0; i < props.length; i++) { var descriptor = props[i]; descriptor.enumerable = descriptor.enumerable || false; descriptor.configurable = true; if ("value" in descriptor) descriptor.writable = true; Object.defineProperty(target, descriptor.key, descriptor); } } return function (Constructor, protoProps, staticProps) { if (protoProps) defineProperties(Constructor.prototype, protoProps); if (staticProps) defineProperties(Constructor, staticProps); return Constructor; }; }();
 
-var _utils = __webpack_require__(6);
+var _events = __webpack_require__(6);
+
+var _events2 = _interopRequireDefault(_events);
+
+var _es6Promise = __webpack_require__(7);
+
+var _es6Promise2 = _interopRequireDefault(_es6Promise);
+
+var _utils = __webpack_require__(8);
+
+function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
 
 function _classCallCheck(instance, Constructor) { if (!(instance instanceof Constructor)) { throw new TypeError("Cannot call a class as a function"); } }
 
 function _possibleConstructorReturn(self, call) { if (!self) { throw new ReferenceError("this hasn't been initialised - super() hasn't been called"); } return call && (typeof call === "object" || typeof call === "function") ? call : self; }
 
 function _inherits(subClass, superClass) { if (typeof superClass !== "function" && superClass !== null) { throw new TypeError("Super expression must either be null or a function, not " + typeof superClass); } subClass.prototype = Object.create(superClass && superClass.prototype, { constructor: { value: subClass, enumerable: false, writable: true, configurable: true } }); if (superClass) Object.setPrototypeOf ? Object.setPrototypeOf(subClass, superClass) : subClass.__proto__ = superClass; }
-
-var EventEmitter = __webpack_require__(7);
-var Promise = __webpack_require__(8);
 
 var _STATE_NEW = 0;
 var _STATE_SUBSCRIBING = 1;
@@ -1719,7 +1636,7 @@ var Subscription = function (_EventEmitter) {
 
       this._ready = false;
 
-      this._promise = new Promise(function (resolve, reject) {
+      this._promise = new _es6Promise2.default(function (resolve, reject) {
         self._resolve = function (value) {
           self._ready = true;
           resolve(value);
@@ -1893,7 +1810,7 @@ var Subscription = function (_EventEmitter) {
     key: '_methodCall',
     value: function _methodCall(message, type) {
       var self = this;
-      return new Promise(function (resolve, reject) {
+      return new _es6Promise2.default(function (resolve, reject) {
         self._promise.then(function () {
           self._centrifuge._call(message).then(function (result) {
             resolve(self._centrifuge._decoder.decodeCommandResult(type, result));
@@ -1949,10 +1866,110 @@ var Subscription = function (_EventEmitter) {
   }]);
 
   return Subscription;
-}(EventEmitter);
+}(_events2.default);
 
 exports.default = Subscription;
 module.exports = exports['default'];
+
+/***/ }),
+
+/***/ 14:
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+
+var _createClass = function () { function defineProperties(target, props) { for (var i = 0; i < props.length; i++) { var descriptor = props[i]; descriptor.enumerable = descriptor.enumerable || false; descriptor.configurable = true; if ("value" in descriptor) descriptor.writable = true; Object.defineProperty(target, descriptor.key, descriptor); } } return function (Constructor, protoProps, staticProps) { if (protoProps) defineProperties(Constructor.prototype, protoProps); if (staticProps) defineProperties(Constructor, staticProps); return Constructor; }; }();
+
+function _classCallCheck(instance, Constructor) { if (!(instance instanceof Constructor)) { throw new TypeError("Cannot call a class as a function"); } }
+
+var JsonMethodType = exports.JsonMethodType = {
+  CONNECT: 0,
+  SUBSCRIBE: 1,
+  UNSUBSCRIBE: 2,
+  PUBLISH: 3,
+  PRESENCE: 4,
+  PRESENCE_STATS: 5,
+  HISTORY: 6,
+  PING: 7,
+  SEND: 8,
+  RPC: 9,
+  REFRESH: 10
+};
+
+var JsonPushType = exports.JsonPushType = {
+  PUBLICATION: 0,
+  JOIN: 1,
+  LEAVE: 2,
+  UNSUB: 3,
+  MESSAGE: 4
+};
+
+var JsonEncoder = exports.JsonEncoder = function () {
+  function JsonEncoder() {
+    _classCallCheck(this, JsonEncoder);
+  }
+
+  _createClass(JsonEncoder, [{
+    key: 'encodeCommands',
+    value: function encodeCommands(commands) {
+      var encodedCommands = [];
+      for (var i in commands) {
+        if (commands.hasOwnProperty(i)) {
+          encodedCommands.push(JSON.stringify(commands[i]));
+        }
+      }
+      return encodedCommands.join('\n');
+    }
+  }]);
+
+  return JsonEncoder;
+}();
+
+var JsonDecoder = exports.JsonDecoder = function () {
+  function JsonDecoder() {
+    _classCallCheck(this, JsonDecoder);
+  }
+
+  _createClass(JsonDecoder, [{
+    key: 'decodeReplies',
+    value: function decodeReplies(data) {
+      var replies = [];
+      var encodedReplies = data.split('\n');
+      for (var i in encodedReplies) {
+        if (encodedReplies.hasOwnProperty(i)) {
+          if (!encodedReplies[i]) {
+            continue;
+          }
+          var reply = JSON.parse(encodedReplies[i]);
+          replies.push(reply);
+        }
+      }
+      return replies;
+    }
+  }, {
+    key: 'decodeCommandResult',
+    value: function decodeCommandResult(methodType, data) {
+      return data;
+    }
+  }, {
+    key: 'decodePush',
+    value: function decodePush(data) {
+      return data;
+    }
+  }, {
+    key: 'decodePushData',
+    value: function decodePushData(pushType, data) {
+      return data;
+    }
+  }]);
+
+  return JsonDecoder;
+}();
 
 /***/ }),
 
@@ -2002,60 +2019,6 @@ module.exports = exports['default'];
 /***/ }),
 
 /***/ 6:
-/***/ (function(module, exports, __webpack_require__) {
-
-"use strict";
-/* WEBPACK VAR INJECTION */(function(global) {
-
-Object.defineProperty(exports, "__esModule", {
-  value: true
-});
-var startsWith = exports.startsWith = function startsWith(value, prefix) {
-  return value.lastIndexOf(prefix, 0) === 0;
-};
-
-var isString = exports.isString = function isString(value) {
-  if (value === undefined || value === null) {
-    return false;
-  }
-  return typeof value === 'string' || value instanceof String;
-};
-
-var isFunction = exports.isFunction = function isFunction(value) {
-  if (value === undefined || value === null) {
-    return false;
-  }
-  return typeof value === 'function';
-};
-
-var log = exports.log = function log(level, args) {
-  if (global.console) {
-    var logger = global.console[level];
-
-    if (isFunction(logger)) {
-      logger.apply(global.console, args);
-    }
-  }
-};
-
-var backoff = exports.backoff = function backoff(step, min, max) {
-  var jitter = 0.5 * Math.random();
-  var interval = min * Math.pow(2, step + 1);
-
-  if (interval > max) {
-    interval = max;
-  }
-  return Math.floor((1 - jitter) * interval);
-};
-
-var errorExists = exports.errorExists = function errorExists(data) {
-  return 'error' in data && data.error !== null;
-};
-/* WEBPACK VAR INJECTION */}.call(exports, __webpack_require__(3)))
-
-/***/ }),
-
-/***/ 7:
 /***/ (function(module, exports) {
 
 // Copyright Joyent, Inc. and other Node contributors.
@@ -2364,7 +2327,7 @@ function isUndefined(arg) {
 
 /***/ }),
 
-/***/ 8:
+/***/ 7:
 /***/ (function(module, exports, __webpack_require__) {
 
 /* WEBPACK VAR INJECTION */(function(process, global) {/*!
@@ -3547,7 +3510,61 @@ return Promise$1;
 
 //# sourceMappingURL=es6-promise.map
 
-/* WEBPACK VAR INJECTION */}.call(exports, __webpack_require__(13), __webpack_require__(3)))
+/* WEBPACK VAR INJECTION */}.call(exports, __webpack_require__(12), __webpack_require__(3)))
+
+/***/ }),
+
+/***/ 8:
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+/* WEBPACK VAR INJECTION */(function(global) {
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+var startsWith = exports.startsWith = function startsWith(value, prefix) {
+  return value.lastIndexOf(prefix, 0) === 0;
+};
+
+var isString = exports.isString = function isString(value) {
+  if (value === undefined || value === null) {
+    return false;
+  }
+  return typeof value === 'string' || value instanceof String;
+};
+
+var isFunction = exports.isFunction = function isFunction(value) {
+  if (value === undefined || value === null) {
+    return false;
+  }
+  return typeof value === 'function';
+};
+
+var log = exports.log = function log(level, args) {
+  if (global.console) {
+    var logger = global.console[level];
+
+    if (isFunction(logger)) {
+      logger.apply(global.console, args);
+    }
+  }
+};
+
+var backoff = exports.backoff = function backoff(step, min, max) {
+  var jitter = 0.5 * Math.random();
+  var interval = min * Math.pow(2, step + 1);
+
+  if (interval > max) {
+    interval = max;
+  }
+  return Math.floor((1 - jitter) * interval);
+};
+
+var errorExists = exports.errorExists = function errorExists(data) {
+  return 'error' in data && data.error !== null;
+};
+/* WEBPACK VAR INJECTION */}.call(exports, __webpack_require__(3)))
 
 /***/ })
 

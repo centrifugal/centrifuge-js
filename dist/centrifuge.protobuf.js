@@ -1471,59 +1471,6 @@ Field._configure = function configure(Type_) {
 
 /***/ }),
 /* 6 */
-/***/ (function(module, exports, __webpack_require__) {
-
-"use strict";
-/* WEBPACK VAR INJECTION */(function(global) {
-
-Object.defineProperty(exports, "__esModule", {
-  value: true
-});
-var startsWith = exports.startsWith = function startsWith(value, prefix) {
-  return value.lastIndexOf(prefix, 0) === 0;
-};
-
-var isString = exports.isString = function isString(value) {
-  if (value === undefined || value === null) {
-    return false;
-  }
-  return typeof value === 'string' || value instanceof String;
-};
-
-var isFunction = exports.isFunction = function isFunction(value) {
-  if (value === undefined || value === null) {
-    return false;
-  }
-  return typeof value === 'function';
-};
-
-var log = exports.log = function log(level, args) {
-  if (global.console) {
-    var logger = global.console[level];
-
-    if (isFunction(logger)) {
-      logger.apply(global.console, args);
-    }
-  }
-};
-
-var backoff = exports.backoff = function backoff(step, min, max) {
-  var jitter = 0.5 * Math.random();
-  var interval = min * Math.pow(2, step + 1);
-
-  if (interval > max) {
-    interval = max;
-  }
-  return Math.floor((1 - jitter) * interval);
-};
-
-var errorExists = exports.errorExists = function errorExists(data) {
-  return 'error' in data && data.error !== null;
-};
-/* WEBPACK VAR INJECTION */}.call(exports, __webpack_require__(3)))
-
-/***/ }),
-/* 7 */
 /***/ (function(module, exports) {
 
 // Copyright Joyent, Inc. and other Node contributors.
@@ -1831,7 +1778,7 @@ function isUndefined(arg) {
 
 
 /***/ }),
-/* 8 */
+/* 7 */
 /***/ (function(module, exports, __webpack_require__) {
 
 /* WEBPACK VAR INJECTION */(function(process, global) {/*!
@@ -3014,7 +2961,60 @@ return Promise$1;
 
 //# sourceMappingURL=es6-promise.map
 
-/* WEBPACK VAR INJECTION */}.call(exports, __webpack_require__(13), __webpack_require__(3)))
+/* WEBPACK VAR INJECTION */}.call(exports, __webpack_require__(12), __webpack_require__(3)))
+
+/***/ }),
+/* 8 */
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+/* WEBPACK VAR INJECTION */(function(global) {
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+var startsWith = exports.startsWith = function startsWith(value, prefix) {
+  return value.lastIndexOf(prefix, 0) === 0;
+};
+
+var isString = exports.isString = function isString(value) {
+  if (value === undefined || value === null) {
+    return false;
+  }
+  return typeof value === 'string' || value instanceof String;
+};
+
+var isFunction = exports.isFunction = function isFunction(value) {
+  if (value === undefined || value === null) {
+    return false;
+  }
+  return typeof value === 'function';
+};
+
+var log = exports.log = function log(level, args) {
+  if (global.console) {
+    var logger = global.console[level];
+
+    if (isFunction(logger)) {
+      logger.apply(global.console, args);
+    }
+  }
+};
+
+var backoff = exports.backoff = function backoff(step, min, max) {
+  var jitter = 0.5 * Math.random();
+  var interval = min * Math.pow(2, step + 1);
+
+  if (interval > max) {
+    interval = max;
+  }
+  return Math.floor((1 - jitter) * interval);
+};
+
+var errorExists = exports.errorExists = function errorExists(data) {
+  return 'error' in data && data.error !== null;
+};
+/* WEBPACK VAR INJECTION */}.call(exports, __webpack_require__(3)))
 
 /***/ }),
 /* 9 */
@@ -3673,19 +3673,29 @@ var _typeof = typeof Symbol === "function" && typeof Symbol.iterator === "symbol
 
 var _createClass = function () { function defineProperties(target, props) { for (var i = 0; i < props.length; i++) { var descriptor = props[i]; descriptor.enumerable = descriptor.enumerable || false; descriptor.configurable = true; if ("value" in descriptor) descriptor.writable = true; Object.defineProperty(target, descriptor.key, descriptor); } } return function (Constructor, protoProps, staticProps) { if (protoProps) defineProperties(Constructor.prototype, protoProps); if (staticProps) defineProperties(Constructor, staticProps); return Constructor; }; }();
 
-var _json = __webpack_require__(12);
+var _events = __webpack_require__(6);
 
-var _utils = __webpack_require__(6);
+var _events2 = _interopRequireDefault(_events);
+
+var _es6Promise = __webpack_require__(7);
+
+var _es6Promise2 = _interopRequireDefault(_es6Promise);
+
+var _subscription = __webpack_require__(13);
+
+var _subscription2 = _interopRequireDefault(_subscription);
+
+var _json = __webpack_require__(14);
+
+var _utils = __webpack_require__(8);
+
+function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
 
 function _classCallCheck(instance, Constructor) { if (!(instance instanceof Constructor)) { throw new TypeError("Cannot call a class as a function"); } }
 
 function _possibleConstructorReturn(self, call) { if (!self) { throw new ReferenceError("this hasn't been initialised - super() hasn't been called"); } return call && (typeof call === "object" || typeof call === "function") ? call : self; }
 
 function _inherits(subClass, superClass) { if (typeof superClass !== "function" && superClass !== null) { throw new TypeError("Super expression must either be null or a function, not " + typeof superClass); } subClass.prototype = Object.create(superClass && superClass.prototype, { constructor: { value: subClass, enumerable: false, writable: true, configurable: true } }); if (superClass) Object.setPrototypeOf ? Object.setPrototypeOf(subClass, superClass) : subClass.__proto__ = superClass; }
-
-var EventEmitter = __webpack_require__(7);
-var Promise = __webpack_require__(8);
-var Subscription = __webpack_require__(14);
 
 var _errorTimeout = 'timeout';
 
@@ -3702,7 +3712,7 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
     _this._isSockjs = false;
     _this._binary = false;
     _this._methodType = null;
-    _this._messageType = null;
+    _this._pushType = null;
     _this._encoder = null;
     _this._decoder = null;
     _this._status = 'disconnected';
@@ -3854,7 +3864,7 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
       }
       this._binary = false;
       this._methodType = _json.JsonMethodType;
-      this._messageType = _json.JsonMessageType;
+      this._pushType = _json.JsonPushType;
       this._encoder = new _json.JsonEncoder();
       this._decoder = new _json.JsonDecoder();
     }
@@ -4135,7 +4145,7 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
       };
       var promise = this._call(msg);
 
-      return new Promise(function (resolve, reject) {
+      return new _es6Promise2.default(function (resolve, reject) {
         promise.then(function (result) {
           resolve(self._decoder.decodeCommandResult(self._methodType.RPC, result));
         }, function (error) {
@@ -4147,7 +4157,7 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
     key: 'send',
     value: function send(data) {
       var msg = {
-        method: this._methodType.MESSAGE,
+        method: this._methodType.SEND,
         params: {
           data: data
         }
@@ -4165,7 +4175,7 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
     value: function _call(msg) {
       var self = this;
 
-      return new Promise(function (resolve, reject) {
+      return new _es6Promise2.default(function (resolve, reject) {
         var id = self._addMessage(msg);
         self._registerCall(id, resolve, reject);
       });
@@ -4602,9 +4612,9 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
       sub.emit('publication', pub);
     }
   }, {
-    key: '_handlePush',
-    value: function _handlePush(push) {
-      this.emit('message', push.data);
+    key: '_handleMessage',
+    value: function _handleMessage(message) {
+      this.emit('message', message.data);
     }
   }, {
     key: '_refreshResponse',
@@ -4629,28 +4639,28 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
       }
     }
   }, {
-    key: '_handleMessage',
-    value: function _handleMessage(data) {
-      var message = this._decoder.decodeMessage(data);
+    key: '_handlePush',
+    value: function _handlePush(data) {
+      var push = this._decoder.decodePush(data);
       var type = 0;
-      if ('type' in message) {
-        type = message['type'];
+      if ('type' in push) {
+        type = push['type'];
       }
-      var channel = message.channel;
+      var channel = push.channel;
 
-      if (type === this._messageType.PUBLICATION) {
-        var pub = this._decoder.decodeMessageData(this._messageType.PUBLICATION, message.data);
+      if (type === this._pushType.PUBLICATION) {
+        var pub = this._decoder.decodePushData(this._pushType.PUBLICATION, push.data);
         this._handlePublication(channel, pub);
-      } else if (type === this._messageType.PUSH) {
-        var push = this._decoder.decodeMessageData(this._messageType.PUSH, message.data);
-        this._handlePush(push);
-      } else if (type === this._messageType.JOIN) {
-        var join = this._decoder.decodeMessageData(this._messageType.JOIN, message.data);
+      } else if (type === this._pushType.MESSAGE) {
+        var message = this._decoder.decodePushData(this._pushType.MESSAGE, push.data);
+        this._handleMessage(message);
+      } else if (type === this._pushType.JOIN) {
+        var join = this._decoder.decodePushData(this._pushType.JOIN, push.data);
         this._handleJoin(channel, join);
-      } else if (type === this._messageType.LEAVE) {
-        var leave = this._decoder.decodeMessageData(this._messageType.LEAVE, message.data);
+      } else if (type === this._pushType.LEAVE) {
+        var leave = this._decoder.decodePushData(this._pushType.LEAVE, push.data);
         this._handleLeave(channel, leave);
-      } else if (type === this._messageType.UNSUB) {
+      } else if (type === this._pushType.UNSUB) {
         this._handleUnsub(channel);
       }
     }
@@ -4667,7 +4677,7 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
       if (id && id > 0) {
         this._handleReply(reply);
       } else {
-        this._handleMessage(reply.result);
+        this._handlePush(reply.result);
       }
     }
   }, {
@@ -4937,7 +4947,7 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
         }
         return currentSub;
       }
-      var sub = new Subscription(this, channel, events);
+      var sub = new _subscription2.default(this, channel, events);
       this._subs[channel] = sub;
       sub.subscribe();
       return sub;
@@ -4945,110 +4955,11 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
   }]);
 
   return Centrifuge;
-}(EventEmitter);
+}(_events2.default);
 /* WEBPACK VAR INJECTION */}.call(exports, __webpack_require__(3)))
 
 /***/ }),
 /* 12 */
-/***/ (function(module, exports, __webpack_require__) {
-
-"use strict";
-
-
-Object.defineProperty(exports, "__esModule", {
-  value: true
-});
-
-var _createClass = function () { function defineProperties(target, props) { for (var i = 0; i < props.length; i++) { var descriptor = props[i]; descriptor.enumerable = descriptor.enumerable || false; descriptor.configurable = true; if ("value" in descriptor) descriptor.writable = true; Object.defineProperty(target, descriptor.key, descriptor); } } return function (Constructor, protoProps, staticProps) { if (protoProps) defineProperties(Constructor.prototype, protoProps); if (staticProps) defineProperties(Constructor, staticProps); return Constructor; }; }();
-
-function _classCallCheck(instance, Constructor) { if (!(instance instanceof Constructor)) { throw new TypeError("Cannot call a class as a function"); } }
-
-var JsonMethodType = exports.JsonMethodType = {
-  CONNECT: 0,
-  SUBSCRIBE: 1,
-  UNSUBSCRIBE: 2,
-  PUBLISH: 3,
-  PRESENCE: 4,
-  PRESENCE_STATS: 5,
-  HISTORY: 6,
-  PING: 7,
-  MESSAGE: 8,
-  RPC: 9,
-  REFRESH: 10
-};
-
-var JsonMessageType = exports.JsonMessageType = {
-  PUBLICATION: 0,
-  JOIN: 1,
-  LEAVE: 2,
-  UNSUB: 3,
-  PUSH: 4
-};
-
-var JsonEncoder = exports.JsonEncoder = function () {
-  function JsonEncoder() {
-    _classCallCheck(this, JsonEncoder);
-  }
-
-  _createClass(JsonEncoder, [{
-    key: 'encodeCommands',
-    value: function encodeCommands(commands) {
-      var encodedCommands = [];
-      for (var i in commands) {
-        if (commands.hasOwnProperty(i)) {
-          encodedCommands.push(JSON.stringify(commands[i]));
-        }
-      }
-      return encodedCommands.join('\n');
-    }
-  }]);
-
-  return JsonEncoder;
-}();
-
-var JsonDecoder = exports.JsonDecoder = function () {
-  function JsonDecoder() {
-    _classCallCheck(this, JsonDecoder);
-  }
-
-  _createClass(JsonDecoder, [{
-    key: 'decodeReplies',
-    value: function decodeReplies(data) {
-      var replies = [];
-      var encodedReplies = data.split('\n');
-      for (var i in encodedReplies) {
-        if (encodedReplies.hasOwnProperty(i)) {
-          if (!encodedReplies[i]) {
-            continue;
-          }
-          var reply = JSON.parse(encodedReplies[i]);
-          replies.push(reply);
-        }
-      }
-      return replies;
-    }
-  }, {
-    key: 'decodeCommandResult',
-    value: function decodeCommandResult(methodType, data) {
-      return data;
-    }
-  }, {
-    key: 'decodeMessage',
-    value: function decodeMessage(data) {
-      return data;
-    }
-  }, {
-    key: 'decodeMessageData',
-    value: function decodeMessageData(messageType, data) {
-      return data;
-    }
-  }]);
-
-  return JsonDecoder;
-}();
-
-/***/ }),
-/* 13 */
 /***/ (function(module, exports) {
 
 // shim for using process in browser
@@ -5238,7 +5149,7 @@ process.umask = function() { return 0; };
 
 
 /***/ }),
-/* 14 */
+/* 13 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -5250,16 +5161,23 @@ Object.defineProperty(exports, "__esModule", {
 
 var _createClass = function () { function defineProperties(target, props) { for (var i = 0; i < props.length; i++) { var descriptor = props[i]; descriptor.enumerable = descriptor.enumerable || false; descriptor.configurable = true; if ("value" in descriptor) descriptor.writable = true; Object.defineProperty(target, descriptor.key, descriptor); } } return function (Constructor, protoProps, staticProps) { if (protoProps) defineProperties(Constructor.prototype, protoProps); if (staticProps) defineProperties(Constructor, staticProps); return Constructor; }; }();
 
-var _utils = __webpack_require__(6);
+var _events = __webpack_require__(6);
+
+var _events2 = _interopRequireDefault(_events);
+
+var _es6Promise = __webpack_require__(7);
+
+var _es6Promise2 = _interopRequireDefault(_es6Promise);
+
+var _utils = __webpack_require__(8);
+
+function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
 
 function _classCallCheck(instance, Constructor) { if (!(instance instanceof Constructor)) { throw new TypeError("Cannot call a class as a function"); } }
 
 function _possibleConstructorReturn(self, call) { if (!self) { throw new ReferenceError("this hasn't been initialised - super() hasn't been called"); } return call && (typeof call === "object" || typeof call === "function") ? call : self; }
 
 function _inherits(subClass, superClass) { if (typeof superClass !== "function" && superClass !== null) { throw new TypeError("Super expression must either be null or a function, not " + typeof superClass); } subClass.prototype = Object.create(superClass && superClass.prototype, { constructor: { value: subClass, enumerable: false, writable: true, configurable: true } }); if (superClass) Object.setPrototypeOf ? Object.setPrototypeOf(subClass, superClass) : subClass.__proto__ = superClass; }
-
-var EventEmitter = __webpack_require__(7);
-var Promise = __webpack_require__(8);
 
 var _STATE_NEW = 0;
 var _STATE_SUBSCRIBING = 1;
@@ -5299,7 +5217,7 @@ var Subscription = function (_EventEmitter) {
 
       this._ready = false;
 
-      this._promise = new Promise(function (resolve, reject) {
+      this._promise = new _es6Promise2.default(function (resolve, reject) {
         self._resolve = function (value) {
           self._ready = true;
           resolve(value);
@@ -5473,7 +5391,7 @@ var Subscription = function (_EventEmitter) {
     key: '_methodCall',
     value: function _methodCall(message, type) {
       var self = this;
-      return new Promise(function (resolve, reject) {
+      return new _es6Promise2.default(function (resolve, reject) {
         self._promise.then(function () {
           self._centrifuge._call(message).then(function (result) {
             resolve(self._centrifuge._decoder.decodeCommandResult(type, result));
@@ -5529,10 +5447,109 @@ var Subscription = function (_EventEmitter) {
   }]);
 
   return Subscription;
-}(EventEmitter);
+}(_events2.default);
 
 exports.default = Subscription;
 module.exports = exports['default'];
+
+/***/ }),
+/* 14 */
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+
+var _createClass = function () { function defineProperties(target, props) { for (var i = 0; i < props.length; i++) { var descriptor = props[i]; descriptor.enumerable = descriptor.enumerable || false; descriptor.configurable = true; if ("value" in descriptor) descriptor.writable = true; Object.defineProperty(target, descriptor.key, descriptor); } } return function (Constructor, protoProps, staticProps) { if (protoProps) defineProperties(Constructor.prototype, protoProps); if (staticProps) defineProperties(Constructor, staticProps); return Constructor; }; }();
+
+function _classCallCheck(instance, Constructor) { if (!(instance instanceof Constructor)) { throw new TypeError("Cannot call a class as a function"); } }
+
+var JsonMethodType = exports.JsonMethodType = {
+  CONNECT: 0,
+  SUBSCRIBE: 1,
+  UNSUBSCRIBE: 2,
+  PUBLISH: 3,
+  PRESENCE: 4,
+  PRESENCE_STATS: 5,
+  HISTORY: 6,
+  PING: 7,
+  SEND: 8,
+  RPC: 9,
+  REFRESH: 10
+};
+
+var JsonPushType = exports.JsonPushType = {
+  PUBLICATION: 0,
+  JOIN: 1,
+  LEAVE: 2,
+  UNSUB: 3,
+  MESSAGE: 4
+};
+
+var JsonEncoder = exports.JsonEncoder = function () {
+  function JsonEncoder() {
+    _classCallCheck(this, JsonEncoder);
+  }
+
+  _createClass(JsonEncoder, [{
+    key: 'encodeCommands',
+    value: function encodeCommands(commands) {
+      var encodedCommands = [];
+      for (var i in commands) {
+        if (commands.hasOwnProperty(i)) {
+          encodedCommands.push(JSON.stringify(commands[i]));
+        }
+      }
+      return encodedCommands.join('\n');
+    }
+  }]);
+
+  return JsonEncoder;
+}();
+
+var JsonDecoder = exports.JsonDecoder = function () {
+  function JsonDecoder() {
+    _classCallCheck(this, JsonDecoder);
+  }
+
+  _createClass(JsonDecoder, [{
+    key: 'decodeReplies',
+    value: function decodeReplies(data) {
+      var replies = [];
+      var encodedReplies = data.split('\n');
+      for (var i in encodedReplies) {
+        if (encodedReplies.hasOwnProperty(i)) {
+          if (!encodedReplies[i]) {
+            continue;
+          }
+          var reply = JSON.parse(encodedReplies[i]);
+          replies.push(reply);
+        }
+      }
+      return replies;
+    }
+  }, {
+    key: 'decodeCommandResult',
+    value: function decodeCommandResult(methodType, data) {
+      return data;
+    }
+  }, {
+    key: 'decodePush',
+    value: function decodePush(data) {
+      return data;
+    }
+  }, {
+    key: 'decodePushData',
+    value: function decodePushData(pushType, data) {
+      return data;
+    }
+  }]);
+
+  return JsonDecoder;
+}();
 
 /***/ }),
 /* 15 */
@@ -9178,7 +9195,7 @@ var protobufMethodType = {
   HISTORY: methodValues.HISTORY,
   PING: methodValues.PING,
   RPC: methodValues.RPC,
-  MESSAGE: methodValues.MESSAGE,
+  SEND: methodValues.SEND,
   REFRESH: methodValues.REFRESH
 };
 
@@ -9193,26 +9210,26 @@ var methodSchema = {
   HISTORY: [proto.lookupType('proto.HistoryRequest'), proto.lookupType('proto.HistoryResult')],
   PING: [proto.lookupType('proto.PingRequest'), proto.lookupType('proto.PingResult')],
   RPC: [proto.lookupType('proto.RPCRequest'), proto.lookupType('proto.RPCResult')],
-  MESSAGE: [proto.lookupType('proto.MessageRequest'), null]
+  SEND: [proto.lookupType('proto.SendRequest'), null]
 };
 
-var protobufMessageType = {
-  PUBLICATION: proto.lookupEnum('MessageType').values.PUBLICATION,
-  JOIN: proto.lookupEnum('MessageType').values.JOIN,
-  LEAVE: proto.lookupEnum('MessageType').values.LEAVE,
-  UNSUB: proto.lookupEnum('MessageType').values.UNSUB,
-  PUSH: proto.lookupEnum('MessageType').values.PUSH
+var protobufPushType = {
+  PUBLICATION: proto.lookupEnum('PushType').values.PUBLICATION,
+  JOIN: proto.lookupEnum('PushType').values.JOIN,
+  LEAVE: proto.lookupEnum('PushType').values.LEAVE,
+  UNSUB: proto.lookupEnum('PushType').values.UNSUB,
+  MESSAGE: proto.lookupEnum('PushType').values.MESSAGE
 };
 
-var MessageSchema = {
+var PushSchema = {
   PUBLICATION: proto.lookupType('proto.Publication'),
   JOIN: proto.lookupType('proto.Join'),
   LEAVE: proto.lookupType('proto.Leave'),
   UNSUB: proto.lookupType('proto.Unsub'),
-  PUSH: proto.lookupType('proto.Push')
+  MESSAGE: proto.lookupType('proto.Message')
 };
 
-var Message = proto.lookupType('proto.Message');
+var Push = proto.lookupType('proto.Push');
 var Command = proto.lookupType('proto.Command');
 var Reply = proto.lookupType('proto.Reply');
 
@@ -9261,8 +9278,8 @@ var ProtobufEncoder = exports.ProtobufEncoder = function () {
               case protobufMethodType.RPC:
                 type = methodSchema.RPC[0];
                 break;
-              case protobufMethodType.MESSAGE:
-                type = methodSchema.MESSAGE[0];
+              case protobufMethodType.SEND:
+                type = methodSchema.SEND[0];
                 break;
             }
             command.params = type.encode(command.params).finish();
@@ -9332,29 +9349,29 @@ var ProtobufDecoder = exports.ProtobufDecoder = function () {
       return this._decode(type, data);
     }
   }, {
-    key: 'decodeMessage',
-    value: function decodeMessage(data) {
-      return this._decode(Message, data);
+    key: 'decodePush',
+    value: function decodePush(data) {
+      return this._decode(Push, data);
     }
   }, {
-    key: 'decodeMessageData',
-    value: function decodeMessageData(messageType, data) {
+    key: 'decodePushData',
+    value: function decodePushData(pushType, data) {
       var type;
-      switch (messageType) {
-        case protobufMessageType.PUBLICATION:
-          type = MessageSchema.PUBLICATION;
+      switch (pushType) {
+        case protobufPushType.PUBLICATION:
+          type = PushSchema.PUBLICATION;
           break;
-        case protobufMessageType.PUSH:
-          type = MessageSchema.PUSH;
+        case protobufPushType.MESSAGE:
+          type = PushSchema.MESSAGE;
           break;
-        case protobufMessageType.JOIN:
-          type = MessageSchema.JOIN;
+        case protobufPushType.JOIN:
+          type = PushSchema.JOIN;
           break;
-        case protobufMessageType.LEAVE:
-          type = MessageSchema.LEAVE;
+        case protobufPushType.LEAVE:
+          type = PushSchema.LEAVE;
           break;
-        case protobufMessageType.UNSUB:
-          type = MessageSchema.UNSUB;
+        case protobufPushType.UNSUB:
+          type = PushSchema.UNSUB;
           break;
       }
       return this._decode(type, data);
@@ -9390,7 +9407,7 @@ var CentrifugeProtobuf = exports.CentrifugeProtobuf = function (_Centrifuge) {
       if (format === 'protobuf') {
         this._binary = true;
         this._methodType = protobufMethodType;
-        this._messageType = protobufMessageType;
+        this._pushType = protobufPushType;
         this._encoder = new ProtobufEncoder();
         this._decoder = new ProtobufDecoder();
         return true;
@@ -11103,7 +11120,7 @@ path.resolve = function resolve(originPath, includePath, alreadyNormalized) {
 /* 51 */
 /***/ (function(module, exports) {
 
-module.exports = {"nested":{"proto":{"nested":{"Error":{"fields":{"code":{"type":"uint32","id":1},"message":{"type":"string","id":2}}},"MethodType":{"values":{"CONNECT":0,"SUBSCRIBE":1,"UNSUBSCRIBE":2,"PUBLISH":3,"PRESENCE":4,"PRESENCE_STATS":5,"HISTORY":6,"PING":7,"MESSAGE":8,"RPC":9,"REFRESH":10}},"Command":{"fields":{"id":{"type":"uint32","id":1},"method":{"type":"MethodType","id":2},"params":{"type":"bytes","id":3}}},"Reply":{"fields":{"id":{"type":"uint32","id":1},"error":{"type":"Error","id":2},"result":{"type":"bytes","id":3}}},"MessageType":{"values":{"PUBLICATION":0,"JOIN":1,"LEAVE":2,"UNSUB":3,"PUSH":4}},"Message":{"fields":{"type":{"type":"MessageType","id":1},"channel":{"type":"string","id":2},"data":{"type":"bytes","id":3}}},"ClientInfo":{"fields":{"user":{"type":"string","id":1},"client":{"type":"string","id":2},"connInfo":{"type":"bytes","id":3},"chanInfo":{"type":"bytes","id":4}}},"Push":{"fields":{"data":{"type":"bytes","id":1}}},"Publication":{"fields":{"uid":{"type":"string","id":1},"data":{"type":"bytes","id":2},"info":{"type":"ClientInfo","id":3}}},"Join":{"fields":{"info":{"type":"ClientInfo","id":1}}},"Leave":{"fields":{"info":{"type":"ClientInfo","id":1}}},"Unsub":{"fields":{}},"ConnectRequest":{"fields":{"user":{"type":"string","id":1},"exp":{"type":"string","id":2},"info":{"type":"string","id":3},"opts":{"type":"string","id":4},"sign":{"type":"string","id":5}}},"ConnectResponse":{"fields":{"error":{"type":"Error","id":1},"result":{"type":"ConnectResult","id":2}}},"ConnectResult":{"fields":{"client":{"type":"string","id":1},"version":{"type":"string","id":2},"expires":{"type":"bool","id":3},"expired":{"type":"bool","id":4},"ttl":{"type":"uint32","id":5}}},"RefreshRequest":{"fields":{"user":{"type":"string","id":1},"exp":{"type":"string","id":2},"info":{"type":"string","id":3},"opts":{"type":"string","id":4},"sign":{"type":"string","id":5}}},"RefreshResponse":{"fields":{"error":{"type":"Error","id":1},"result":{"type":"RefreshResult","id":2}}},"RefreshResult":{"fields":{"client":{"type":"string","id":1},"version":{"type":"string","id":2},"expires":{"type":"bool","id":3},"expired":{"type":"bool","id":4},"ttl":{"type":"uint32","id":5}}},"SubscribeRequest":{"fields":{"channel":{"type":"string","id":1},"client":{"type":"string","id":2},"info":{"type":"string","id":3},"sign":{"type":"string","id":4},"recover":{"type":"bool","id":5},"last":{"type":"string","id":6}}},"SubscribeResponse":{"fields":{"error":{"type":"Error","id":1},"result":{"type":"SubscribeResult","id":2}}},"SubscribeResult":{"fields":{"last":{"type":"string","id":1},"recovered":{"type":"bool","id":2},"publications":{"rule":"repeated","type":"Publication","id":3}}},"UnsubscribeRequest":{"fields":{"channel":{"type":"string","id":1}}},"UnsubscribeResponse":{"fields":{"error":{"type":"Error","id":1},"result":{"type":"UnsubscribeResult","id":2}}},"UnsubscribeResult":{"fields":{}},"PublishRequest":{"fields":{"channel":{"type":"string","id":1},"data":{"type":"bytes","id":2}}},"PublishResponse":{"fields":{"error":{"type":"Error","id":1},"result":{"type":"PublishResult","id":2}}},"PublishResult":{"fields":{}},"PresenceRequest":{"fields":{"channel":{"type":"string","id":1}}},"PresenceResponse":{"fields":{"error":{"type":"Error","id":1},"result":{"type":"PresenceResult","id":2}}},"PresenceResult":{"fields":{"presence":{"keyType":"string","type":"ClientInfo","id":1}}},"PresenceStatsRequest":{"fields":{"channel":{"type":"string","id":1}}},"PresenceStatsResponse":{"fields":{"error":{"type":"Error","id":1},"result":{"type":"PresenceStatsResult","id":2}}},"PresenceStatsResult":{"fields":{"numClients":{"type":"uint32","id":1},"numUsers":{"type":"uint32","id":2}}},"HistoryRequest":{"fields":{"channel":{"type":"string","id":1}}},"HistoryResponse":{"fields":{"error":{"type":"Error","id":1},"result":{"type":"HistoryResult","id":2}}},"HistoryResult":{"fields":{"publications":{"rule":"repeated","type":"Publication","id":1}}},"PingRequest":{"fields":{"data":{"type":"string","id":1}}},"PingResponse":{"fields":{"error":{"type":"Error","id":1},"result":{"type":"PingResult","id":2}}},"PingResult":{"fields":{"data":{"type":"string","id":1}}},"RPCRequest":{"fields":{"data":{"type":"bytes","id":1}}},"RPCResponse":{"fields":{"error":{"type":"Error","id":1},"result":{"type":"RPCResult","id":2}}},"RPCResult":{"fields":{"data":{"type":"bytes","id":1}}},"MessageRequest":{"fields":{"data":{"type":"bytes","id":1}}},"Centrifuge":{"methods":{"Communicate":{"requestType":"Command","requestStream":true,"responseType":"Reply","responseStream":true}}}}}}}
+module.exports = {"nested":{"proto":{"nested":{"Error":{"fields":{"code":{"type":"uint32","id":1},"message":{"type":"string","id":2}}},"MethodType":{"values":{"CONNECT":0,"SUBSCRIBE":1,"UNSUBSCRIBE":2,"PUBLISH":3,"PRESENCE":4,"PRESENCE_STATS":5,"HISTORY":6,"PING":7,"SEND":8,"RPC":9,"REFRESH":10}},"Command":{"fields":{"id":{"type":"uint32","id":1},"method":{"type":"MethodType","id":2},"params":{"type":"bytes","id":3}}},"Reply":{"fields":{"id":{"type":"uint32","id":1},"error":{"type":"Error","id":2},"result":{"type":"bytes","id":3}}},"PushType":{"values":{"PUBLICATION":0,"JOIN":1,"LEAVE":2,"UNSUB":3,"MESSAGE":4}},"Push":{"fields":{"type":{"type":"PushType","id":1},"channel":{"type":"string","id":2},"data":{"type":"bytes","id":3}}},"ClientInfo":{"fields":{"user":{"type":"string","id":1},"client":{"type":"string","id":2},"connInfo":{"type":"bytes","id":3},"chanInfo":{"type":"bytes","id":4}}},"Publication":{"fields":{"uid":{"type":"string","id":1},"data":{"type":"bytes","id":2},"info":{"type":"ClientInfo","id":3}}},"Join":{"fields":{"info":{"type":"ClientInfo","id":1}}},"Leave":{"fields":{"info":{"type":"ClientInfo","id":1}}},"Unsub":{"fields":{}},"Message":{"fields":{"data":{"type":"bytes","id":1}}},"ConnectRequest":{"fields":{"user":{"type":"string","id":1},"exp":{"type":"string","id":2},"info":{"type":"string","id":3},"opts":{"type":"string","id":4},"sign":{"type":"string","id":5}}},"ConnectResponse":{"fields":{"error":{"type":"Error","id":1},"result":{"type":"ConnectResult","id":2}}},"ConnectResult":{"fields":{"client":{"type":"string","id":1},"version":{"type":"string","id":2},"expires":{"type":"bool","id":3},"expired":{"type":"bool","id":4},"ttl":{"type":"uint32","id":5}}},"RefreshRequest":{"fields":{"user":{"type":"string","id":1},"exp":{"type":"string","id":2},"info":{"type":"string","id":3},"opts":{"type":"string","id":4},"sign":{"type":"string","id":5}}},"RefreshResponse":{"fields":{"error":{"type":"Error","id":1},"result":{"type":"RefreshResult","id":2}}},"RefreshResult":{"fields":{"client":{"type":"string","id":1},"version":{"type":"string","id":2},"expires":{"type":"bool","id":3},"expired":{"type":"bool","id":4},"ttl":{"type":"uint32","id":5}}},"SubscribeRequest":{"fields":{"channel":{"type":"string","id":1},"client":{"type":"string","id":2},"info":{"type":"string","id":3},"sign":{"type":"string","id":4},"recover":{"type":"bool","id":5},"last":{"type":"string","id":6}}},"SubscribeResponse":{"fields":{"error":{"type":"Error","id":1},"result":{"type":"SubscribeResult","id":2}}},"SubscribeResult":{"fields":{"last":{"type":"string","id":1},"recovered":{"type":"bool","id":2},"publications":{"rule":"repeated","type":"Publication","id":3}}},"UnsubscribeRequest":{"fields":{"channel":{"type":"string","id":1}}},"UnsubscribeResponse":{"fields":{"error":{"type":"Error","id":1},"result":{"type":"UnsubscribeResult","id":2}}},"UnsubscribeResult":{"fields":{}},"PublishRequest":{"fields":{"channel":{"type":"string","id":1},"data":{"type":"bytes","id":2}}},"PublishResponse":{"fields":{"error":{"type":"Error","id":1},"result":{"type":"PublishResult","id":2}}},"PublishResult":{"fields":{}},"PresenceRequest":{"fields":{"channel":{"type":"string","id":1}}},"PresenceResponse":{"fields":{"error":{"type":"Error","id":1},"result":{"type":"PresenceResult","id":2}}},"PresenceResult":{"fields":{"presence":{"keyType":"string","type":"ClientInfo","id":1}}},"PresenceStatsRequest":{"fields":{"channel":{"type":"string","id":1}}},"PresenceStatsResponse":{"fields":{"error":{"type":"Error","id":1},"result":{"type":"PresenceStatsResult","id":2}}},"PresenceStatsResult":{"fields":{"numClients":{"type":"uint32","id":1},"numUsers":{"type":"uint32","id":2}}},"HistoryRequest":{"fields":{"channel":{"type":"string","id":1}}},"HistoryResponse":{"fields":{"error":{"type":"Error","id":1},"result":{"type":"HistoryResult","id":2}}},"HistoryResult":{"fields":{"publications":{"rule":"repeated","type":"Publication","id":1}}},"PingRequest":{"fields":{"data":{"type":"string","id":1}}},"PingResponse":{"fields":{"error":{"type":"Error","id":1},"result":{"type":"PingResult","id":2}}},"PingResult":{"fields":{"data":{"type":"string","id":1}}},"RPCRequest":{"fields":{"data":{"type":"bytes","id":1}}},"RPCResponse":{"fields":{"error":{"type":"Error","id":1},"result":{"type":"RPCResult","id":2}}},"RPCResult":{"fields":{"data":{"type":"bytes","id":1}}},"SendRequest":{"fields":{"data":{"type":"bytes","id":1}}},"Centrifuge":{"methods":{"Communicate":{"requestType":"Command","requestStream":true,"responseType":"Reply","responseStream":true}}}}}}}
 
 /***/ })
 /******/ ]);

@@ -822,7 +822,7 @@ Older browsers can work (due to SockJS polyfill) but not oficially supported by 
 <script src="https://cdn.jsdelivr.net/npm/es6-promise@4/dist/es6-promise.auto.min.js"></script> 
 ```
 
-Also you can explicitly provide `Promise` in configuration objest, for example:
+Also you can explicitly provide `Promise` in configuration object, for example:
 
 ```
 npm install es6-promise

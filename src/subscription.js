@@ -1,5 +1,4 @@
 import EventEmitter from 'events';
-import Promise from 'es6-promise';
 
 import {
   isFunction
@@ -189,7 +188,7 @@ export default class Subscription extends EventEmitter {
 
   _methodCall(message, type) {
     var self = this;
-    return new Promise(function (resolve, reject) {
+    return new self._centrifuge._promise(function (resolve, reject) {
       self._promise.then(function () {
         self._centrifuge._call(message).then(function (result) {
           resolve(self._centrifuge._decoder.decodeCommandResult(type, result));

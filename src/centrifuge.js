@@ -1,5 +1,4 @@
 import EventEmitter from 'events';
-import Promise from 'es6-promise';
 import Subscription from './subscription';
 
 import {
@@ -25,6 +24,7 @@ export class Centrifuge extends EventEmitter {
   constructor(url, options) {
     super();
     this._url = url;
+    this._promise = null;
     this._sockjs = null;
     this._isSockjs = false;
     this._binary = false;
@@ -58,6 +58,7 @@ export class Centrifuge extends EventEmitter {
     this._config = {
       debug: false,
       sockjs: null,
+      promise: null,
       retry: 1000,
       maxRetry: 20000,
       timeout: 5000,
@@ -199,29 +200,19 @@ export class Centrifuge extends EventEmitter {
       throw new Error('url required');
     }
 
-    if (this._url.indexOf('format=protobuf') > -1) {
+    if (this._config.promise !== null) {
+      this._promise = configuration.promise;
+    } else {
+      if (!global.Promise) {
+        throw new Error('Promise polyfill required');
+      }
+      this._promise = global.Promise;
+    }
+
+    if (startsWith(this._url, 'ws') && this._url.indexOf('format=protobuf') > -1) {
       this._setFormat('protobuf');
     } else {
       this._setFormat('json');
-    }
-
-    if (this._credentials !== null) {
-      if (!this._credentials.user && this._credentials.user !== '') {
-        this._debug('user not set in credentials');
-      }
-
-      if (!this._credentials.exp) {
-        this._debug('exp not set in credentials');
-      }
-
-      if (!this._credentials.info) {
-        this._debug('info not set in credentials');
-        this._credentials.info = '';
-      }
-
-      if (!this._credentials.sign) {
-        this._debug('sign not set in credentials');
-      }
     }
 
     if (startsWith(this._url, 'http')) {
@@ -450,7 +441,7 @@ export class Centrifuge extends EventEmitter {
     };
     const promise = this._call(msg);
 
-    return new Promise(function (resolve, reject) {
+    return new self._promise(function (resolve, reject) {
       promise.then(function (result) {
         resolve(self._decoder.decodeCommandResult(self._methodType.RPC, result));
       }, function (error) {
@@ -477,7 +468,7 @@ export class Centrifuge extends EventEmitter {
   _call(msg) {
     var self = this;
 
-    return new Promise(function (resolve, reject) {
+    return new self._promise(function (resolve, reject) {
       const id = self._addMessage(msg);
       self._registerCall(id, resolve, reject);
     });

@@ -30,7 +30,6 @@
   },
   "homepage": "https://github.com/centrifugal/centrifuge-js",
   "dependencies": {
-    "es6-promise": "^4.2.4",
     "protobufjs": "^6.8.6"
   },
   "devDependencies": {

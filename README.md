@@ -13,9 +13,6 @@ This client can connect to [Centrifuge](https://github.com/centrifugal/centrifug
 
 Javascript client can connect to the server in two ways: using pure Websockets or using [SockJS](https://github.com/sockjs/sockjs-client) library to be able to use various available fallback transports if client browser does not support Websockets.
 
-*Note, that in order to use presence, history, join/leave and publish – corresponding options
-must be enabled in Centrifugo channel configuration (on top level or for channel namespace)*
-
 ## Install and quick start
 
 The simplest way to use javascript client is download it from `dist` folder and include into your web page using `script` tag:
@@ -157,7 +154,7 @@ It defines allowed SockJS transports and by default equals
 
 ```javascript
 var centrifuge = new Centrifuge(
-  'ws://centrifuge.example.com/connection/websocket', 
+  'http://centrifuge.example.com/connection/sockjs', 
   {
     sockjsTransports: [
         'websocket', 
@@ -359,8 +356,7 @@ var subscription = centrifuge.subscribe("news", function(message) {
 And that's all! For lots of cases it's enough! But let's look at possible events that
 can happen with subscription:
 
-* `publication` – called when new publication message received (callback function in our previous example is   
-    `publication` event callback btw)
+* `publication` – called when new publication message received (callback function in our previous example is `publication` event callback btw)
 * `join` – called when someone joined channel
 * `leave` – called when someone left channel
 * `subscribe` – called when subscription on channel successful and acknowledged by Centrifugo
@@ -439,6 +435,8 @@ var subscription = centrifuge.subscribe("news", function(message) {
     console.log("Client left channel", message);
 });
 ```
+
+*Note, that in order join/leave events to work corresponding options must be enabled in server channel configuration (on top level or for channel namespace)*
 
 ### subscription event context formats
 
@@ -593,6 +591,8 @@ Format of `err` in error callback:
 
 * `error` – error description (string)
 
+*Note, that in order presence to work corresponding options must be enabled in server channel configuration (on top level or for channel namespace)*
+
 ### history method of subscription
 
 `history` method allows to get last messages published into channel. Note that history
@@ -637,6 +637,8 @@ fields were in original messages.
 
 `err` format – the same as for `presence` method.
 
+*Note, that in order history to work corresponding options must be enabled in server channel configuration (on top level or for channel namespace)*
+
 ### publish method of subscription
 
 `publish` method of subscription object allows to publish data into channel directly
@@ -673,6 +675,8 @@ subscription.publish({"input": "hello world"}).then(function() {
 ```
 
 `err` format – the same as for `presence` method.
+
+*Note, that in order publish to work corresponding option must be enabled in server channel configuration (on top level or for channel namespace), by default client can not publish into channel*
 
 ### unsubscribe method of subscription
 
@@ -812,13 +816,13 @@ var centrifuge = new Centrifuge('ws://centrifuge.example.com/connection/websocke
 
 ## Browser support
 
-This client intended to work in all browsers with Websocket support: https://caniuse.com/#search=websocket.
+This client intended to work in all modern browsers with Websocket support: https://caniuse.com/#search=websocket.
 
-Older browsers can work (due to SockJS polyfill) but not oficially supported by library and can stop working with new releases. SockJS support exists for polyfilling cases when Websocket connection can't be established for some reason even though client browser supports Websocket (proxies, firewalls, browser extensions blocking websocket traffic).
+**To support IE 11** you must additionally polyfill `Promise`. This library uses globally defined `Promise` if it exists. 
 
-**If you need to support IE 11** then you should additionally polyfill `Promise`. This library will use globally defined `Promise` if it exists. For example you can include Promise globally via CDN (example here uses [es6-promise](https://github.com/stefanpenner/es6-promise) library):
+To support IE 11 you can include Promise globally via CDN (example here uses [es6-promise](https://github.com/stefanpenner/es6-promise) library):
 
-```
+```html
 <script src="https://cdn.jsdelivr.net/npm/es6-promise@4/dist/es6-promise.auto.min.js"></script> 
 ```
 
@@ -830,7 +834,7 @@ npm install es6-promise
 
 Then in code:
 
-```
+```javascript
 var Promise = require('es6-promise').Promise;
 
 var centrifuge = new Centrifuge("ws://localhost:8000/connection/websocket", {

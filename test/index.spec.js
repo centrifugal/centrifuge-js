@@ -22,6 +22,19 @@ describe('Given an instance of my Centrifuge', () => {
   });
 });
 
+describe('Given an instance of my Centrifuge', () => {
+  before(() => {
+    centrifugeJSON = new CentrifugeJSON('ws://localhost:8000/connection/websocket');
+  });
+  describe('when I try to send message in disconnected state', () => {
+    it('should not result in error', () => {
+      expect(function () {
+        centrifugeJSON.send({});
+      }).to.throw('transport not connected');
+    });
+  });
+});
+
 describe('Given an instance of my Centrifuge with Protobuf', () => {
   before(() => {
     centrifugeProtobuf = new CentrifugeProtobuf('ws://localhost:8000/connection/websocket');

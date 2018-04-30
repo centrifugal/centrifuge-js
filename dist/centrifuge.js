@@ -299,7 +299,7 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
       }
 
       if (this._config.promise !== null) {
-        this._promise = configuration.promise;
+        this._promise = this._config.promise;
       } else {
         if (!global.Promise) {
           throw new Error('Promise polyfill required');
@@ -411,10 +411,13 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
       }
     }
   }, {
-    key: '_send',
-    value: function _send(commands) {
+    key: '_transportSend',
+    value: function _transportSend(commands) {
       if (!commands.length) {
         return;
+      }
+      if (!this._transport) {
+        throw new Error('transport not connected');
       }
       this._transport.send(this._encoder.encodeCommands(commands));
     }
@@ -1090,7 +1093,7 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
     value: function _flush() {
       var messages = this._messages.slice(0);
       this._messages = [];
-      this._send(messages);
+      this._transportSend(messages);
     }
   }, {
     key: '_ping',
@@ -1153,7 +1156,7 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
       if (this._isBatching === true) {
         this._messages.push(message);
       } else {
-        this._send([message]);
+        this._transportSend([message]);
       }
       if (!async) {
         return id;

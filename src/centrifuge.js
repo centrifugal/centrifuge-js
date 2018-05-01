@@ -54,6 +54,7 @@ export class Centrifuge extends EventEmitter {
     this._callbacks = {};
     this._latency = null;
     this._latencyStart = null;
+    this._connectData = null;
     this._credentials = null;
     this._config = {
       debug: false,
@@ -101,6 +102,10 @@ export class Centrifuge extends EventEmitter {
     this._credentials = credentials;
   }
 
+  setConnectData(data) {
+    this._connectData = data;
+  }
+
   _ajax(url, params, headers, data, callback) {
     var self = this;
     var query = '';
@@ -137,7 +142,6 @@ export class Centrifuge extends EventEmitter {
       if (xhr.readyState === 4) {
         if (xhr.status === 200) {
           let data, parsed = false;
-
           try {
             data = JSON.parse(xhr.responseText);
             parsed = true;
@@ -360,8 +364,16 @@ export class Centrifuge extends EventEmitter {
         // method: self._methodType.CONNECT
       };
 
+      if (self._credentials || self._connectData) {
+        msg.params = {};
+      }
+
       if (self._credentials) {
-        msg.params = self._credentials;
+        msg.params.credentials = self._credentials;
+      }
+
+      if (self._connectData) {
+        msg.params.data = self._connectData;
       }
 
       self._latencyStart = new Date();
@@ -590,7 +602,9 @@ export class Centrifuge extends EventEmitter {
 
         const msg = {
           method: self._methodType.REFRESH,
-          params: self._credentials
+          params: {
+            credentials: self._credentials
+          }
         };
 
         self._call(msg).then(function (result) {
@@ -743,11 +757,17 @@ export class Centrifuge extends EventEmitter {
     }
 
     this._restartPing();
-    this.emit('connect', {
+
+    const ctx = {
       client: result.client,
       transport: this._transportName,
       latency: this._latency
-    });
+    };
+    if (result.data) {
+      ctx.data = result.data;
+    }
+
+    this.emit('connect', ctx);
   };
 
   _stopPing() {

@@ -27,7 +27,7 @@ describe('Given an instance of my Centrifuge', () => {
     centrifugeJSON = new CentrifugeJSON('ws://localhost:8000/connection/websocket');
   });
   describe('when I try to send message in disconnected state', () => {
-    it('should not result in error', () => {
+    it('should throw an error', () => {
       expect(function () {
         centrifugeJSON.send({});
       }).to.throw('transport not connected');

@@ -151,6 +151,7 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
     _this._callbacks = {};
     _this._latency = null;
     _this._latencyStart = null;
+    _this._connectData = null;
     _this._credentials = null;
     _this._config = {
       debug: false,
@@ -188,6 +189,11 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
     key: 'setCredentials',
     value: function setCredentials(credentials) {
       this._credentials = credentials;
+    }
+  }, {
+    key: 'setConnectData',
+    value: function setConnectData(data) {
+      this._connectData = data;
     }
   }, {
     key: '_ajax',
@@ -228,7 +234,6 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
           if (xhr.status === 200) {
             var _data = void 0,
                 parsed = false;
-
             try {
               _data = JSON.parse(xhr.responseText);
               parsed = true;
@@ -468,8 +473,16 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
           // method: self._methodType.CONNECT
         };
 
+        if (self._credentials || self._connectData) {
+          msg.params = {};
+        }
+
         if (self._credentials) {
-          msg.params = self._credentials;
+          msg.params.credentials = self._credentials;
+        }
+
+        if (self._connectData) {
+          msg.params.data = self._connectData;
         }
 
         self._latencyStart = new Date();
@@ -706,7 +719,9 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
 
           var msg = {
             method: self._methodType.REFRESH,
-            params: self._credentials
+            params: {
+              credentials: self._credentials
+            }
           };
 
           self._call(msg).then(function (result) {
@@ -858,11 +873,17 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
       }
 
       this._restartPing();
-      this.emit('connect', {
+
+      var ctx = {
         client: result.client,
         transport: this._transportName,
         latency: this._latency
-      });
+      };
+      if (result.data) {
+        ctx.data = result.data;
+      }
+
+      this.emit('connect', ctx);
     }
   }, {
     key: '_stopPing',

@@ -94,6 +94,9 @@ export class ProtobufEncoder {
         const command = Object.assign({}, commands[i]);
         if (command.params) {
           let type;
+          if (!command.method) {
+            command.method = protobufMethodType.CONNECT;
+          };
           switch (command.method) {
             case protobufMethodType.CONNECT:
               type = methodSchema.CONNECT[0];
@@ -129,7 +132,9 @@ export class ProtobufEncoder {
               type = methodSchema.SEND[0];
               break;
           }
+          console.log(command.params);
           command.params = type.encode(command.params).finish();
+          console.log(2);
         }
         Command.encodeDelimited(command, writer);
       }

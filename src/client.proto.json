@@ -149,7 +149,7 @@
             }
           }
         },
-        "ConnectRequest": {
+        "SignedCredentials": {
           "fields": {
             "user": {
               "type": "string",
@@ -170,6 +170,18 @@
             "sign": {
               "type": "string",
               "id": 5
+            }
+          }
+        },
+        "ConnectRequest": {
+          "fields": {
+            "credentials": {
+              "type": "SignedCredentials",
+              "id": 1
+            },
+            "data": {
+              "type": "bytes",
+              "id": 2
             }
           }
         },
@@ -206,30 +218,18 @@
             "ttl": {
               "type": "uint32",
               "id": 5
+            },
+            "data": {
+              "type": "bytes",
+              "id": 6
             }
           }
         },
         "RefreshRequest": {
           "fields": {
-            "user": {
-              "type": "string",
+            "credentials": {
+              "type": "SignedCredentials",
               "id": 1
-            },
-            "exp": {
-              "type": "string",
-              "id": 2
-            },
-            "info": {
-              "type": "string",
-              "id": 3
-            },
-            "opts": {
-              "type": "string",
-              "id": 4
-            },
-            "sign": {
-              "type": "string",
-              "id": 5
             }
           }
         },
@@ -266,6 +266,10 @@
             "ttl": {
               "type": "uint32",
               "id": 5
+            },
+            "meta": {
+              "type": "bytes",
+              "id": 6
             }
           }
         },

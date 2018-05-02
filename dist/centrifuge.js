@@ -1038,7 +1038,7 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
       if (!sub) {
         return;
       }
-      sub.emit('publication', pub);
+      sub.emit('publish', pub);
     }
   }, {
     key: '_handleMessage',
@@ -1472,9 +1472,9 @@ var Subscription = function (_EventEmitter) {
       }
       if ((0, _utils.isFunction)(events)) {
         // events is just a function to handle publication received from channel.
-        this.on('publication', events);
+        this.on('publish', events);
       } else if (Object.prototype.toString.call(events) === Object.prototype.toString.call({})) {
-        var knownEvents = ['publication', 'join', 'leave', 'unsubscribe', 'subscribe', 'error'];
+        var knownEvents = ['publish', 'join', 'leave', 'unsubscribe', 'subscribe', 'error'];
         for (var i = 0, l = knownEvents.length; i < l; i++) {
           var ev = knownEvents[i];
           if (ev in events) {

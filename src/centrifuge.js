@@ -911,7 +911,7 @@ export class Centrifuge extends EventEmitter {
     if (!sub) {
       return;
     }
-    sub.emit('publication', pub);
+    sub.emit('publish', pub);
   };
 
   _handleMessage(message) {

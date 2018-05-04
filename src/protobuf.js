@@ -132,9 +132,7 @@ export class ProtobufEncoder {
               type = methodSchema.SEND[0];
               break;
           }
-          console.log(command.params);
           command.params = type.encode(command.params).finish();
-          console.log(2);
         }
         Command.encodeDelimited(command, writer);
       }

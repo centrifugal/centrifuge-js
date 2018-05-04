@@ -88,7 +88,7 @@ const Reply = proto.lookupType('proto.Reply');
 
 export class ProtobufEncoder {
   encodeCommands(commands) {
-    let writer = protobuf.Writer.create();
+    const writer = protobuf.Writer.create();
     for (const i in commands) {
       if (commands.hasOwnProperty(i)) {
         const command = Object.assign({}, commands[i]);
@@ -145,7 +145,7 @@ export class ProtobufEncoder {
 
 export class ProtobufDecoder {
   decodeReplies(data) {
-    let replies = [];
+    const replies = [];
     const reader = protobuf.Reader.create(new Uint8Array(data));
     while (reader.pos < reader.len) {
       const reply = Reply.decodeDelimited(reader);

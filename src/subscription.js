@@ -20,7 +20,7 @@ export default class Subscription extends EventEmitter {
     this._isResubscribe = false;
     this._recovered = false;
     this._ready = false;
-    this._promise = null;
+    this._subscribtionPromise = null;
     this._noResubscribe = false;
     this._setEvents(events);
     this._initializePromise();
@@ -34,7 +34,7 @@ export default class Subscription extends EventEmitter {
 
     this._ready = false;
 
-    this._promise = new Promise(function (resolve, reject) {
+    this._subscribtionPromise = new Promise(function (resolve, reject) {
       self._resolve = function (value) {
         self._ready = true;
         resolve(value);
@@ -188,8 +188,8 @@ export default class Subscription extends EventEmitter {
 
   _methodCall(message, type) {
     var self = this;
-    return new self._centrifuge._promise(function (resolve, reject) {
-      self._promise.then(function () {
+    return new Promise(function (resolve, reject) {
+      self._subscribtionPromise.then(function () {
         self._centrifuge._call(message).then(function (result) {
           resolve(self._centrifuge._decoder.decodeCommandResult(type, result));
         }, function (err) {

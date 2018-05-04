@@ -24,7 +24,6 @@ export class Centrifuge extends EventEmitter {
   constructor(url, options) {
     super();
     this._url = url;
-    this._promise = null;
     this._sockjs = null;
     this._isSockjs = false;
     this._binary = false;
@@ -197,20 +196,15 @@ export class Centrifuge extends EventEmitter {
   }
 
   _configure(configuration) {
+    if (!('Promise' in global)) {
+      throw new Error('Promise polyfill required');
+    }
+
     Object.assign(this._config, configuration || {});
     this._debug('centrifuge config', this._config);
 
     if (!this._url) {
       throw new Error('url required');
-    }
-
-    if (this._config.promise !== null) {
-      this._promise = this._config.promise;
-    } else {
-      if (!global.Promise) {
-        throw new Error('Promise polyfill required');
-      }
-      this._promise = global.Promise;
     }
 
     if (startsWith(this._url, 'ws') && this._url.indexOf('format=protobuf') > -1) {
@@ -456,7 +450,7 @@ export class Centrifuge extends EventEmitter {
     };
     const promise = this._call(msg);
 
-    return new self._promise(function (resolve, reject) {
+    return new Promise(function (resolve, reject) {
       promise.then(function (result) {
         resolve(self._decoder.decodeCommandResult(self._methodType.RPC, result));
       }, function (error) {
@@ -483,7 +477,7 @@ export class Centrifuge extends EventEmitter {
   _call(msg) {
     var self = this;
 
-    return new self._promise(function (resolve, reject) {
+    return new Promise(function (resolve, reject) {
       const id = self._addMessage(msg);
       self._registerCall(id, resolve, reject);
     });

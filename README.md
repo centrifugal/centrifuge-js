@@ -818,26 +818,12 @@ var centrifuge = new Centrifuge('ws://centrifuge.example.com/connection/websocke
 
 This client intended to work in all modern browsers with Websocket support: https://caniuse.com/#search=websocket.
 
-**To support IE 11** you must additionally polyfill `Promise`. This library uses globally defined `Promise` if it exists. 
+**To support IE 11** you must additionally polyfill `Promise` as this library uses `Promise`.
 
-To support IE 11 you can include Promise globally via CDN (example here uses [es6-promise](https://github.com/stefanpenner/es6-promise) library):
+You can easily polyfill `Promise` via CDN (example here uses [es6-promise](https://github.com/stefanpenner/es6-promise) library):
 
 ```html
-<script src="https://cdn.jsdelivr.net/npm/es6-promise@4/dist/es6-promise.auto.min.js"></script> 
+<script src="https://cdn.jsdelivr.net/npm/es6-promise@4/dist/es6-promise.auto.min.js"></script>
 ```
 
-Also you can explicitly provide `Promise` in configuration object, for example:
-
-```
-npm install es6-promise
-```
-
-Then in code:
-
-```javascript
-var Promise = require('es6-promise').Promise;
-
-var centrifuge = new Centrifuge("ws://localhost:8000/connection/websocket", {
-  promise: Promise
-})
-```
+Or you can explicitly polyfill `Promise` in your code, see [auto-polyfill of es6-promise](https://github.com/stefanpenner/es6-promise#auto-polyfill)

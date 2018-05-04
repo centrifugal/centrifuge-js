@@ -20,7 +20,7 @@ export default class Subscription extends EventEmitter {
     this._isResubscribe = false;
     this._recovered = false;
     this._ready = false;
-    this._subscribtionPromise = null;
+    this._subscriptionPromise = null;
     this._noResubscribe = false;
     this._setEvents(events);
     this._initializePromise();
@@ -32,7 +32,7 @@ export default class Subscription extends EventEmitter {
     // synchronous way.
     this._ready = false;
 
-    this._subscribtionPromise = new Promise((resolve, reject) => {
+    this._subscriptionPromise = new Promise((resolve, reject) => {
       this._resolve = value => {
         this._ready = true;
         resolve(value);
@@ -185,7 +185,7 @@ export default class Subscription extends EventEmitter {
   };
 
   _methodCall(message, type) {
-    this._subscribtionPromise
+    return this._subscriptionPromise
       .then(() => this._centrifuge._call(message))
       .then(result => this._centrifuge._decoder.decodeCommandResult(type, result))
     ;

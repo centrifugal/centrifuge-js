@@ -266,9 +266,10 @@ export class Centrifuge extends EventEmitter {
     this._clientID = null;
 
     // fire errbacks of registered outgoing calls.
-    for (const uid in this._callbacks) {
-      if (this._callbacks.hasOwnProperty(uid)) {
-        const callbacks = this._callbacks[uid];
+    for (const id in this._callbacks) {
+      if (this._callbacks.hasOwnProperty(id)) {
+        const callbacks = this._callbacks[id];
+        clearTimeout(callbacks.timeout);
         const errback = callbacks.errback;
         if (!errback) {
           continue;
@@ -829,6 +830,7 @@ export class Centrifuge extends EventEmitter {
       return;
     }
     const callbacks = this._callbacks[id];
+    clearTimeout(this._callbacks[id].timeout);
     delete this._callbacks[id];
 
     if (!errorExists(reply)) {
@@ -981,9 +983,10 @@ export class Centrifuge extends EventEmitter {
   _registerCall(id, callback, errback) {
     this._callbacks[id] = {
       callback: callback,
-      errback: errback
+      errback: errback,
+      timeout: null
     };
-    setTimeout(() => {
+    this._callbacks[id].timeout = setTimeout(() => {
       delete this._callbacks[id];
       if (isFunction(errback)) {
         errback(this._createErrorObject(_errorTimeout));

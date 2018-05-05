@@ -1,22 +1,22 @@
-export const startsWith = function (value, prefix) {
+export function startsWith(value, prefix) {
   return value.lastIndexOf(prefix, 0) === 0;
 };
 
-export const isString = function (value) {
+export function isString(value) {
   if (value === undefined || value === null) {
     return false;
   }
   return typeof value === 'string' || value instanceof String;
 };
 
-export const isFunction = function (value) {
+export function isFunction(value) {
   if (value === undefined || value === null) {
     return false;
   }
   return typeof value === 'function';
 };
 
-export const log = function (level, args) {
+export function log(level, args) {
   if (global.console) {
     const logger = global.console[level];
 
@@ -26,16 +26,13 @@ export const log = function (level, args) {
   }
 };
 
-export const backoff = function (step, min, max) {
-  var jitter = 0.5 * Math.random();
-  var interval = min * Math.pow(2, step + 1);
+export function backoff(step, min, max) {
+  const jitter = 0.5 * Math.random();
+  const interval = Math.min(max, min * Math.pow(2, step + 1));
 
-  if (interval > max) {
-    interval = max;
-  }
   return Math.floor((1 - jitter) * interval);
 };
 
-export const errorExists = function (data) {
+export function errorExists(data) {
   return 'error' in data && data.error !== null;
 };

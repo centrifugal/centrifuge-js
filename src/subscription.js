@@ -20,7 +20,7 @@ export default class Subscription extends EventEmitter {
     this._isResubscribe = false;
     this._recovered = false;
     this._ready = false;
-    this._promise = null;
+    this._subscriptionPromise = null;
     this._noResubscribe = false;
     this._setEvents(events);
     this._initializePromise();
@@ -30,17 +30,15 @@ export default class Subscription extends EventEmitter {
     // this helps us to wait until subscription will successfully
     // subscribe and call actions such as presence, history etc in
     // synchronous way.
-    var self = this;
-
     this._ready = false;
 
-    this._promise = new Promise(function (resolve, reject) {
-      self._resolve = function (value) {
-        self._ready = true;
+    this._subscriptionPromise = new Promise((resolve, reject) => {
+      this._resolve = value => {
+        this._ready = true;
         resolve(value);
       };
-      self._reject = function (err) {
-        self._ready = true;
+      this._reject = err => {
+        this._ready = true;
         reject(err);
       };
     });
@@ -158,7 +156,7 @@ export default class Subscription extends EventEmitter {
   };
 
   _getSubscribeErrorContext() {
-    let subscribeErrorContext = this._error;
+    const subscribeErrorContext = this._error;
     subscribeErrorContext.channel = this.channel;
     subscribeErrorContext.isResubscribe = this._isResubscribe;
     return subscribeErrorContext;
@@ -187,25 +185,17 @@ export default class Subscription extends EventEmitter {
   };
 
   _methodCall(message, type) {
-    var self = this;
-    return new self._centrifuge._promise(function (resolve, reject) {
-      self._promise.then(function () {
-        self._centrifuge._call(message).then(function (result) {
-          resolve(self._centrifuge._decoder.decodeCommandResult(type, result));
-        }, function (err) {
-          reject(err);
-        });
-      }, function (err) {
-        reject(err);
-      });
-    });
+    return this._subscriptionPromise
+      .then(() => this._centrifuge._call(message))
+      .then(result => this._centrifuge._decoder.decodeCommandResult(type, result))
+    ;
   }
 
   publish(data) {
     return this._methodCall({
       method: this._centrifuge._methodType.PUBLISH,
       params: {
-        channel: self.channel,
+        channel: this.channel,
         data: data
       }
     }, this._centrifuge._methodType.PUBLISH);
@@ -215,7 +205,7 @@ export default class Subscription extends EventEmitter {
     return this._methodCall({
       method: this._centrifuge._methodType.PRESENCE,
       params: {
-        channel: self.channel
+        channel: this.channel
       }
     }, this._centrifuge._methodType.PRESENCE);
   };
@@ -224,7 +214,7 @@ export default class Subscription extends EventEmitter {
     return this._methodCall({
       method: this._centrifuge._methodType.PRESENCE_STATS,
       params: {
-        channel: self.channel
+        channel: this.channel
       }
     }, this._centrifuge._methodType.PRESENCE_STATS);
   };
@@ -233,7 +223,7 @@ export default class Subscription extends EventEmitter {
     return this._methodCall({
       method: this._centrifuge._methodType.HISTORY,
       params: {
-        channel: self.channel
+        channel: this.channel
       }
     }, this._centrifuge._methodType.HISTORY);
   };

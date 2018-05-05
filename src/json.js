@@ -34,9 +34,9 @@ export class JsonEncoder {
 
 export class JsonDecoder {
   decodeReplies(data) {
-    let replies = [];
+    const replies = [];
     const encodedReplies = data.split('\n');
-    for (let i in encodedReplies) {
+    for (const i in encodedReplies) {
       if (encodedReplies.hasOwnProperty(i)) {
         if (!encodedReplies[i]) {
           continue;

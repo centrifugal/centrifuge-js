@@ -185,18 +185,6 @@
             }
           }
         },
-        "ConnectResponse": {
-          "fields": {
-            "error": {
-              "type": "Error",
-              "id": 1
-            },
-            "result": {
-              "type": "ConnectResult",
-              "id": 2
-            }
-          }
-        },
         "ConnectResult": {
           "fields": {
             "client": {
@@ -230,18 +218,6 @@
             "credentials": {
               "type": "SignedCredentials",
               "id": 1
-            }
-          }
-        },
-        "RefreshResponse": {
-          "fields": {
-            "error": {
-              "type": "Error",
-              "id": 1
-            },
-            "result": {
-              "type": "RefreshResult",
-              "id": 2
             }
           }
         },
@@ -298,18 +274,10 @@
             "last": {
               "type": "string",
               "id": 6
-            }
-          }
-        },
-        "SubscribeResponse": {
-          "fields": {
-            "error": {
-              "type": "Error",
-              "id": 1
             },
-            "result": {
-              "type": "SubscribeResult",
-              "id": 2
+            "away": {
+              "type": "uint32",
+              "id": 7
             }
           }
         },
@@ -338,18 +306,6 @@
             }
           }
         },
-        "UnsubscribeResponse": {
-          "fields": {
-            "error": {
-              "type": "Error",
-              "id": 1
-            },
-            "result": {
-              "type": "UnsubscribeResult",
-              "id": 2
-            }
-          }
-        },
         "UnsubscribeResult": {
           "fields": {}
         },
@@ -365,18 +321,6 @@
             }
           }
         },
-        "PublishResponse": {
-          "fields": {
-            "error": {
-              "type": "Error",
-              "id": 1
-            },
-            "result": {
-              "type": "PublishResult",
-              "id": 2
-            }
-          }
-        },
         "PublishResult": {
           "fields": {}
         },
@@ -385,18 +329,6 @@
             "channel": {
               "type": "string",
               "id": 1
-            }
-          }
-        },
-        "PresenceResponse": {
-          "fields": {
-            "error": {
-              "type": "Error",
-              "id": 1
-            },
-            "result": {
-              "type": "PresenceResult",
-              "id": 2
             }
           }
         },
@@ -414,18 +346,6 @@
             "channel": {
               "type": "string",
               "id": 1
-            }
-          }
-        },
-        "PresenceStatsResponse": {
-          "fields": {
-            "error": {
-              "type": "Error",
-              "id": 1
-            },
-            "result": {
-              "type": "PresenceStatsResult",
-              "id": 2
             }
           }
         },
@@ -449,18 +369,6 @@
             }
           }
         },
-        "HistoryResponse": {
-          "fields": {
-            "error": {
-              "type": "Error",
-              "id": 1
-            },
-            "result": {
-              "type": "HistoryResult",
-              "id": 2
-            }
-          }
-        },
         "HistoryResult": {
           "fields": {
             "publications": {
@@ -475,18 +383,6 @@
             "data": {
               "type": "string",
               "id": 1
-            }
-          }
-        },
-        "PingResponse": {
-          "fields": {
-            "error": {
-              "type": "Error",
-              "id": 1
-            },
-            "result": {
-              "type": "PingResult",
-              "id": 2
             }
           }
         },
@@ -506,18 +402,6 @@
             }
           }
         },
-        "RPCResponse": {
-          "fields": {
-            "error": {
-              "type": "Error",
-              "id": 1
-            },
-            "result": {
-              "type": "RPCResult",
-              "id": 2
-            }
-          }
-        },
         "RPCResult": {
           "fields": {
             "data": {
@@ -531,16 +415,6 @@
             "data": {
               "type": "bytes",
               "id": 1
-            }
-          }
-        },
-        "Centrifuge": {
-          "methods": {
-            "Communicate": {
-              "requestType": "Command",
-              "requestStream": true,
-              "responseType": "Reply",
-              "responseStream": true
             }
           }
         }

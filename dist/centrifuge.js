@@ -398,6 +398,7 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
           if (reconnect) {
             if (sub._isSuccess()) {
               sub._triggerUnsubscribe();
+              sub._unsubscribedAt = new Date();
             }
             sub._setSubscribing();
           } else {
@@ -772,11 +773,18 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
           this.stopAuthBatching();
         }
       } else {
-        var recover = this._recover(channel);
+        var recover = this._recover(sub);
 
         if (recover === true) {
           msg.params.recover = true;
-          msg.params.last = this._getLastID(channel);
+          var last = this._getLastID(channel);
+          if (last !== '') {
+            msg.params.last = last;
+          }
+          var away = sub._getAway();
+          if (away !== 0) {
+            msg.params.away = away;
+          }
         }
 
         this._call(msg).then(function (result) {
@@ -945,6 +953,13 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
         return;
       }
 
+      var recovered = false;
+
+      if ('recovered' in result) {
+        recovered = result.recovered;
+      }
+      sub._setSubscribeSuccess(recovered);
+
       var pubs = result.publications;
 
       if (pubs && pubs.length > 0) {
@@ -961,13 +976,6 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
           this._lastPubUID[channel] = result.last;
         }
       }
-
-      var recovered = false;
-
-      if ('recovered' in result) {
-        recovered = result.recovered;
-      }
-      sub._setSubscribeSuccess(recovered);
     }
   }, {
     key: '_handleReply',
@@ -1121,8 +1129,8 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
     }
   }, {
     key: '_recover',
-    value: function _recover(channel) {
-      return channel in this._lastPubUID;
+    value: function _recover(sub) {
+      return sub._unsubscribedAt !== null;
     }
   }, {
     key: '_getLastID',
@@ -1311,11 +1319,24 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
                     sign: channelResponse.sign
                   }
                 };
-                var recover = _this12._recover(channel);
+
+                var _sub = _this12._getSub(channel);
+                if (_sub === null) {
+                  return 'continue';
+                }
+
+                var recover = _this12._recover(_sub);
 
                 if (recover === true) {
                   msg.params.recover = true;
-                  msg.params.last = _this12._getLastID(channel);
+                  var last = _this12._getLastID(channel);
+                  if (last !== '') {
+                    msg.params.last = last;
+                  }
+                  var away = _sub._getAway();
+                  if (away !== 0) {
+                    msg.params.away = away;
+                  }
                 }
                 _this12._call(msg).then(function (result) {
                   _this12._subscribeResponse(channel, _this12._decoder.decodeCommandResult(_this12._methodType.SUBSCRIBE, result));
@@ -1431,6 +1452,7 @@ var Subscription = function (_EventEmitter) {
     _this._ready = false;
     _this._subscriptionPromise = null;
     _this._noResubscribe = false;
+    _this._unsubscribedAt = null;
     _this._setEvents(events);
     _this._initializePromise();
     return _this;
@@ -1456,6 +1478,12 @@ var Subscription = function (_EventEmitter) {
           reject(err);
         };
       });
+    }
+  }, {
+    key: '_getAway',
+    value: function _getAway() {
+      var now = new Date();
+      return Math.round((now - this._unsubscribedAt) / 1000) + Math.round(this._centrifuge._config.timeout / 1000);
     }
   }, {
     key: '_setEvents',
@@ -1531,6 +1559,7 @@ var Subscription = function (_EventEmitter) {
       this._status = _STATE_SUCCESS;
       var successContext = this._getSubscribeSuccessContext(recovered);
 
+      this._unsubscribedAt = null;
       this.emit('subscribe', successContext);
       this._resolve(successContext);
     }
@@ -1614,6 +1643,7 @@ var Subscription = function (_EventEmitter) {
     key: 'unsubscribe',
     value: function unsubscribe() {
       this._setUnsubscribed(true);
+      this._unsubscribedAt = null;
       this._centrifuge._unsubscribe(this);
     }
   }, {

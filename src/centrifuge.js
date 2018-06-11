@@ -287,6 +287,7 @@ export class Centrifuge extends EventEmitter {
         if (reconnect) {
           if (sub._isSuccess()) {
             sub._triggerUnsubscribe();
+            sub._unsubscribedAt = new Date();
           }
           sub._setSubscribing();
         } else {
@@ -640,11 +641,18 @@ export class Centrifuge extends EventEmitter {
         this.stopAuthBatching();
       }
     } else {
-      const recover = this._recover(channel);
+      const recover = this._recover(sub);
 
       if (recover === true) {
         msg.params.recover = true;
-        msg.params.last = this._getLastID(channel);
+        const last = this._getLastID(channel);
+        if (last !== '') {
+          msg.params.last = last;
+        }
+        const away = sub._getAway();
+        if (away !== 0) {
+          msg.params.away = away;
+        }
       }
 
       this._call(msg).then(result => {
@@ -797,6 +805,13 @@ export class Centrifuge extends EventEmitter {
       return;
     }
 
+    let recovered = false;
+
+    if ('recovered' in result) {
+      recovered = result.recovered;
+    }
+    sub._setSubscribeSuccess(recovered);
+
     let pubs = result.publications;
 
     if (pubs && pubs.length > 0) {
@@ -813,13 +828,6 @@ export class Centrifuge extends EventEmitter {
         this._lastPubUID[channel] = result.last;
       }
     }
-
-    let recovered = false;
-
-    if ('recovered' in result) {
-      recovered = result.recovered;
-    }
-    sub._setSubscribeSuccess(recovered);
   };
 
   _handleReply(reply) {
@@ -955,8 +963,8 @@ export class Centrifuge extends EventEmitter {
     });
   };
 
-  _recover(channel) {
-    return channel in this._lastPubUID;
+  _recover(sub) {
+    return sub._unsubscribedAt !== null;
   };
 
   _getLastID(channel) {
@@ -1128,11 +1136,24 @@ export class Centrifuge extends EventEmitter {
                 sign: channelResponse.sign
               }
             };
-            const recover = this._recover(channel);
+
+            const sub = this._getSub(channel);
+            if (sub === null) {
+              continue;
+            }
+
+            const recover = this._recover(sub);
 
             if (recover === true) {
               msg.params.recover = true;
-              msg.params.last = this._getLastID(channel);
+              const last = this._getLastID(channel);
+              if (last !== '') {
+                msg.params.last = last;
+              }
+              const away = sub._getAway();
+              if (away !== 0) {
+                msg.params.away = away;
+              }
             }
             this._call(msg).then(result => {
               this._subscribeResponse(channel, this._decoder.decodeCommandResult(this._methodType.SUBSCRIBE, result));

@@ -22,6 +22,7 @@ export default class Subscription extends EventEmitter {
     this._ready = false;
     this._subscriptionPromise = null;
     this._noResubscribe = false;
+    this._unsubscribedAt = null;
     this._setEvents(events);
     this._initializePromise();
   }
@@ -43,6 +44,11 @@ export default class Subscription extends EventEmitter {
       };
     });
   };
+
+  _getAway() {
+    const now = new Date();
+    return Math.round((now - this._unsubscribedAt) / 1000) + Math.round(this._centrifuge._config.timeout / 1000);
+  }
 
   _setEvents(events) {
     if (!events) {
@@ -107,6 +113,7 @@ export default class Subscription extends EventEmitter {
     this._status = _STATE_SUCCESS;
     const successContext = this._getSubscribeSuccessContext(recovered);
 
+    this._unsubscribedAt = null;
     this.emit('subscribe', successContext);
     this._resolve(successContext);
   };
@@ -181,6 +188,7 @@ export default class Subscription extends EventEmitter {
 
   unsubscribe() {
     this._setUnsubscribed(true);
+    this._unsubscribedAt = null;
     this._centrifuge._unsubscribe(this);
   };
 

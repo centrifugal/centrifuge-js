@@ -151,7 +151,7 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
     _this._latency = null;
     _this._latencyStart = null;
     _this._connectData = null;
-    _this._credentials = null;
+    _this._token = null;
     _this._config = {
       debug: false,
       sockjs: null,
@@ -185,9 +185,9 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
   }
 
   _createClass(Centrifuge, [{
-    key: 'setCredentials',
-    value: function setCredentials(credentials) {
-      this._credentials = credentials;
+    key: 'setToken',
+    value: function setToken(token) {
+      this._token = token;
     }
   }, {
     key: 'setConnectData',
@@ -471,12 +471,12 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
           // method: this._methodType.CONNECT
         };
 
-        if (_this3._credentials || _this3._connectData) {
+        if (_this3._token || _this3._connectData) {
           msg.params = {};
         }
 
-        if (_this3._credentials) {
-          msg.params.credentials = _this3._credentials;
+        if (_this3._token) {
+          msg.params.token = _this3._token;
         }
 
         if (_this3._connectData) {
@@ -662,9 +662,8 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
     value: function _refresh() {
       var _this6 = this;
 
-      // ask web app for connection parameters - user ID,
-      // timestamp, info and token
-      this._debug('refresh credentials');
+      // ask application for new connection token.
+      this._debug('refresh token');
 
       if (this._config.refreshAttempts === 0) {
         this._debug('refresh attempts set to 0, do not send refresh request at all');
@@ -696,25 +695,20 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
           return;
         }
         _this6._numRefreshFailed = 0;
-        if (_this6._credentials === null) {
+        if (_this6._token === null) {
           return;
         }
-        _this6._credentials.user = data.user;
-        _this6._credentials.exp = data.exp;
-        if ('info' in data) {
-          _this6._credentials.info = data.info;
-        }
-        _this6._credentials.sign = data.sign;
+        _this6._token = data.token;
         if (_this6._isDisconnected()) {
-          _this6._debug('credentials refreshed, connect from scratch');
+          _this6._debug('token refreshed, connect from scratch');
           _this6._connect();
         } else {
-          _this6._debug('send refreshed credentials');
+          _this6._debug('send refreshed token');
 
           var msg = {
             method: _this6._methodType.REFRESH,
             params: {
-              credentials: _this6._credentials
+              token: _this6._token
             }
           };
 
@@ -1309,14 +1303,12 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
                 });
                 return 'continue';
               }
-              if (!channelResponse.status || channelResponse.status === 200) {
+              if (channelResponse) {
                 var msg = {
                   method: _this12._methodType.SUBSCRIBE,
                   params: {
                     channel: channel,
-                    client: _this12._clientID,
-                    info: channelResponse.info,
-                    sign: channelResponse.sign
+                    token: channelResponse.token
                   }
                 };
 

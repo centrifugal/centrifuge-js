@@ -54,7 +54,7 @@ export class Centrifuge extends EventEmitter {
     this._latency = null;
     this._latencyStart = null;
     this._connectData = null;
-    this._credentials = null;
+    this._token = null;
     this._config = {
       debug: false,
       sockjs: null,
@@ -97,8 +97,8 @@ export class Centrifuge extends EventEmitter {
     this._configure(options);
   }
 
-  setCredentials(credentials) {
-    this._credentials = credentials;
+  setToken(token) {
+    this._token = token;
   }
 
   setConnectData(data) {
@@ -354,12 +354,12 @@ export class Centrifuge extends EventEmitter {
         // method: this._methodType.CONNECT
       };
 
-      if (this._credentials || this._connectData) {
+      if (this._token || this._connectData) {
         msg.params = {};
       }
 
-      if (this._credentials) {
-        msg.params.credentials = this._credentials;
+      if (this._token) {
+        msg.params.token = this._token;
       }
 
       if (this._connectData) {
@@ -529,9 +529,8 @@ export class Centrifuge extends EventEmitter {
   };
 
   _refresh() {
-    // ask web app for connection parameters - user ID,
-    // timestamp, info and token
-    this._debug('refresh credentials');
+    // ask application for new connection token.
+    this._debug('refresh token');
 
     if (this._config.refreshAttempts === 0) {
       this._debug('refresh attempts set to 0, do not send refresh request at all');
@@ -561,25 +560,20 @@ export class Centrifuge extends EventEmitter {
         return;
       }
       this._numRefreshFailed = 0;
-      if (this._credentials === null) {
+      if (this._token === null) {
         return;
       }
-      this._credentials.user = data.user;
-      this._credentials.exp = data.exp;
-      if ('info' in data) {
-        this._credentials.info = data.info;
-      }
-      this._credentials.sign = data.sign;
+      this._token = data.token;
       if (this._isDisconnected()) {
-        this._debug('credentials refreshed, connect from scratch');
+        this._debug('token refreshed, connect from scratch');
         this._connect();
       } else {
-        this._debug('send refreshed credentials');
+        this._debug('send refreshed token');
 
         const msg = {
           method: this._methodType.REFRESH,
           params: {
-            credentials: this._credentials
+            token: this._token
           }
         };
 
@@ -1126,14 +1120,12 @@ export class Centrifuge extends EventEmitter {
             });
             continue;
           }
-          if (!channelResponse.status || channelResponse.status === 200) {
+          if (channelResponse) {
             const msg = {
               method: this._methodType.SUBSCRIBE,
               params: {
-                channel,
-                client: this._clientID,
-                info: channelResponse.info,
-                sign: channelResponse.sign
+                channel: channel,
+                token: channelResponse.token
               }
             };
 

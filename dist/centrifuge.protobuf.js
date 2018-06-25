@@ -2551,7 +2551,7 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
     _this._latency = null;
     _this._latencyStart = null;
     _this._connectData = null;
-    _this._credentials = null;
+    _this._token = null;
     _this._config = {
       debug: false,
       sockjs: null,
@@ -2585,9 +2585,9 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
   }
 
   _createClass(Centrifuge, [{
-    key: 'setCredentials',
-    value: function setCredentials(credentials) {
-      this._credentials = credentials;
+    key: 'setToken',
+    value: function setToken(token) {
+      this._token = token;
     }
   }, {
     key: 'setConnectData',
@@ -2871,12 +2871,12 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
           // method: this._methodType.CONNECT
         };
 
-        if (_this3._credentials || _this3._connectData) {
+        if (_this3._token || _this3._connectData) {
           msg.params = {};
         }
 
-        if (_this3._credentials) {
-          msg.params.credentials = _this3._credentials;
+        if (_this3._token) {
+          msg.params.token = _this3._token;
         }
 
         if (_this3._connectData) {
@@ -3062,9 +3062,8 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
     value: function _refresh() {
       var _this6 = this;
 
-      // ask web app for connection parameters - user ID,
-      // timestamp, info and token
-      this._debug('refresh credentials');
+      // ask application for new connection token.
+      this._debug('refresh token');
 
       if (this._config.refreshAttempts === 0) {
         this._debug('refresh attempts set to 0, do not send refresh request at all');
@@ -3096,25 +3095,20 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
           return;
         }
         _this6._numRefreshFailed = 0;
-        if (_this6._credentials === null) {
+        if (_this6._token === null) {
           return;
         }
-        _this6._credentials.user = data.user;
-        _this6._credentials.exp = data.exp;
-        if ('info' in data) {
-          _this6._credentials.info = data.info;
-        }
-        _this6._credentials.sign = data.sign;
+        _this6._token = data.token;
         if (_this6._isDisconnected()) {
-          _this6._debug('credentials refreshed, connect from scratch');
+          _this6._debug('token refreshed, connect from scratch');
           _this6._connect();
         } else {
-          _this6._debug('send refreshed credentials');
+          _this6._debug('send refreshed token');
 
           var msg = {
             method: _this6._methodType.REFRESH,
             params: {
-              credentials: _this6._credentials
+              token: _this6._token
             }
           };
 
@@ -3709,14 +3703,12 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
                 });
                 return 'continue';
               }
-              if (!channelResponse.status || channelResponse.status === 200) {
+              if (channelResponse) {
                 var msg = {
                   method: _this12._methodType.SUBSCRIBE,
                   params: {
                     channel: channel,
-                    client: _this12._clientID,
-                    info: channelResponse.info,
-                    sign: channelResponse.sign
+                    token: channelResponse.token
                   }
                 };
 
@@ -9776,7 +9768,7 @@ path.resolve = function resolve(originPath, includePath, alreadyNormalized) {
 /* 49 */
 /***/ (function(module, exports) {
 
-module.exports = {"nested":{"proto":{"nested":{"Error":{"fields":{"code":{"type":"uint32","id":1},"message":{"type":"string","id":2}}},"MethodType":{"values":{"CONNECT":0,"SUBSCRIBE":1,"UNSUBSCRIBE":2,"PUBLISH":3,"PRESENCE":4,"PRESENCE_STATS":5,"HISTORY":6,"PING":7,"SEND":8,"RPC":9,"REFRESH":10}},"Command":{"fields":{"id":{"type":"uint32","id":1},"method":{"type":"MethodType","id":2},"params":{"type":"bytes","id":3}}},"Reply":{"fields":{"id":{"type":"uint32","id":1},"error":{"type":"Error","id":2},"result":{"type":"bytes","id":3}}},"PushType":{"values":{"PUBLICATION":0,"JOIN":1,"LEAVE":2,"UNSUB":3,"MESSAGE":4}},"Push":{"fields":{"type":{"type":"PushType","id":1},"channel":{"type":"string","id":2},"data":{"type":"bytes","id":3}}},"ClientInfo":{"fields":{"user":{"type":"string","id":1},"client":{"type":"string","id":2},"connInfo":{"type":"bytes","id":3},"chanInfo":{"type":"bytes","id":4}}},"Publication":{"fields":{"uid":{"type":"string","id":1},"data":{"type":"bytes","id":2},"info":{"type":"ClientInfo","id":3}}},"Join":{"fields":{"info":{"type":"ClientInfo","id":1}}},"Leave":{"fields":{"info":{"type":"ClientInfo","id":1}}},"Unsub":{"fields":{}},"Message":{"fields":{"data":{"type":"bytes","id":1}}},"SignedCredentials":{"fields":{"user":{"type":"string","id":1},"exp":{"type":"string","id":2},"info":{"type":"string","id":3},"opts":{"type":"string","id":4},"sign":{"type":"string","id":5}}},"ConnectRequest":{"fields":{"credentials":{"type":"SignedCredentials","id":1},"data":{"type":"bytes","id":2}}},"ConnectResult":{"fields":{"client":{"type":"string","id":1},"version":{"type":"string","id":2},"expires":{"type":"bool","id":3},"expired":{"type":"bool","id":4},"ttl":{"type":"uint32","id":5},"data":{"type":"bytes","id":6}}},"RefreshRequest":{"fields":{"credentials":{"type":"SignedCredentials","id":1}}},"RefreshResult":{"fields":{"client":{"type":"string","id":1},"version":{"type":"string","id":2},"expires":{"type":"bool","id":3},"expired":{"type":"bool","id":4},"ttl":{"type":"uint32","id":5},"meta":{"type":"bytes","id":6}}},"SubscribeRequest":{"fields":{"channel":{"type":"string","id":1},"client":{"type":"string","id":2},"info":{"type":"string","id":3},"sign":{"type":"string","id":4},"recover":{"type":"bool","id":5},"last":{"type":"string","id":6},"away":{"type":"uint32","id":7}}},"SubscribeResult":{"fields":{"last":{"type":"string","id":1},"recovered":{"type":"bool","id":2},"publications":{"rule":"repeated","type":"Publication","id":3}}},"UnsubscribeRequest":{"fields":{"channel":{"type":"string","id":1}}},"UnsubscribeResult":{"fields":{}},"PublishRequest":{"fields":{"channel":{"type":"string","id":1},"data":{"type":"bytes","id":2}}},"PublishResult":{"fields":{}},"PresenceRequest":{"fields":{"channel":{"type":"string","id":1}}},"PresenceResult":{"fields":{"presence":{"keyType":"string","type":"ClientInfo","id":1}}},"PresenceStatsRequest":{"fields":{"channel":{"type":"string","id":1}}},"PresenceStatsResult":{"fields":{"numClients":{"type":"uint32","id":1},"numUsers":{"type":"uint32","id":2}}},"HistoryRequest":{"fields":{"channel":{"type":"string","id":1}}},"HistoryResult":{"fields":{"publications":{"rule":"repeated","type":"Publication","id":1}}},"PingRequest":{"fields":{"data":{"type":"string","id":1}}},"PingResult":{"fields":{"data":{"type":"string","id":1}}},"RPCRequest":{"fields":{"data":{"type":"bytes","id":1}}},"RPCResult":{"fields":{"data":{"type":"bytes","id":1}}},"SendRequest":{"fields":{"data":{"type":"bytes","id":1}}}}}}}
+module.exports = {"nested":{"proto":{"nested":{"Error":{"fields":{"code":{"type":"uint32","id":1},"message":{"type":"string","id":2}}},"MethodType":{"values":{"CONNECT":0,"SUBSCRIBE":1,"UNSUBSCRIBE":2,"PUBLISH":3,"PRESENCE":4,"PRESENCE_STATS":5,"HISTORY":6,"PING":7,"SEND":8,"RPC":9,"REFRESH":10}},"Command":{"fields":{"id":{"type":"uint32","id":1},"method":{"type":"MethodType","id":2},"params":{"type":"bytes","id":3}}},"Reply":{"fields":{"id":{"type":"uint32","id":1},"error":{"type":"Error","id":2},"result":{"type":"bytes","id":3}}},"PushType":{"values":{"PUBLICATION":0,"JOIN":1,"LEAVE":2,"UNSUB":3,"MESSAGE":4}},"Push":{"fields":{"type":{"type":"PushType","id":1},"channel":{"type":"string","id":2},"data":{"type":"bytes","id":3}}},"ClientInfo":{"fields":{"user":{"type":"string","id":1},"client":{"type":"string","id":2},"connInfo":{"type":"bytes","id":3},"chanInfo":{"type":"bytes","id":4}}},"Publication":{"fields":{"uid":{"type":"string","id":1},"data":{"type":"bytes","id":2},"info":{"type":"ClientInfo","id":3}}},"Join":{"fields":{"info":{"type":"ClientInfo","id":1}}},"Leave":{"fields":{"info":{"type":"ClientInfo","id":1}}},"Unsub":{"fields":{}},"Message":{"fields":{"data":{"type":"bytes","id":1}}},"ConnectRequest":{"fields":{"token":{"type":"string","id":1},"data":{"type":"bytes","id":2}}},"ConnectResult":{"fields":{"client":{"type":"string","id":1},"version":{"type":"string","id":2},"expires":{"type":"bool","id":3},"expired":{"type":"bool","id":4},"ttl":{"type":"uint32","id":5},"data":{"type":"bytes","id":6}}},"RefreshRequest":{"fields":{"token":{"type":"string","id":1}}},"RefreshResult":{"fields":{"client":{"type":"string","id":1},"version":{"type":"string","id":2},"expires":{"type":"bool","id":3},"expired":{"type":"bool","id":4},"ttl":{"type":"uint32","id":5},"meta":{"type":"bytes","id":6}}},"SubscribeRequest":{"fields":{"channel":{"type":"string","id":1},"recover":{"type":"bool","id":2},"last":{"type":"string","id":3},"away":{"type":"uint32","id":4},"token":{"type":"string","id":5}}},"SubscribeResult":{"fields":{"last":{"type":"string","id":1},"recovered":{"type":"bool","id":2},"publications":{"rule":"repeated","type":"Publication","id":3}}},"UnsubscribeRequest":{"fields":{"channel":{"type":"string","id":1}}},"UnsubscribeResult":{"fields":{}},"PublishRequest":{"fields":{"channel":{"type":"string","id":1},"data":{"type":"bytes","id":2}}},"PublishResult":{"fields":{}},"PresenceRequest":{"fields":{"channel":{"type":"string","id":1}}},"PresenceResult":{"fields":{"presence":{"keyType":"string","type":"ClientInfo","id":1}}},"PresenceStatsRequest":{"fields":{"channel":{"type":"string","id":1}}},"PresenceStatsResult":{"fields":{"numClients":{"type":"uint32","id":1},"numUsers":{"type":"uint32","id":2}}},"HistoryRequest":{"fields":{"channel":{"type":"string","id":1}}},"HistoryResult":{"fields":{"publications":{"rule":"repeated","type":"Publication","id":1}}},"PingRequest":{"fields":{"data":{"type":"string","id":1}}},"PingResult":{"fields":{"data":{"type":"string","id":1}}},"RPCRequest":{"fields":{"data":{"type":"bytes","id":1}}},"RPCResult":{"fields":{"data":{"type":"bytes","id":1}}},"SendRequest":{"fields":{"data":{"type":"bytes","id":1}}}}}}}
 
 /***/ })
 /******/ ]);

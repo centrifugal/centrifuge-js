@@ -149,34 +149,10 @@
             }
           }
         },
-        "SignedCredentials": {
-          "fields": {
-            "user": {
-              "type": "string",
-              "id": 1
-            },
-            "exp": {
-              "type": "string",
-              "id": 2
-            },
-            "info": {
-              "type": "string",
-              "id": 3
-            },
-            "opts": {
-              "type": "string",
-              "id": 4
-            },
-            "sign": {
-              "type": "string",
-              "id": 5
-            }
-          }
-        },
         "ConnectRequest": {
           "fields": {
-            "credentials": {
-              "type": "SignedCredentials",
+            "token": {
+              "type": "string",
               "id": 1
             },
             "data": {
@@ -215,8 +191,8 @@
         },
         "RefreshRequest": {
           "fields": {
-            "credentials": {
-              "type": "SignedCredentials",
+            "token": {
+              "type": "string",
               "id": 1
             }
           }
@@ -255,29 +231,21 @@
               "type": "string",
               "id": 1
             },
-            "client": {
-              "type": "string",
-              "id": 2
-            },
-            "info": {
-              "type": "string",
-              "id": 3
-            },
-            "sign": {
-              "type": "string",
-              "id": 4
-            },
             "recover": {
               "type": "bool",
-              "id": 5
+              "id": 2
             },
             "last": {
               "type": "string",
-              "id": 6
+              "id": 3
             },
             "away": {
               "type": "uint32",
-              "id": 7
+              "id": 4
+            },
+            "token": {
+              "type": "string",
+              "id": 5
             }
           }
         },

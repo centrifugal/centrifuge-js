@@ -137,6 +137,10 @@ function isString(value) {
     return typeof value === 'string' || value instanceof String;
 }
 
+function isArray(value) {
+    return Object.prototype.toString.call(value) === Object.prototype.toString.call([]);
+}
+
 function isFunction(value) {
     if (value === undefined || value === null) {
         return false;
@@ -1261,7 +1265,7 @@ centrifugeProto._dispatchMessage = function (message) {
 };
 
 centrifugeProto._receive = function (data) {
-    if (Object.prototype.toString.call(data) === Object.prototype.toString.call([])) {
+    if (isArray(data)) {
         // array of responses received
         for (var i in data) {
             if (data.hasOwnProperty(i)) {
@@ -1436,6 +1440,22 @@ centrifugeProto.stopAuthBatching = function () {
             return;
         }
 
+        var channelsData;
+        if (data.channels && isArray(data.channels)) {
+            // data is object with top level key channels containing array of channel data.
+            // TODO: make this default format in v2. 
+            channelsData = {};
+            for (i in data.channels) {
+                var channelData = data.channels[i];
+                if (!channelData.channel) {
+                    continue;
+                }
+                channelsData[channelData.channel] = channelData;
+            }
+        } else {
+            channelsData = data; // data is map of channels.
+        }
+
         // try to send all subscriptions in one request.
         var batch = false;
         if (!self._isBatching) {
@@ -1446,7 +1466,7 @@ centrifugeProto.stopAuthBatching = function () {
         for (i in channels) {
             if (channels.hasOwnProperty(i)) {
                 channel = channels[i];
-                var channelResponse = data[channel];
+                var channelResponse = channelsData[channel];
                 if (!channelResponse) {
                     // subscription:error
                     self._subscribeResponse({

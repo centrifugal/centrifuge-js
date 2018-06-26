@@ -43,8 +43,8 @@ export class Centrifuge extends EventEmitter {
     this._lastPubUID = {};
     this._messages = [];
     this._isBatching = false;
-    this._isAuthBatching = false;
-    this._authChannels = {};
+    this._isSubscribeBatching = false;
+    this._privateChannels = {};
     this._numRefreshFailed = 0;
     this._refreshTimeout = null;
     this._pingInterval = null;
@@ -89,10 +89,10 @@ export class Centrifuge extends EventEmitter {
       refreshInterval: 3000,
       onRefreshFailed: null,
       onRefresh: null,
-      authEndpoint: '/centrifuge/auth',
-      authHeaders: {},
-      authParams: {},
-      onAuth: null
+      subscribeEndpoint: '/centrifuge/subscribe',
+      subscribeHeaders: {},
+      subscribeParams: {},
+      onPrivateSubscribe: null
     };
     this._configure(options);
   }
@@ -627,12 +627,12 @@ export class Centrifuge extends EventEmitter {
     // and we should ask web application backend for permission first.
     if (startsWith(channel, this._config.privateChannelPrefix)) {
       // private channel
-      if (this._isAuthBatching) {
-        this._authChannels[channel] = true;
+      if (this._isSubscribeBatching) {
+        this._privateChannels[channel] = true;
       } else {
-        this.startAuthBatching();
+        this.startSubscribeBatching();
         this._subscribe(sub);
-        this.stopAuthBatching();
+        this.stopSubscribeBatching();
       }
     } else {
       const recover = this._recover(sub);
@@ -714,7 +714,7 @@ export class Centrifuge extends EventEmitter {
 
     if (this._config.resubscribe) {
       this.startBatching();
-      this.startAuthBatching();
+      this.startSubscribeBatching();
       for (const channel in this._subs) {
         if (this._subs.hasOwnProperty(channel)) {
           const sub = this._subs[channel];
@@ -723,8 +723,8 @@ export class Centrifuge extends EventEmitter {
           }
         }
       }
-      this.stopAuthBatching();
-      this.stopBatching(true);
+      this.stopSubscribeBatching();
+      this.stopBatching();
     }
 
     this._restartPing();
@@ -970,7 +970,6 @@ export class Centrifuge extends EventEmitter {
     }
     this._debug('no last uid found for channel', channel);
     return '';
-
   };
 
   _createErrorObject(message, code) {
@@ -1035,33 +1034,24 @@ export class Centrifuge extends EventEmitter {
     this._isBatching = true;
   };
 
-  stopBatching(flush) {
-    // stop collecting messages
-    flush = flush || false;
+  stopBatching() {
     this._isBatching = false;
-    if (flush === true) {
-      this.flush();
-    }
-  };
-
-  flush() {
-    // send batched messages to Centrifuge
     this._flush();
   };
 
-  startAuthBatching() {
+  startSubscribeBatching() {
     // start collecting private channels to create bulk authentication
-    // request to authEndpoint when stopAuthBatching will be called
-    this._isAuthBatching = true;
+    // request to subscribeEndpoint when stopSubscribeBatching will be called
+    this._isSubscribeBatching = true;
   };
 
-  stopAuthBatching() {
-    // create request to authEndpoint with collected private channels
+  stopSubscribeBatching() {
+    // create request to subscribeEndpoint with collected private channels
     // to ask if this client can subscribe on each channel
-    this._isAuthBatching = false;
-    const authChannels = this._authChannels;
+    this._isSubscribeBatching = false;
+    const authChannels = this._privateChannels;
 
-    this._authChannels = {};
+    this._privateChannels = {};
     const channels = [];
 
     for (const channel in authChannels) {
@@ -1090,13 +1080,21 @@ export class Centrifuge extends EventEmitter {
         for (const i in channels) {
           if (channels.hasOwnProperty(i)) {
             const channel = channels[i];
-            this._subscribeResponse({
-              error: 'authorization request failed',
-              body: {channel}
-            });
+            this._subscribeError(channel, this._createErrorObject('authorization request failed'));
           }
         }
         return;
+      }
+
+      let channelsData = {};
+      if (data.channels) {
+        for (const i in data.channels) {
+          const channelData = data.channels[i];
+          if (!channelData.channel) {
+            continue;
+          }
+          channelsData[channelData.channel] = channelData.token;
+        }
       }
 
       // try to send all subscriptions in one request.
@@ -1110,17 +1108,13 @@ export class Centrifuge extends EventEmitter {
       for (const i in channels) {
         if (channels.hasOwnProperty(i)) {
           const channel = channels[i];
-          const channelResponse = data[channel];
+          const channelResponse = channelsData[channel];
 
           if (!channelResponse) {
             // subscription:error
-            this._subscribeResponse({
-              error: 'channel not found in authorization response',
-              body: {channel}
-            });
+            this._subscribeError(channel, this._createErrorObject('channel not found in authorization response'));
             continue;
-          }
-          if (channelResponse) {
+          } else {
             const msg = {
               method: this._methodType.SUBSCRIBE,
               params: {
@@ -1152,27 +1146,22 @@ export class Centrifuge extends EventEmitter {
             }, err => {
               this._subscribeError(channel, err);
             });
-          } else {
-            this._subscribeResponse({
-              error: channelResponse.status,
-              body: {channel}
-            });
           }
         }
       }
 
       if (batch) {
-        this.stopBatching(true);
+        this.stopBatching();
       }
 
     };
 
-    if (this._config.onAuth !== null) {
-      this._config.onAuth({
+    if (this._config.onPrivateSubscribe !== null) {
+      this._config.onPrivateSubscribe({
         data: data
       }, cb);
     } else {
-      this._ajax(this._config.authEndpoint, this._config.authParams, this._config.authHeaders, data, cb);
+      this._ajax(this._config.subscribeEndpoint, this._config.subscribeParams, this._config.subscribeHeaders, data, cb);
     }
   };
 

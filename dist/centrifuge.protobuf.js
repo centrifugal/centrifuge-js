@@ -2540,8 +2540,8 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
     _this._lastPubUID = {};
     _this._messages = [];
     _this._isBatching = false;
-    _this._isAuthBatching = false;
-    _this._authChannels = {};
+    _this._isSubscribeBatching = false;
+    _this._privateChannels = {};
     _this._numRefreshFailed = 0;
     _this._refreshTimeout = null;
     _this._pingInterval = null;
@@ -2575,10 +2575,10 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
       refreshInterval: 3000,
       onRefreshFailed: null,
       onRefresh: null,
-      authEndpoint: '/centrifuge/auth',
-      authHeaders: {},
-      authParams: {},
-      onAuth: null
+      subscribeEndpoint: '/centrifuge/subscribe',
+      subscribeHeaders: {},
+      subscribeParams: {},
+      onPrivateSubscribe: null
     };
     _this._configure(options);
     return _this;
@@ -3159,12 +3159,12 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
       // and we should ask web application backend for permission first.
       if ((0, _utils.startsWith)(channel, this._config.privateChannelPrefix)) {
         // private channel
-        if (this._isAuthBatching) {
-          this._authChannels[channel] = true;
+        if (this._isSubscribeBatching) {
+          this._privateChannels[channel] = true;
         } else {
-          this.startAuthBatching();
+          this.startSubscribeBatching();
           this._subscribe(sub);
-          this.stopAuthBatching();
+          this.stopSubscribeBatching();
         }
       } else {
         var recover = this._recover(sub);
@@ -3254,7 +3254,7 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
 
       if (this._config.resubscribe) {
         this.startBatching();
-        this.startAuthBatching();
+        this.startSubscribeBatching();
         for (var channel in this._subs) {
           if (this._subs.hasOwnProperty(channel)) {
             var sub = this._subs[channel];
@@ -3263,8 +3263,8 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
             }
           }
         }
-        this.stopAuthBatching();
-        this.stopBatching(true);
+        this.stopSubscribeBatching();
+        this.stopBatching();
       }
 
       this._restartPing();
@@ -3612,38 +3612,28 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
     }
   }, {
     key: 'stopBatching',
-    value: function stopBatching(flush) {
-      // stop collecting messages
-      flush = flush || false;
+    value: function stopBatching() {
       this._isBatching = false;
-      if (flush === true) {
-        this.flush();
-      }
-    }
-  }, {
-    key: 'flush',
-    value: function flush() {
-      // send batched messages to Centrifuge
       this._flush();
     }
   }, {
-    key: 'startAuthBatching',
-    value: function startAuthBatching() {
+    key: 'startSubscribeBatching',
+    value: function startSubscribeBatching() {
       // start collecting private channels to create bulk authentication
-      // request to authEndpoint when stopAuthBatching will be called
-      this._isAuthBatching = true;
+      // request to subscribeEndpoint when stopSubscribeBatching will be called
+      this._isSubscribeBatching = true;
     }
   }, {
-    key: 'stopAuthBatching',
-    value: function stopAuthBatching() {
+    key: 'stopSubscribeBatching',
+    value: function stopSubscribeBatching() {
       var _this12 = this;
 
-      // create request to authEndpoint with collected private channels
+      // create request to subscribeEndpoint with collected private channels
       // to ask if this client can subscribe on each channel
-      this._isAuthBatching = false;
-      var authChannels = this._authChannels;
+      this._isSubscribeBatching = false;
+      var authChannels = this._privateChannels;
 
-      this._authChannels = {};
+      this._privateChannels = {};
       var channels = [];
 
       for (var channel in authChannels) {
@@ -3672,13 +3662,21 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
           for (var i in channels) {
             if (channels.hasOwnProperty(i)) {
               var _channel = channels[i];
-              _this12._subscribeResponse({
-                error: 'authorization request failed',
-                body: { channel: _channel }
-              });
+              _this12._subscribeError(_channel, _this12._createErrorObject('authorization request failed'));
             }
           }
           return;
+        }
+
+        var channelsData = {};
+        if (data.channels) {
+          for (var _i in data.channels) {
+            var channelData = data.channels[_i];
+            if (!channelData.channel) {
+              continue;
+            }
+            channelsData[channelData.channel] = channelData.token;
+          }
         }
 
         // try to send all subscriptions in one request.
@@ -3689,21 +3687,17 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
           batch = true;
         }
 
-        for (var _i in channels) {
-          if (channels.hasOwnProperty(_i)) {
+        for (var _i2 in channels) {
+          if (channels.hasOwnProperty(_i2)) {
             var _ret = function () {
-              var channel = channels[_i];
-              var channelResponse = data[channel];
+              var channel = channels[_i2];
+              var channelResponse = channelsData[channel];
 
               if (!channelResponse) {
                 // subscription:error
-                _this12._subscribeResponse({
-                  error: 'channel not found in authorization response',
-                  body: { channel: channel }
-                });
+                _this12._subscribeError(channel, _this12._createErrorObject('channel not found in authorization response'));
                 return 'continue';
-              }
-              if (channelResponse) {
+              } else {
                 var msg = {
                   method: _this12._methodType.SUBSCRIBE,
                   params: {
@@ -3735,11 +3729,6 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
                 }, function (err) {
                   _this12._subscribeError(channel, err);
                 });
-              } else {
-                _this12._subscribeResponse({
-                  error: channelResponse.status,
-                  body: { channel: channel }
-                });
               }
             }();
 
@@ -3748,16 +3737,16 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
         }
 
         if (batch) {
-          _this12.stopBatching(true);
+          _this12.stopBatching();
         }
       };
 
-      if (this._config.onAuth !== null) {
-        this._config.onAuth({
+      if (this._config.onPrivateSubscribe !== null) {
+        this._config.onPrivateSubscribe({
           data: data
         }, cb);
       } else {
-        this._ajax(this._config.authEndpoint, this._config.authParams, this._config.authHeaders, data, cb);
+        this._ajax(this._config.subscribeEndpoint, this._config.subscribeParams, this._config.subscribeHeaders, data, cb);
       }
     }
   }, {

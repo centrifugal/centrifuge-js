@@ -3193,6 +3193,7 @@ centrifugeProto.stopAuthBatching = function () {
         if (data.channels && isArray(data.channels)) {
             // data is object with top level key channels containing array of channel data.
             // TODO: make this default format in v2. 
+            channelsData = {};
             for (i in data.channels) {
                 var channelData = data.channels[i];
                 if (!channelData.channel) {

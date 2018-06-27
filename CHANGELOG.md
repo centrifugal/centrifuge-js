@@ -1,3 +1,21 @@
+1.4.9
+=====
+
+* support new private subscription response format. Now it's possible to return JSON of this kind:
+
+```json
+{
+  "channels": [
+    {
+      "channel": "$one",
+      "sign": "..."
+    }
+  ]
+}
+```
+
+I.e. object with `channels` on top level which is an array of objects with channel data. This resolves issues with API generators that do not support map on top level. This is also a bit more extendable and most probably will be default format in v2.
+
 1.4.8
 =====
 

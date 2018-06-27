@@ -1108,18 +1108,18 @@ export class Centrifuge extends EventEmitter {
       for (const i in channels) {
         if (channels.hasOwnProperty(i)) {
           const channel = channels[i];
-          const channelResponse = channelsData[channel];
+          const token = channelsData[channel];
 
-          if (!channelResponse) {
+          if (!token) {
             // subscription:error
-            this._subscribeError(channel, this._createErrorObject('channel not found in authorization response'));
+            this._subscribeError(channel, this._createErrorObject('channel token not provided'));
             continue;
           } else {
             const msg = {
               method: this._methodType.SUBSCRIBE,
               params: {
                 channel: channel,
-                token: channelResponse.token
+                token: token
               }
             };
 

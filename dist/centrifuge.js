@@ -1291,18 +1291,18 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
           if (channels.hasOwnProperty(_i2)) {
             var _ret = function () {
               var channel = channels[_i2];
-              var channelResponse = channelsData[channel];
+              var token = channelsData[channel];
 
-              if (!channelResponse) {
+              if (!token) {
                 // subscription:error
-                _this12._subscribeError(channel, _this12._createErrorObject('channel not found in authorization response'));
+                _this12._subscribeError(channel, _this12._createErrorObject('channel token not provided'));
                 return 'continue';
               } else {
                 var msg = {
                   method: _this12._methodType.SUBSCRIBE,
                   params: {
                     channel: channel,
-                    token: channelResponse.token
+                    token: token
                   }
                 };
 

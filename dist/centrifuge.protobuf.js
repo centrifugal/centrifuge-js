@@ -2574,12 +2574,13 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
       refreshParams: {},
       refreshData: {},
       refreshAttempts: null,
-      refreshInterval: 3000,
+      refreshInterval: 1000,
       onRefreshFailed: null,
       onRefresh: null,
       subscribeEndpoint: '/centrifuge/subscribe',
       subscribeHeaders: {},
       subscribeParams: {},
+      subRefreshInterval: 1000,
       onPrivateSubscribe: null
     };
     _this._configure(options);
@@ -2602,7 +2603,6 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
       var _this2 = this;
 
       var query = '';
-
       this._debug('sending AJAX request to', url);
 
       var xhr = global.XMLHttpRequest ? new global.XMLHttpRequest() : new global.ActiveXObject('Microsoft.XMLHTTP');
@@ -2809,10 +2809,17 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
         }
       }
 
+      // clear refresh timer
+      if (this._refreshTimeout !== null) {
+        clearTimeout(this._refreshTimeout);
+        this._refreshTimeout = null;
+      }
+
       // clear sub refresh timers
       for (var _channel in this._subRefreshTimeouts) {
-        if (this._subRefreshTimeouts.hasOwnProperty(_channel)) {
+        if (this._subRefreshTimeouts.hasOwnProperty(_channel) && this._subRefreshTimeouts[_channel] !== null) {
           clearTimeout(this._subRefreshTimeouts[_channel]);
+          this._subRefreshTimeouts[_channel] = null;
         }
       }
       this._subRefreshTimeouts = {};
@@ -2864,7 +2871,7 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
 
       this._transport.onopen = function () {
         _this3._transportClosed = false;
-        _this3._reconnecting = false;
+
         if (_this3._isSockjs) {
           _this3._transportName = 'sockjs-' + _this3._transport.transport;
           _this3._transport.onheartbeat = function () {
@@ -2873,8 +2880,6 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
         } else {
           _this3._transportName = 'websocket';
         }
-
-        _this3._resetRetry();
 
         // Can omit method here due to zero value.
         var msg = {
@@ -2896,7 +2901,11 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
         _this3._latencyStart = new Date();
         _this3._call(msg).then(function (result) {
           _this3._connectResponse(_this3._decoder.decodeCommandResult(_this3._methodType.CONNECT, result));
-        }, function () {
+        }, function (err) {
+          if (err.code === 109) {
+            // token expired.
+            _this3._expires = true;
+          }
           _this3._disconnect('connect error', true);
         });
       };
@@ -2913,7 +2922,6 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
         if (closeEvent && 'reason' in closeEvent && closeEvent.reason) {
           try {
             var advice = JSON.parse(closeEvent.reason);
-
             _this3._debug('reason is an advice object', advice);
             reason = advice.reason;
             needReconnect = advice.reconnect;
@@ -2944,7 +2952,11 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
           _this3._debug('reconnect after ' + interval + ' milliseconds');
           setTimeout(function () {
             if (_this3._reconnect === true) {
-              _this3._connect();
+              if (_this3._expires) {
+                _this3._refresh();
+              } else {
+                _this3._connect();
+              }
             }
           }, interval);
         }
@@ -3041,6 +3053,7 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
         this._setStatus('disconnected');
         if (this._refreshTimeout) {
           clearTimeout(this._refreshTimeout);
+          this._refreshTimeout = null;
         }
         if (this._reconnecting === false) {
           this.emit('disconnect', {
@@ -3081,25 +3094,31 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
 
       if (this._refreshTimeout !== null) {
         clearTimeout(this._refreshTimeout);
+        this._refreshTimeout = null;
       }
 
       var cb = function cb(error, data) {
         if (error === true) {
           // We don't perform any connection status related actions here as we are
-          // relying on Centrifugo that must close connection eventually.
-          _this6._debug('error getting connection credentials from refresh endpoint', data);
-          _this6._numRefreshFailed++;
-          if (_this6._refreshTimeout) {
+          // relying on server that must close connection eventually.
+          _this6._debug('error refreshing connection token', data);
+          if (!_this6._reconnecting) {
+            _this6._numRefreshFailed++;
+          }
+          if (_this6._refreshTimeout !== null) {
             clearTimeout(_this6._refreshTimeout);
+            _this6._refreshTimeout = null;
           }
           if (_this6._config.refreshAttempts !== null && _this6._numRefreshFailed >= _this6._config.refreshAttempts) {
             _this6._refreshFailed();
             return;
           }
-          var interval = _this6._config.refreshInterval + Math.round(Math.random() * 1000);
-          _this6._refreshTimeout = setTimeout(function () {
-            return _this6._refresh();
-          }, interval);
+          if (!_this6._reconnecting) {
+            var interval = _this6._config.refreshInterval + Math.round(Math.random() * 1000);
+            _this6._refreshTimeout = setTimeout(function () {
+              return _this6._refresh();
+            }, interval);
+          }
           return;
         }
         _this6._numRefreshFailed = 0;
@@ -3121,8 +3140,8 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
           };
           _this6._call(msg).then(function (result) {
             _this6._refreshResponse(_this6._decoder.decodeCommandResult(_this6._methodType.REFRESH, result));
-          }, function () {
-            _this6._disconnect('refresh error', true);
+          }, function (err) {
+            _this6._refreshError(err);
           });
         }
       };
@@ -3135,15 +3154,49 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
       }
     }
   }, {
-    key: '_subRefresh',
-    value: function _subRefresh(channel) {
+    key: '_refreshError',
+    value: function _refreshError(err) {
       var _this7 = this;
 
-      // ask application for new connection token.
+      this._debug('refresh error', err);
+      if (this._refreshTimeout) {
+        clearTimeout(this._refreshTimeout);
+        this._refreshTimeout = null;
+      }
+      var interval = this._config.refreshInterval + Math.round(Math.random() * 1000);
+      this._refreshTimeout = setTimeout(function () {
+        return _this7._refresh();
+      }, interval);
+    }
+  }, {
+    key: '_refreshResponse',
+    value: function _refreshResponse(result) {
+      var _this8 = this;
+
+      if (this._refreshTimeout) {
+        clearTimeout(this._refreshTimeout);
+        this._refreshTimeout = null;
+      }
+      if (result.expires) {
+        this._expires = true;
+        this._clientID = result.client;
+        this._refreshTimeout = setTimeout(function () {
+          return _this8._refresh();
+        }, result.ttl * 1000);
+      } else {
+        this._expires = false;
+      }
+    }
+  }, {
+    key: '_subRefresh',
+    value: function _subRefresh(channel) {
+      var _this9 = this;
+
       this._debug('refresh subscription token for channel', channel);
 
       if (this._subRefreshTimeouts[channel] !== undefined) {
         clearTimeout(this._subRefreshTimeouts[channel]);
+        delete this._subRefreshTimeouts[channel];
       } else {
         return;
       }
@@ -3169,23 +3222,22 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
           return;
         }
         var msg = {
-          method: _this7._methodType.SUB_REFRESH,
+          method: _this9._methodType.SUB_REFRESH,
           params: {
             channel: channel,
             token: token
           }
         };
 
-        var sub = _this7._getSub(channel);
+        var sub = _this9._getSub(channel);
         if (sub === null) {
           return;
         }
 
-        _this7._call(msg).then(function (result) {
-          _this7._subRefreshResponse(channel, _this7._decoder.decodeCommandResult(_this7._methodType.SUB_REFRESH, result));
+        _this9._call(msg).then(function (result) {
+          _this9._subRefreshResponse(channel, _this9._decoder.decodeCommandResult(_this9._methodType.SUB_REFRESH, result));
         }, function (err) {
-          _this7._debug('subscription refresh error', err);
-          // this._subRefreshError(channel, err);
+          _this9._subRefreshError(channel, err);
         });
       };
 
@@ -3203,30 +3255,43 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
       }
     }
   }, {
-    key: '_subRefreshResponse',
-    value: function _subRefreshResponse(channel, result) {
-      var _this8 = this;
+    key: '_subRefreshError',
+    value: function _subRefreshError(channel, err) {
+      var _this10 = this;
 
+      this._debug('subscription refresh error', channel, err);
       if (this._subRefreshTimeouts[channel] !== undefined) {
         clearTimeout(this._subRefreshTimeouts[channel]);
         delete this._subRefreshTimeouts[channel];
-      } else {
-        return;
       }
-
       var sub = this._getSub(channel);
       if (sub === null) {
         return;
       }
+      var jitter = Math.round(Math.random() * 1000);
+      var subRefreshTimeout = setTimeout(function () {
+        return _this10._subRefresh(channel);
+      }, this._config.subRefreshInterval + jitter);
+      this._subRefreshTimeouts[channel] = subRefreshTimeout;
+      return;
+    }
+  }, {
+    key: '_subRefreshResponse',
+    value: function _subRefreshResponse(channel, result) {
+      var _this11 = this;
 
+      this._debug('subscription refresh success', channel);
+      if (this._subRefreshTimeouts[channel] !== undefined) {
+        clearTimeout(this._subRefreshTimeouts[channel]);
+        delete this._subRefreshTimeouts[channel];
+      }
+      var sub = this._getSub(channel);
+      if (sub === null) {
+        return;
+      }
       if (result.expires === true) {
-        if (result.expired === true) {
-          sub.unsubscribe();
-          sub.subscribe();
-          return;
-        };
         var subRefreshTimeout = setTimeout(function () {
-          return _this8._subRefresh(channel);
+          return _this11._subRefresh(channel);
         }, result.ttl * 1000);
         this._subRefreshTimeouts[channel] = subRefreshTimeout;
       }
@@ -3235,7 +3300,7 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
   }, {
     key: '_subscribe',
     value: function _subscribe(sub) {
-      var _this9 = this;
+      var _this12 = this;
 
       var channel = sub.channel;
 
@@ -3287,9 +3352,9 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
         }
 
         this._call(msg).then(function (result) {
-          _this9._subscribeResponse(channel, _this9._decoder.decodeCommandResult(_this9._methodType.SUBSCRIBE, result));
+          _this12._subscribeResponse(channel, _this12._decoder.decodeCommandResult(_this12._methodType.SUBSCRIBE, result));
         }, function (err) {
-          _this9._subscribeError(err);
+          _this12._subscribeError(err);
         });
       }
     }
@@ -3323,7 +3388,10 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
   }, {
     key: '_connectResponse',
     value: function _connectResponse(result) {
-      var _this10 = this;
+      var _this13 = this;
+
+      this._reconnecting = false;
+      this._resetRetry();
 
       if (this.isConnected()) {
         return;
@@ -3335,14 +3403,6 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
       }
 
       if (result.expires) {
-        var isExpired = result.expired;
-
-        if (isExpired) {
-          this._reconnecting = true;
-          this._disconnect('expired', true);
-          this._refresh();
-          return;
-        }
         this._expires = true;
       } else {
         this._expires = false;
@@ -3355,9 +3415,9 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
         clearTimeout(this._refreshTimeout);
       }
 
-      if (result.expires) {
+      if (this._expires) {
         this._refreshTimeout = setTimeout(function () {
-          return _this10._refresh();
+          return _this13._refresh();
         }, result.ttl * 1000);
       }
 
@@ -3394,15 +3454,17 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
     value: function _stopPing() {
       if (this._pongTimeout !== null) {
         clearTimeout(this._pongTimeout);
+        this._pongTimeout = null;
       }
       if (this._pingInterval !== null) {
         clearInterval(this._pingInterval);
+        this._pingInterval = null;
       }
     }
   }, {
     key: '_startPing',
     value: function _startPing() {
-      var _this11 = this;
+      var _this14 = this;
 
       if (this._config.ping !== true || this._config.pingInterval <= 0) {
         return;
@@ -3412,14 +3474,14 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
       }
 
       this._pingInterval = setInterval(function () {
-        if (!_this11.isConnected()) {
-          _this11._stopPing();
+        if (!_this14.isConnected()) {
+          _this14._stopPing();
           return;
         }
-        _this11.ping();
-        _this11._pongTimeout = setTimeout(function () {
-          _this11._disconnect('no ping', true);
-        }, _this11._config.pongWaitTimeout);
+        _this14.ping();
+        _this14._pongTimeout = setTimeout(function () {
+          _this14._disconnect('no ping', true);
+        }, _this14._config.pongWaitTimeout);
       }, this._config.pingInterval);
     }
   }, {
@@ -3448,7 +3510,7 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
   }, {
     key: '_subscribeResponse',
     value: function _subscribeResponse(channel, result) {
-      var _this12 = this;
+      var _this15 = this;
 
       var sub = this._getSub(channel);
       if (!sub) {
@@ -3488,7 +3550,7 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
 
       if (result.expires === true) {
         var subRefreshTimeout = setTimeout(function () {
-          return _this12._subRefresh(channel);
+          return _this15._subRefresh(channel);
         }, result.ttl * 1000);
         this._subRefreshTimeouts[channel] = subRefreshTimeout;
       }
@@ -3565,29 +3627,6 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
     key: '_handleMessage',
     value: function _handleMessage(message) {
       this.emit('message', message.data);
-    }
-  }, {
-    key: '_refreshResponse',
-    value: function _refreshResponse(result) {
-      var _this13 = this;
-
-      if (this._refreshTimeout) {
-        clearTimeout(this._refreshTimeout);
-      }
-      if (result.expires) {
-        var expired = result.expired;
-        if (expired) {
-          var interval = this._config.refreshInterval + Math.round(Math.random() * 1000);
-          this._refreshTimeout = setTimeout(function () {
-            return _this13._refresh();
-          }, interval);
-          return;
-        }
-        this._clientID = result.client;
-        this._refreshTimeout = setTimeout(function () {
-          return _this13._refresh();
-        }, result.ttl * 1000);
-      }
     }
   }, {
     key: '_handlePush',
@@ -3676,7 +3715,7 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
   }, {
     key: '_registerCall',
     value: function _registerCall(id, callback, errback) {
-      var _this14 = this;
+      var _this16 = this;
 
       this._callbacks[id] = {
         callback: callback,
@@ -3684,9 +3723,9 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
         timeout: null
       };
       this._callbacks[id].timeout = setTimeout(function () {
-        delete _this14._callbacks[id];
+        delete _this16._callbacks[id];
         if ((0, _utils.isFunction)(errback)) {
-          errback(_this14._createErrorObject(_errorTimeout));
+          errback(_this16._createErrorObject(_errorTimeout));
         }
       }, this._config.timeout);
     }
@@ -3751,7 +3790,7 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
   }, {
     key: 'stopSubscribeBatching',
     value: function stopSubscribeBatching() {
-      var _this15 = this;
+      var _this17 = this;
 
       // create request to subscribeEndpoint with collected private channels
       // to ask if this client can subscribe on each channel
@@ -3783,11 +3822,11 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
 
       var cb = function cb(error, data) {
         if (error === true) {
-          _this15._debug('authorization request failed');
+          _this17._debug('authorization request failed');
           for (var i in channels) {
             if (channels.hasOwnProperty(i)) {
               var _channel2 = channels[i];
-              _this15._subscribeError(_channel2, _this15._createErrorObject('authorization request failed'));
+              _this17._subscribeError(_channel2, _this17._createErrorObject('authorization request failed'));
             }
           }
           return;
@@ -3807,8 +3846,8 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
         // try to send all subscriptions in one request.
         var batch = false;
 
-        if (!_this15._isBatching) {
-          _this15.startBatching();
+        if (!_this17._isBatching) {
+          _this17.startBatching();
           batch = true;
         }
 
@@ -3820,27 +3859,27 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
 
               if (!token) {
                 // subscription:error
-                _this15._subscribeError(channel, _this15._createErrorObject('channel token not provided'));
+                _this17._subscribeError(channel, _this17._createErrorObject('channel token not provided'));
                 return 'continue';
               } else {
                 var msg = {
-                  method: _this15._methodType.SUBSCRIBE,
+                  method: _this17._methodType.SUBSCRIBE,
                   params: {
                     channel: channel,
                     token: token
                   }
                 };
 
-                var _sub = _this15._getSub(channel);
+                var _sub = _this17._getSub(channel);
                 if (_sub === null) {
                   return 'continue';
                 }
 
-                var recover = _this15._recover(_sub);
+                var recover = _this17._recover(_sub);
 
                 if (recover === true) {
                   msg.params.recover = true;
-                  var last = _this15._getLastID(channel);
+                  var last = _this17._getLastID(channel);
                   if (last !== '') {
                     msg.params.last = last;
                   }
@@ -3849,10 +3888,10 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
                     msg.params.away = away;
                   }
                 }
-                _this15._call(msg).then(function (result) {
-                  _this15._subscribeResponse(channel, _this15._decoder.decodeCommandResult(_this15._methodType.SUBSCRIBE, result));
+                _this17._call(msg).then(function (result) {
+                  _this17._subscribeResponse(channel, _this17._decoder.decodeCommandResult(_this17._methodType.SUBSCRIBE, result));
                 }, function (err) {
-                  _this15._subscribeError(channel, err);
+                  _this17._subscribeError(channel, err);
                 });
               }
             }();
@@ -3862,7 +3901,7 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
         }
 
         if (batch) {
-          _this15.stopBatching();
+          _this17.stopBatching();
         }
       };
 

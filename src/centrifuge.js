@@ -88,12 +88,13 @@ export class Centrifuge extends EventEmitter {
       refreshParams: {},
       refreshData: {},
       refreshAttempts: null,
-      refreshInterval: 3000,
+      refreshInterval: 1000,
       onRefreshFailed: null,
       onRefresh: null,
       subscribeEndpoint: '/centrifuge/subscribe',
       subscribeHeaders: {},
       subscribeParams: {},
+      subRefreshInterval: 1000,
       onPrivateSubscribe: null
     };
     this._configure(options);
@@ -109,7 +110,6 @@ export class Centrifuge extends EventEmitter {
 
   _ajax(url, params, headers, data, callback) {
     let query = '';
-
     this._debug('sending AJAX request to', url);
 
     const xhr = (global.XMLHttpRequest ? new global.XMLHttpRequest() : new global.ActiveXObject('Microsoft.XMLHTTP'));
@@ -298,10 +298,17 @@ export class Centrifuge extends EventEmitter {
       }
     }
 
+    // clear refresh timer
+    if (this._refreshTimeout !== null) {
+      clearTimeout(this._refreshTimeout);
+      this._refreshTimeout = null;
+    }
+
     // clear sub refresh timers
     for (const channel in this._subRefreshTimeouts) {
-      if (this._subRefreshTimeouts.hasOwnProperty(channel)) {
+      if (this._subRefreshTimeouts.hasOwnProperty(channel) && this._subRefreshTimeouts[channel] !== null) {
         clearTimeout(this._subRefreshTimeouts[channel]);
+        this._subRefreshTimeouts[channel] = null;
       }
     }
     this._subRefreshTimeouts = {};
@@ -349,15 +356,13 @@ export class Centrifuge extends EventEmitter {
 
     this._transport.onopen = () => {
       this._transportClosed = false;
-      this._reconnecting = false;
+
       if (this._isSockjs) {
         this._transportName = 'sockjs-' + this._transport.transport;
         this._transport.onheartbeat = () => this._restartPing();
       } else {
         this._transportName = 'websocket';
       }
-
-      this._resetRetry();
 
       // Can omit method here due to zero value.
       const msg = {
@@ -379,7 +384,10 @@ export class Centrifuge extends EventEmitter {
       this._latencyStart = new Date();
       this._call(msg).then(result => {
         this._connectResponse(this._decoder.decodeCommandResult(this._methodType.CONNECT, result));
-      }, () => {
+      }, err => {
+        if (err.code === 109) { // token expired.
+          this._expires = true;
+        }
         this._disconnect('connect error', true);
       });
     };
@@ -396,7 +404,6 @@ export class Centrifuge extends EventEmitter {
       if (closeEvent && 'reason' in closeEvent && closeEvent.reason) {
         try {
           const advice = JSON.parse(closeEvent.reason);
-
           this._debug('reason is an advice object', advice);
           reason = advice.reason;
           needReconnect = advice.reconnect;
@@ -427,7 +434,11 @@ export class Centrifuge extends EventEmitter {
         this._debug('reconnect after ' + interval + ' milliseconds');
         setTimeout(() => {
           if (this._reconnect === true) {
-            this._connect();
+            if (this._expires) {
+              this._refresh();
+            } else {
+              this._connect();
+            }
           }
         }, interval);
       }
@@ -512,6 +523,7 @@ export class Centrifuge extends EventEmitter {
       this._setStatus('disconnected');
       if (this._refreshTimeout) {
         clearTimeout(this._refreshTimeout);
+        this._refreshTimeout = null;
       }
       if (this._reconnecting === false) {
         this.emit('disconnect', {
@@ -548,23 +560,29 @@ export class Centrifuge extends EventEmitter {
 
     if (this._refreshTimeout !== null) {
       clearTimeout(this._refreshTimeout);
+      this._refreshTimeout = null;
     }
 
     const cb = (error, data) => {
       if (error === true) {
         // We don't perform any connection status related actions here as we are
-        // relying on Centrifugo that must close connection eventually.
-        this._debug('error getting connection credentials from refresh endpoint', data);
-        this._numRefreshFailed++;
-        if (this._refreshTimeout) {
+        // relying on server that must close connection eventually.
+        this._debug('error refreshing connection token', data);
+        if (!this._reconnecting) {
+          this._numRefreshFailed++;
+        }
+        if (this._refreshTimeout !== null) {
           clearTimeout(this._refreshTimeout);
+          this._refreshTimeout = null;
         }
         if (this._config.refreshAttempts !== null && this._numRefreshFailed >= this._config.refreshAttempts) {
           this._refreshFailed();
           return;
         }
-        const interval = this._config.refreshInterval + Math.round(Math.random() * 1000);
-        this._refreshTimeout = setTimeout(() => this._refresh(), interval);
+        if (!this._reconnecting) {
+          const interval = this._config.refreshInterval + Math.round(Math.random() * 1000);
+          this._refreshTimeout = setTimeout(() => this._refresh(), interval);
+        }
         return;
       }
       this._numRefreshFailed = 0;
@@ -586,8 +604,8 @@ export class Centrifuge extends EventEmitter {
         };
         this._call(msg).then(result => {
           this._refreshResponse(this._decoder.decodeCommandResult(this._methodType.REFRESH, result));
-        }, () => {
-          this._disconnect('refresh error', true);
+        }, err => {
+          this._refreshError(err);
         });
       }
     };
@@ -606,12 +624,36 @@ export class Centrifuge extends EventEmitter {
     }
   };
 
+  _refreshError(err) {
+    this._debug('refresh error', err);
+    if (this._refreshTimeout) {
+      clearTimeout(this._refreshTimeout);
+      this._refreshTimeout = null;
+    }
+    const interval = this._config.refreshInterval + Math.round(Math.random() * 1000);
+    this._refreshTimeout = setTimeout(() => this._refresh(), interval);
+  }
+
+  _refreshResponse(result) {
+    if (this._refreshTimeout) {
+      clearTimeout(this._refreshTimeout);
+      this._refreshTimeout = null;
+    }
+    if (result.expires) {
+      this._expires = true;
+      this._clientID = result.client;
+      this._refreshTimeout = setTimeout(() => this._refresh(), result.ttl * 1000);
+    } else {
+      this._expires = false;
+    }
+  };
+
   _subRefresh(channel) {
-    // ask application for new connection token.
     this._debug('refresh subscription token for channel', channel);
 
     if (this._subRefreshTimeouts[channel] !== undefined) {
       clearTimeout(this._subRefreshTimeouts[channel]);
+      delete this._subRefreshTimeouts[channel];
     } else {
       return;
     }
@@ -652,8 +694,7 @@ export class Centrifuge extends EventEmitter {
       this._call(msg).then(result => {
         this._subRefreshResponse(channel, this._decoder.decodeCommandResult(this._methodType.SUB_REFRESH, result));
       }, err => {
-        this._debug('subscription refresh error', err);
-        // this._subRefreshError(channel, err);
+        this._subRefreshError(channel, err);
       });
 
     };
@@ -672,25 +713,33 @@ export class Centrifuge extends EventEmitter {
     }
   };
 
-  _subRefreshResponse(channel, result) {
+  _subRefreshError(channel, err) {
+    this._debug('subscription refresh error', channel, err);
     if (this._subRefreshTimeouts[channel] !== undefined) {
       clearTimeout(this._subRefreshTimeouts[channel]);
       delete this._subRefreshTimeouts[channel];
-    } else {
-      return;
     }
-
     const sub = this._getSub(channel);
     if (sub === null) {
       return;
     }
+    const jitter = Math.round(Math.random() * 1000);
+    let subRefreshTimeout = setTimeout(() => this._subRefresh(channel), this._config.subRefreshInterval + jitter);
+    this._subRefreshTimeouts[channel] = subRefreshTimeout;
+    return;
+  }
 
+  _subRefreshResponse(channel, result) {
+    this._debug('subscription refresh success', channel);
+    if (this._subRefreshTimeouts[channel] !== undefined) {
+      clearTimeout(this._subRefreshTimeouts[channel]);
+      delete this._subRefreshTimeouts[channel];
+    }
+    const sub = this._getSub(channel);
+    if (sub === null) {
+      return;
+    }
     if (result.expires === true) {
-      if (result.expired === true) {
-        sub.unsubscribe();
-        sub.subscribe();
-        return;
-      };
       let subRefreshTimeout = setTimeout(() => this._subRefresh(channel), result.ttl * 1000);
       this._subRefreshTimeouts[channel] = subRefreshTimeout;
     }
@@ -780,6 +829,9 @@ export class Centrifuge extends EventEmitter {
   };
 
   _connectResponse(result) {
+    this._reconnecting = false;
+    this._resetRetry();
+
     if (this.isConnected()) {
       return;
     }
@@ -790,14 +842,6 @@ export class Centrifuge extends EventEmitter {
     }
 
     if (result.expires) {
-      const isExpired = result.expired;
-
-      if (isExpired) {
-        this._reconnecting = true;
-        this._disconnect('expired', true);
-        this._refresh();
-        return;
-      }
       this._expires = true;
     } else {
       this._expires = false;
@@ -810,7 +854,7 @@ export class Centrifuge extends EventEmitter {
       clearTimeout(this._refreshTimeout);
     }
 
-    if (result.expires) {
+    if (this._expires) {
       this._refreshTimeout = setTimeout(() => this._refresh(), result.ttl * 1000);
     }
 
@@ -846,9 +890,11 @@ export class Centrifuge extends EventEmitter {
   _stopPing() {
     if (this._pongTimeout !== null) {
       clearTimeout(this._pongTimeout);
+      this._pongTimeout = null;
     }
     if (this._pingInterval !== null) {
       clearInterval(this._pingInterval);
+      this._pingInterval = null;
     }
   };
 
@@ -1000,22 +1046,6 @@ export class Centrifuge extends EventEmitter {
 
   _handleMessage(message) {
     this.emit('message', message.data);
-  };
-
-  _refreshResponse(result) {
-    if (this._refreshTimeout) {
-      clearTimeout(this._refreshTimeout);
-    }
-    if (result.expires) {
-      const expired = result.expired;
-      if (expired) {
-        const interval = this._config.refreshInterval + Math.round(Math.random() * 1000);
-        this._refreshTimeout = setTimeout(() => this._refresh(), interval);
-        return;
-      }
-      this._clientID = result.client;
-      this._refreshTimeout = setTimeout(() => this._refresh(), result.ttl * 1000);
-    }
   };
 
   _handlePush(data) {

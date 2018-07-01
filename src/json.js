@@ -9,7 +9,8 @@ export const JsonMethodType = {
   PING: 7,
   SEND: 8,
   RPC: 9,
-  REFRESH: 10
+  REFRESH: 10,
+  SUB_REFRESH: 11
 };
 
 export const JsonPushType = {

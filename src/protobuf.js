@@ -16,7 +16,8 @@ const protobufMethodType = {
   PING: methodValues.PING,
   RPC: methodValues.RPC,
   SEND: methodValues.SEND,
-  REFRESH: methodValues.REFRESH
+  REFRESH: methodValues.REFRESH,
+  SUB_REFRESH: methodValues.SUB_REFRESH
 };
 
 const methodSchema = {
@@ -31,6 +32,10 @@ const methodSchema = {
   SUBSCRIBE: [
     proto.lookupType('proto.SubscribeRequest'),
     proto.lookupType('proto.SubscribeResult')
+  ],
+  SUB_REFRESH: [
+    proto.lookupType('proto.SubRefreshRequest'),
+    proto.lookupType('proto.SubRefreshResult')
   ],
   UNSUBSCRIBE: [
     proto.lookupType('proto.UnsubscribeRequest'),
@@ -107,6 +112,9 @@ export class ProtobufEncoder {
             case protobufMethodType.SUBSCRIBE:
               type = methodSchema.SUBSCRIBE[0];
               break;
+            case protobufMethodType.SUB_REFRESH:
+              type = methodSchema.SUB_REFRESH[0];
+              break;
             case protobufMethodType.UNSUBSCRIBE:
               type = methodSchema.UNSUBSCRIBE[0];
               break;
@@ -163,6 +171,9 @@ export class ProtobufDecoder {
         break;
       case protobufMethodType.SUBSCRIBE:
         type = methodSchema.SUBSCRIBE[1];
+        break;
+      case protobufMethodType.SUB_REFRESH:
+        type = methodSchema.SUB_REFRESH[1];
         break;
       case protobufMethodType.UNSUBSCRIBE:
         type = methodSchema.UNSUBSCRIBE[1];

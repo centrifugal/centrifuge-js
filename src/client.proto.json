@@ -26,7 +26,8 @@
             "PING": 7,
             "SEND": 8,
             "RPC": 9,
-            "REFRESH": 10
+            "REFRESH": 10,
+            "SUB_REFRESH": 11
           }
         },
         "Command": {
@@ -139,7 +140,12 @@
           }
         },
         "Unsub": {
-          "fields": {}
+          "fields": {
+            "resubscribe": {
+              "type": "bool",
+              "id": 1
+            }
+          }
         },
         "Message": {
           "fields": {
@@ -218,10 +224,6 @@
             "ttl": {
               "type": "uint32",
               "id": 5
-            },
-            "meta": {
-              "type": "bytes",
-              "id": 6
             }
           }
         },
@@ -262,6 +264,46 @@
             "publications": {
               "rule": "repeated",
               "type": "Publication",
+              "id": 3
+            },
+            "expires": {
+              "type": "bool",
+              "id": 4
+            },
+            "expired": {
+              "type": "bool",
+              "id": 5
+            },
+            "ttl": {
+              "type": "uint32",
+              "id": 6
+            }
+          }
+        },
+        "SubRefreshRequest": {
+          "fields": {
+            "channel": {
+              "type": "string",
+              "id": 1
+            },
+            "token": {
+              "type": "string",
+              "id": 2
+            }
+          }
+        },
+        "SubRefreshResult": {
+          "fields": {
+            "expires": {
+              "type": "bool",
+              "id": 1
+            },
+            "expired": {
+              "type": "bool",
+              "id": 2
+            },
+            "ttl": {
+              "type": "uint32",
               "id": 3
             }
           }

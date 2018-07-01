@@ -2536,6 +2536,7 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
     _this._transportClosed = true;
     _this._messageId = 0;
     _this._clientID = null;
+    _this._expires = false;
     _this._subs = {};
     _this._lastPubUID = {};
     _this._messages = [];
@@ -2546,6 +2547,7 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
     _this._refreshTimeout = null;
     _this._pingInterval = null;
     _this._pongTimeout = null;
+    _this._subRefreshTimeouts = {};
     _this._retries = 0;
     _this._callbacks = {};
     _this._latency = null;
@@ -2646,7 +2648,7 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
             }
           } else {
             _this2._log("Couldn't get auth info from application", xhr.status);
-            callback(true, xhr.status);
+            callback(true, 'wrong status code ' + xhr.status);
           }
         }
       };
@@ -2807,6 +2809,14 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
         }
       }
 
+      // clear sub refresh timers
+      for (var _channel in this._subRefreshTimeouts) {
+        if (this._subRefreshTimeouts.hasOwnProperty(_channel)) {
+          clearTimeout(this._subRefreshTimeouts[_channel]);
+        }
+      }
+      this._subRefreshTimeouts = {};
+
       if (!this._config.resubscribe || !this._reconnect) {
         // completely clear connected state
         this._subs = {};
@@ -2910,7 +2920,6 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
           } catch (e) {
             reason = closeEvent.reason;
             _this3._debug('reason is a plain string', reason);
-            needReconnect = reason !== 'disconnect';
           }
         }
 
@@ -2945,7 +2954,6 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
         var replies = _this3._decoder.decodeReplies(event.data);
         for (var i in replies) {
           if (replies.hasOwnProperty(i)) {
-            _this3._debug('Received reply', replies[i]);
             _this3._dispatchReply(replies[i]);
           }
         }
@@ -3095,23 +3103,22 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
           return;
         }
         _this6._numRefreshFailed = 0;
-        if (_this6._token === null) {
+        _this6._token = data.token;
+        if (!_this6._token) {
+          _this6._refreshFailed();
           return;
         }
-        _this6._token = data.token;
-        if (_this6._isDisconnected()) {
+        if (_this6._isDisconnected() && _this6._reconnect) {
           _this6._debug('token refreshed, connect from scratch');
           _this6._connect();
         } else {
           _this6._debug('send refreshed token');
-
           var msg = {
             method: _this6._methodType.REFRESH,
             params: {
               token: _this6._token
             }
           };
-
           _this6._call(msg).then(function (result) {
             _this6._refreshResponse(_this6._decoder.decodeCommandResult(_this6._methodType.REFRESH, result));
           }, function () {
@@ -3128,9 +3135,107 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
       }
     }
   }, {
+    key: '_subRefresh',
+    value: function _subRefresh(channel) {
+      var _this7 = this;
+
+      // ask application for new connection token.
+      this._debug('refresh subscription token for channel', channel);
+
+      if (this._subRefreshTimeouts[channel] !== undefined) {
+        clearTimeout(this._subRefreshTimeouts[channel]);
+      } else {
+        return;
+      }
+
+      var cb = function cb(error, data) {
+        if (error === true) {
+          return;
+        }
+
+        var channelsData = {};
+        if (data.channels) {
+          for (var i in data.channels) {
+            var channelData = data.channels[i];
+            if (!channelData.channel) {
+              continue;
+            }
+            channelsData[channelData.channel] = channelData.token;
+          }
+        }
+
+        var token = channelsData[channel];
+        if (!token) {
+          return;
+        }
+        var msg = {
+          method: _this7._methodType.SUB_REFRESH,
+          params: {
+            channel: channel,
+            token: token
+          }
+        };
+
+        var sub = _this7._getSub(channel);
+        if (sub === null) {
+          return;
+        }
+
+        _this7._call(msg).then(function (result) {
+          _this7._subRefreshResponse(channel, _this7._decoder.decodeCommandResult(_this7._methodType.SUB_REFRESH, result));
+        }, function (err) {
+          _this7._debug('subscription refresh error', err);
+          // this._subRefreshError(channel, err);
+        });
+      };
+
+      var data = {
+        client: this._clientID,
+        channels: [channel]
+      };
+
+      if (this._config.onPrivateSubscribe !== null) {
+        this._config.onPrivateSubscribe({
+          data: data
+        }, cb);
+      } else {
+        this._ajax(this._config.subscribeEndpoint, this._config.subscribeParams, this._config.subscribeHeaders, data, cb);
+      }
+    }
+  }, {
+    key: '_subRefreshResponse',
+    value: function _subRefreshResponse(channel, result) {
+      var _this8 = this;
+
+      if (this._subRefreshTimeouts[channel] !== undefined) {
+        clearTimeout(this._subRefreshTimeouts[channel]);
+        delete this._subRefreshTimeouts[channel];
+      } else {
+        return;
+      }
+
+      var sub = this._getSub(channel);
+      if (sub === null) {
+        return;
+      }
+
+      if (result.expires === true) {
+        if (result.expired === true) {
+          sub.unsubscribe();
+          sub.subscribe();
+          return;
+        };
+        var subRefreshTimeout = setTimeout(function () {
+          return _this8._subRefresh(channel);
+        }, result.ttl * 1000);
+        this._subRefreshTimeouts[channel] = subRefreshTimeout;
+      }
+      return;
+    }
+  }, {
     key: '_subscribe',
     value: function _subscribe(sub) {
-      var _this7 = this;
+      var _this9 = this;
 
       var channel = sub.channel;
 
@@ -3182,9 +3287,9 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
         }
 
         this._call(msg).then(function (result) {
-          _this7._subscribeResponse(channel, _this7._decoder.decodeCommandResult(_this7._methodType.SUBSCRIBE, result));
+          _this9._subscribeResponse(channel, _this9._decoder.decodeCommandResult(_this9._methodType.SUBSCRIBE, result));
         }, function (err) {
-          _this7._subscribeError(err);
+          _this9._subscribeError(err);
         });
       }
     }
@@ -3218,7 +3323,7 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
   }, {
     key: '_connectResponse',
     value: function _connectResponse(result) {
-      var _this8 = this;
+      var _this10 = this;
 
       if (this.isConnected()) {
         return;
@@ -3238,7 +3343,11 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
           this._refresh();
           return;
         }
+        this._expires = true;
+      } else {
+        this._expires = false;
       }
+
       this._clientID = result.client;
       this._setStatus('connected');
 
@@ -3248,7 +3357,7 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
 
       if (result.expires) {
         this._refreshTimeout = setTimeout(function () {
-          return _this8._refresh();
+          return _this10._refresh();
         }, result.ttl * 1000);
       }
 
@@ -3293,7 +3402,7 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
   }, {
     key: '_startPing',
     value: function _startPing() {
-      var _this9 = this;
+      var _this11 = this;
 
       if (this._config.ping !== true || this._config.pingInterval <= 0) {
         return;
@@ -3303,14 +3412,14 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
       }
 
       this._pingInterval = setInterval(function () {
-        if (!_this9.isConnected()) {
-          _this9._stopPing();
+        if (!_this11.isConnected()) {
+          _this11._stopPing();
           return;
         }
-        _this9.ping();
-        _this9._pongTimeout = setTimeout(function () {
-          _this9._disconnect('no ping', true);
-        }, _this9._config.pongWaitTimeout);
+        _this11.ping();
+        _this11._pongTimeout = setTimeout(function () {
+          _this11._disconnect('no ping', true);
+        }, _this11._config.pongWaitTimeout);
       }, this._config.pingInterval);
     }
   }, {
@@ -3339,6 +3448,8 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
   }, {
     key: '_subscribeResponse',
     value: function _subscribeResponse(channel, result) {
+      var _this12 = this;
+
       var sub = this._getSub(channel);
       if (!sub) {
         return;
@@ -3347,8 +3458,12 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
         return;
       }
 
-      var recovered = false;
+      if (result.expired === true) {
+        sub._setSubscribeError(this._createErrorObject('token expired'));
+        return;
+      }
 
+      var recovered = false;
       if ('recovered' in result) {
         recovered = result.recovered;
       }
@@ -3369,6 +3484,13 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
           // no missed messages found so set last message id from result.
           this._lastPubUID[channel] = result.last;
         }
+      }
+
+      if (result.expires === true) {
+        var subRefreshTimeout = setTimeout(function () {
+          return _this12._subRefresh(channel);
+        }, result.ttl * 1000);
+        this._subRefreshTimeouts[channel] = subRefreshTimeout;
       }
     }
   }, {
@@ -3418,12 +3540,15 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
     }
   }, {
     key: '_handleUnsub',
-    value: function _handleUnsub(channel) {
+    value: function _handleUnsub(channel, unsub) {
       var sub = this._getSub(channel);
       if (!sub) {
         return;
       }
       sub.unsubscribe();
+      if (unsub.resubscribe === true) {
+        sub.subscribe();
+      }
     }
   }, {
     key: '_handlePublication',
@@ -3444,24 +3569,23 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
   }, {
     key: '_refreshResponse',
     value: function _refreshResponse(result) {
-      var _this10 = this;
+      var _this13 = this;
 
       if (this._refreshTimeout) {
         clearTimeout(this._refreshTimeout);
       }
       if (result.expires) {
         var expired = result.expired;
-
         if (expired) {
           var interval = this._config.refreshInterval + Math.round(Math.random() * 1000);
           this._refreshTimeout = setTimeout(function () {
-            return _this10._refresh();
+            return _this13._refresh();
           }, interval);
           return;
         }
         this._clientID = result.client;
         this._refreshTimeout = setTimeout(function () {
-          return _this10._refresh();
+          return _this13._refresh();
         }, result.ttl * 1000);
       }
     }
@@ -3488,7 +3612,8 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
         var leave = this._decoder.decodePushData(this._pushType.LEAVE, push.data);
         this._handleLeave(channel, leave);
       } else if (type === this._pushType.UNSUB) {
-        this._handleUnsub(channel);
+        var unsub = this._decoder.decodePushData(this._pushType.UNSUB, push.data);
+        this._handleUnsub(channel, unsub);
       }
     }
   }, {
@@ -3551,7 +3676,7 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
   }, {
     key: '_registerCall',
     value: function _registerCall(id, callback, errback) {
-      var _this11 = this;
+      var _this14 = this;
 
       this._callbacks[id] = {
         callback: callback,
@@ -3559,9 +3684,9 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
         timeout: null
       };
       this._callbacks[id].timeout = setTimeout(function () {
-        delete _this11._callbacks[id];
+        delete _this14._callbacks[id];
         if ((0, _utils.isFunction)(errback)) {
-          errback(_this11._createErrorObject(_errorTimeout));
+          errback(_this14._createErrorObject(_errorTimeout));
         }
       }, this._config.timeout);
     }
@@ -3626,7 +3751,7 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
   }, {
     key: 'stopSubscribeBatching',
     value: function stopSubscribeBatching() {
-      var _this12 = this;
+      var _this15 = this;
 
       // create request to subscribeEndpoint with collected private channels
       // to ask if this client can subscribe on each channel
@@ -3658,11 +3783,11 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
 
       var cb = function cb(error, data) {
         if (error === true) {
-          _this12._debug('authorization request failed');
+          _this15._debug('authorization request failed');
           for (var i in channels) {
             if (channels.hasOwnProperty(i)) {
-              var _channel = channels[i];
-              _this12._subscribeError(_channel, _this12._createErrorObject('authorization request failed'));
+              var _channel2 = channels[i];
+              _this15._subscribeError(_channel2, _this15._createErrorObject('authorization request failed'));
             }
           }
           return;
@@ -3682,8 +3807,8 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
         // try to send all subscriptions in one request.
         var batch = false;
 
-        if (!_this12._isBatching) {
-          _this12.startBatching();
+        if (!_this15._isBatching) {
+          _this15.startBatching();
           batch = true;
         }
 
@@ -3695,27 +3820,27 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
 
               if (!token) {
                 // subscription:error
-                _this12._subscribeError(channel, _this12._createErrorObject('channel token not provided'));
+                _this15._subscribeError(channel, _this15._createErrorObject('channel token not provided'));
                 return 'continue';
               } else {
                 var msg = {
-                  method: _this12._methodType.SUBSCRIBE,
+                  method: _this15._methodType.SUBSCRIBE,
                   params: {
                     channel: channel,
                     token: token
                   }
                 };
 
-                var _sub = _this12._getSub(channel);
+                var _sub = _this15._getSub(channel);
                 if (_sub === null) {
                   return 'continue';
                 }
 
-                var recover = _this12._recover(_sub);
+                var recover = _this15._recover(_sub);
 
                 if (recover === true) {
                   msg.params.recover = true;
-                  var last = _this12._getLastID(channel);
+                  var last = _this15._getLastID(channel);
                   if (last !== '') {
                     msg.params.last = last;
                   }
@@ -3724,10 +3849,10 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
                     msg.params.away = away;
                   }
                 }
-                _this12._call(msg).then(function (result) {
-                  _this12._subscribeResponse(channel, _this12._decoder.decodeCommandResult(_this12._methodType.SUBSCRIBE, result));
+                _this15._call(msg).then(function (result) {
+                  _this15._subscribeResponse(channel, _this15._decoder.decodeCommandResult(_this15._methodType.SUBSCRIBE, result));
                 }, function (err) {
-                  _this12._subscribeError(channel, err);
+                  _this15._subscribeError(channel, err);
                 });
               }
             }();
@@ -3737,7 +3862,7 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
         }
 
         if (batch) {
-          _this12.stopBatching();
+          _this15.stopBatching();
         }
       };
 
@@ -4112,7 +4237,8 @@ var JsonMethodType = exports.JsonMethodType = {
   PING: 7,
   SEND: 8,
   RPC: 9,
-  REFRESH: 10
+  REFRESH: 10,
+  SUB_REFRESH: 11
 };
 
 var JsonPushType = exports.JsonPushType = {
@@ -7830,13 +7956,15 @@ var protobufMethodType = {
   PING: methodValues.PING,
   RPC: methodValues.RPC,
   SEND: methodValues.SEND,
-  REFRESH: methodValues.REFRESH
+  REFRESH: methodValues.REFRESH,
+  SUB_REFRESH: methodValues.SUB_REFRESH
 };
 
 var methodSchema = {
   CONNECT: [proto.lookupType('proto.ConnectRequest'), proto.lookupType('proto.ConnectResult')],
   REFRESH: [proto.lookupType('proto.RefreshRequest'), proto.lookupType('proto.RefreshResult')],
   SUBSCRIBE: [proto.lookupType('proto.SubscribeRequest'), proto.lookupType('proto.SubscribeResult')],
+  SUB_REFRESH: [proto.lookupType('proto.SubRefreshRequest'), proto.lookupType('proto.SubRefreshResult')],
   UNSUBSCRIBE: [proto.lookupType('proto.UnsubscribeRequest'), proto.lookupType('proto.UnsubscribeResult')],
   PUBLISH: [proto.lookupType('proto.PublishRequest'), proto.lookupType('proto.PublishResult')],
   PRESENCE: [proto.lookupType('proto.PresenceRequest'), proto.lookupType('proto.PresenceResult')],
@@ -7893,6 +8021,9 @@ var ProtobufEncoder = exports.ProtobufEncoder = function () {
                 break;
               case protobufMethodType.SUBSCRIBE:
                 type = methodSchema.SUBSCRIBE[0];
+                break;
+              case protobufMethodType.SUB_REFRESH:
+                type = methodSchema.SUB_REFRESH[0];
                 break;
               case protobufMethodType.UNSUBSCRIBE:
                 type = methodSchema.UNSUBSCRIBE[0];
@@ -7960,6 +8091,9 @@ var ProtobufDecoder = exports.ProtobufDecoder = function () {
           break;
         case protobufMethodType.SUBSCRIBE:
           type = methodSchema.SUBSCRIBE[1];
+          break;
+        case protobufMethodType.SUB_REFRESH:
+          type = methodSchema.SUB_REFRESH[1];
           break;
         case protobufMethodType.UNSUBSCRIBE:
           type = methodSchema.UNSUBSCRIBE[1];
@@ -9757,7 +9891,7 @@ path.resolve = function resolve(originPath, includePath, alreadyNormalized) {
 /* 49 */
 /***/ (function(module, exports) {
 
-module.exports = {"nested":{"proto":{"nested":{"Error":{"fields":{"code":{"type":"uint32","id":1},"message":{"type":"string","id":2}}},"MethodType":{"values":{"CONNECT":0,"SUBSCRIBE":1,"UNSUBSCRIBE":2,"PUBLISH":3,"PRESENCE":4,"PRESENCE_STATS":5,"HISTORY":6,"PING":7,"SEND":8,"RPC":9,"REFRESH":10}},"Command":{"fields":{"id":{"type":"uint32","id":1},"method":{"type":"MethodType","id":2},"params":{"type":"bytes","id":3}}},"Reply":{"fields":{"id":{"type":"uint32","id":1},"error":{"type":"Error","id":2},"result":{"type":"bytes","id":3}}},"PushType":{"values":{"PUBLICATION":0,"JOIN":1,"LEAVE":2,"UNSUB":3,"MESSAGE":4}},"Push":{"fields":{"type":{"type":"PushType","id":1},"channel":{"type":"string","id":2},"data":{"type":"bytes","id":3}}},"ClientInfo":{"fields":{"user":{"type":"string","id":1},"client":{"type":"string","id":2},"connInfo":{"type":"bytes","id":3},"chanInfo":{"type":"bytes","id":4}}},"Publication":{"fields":{"uid":{"type":"string","id":1},"data":{"type":"bytes","id":2},"info":{"type":"ClientInfo","id":3}}},"Join":{"fields":{"info":{"type":"ClientInfo","id":1}}},"Leave":{"fields":{"info":{"type":"ClientInfo","id":1}}},"Unsub":{"fields":{}},"Message":{"fields":{"data":{"type":"bytes","id":1}}},"ConnectRequest":{"fields":{"token":{"type":"string","id":1},"data":{"type":"bytes","id":2}}},"ConnectResult":{"fields":{"client":{"type":"string","id":1},"version":{"type":"string","id":2},"expires":{"type":"bool","id":3},"expired":{"type":"bool","id":4},"ttl":{"type":"uint32","id":5},"data":{"type":"bytes","id":6}}},"RefreshRequest":{"fields":{"token":{"type":"string","id":1}}},"RefreshResult":{"fields":{"client":{"type":"string","id":1},"version":{"type":"string","id":2},"expires":{"type":"bool","id":3},"expired":{"type":"bool","id":4},"ttl":{"type":"uint32","id":5},"meta":{"type":"bytes","id":6}}},"SubscribeRequest":{"fields":{"channel":{"type":"string","id":1},"recover":{"type":"bool","id":2},"last":{"type":"string","id":3},"away":{"type":"uint32","id":4},"token":{"type":"string","id":5}}},"SubscribeResult":{"fields":{"last":{"type":"string","id":1},"recovered":{"type":"bool","id":2},"publications":{"rule":"repeated","type":"Publication","id":3}}},"UnsubscribeRequest":{"fields":{"channel":{"type":"string","id":1}}},"UnsubscribeResult":{"fields":{}},"PublishRequest":{"fields":{"channel":{"type":"string","id":1},"data":{"type":"bytes","id":2}}},"PublishResult":{"fields":{}},"PresenceRequest":{"fields":{"channel":{"type":"string","id":1}}},"PresenceResult":{"fields":{"presence":{"keyType":"string","type":"ClientInfo","id":1}}},"PresenceStatsRequest":{"fields":{"channel":{"type":"string","id":1}}},"PresenceStatsResult":{"fields":{"numClients":{"type":"uint32","id":1},"numUsers":{"type":"uint32","id":2}}},"HistoryRequest":{"fields":{"channel":{"type":"string","id":1}}},"HistoryResult":{"fields":{"publications":{"rule":"repeated","type":"Publication","id":1}}},"PingRequest":{"fields":{"data":{"type":"string","id":1}}},"PingResult":{"fields":{"data":{"type":"string","id":1}}},"RPCRequest":{"fields":{"data":{"type":"bytes","id":1}}},"RPCResult":{"fields":{"data":{"type":"bytes","id":1}}},"SendRequest":{"fields":{"data":{"type":"bytes","id":1}}}}}}}
+module.exports = {"nested":{"proto":{"nested":{"Error":{"fields":{"code":{"type":"uint32","id":1},"message":{"type":"string","id":2}}},"MethodType":{"values":{"CONNECT":0,"SUBSCRIBE":1,"UNSUBSCRIBE":2,"PUBLISH":3,"PRESENCE":4,"PRESENCE_STATS":5,"HISTORY":6,"PING":7,"SEND":8,"RPC":9,"REFRESH":10,"SUB_REFRESH":11}},"Command":{"fields":{"id":{"type":"uint32","id":1},"method":{"type":"MethodType","id":2},"params":{"type":"bytes","id":3}}},"Reply":{"fields":{"id":{"type":"uint32","id":1},"error":{"type":"Error","id":2},"result":{"type":"bytes","id":3}}},"PushType":{"values":{"PUBLICATION":0,"JOIN":1,"LEAVE":2,"UNSUB":3,"MESSAGE":4}},"Push":{"fields":{"type":{"type":"PushType","id":1},"channel":{"type":"string","id":2},"data":{"type":"bytes","id":3}}},"ClientInfo":{"fields":{"user":{"type":"string","id":1},"client":{"type":"string","id":2},"connInfo":{"type":"bytes","id":3},"chanInfo":{"type":"bytes","id":4}}},"Publication":{"fields":{"uid":{"type":"string","id":1},"data":{"type":"bytes","id":2},"info":{"type":"ClientInfo","id":3}}},"Join":{"fields":{"info":{"type":"ClientInfo","id":1}}},"Leave":{"fields":{"info":{"type":"ClientInfo","id":1}}},"Unsub":{"fields":{"resubscribe":{"type":"bool","id":1}}},"Message":{"fields":{"data":{"type":"bytes","id":1}}},"ConnectRequest":{"fields":{"token":{"type":"string","id":1},"data":{"type":"bytes","id":2}}},"ConnectResult":{"fields":{"client":{"type":"string","id":1},"version":{"type":"string","id":2},"expires":{"type":"bool","id":3},"expired":{"type":"bool","id":4},"ttl":{"type":"uint32","id":5},"data":{"type":"bytes","id":6}}},"RefreshRequest":{"fields":{"token":{"type":"string","id":1}}},"RefreshResult":{"fields":{"client":{"type":"string","id":1},"version":{"type":"string","id":2},"expires":{"type":"bool","id":3},"expired":{"type":"bool","id":4},"ttl":{"type":"uint32","id":5}}},"SubscribeRequest":{"fields":{"channel":{"type":"string","id":1},"recover":{"type":"bool","id":2},"last":{"type":"string","id":3},"away":{"type":"uint32","id":4},"token":{"type":"string","id":5}}},"SubscribeResult":{"fields":{"last":{"type":"string","id":1},"recovered":{"type":"bool","id":2},"publications":{"rule":"repeated","type":"Publication","id":3},"expires":{"type":"bool","id":4},"expired":{"type":"bool","id":5},"ttl":{"type":"uint32","id":6}}},"SubRefreshRequest":{"fields":{"channel":{"type":"string","id":1},"token":{"type":"string","id":2}}},"SubRefreshResult":{"fields":{"expires":{"type":"bool","id":1},"expired":{"type":"bool","id":2},"ttl":{"type":"uint32","id":3}}},"UnsubscribeRequest":{"fields":{"channel":{"type":"string","id":1}}},"UnsubscribeResult":{"fields":{}},"PublishRequest":{"fields":{"channel":{"type":"string","id":1},"data":{"type":"bytes","id":2}}},"PublishResult":{"fields":{}},"PresenceRequest":{"fields":{"channel":{"type":"string","id":1}}},"PresenceResult":{"fields":{"presence":{"keyType":"string","type":"ClientInfo","id":1}}},"PresenceStatsRequest":{"fields":{"channel":{"type":"string","id":1}}},"PresenceStatsResult":{"fields":{"numClients":{"type":"uint32","id":1},"numUsers":{"type":"uint32","id":2}}},"HistoryRequest":{"fields":{"channel":{"type":"string","id":1}}},"HistoryResult":{"fields":{"publications":{"rule":"repeated","type":"Publication","id":1}}},"PingRequest":{"fields":{"data":{"type":"string","id":1}}},"PingResult":{"fields":{"data":{"type":"string","id":1}}},"RPCRequest":{"fields":{"data":{"type":"bytes","id":1}}},"RPCResult":{"fields":{"data":{"type":"bytes","id":1}}},"SendRequest":{"fields":{"data":{"type":"bytes","id":1}}}}}}}
 
 /***/ })
 /******/ ]);

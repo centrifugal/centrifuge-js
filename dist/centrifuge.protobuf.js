@@ -1788,20 +1788,12 @@ Object.defineProperty(exports, "__esModule", {
   value: true
 });
 exports.startsWith = startsWith;
-exports.isString = isString;
 exports.isFunction = isFunction;
 exports.log = log;
 exports.backoff = backoff;
 exports.errorExists = errorExists;
 function startsWith(value, prefix) {
   return value.lastIndexOf(prefix, 0) === 0;
-};
-
-function isString(value) {
-  if (value === undefined || value === null) {
-    return false;
-  }
-  return typeof value === 'string' || value instanceof String;
 };
 
 function isFunction(value) {
@@ -2536,7 +2528,7 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
     _this._transportClosed = true;
     _this._messageId = 0;
     _this._clientID = null;
-    _this._expires = false;
+    _this._refreshRequired = false;
     _this._subs = {};
     _this._lastPubUID = {};
     _this._messages = [];
@@ -2558,10 +2550,9 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
       debug: false,
       sockjs: null,
       promise: null,
-      retry: 1000,
+      minRetry: 1000,
       maxRetry: 20000,
       timeout: 5000,
-      resubscribe: true,
       ping: true,
       pingInterval: 30000,
       pongWaitTimeout: 5000,
@@ -2768,7 +2759,7 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
   }, {
     key: '_getRetryInterval',
     value: function _getRetryInterval() {
-      var interval = (0, _utils.backoff)(this._retries, this._config.retry, this._config.maxRetry);
+      var interval = (0, _utils.backoff)(this._retries, this._config.minRetry, this._config.maxRetry);
 
       this._retries += 1;
       return interval;
@@ -2824,8 +2815,8 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
       }
       this._subRefreshTimeouts = {};
 
-      if (!this._config.resubscribe || !this._reconnect) {
-        // completely clear connected state
+      if (!this._reconnect) {
+        // completely clear subscriptions
         this._subs = {};
       }
     }
@@ -2904,7 +2895,7 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
         }, function (err) {
           if (err.code === 109) {
             // token expired.
-            _this3._expires = true;
+            _this3._refreshRequired = true;
           }
           _this3._disconnect('connect error', true);
         });
@@ -2952,7 +2943,7 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
           _this3._debug('reconnect after ' + interval + ' milliseconds');
           setTimeout(function () {
             if (_this3._reconnect === true) {
-              if (_this3._expires) {
+              if (_this3._refreshRequired) {
                 _this3._refresh();
               } else {
                 _this3._connect();
@@ -3009,7 +3000,7 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
     value: function _call(msg) {
       var _this5 = this;
 
-      return new Promise(function (resolve, reject) {
+      return new global.Promise(function (resolve, reject) {
         var id = _this5._addMessage(msg);
         _this5._registerCall(id, resolve, reject);
       });
@@ -3178,13 +3169,10 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
         this._refreshTimeout = null;
       }
       if (result.expires) {
-        this._expires = true;
         this._clientID = result.client;
         this._refreshTimeout = setTimeout(function () {
           return _this8._refresh();
         }, result.ttl * 1000);
-      } else {
-        this._expires = false;
       }
     }
   }, {
@@ -3402,12 +3390,6 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
         this._latencyStart = null;
       }
 
-      if (result.expires) {
-        this._expires = true;
-      } else {
-        this._expires = false;
-      }
-
       this._clientID = result.client;
       this._setStatus('connected');
 
@@ -3415,26 +3397,24 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
         clearTimeout(this._refreshTimeout);
       }
 
-      if (this._expires) {
+      if (result.expires) {
         this._refreshTimeout = setTimeout(function () {
           return _this13._refresh();
         }, result.ttl * 1000);
       }
 
-      if (this._config.resubscribe) {
-        this.startBatching();
-        this.startSubscribeBatching();
-        for (var channel in this._subs) {
-          if (this._subs.hasOwnProperty(channel)) {
-            var sub = this._subs[channel];
-            if (sub._shouldResubscribe()) {
-              this._subscribe(sub);
-            }
+      this.startBatching();
+      this.startSubscribeBatching();
+      for (var channel in this._subs) {
+        if (this._subs.hasOwnProperty(channel)) {
+          var sub = this._subs[channel];
+          if (sub._shouldResubscribe()) {
+            this._subscribe(sub);
           }
         }
-        this.stopSubscribeBatching();
-        this.stopBatching();
       }
+      this.stopSubscribeBatching();
+      this.stopBatching();
 
       this._restartPing();
 
@@ -3916,18 +3896,7 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
   }, {
     key: 'subscribe',
     value: function subscribe(channel, events) {
-      if (arguments.length < 1) {
-        throw new Error('Illegal arguments number: required 1, got ' + arguments.length);
-      }
-      if (!(0, _utils.isString)(channel)) {
-        throw new Error('Illegal argument type: channel must be a string');
-      }
-      if (!this._config.resubscribe && !this.isConnected()) {
-        throw new Error('Can not only subscribe in connected state when resubscribe option is off');
-      }
-
       var currentSub = this._getSub(channel);
-
       if (currentSub !== null) {
         currentSub._setEvents(events);
         if (currentSub._isUnsubscribed()) {
@@ -3951,7 +3920,7 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
-
+/* WEBPACK VAR INJECTION */(function(global) {
 
 Object.defineProperty(exports, "__esModule", {
   value: true
@@ -4012,7 +3981,7 @@ var Subscription = function (_EventEmitter) {
       // synchronous way.
       this._ready = false;
 
-      this._subscriptionPromise = new Promise(function (resolve, reject) {
+      this._subscriptionPromise = new global.Promise(function (resolve, reject) {
         _this2._resolve = function (value) {
           _this2._ready = true;
           resolve(value);
@@ -4249,6 +4218,7 @@ var Subscription = function (_EventEmitter) {
 
 exports.default = Subscription;
 module.exports = exports['default'];
+/* WEBPACK VAR INJECTION */}.call(exports, __webpack_require__(3)))
 
 /***/ }),
 /* 12 */

@@ -2,13 +2,6 @@ export function startsWith(value, prefix) {
   return value.lastIndexOf(prefix, 0) === 0;
 };
 
-export function isString(value) {
-  if (value === undefined || value === null) {
-    return false;
-  }
-  return typeof value === 'string' || value instanceof String;
-};
-
 export function isFunction(value) {
   if (value === undefined || value === null) {
     return false;

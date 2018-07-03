@@ -10,7 +10,6 @@ import {
 
 import {
   isFunction,
-  isString,
   log,
   startsWith,
   errorExists,
@@ -39,7 +38,7 @@ export class Centrifuge extends EventEmitter {
     this._transportClosed = true;
     this._messageId = 0;
     this._clientID = null;
-    this._expires = false;
+    this._refreshRequired = false;
     this._subs = {};
     this._lastPubUID = {};
     this._messages = [];
@@ -61,10 +60,9 @@ export class Centrifuge extends EventEmitter {
       debug: false,
       sockjs: null,
       promise: null,
-      retry: 1000,
+      minRetry: 1000,
       maxRetry: 20000,
       timeout: 5000,
-      resubscribe: true,
       ping: true,
       pingInterval: 30000,
       pongWaitTimeout: 5000,
@@ -258,7 +256,7 @@ export class Centrifuge extends EventEmitter {
   };
 
   _getRetryInterval() {
-    const interval = backoff(this._retries, this._config.retry, this._config.maxRetry);
+    const interval = backoff(this._retries, this._config.minRetry, this._config.maxRetry);
 
     this._retries += 1;
     return interval;
@@ -313,8 +311,8 @@ export class Centrifuge extends EventEmitter {
     }
     this._subRefreshTimeouts = {};
 
-    if (!this._config.resubscribe || !this._reconnect) {
-      // completely clear connected state
+    if (!this._reconnect) {
+      // completely clear subscriptions
       this._subs = {};
     }
   };
@@ -386,7 +384,7 @@ export class Centrifuge extends EventEmitter {
         this._connectResponse(this._decoder.decodeCommandResult(this._methodType.CONNECT, result));
       }, err => {
         if (err.code === 109) { // token expired.
-          this._expires = true;
+          this._refreshRequired = true;
         }
         this._disconnect('connect error', true);
       });
@@ -434,7 +432,7 @@ export class Centrifuge extends EventEmitter {
         this._debug('reconnect after ' + interval + ' milliseconds');
         setTimeout(() => {
           if (this._reconnect === true) {
-            if (this._expires) {
+            if (this._refreshRequired) {
               this._refresh();
             } else {
               this._connect();
@@ -481,7 +479,7 @@ export class Centrifuge extends EventEmitter {
   }
 
   _call(msg) {
-    return new Promise((resolve, reject) => {
+    return new global.Promise((resolve, reject) => {
       const id = this._addMessage(msg);
       this._registerCall(id, resolve, reject);
     });
@@ -640,11 +638,8 @@ export class Centrifuge extends EventEmitter {
       this._refreshTimeout = null;
     }
     if (result.expires) {
-      this._expires = true;
       this._clientID = result.client;
       this._refreshTimeout = setTimeout(() => this._refresh(), result.ttl * 1000);
-    } else {
-      this._expires = false;
     }
   };
 
@@ -841,12 +836,6 @@ export class Centrifuge extends EventEmitter {
       this._latencyStart = null;
     }
 
-    if (result.expires) {
-      this._expires = true;
-    } else {
-      this._expires = false;
-    }
-
     this._clientID = result.client;
     this._setStatus('connected');
 
@@ -854,24 +843,22 @@ export class Centrifuge extends EventEmitter {
       clearTimeout(this._refreshTimeout);
     }
 
-    if (this._expires) {
+    if (result.expires) {
       this._refreshTimeout = setTimeout(() => this._refresh(), result.ttl * 1000);
     }
 
-    if (this._config.resubscribe) {
-      this.startBatching();
-      this.startSubscribeBatching();
-      for (const channel in this._subs) {
-        if (this._subs.hasOwnProperty(channel)) {
-          const sub = this._subs[channel];
-          if (sub._shouldResubscribe()) {
-            this._subscribe(sub);
-          }
+    this.startBatching();
+    this.startSubscribeBatching();
+    for (const channel in this._subs) {
+      if (this._subs.hasOwnProperty(channel)) {
+        const sub = this._subs[channel];
+        if (sub._shouldResubscribe()) {
+          this._subscribe(sub);
         }
       }
-      this.stopSubscribeBatching();
-      this.stopBatching();
     }
+    this.stopSubscribeBatching();
+    this.stopBatching();
 
     this._restartPing();
 
@@ -1310,18 +1297,7 @@ export class Centrifuge extends EventEmitter {
   };
 
   subscribe(channel, events) {
-    if (arguments.length < 1) {
-      throw new Error('Illegal arguments number: required 1, got ' + arguments.length);
-    }
-    if (!isString(channel)) {
-      throw new Error('Illegal argument type: channel must be a string');
-    }
-    if (!this._config.resubscribe && !this.isConnected()) {
-      throw new Error('Can not only subscribe in connected state when resubscribe option is off');
-    }
-
     const currentSub = this._getSub(channel);
-
     if (currentSub !== null) {
       currentSub._setEvents(events);
       if (currentSub._isUnsubscribed()) {

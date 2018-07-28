@@ -947,9 +947,11 @@ centrifugeProto._connectResponse = function (message) {
 centrifugeProto._stopPing = function () {
     if (this._pongTimeout !== null) {
         clearTimeout(this._pongTimeout);
+        this._pongTimeout = null;
     }
     if (this._pingInterval !== null) {
         clearInterval(this._pingInterval);
+        this._pingInterval = null;
     }
 };
 

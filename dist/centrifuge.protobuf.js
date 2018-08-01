@@ -2594,7 +2594,7 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
       var _this2 = this;
 
       var query = '';
-      this._debug('sending AJAX request to', url);
+      this._debug('sending AJAX request to', url, 'with data', JSON.stringify(data));
 
       var xhr = global.XMLHttpRequest ? new global.XMLHttpRequest() : new global.ActiveXObject('Microsoft.XMLHTTP');
 
@@ -3093,9 +3093,7 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
           // We don't perform any connection status related actions here as we are
           // relying on server that must close connection eventually.
           _this6._debug('error refreshing connection token', data);
-          if (!_this6._reconnecting) {
-            _this6._numRefreshFailed++;
-          }
+          _this6._numRefreshFailed++;
           if (_this6._refreshTimeout !== null) {
             clearTimeout(_this6._refreshTimeout);
             _this6._refreshTimeout = null;
@@ -3104,12 +3102,11 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
             _this6._refreshFailed();
             return;
           }
-          if (!_this6._reconnecting) {
-            var interval = _this6._config.refreshInterval + Math.round(Math.random() * 1000);
-            _this6._refreshTimeout = setTimeout(function () {
-              return _this6._refresh();
-            }, interval);
-          }
+          var jitter = Math.round(Math.random() * 1000 * Math.max(_this6._numRefreshFailed, 20));
+          var interval = _this6._config.refreshInterval + jitter;
+          _this6._refreshTimeout = setTimeout(function () {
+            return _this6._refresh();
+          }, interval);
           return;
         }
         _this6._numRefreshFailed = 0;
@@ -3290,6 +3287,7 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
     value: function _subscribe(sub) {
       var _this12 = this;
 
+      this._debug('subscribing on', sub.channel);
       var channel = sub.channel;
 
       if (!(channel in this._subs)) {
@@ -3316,7 +3314,7 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
       // starts with privateChannelPrefix - then this is a private channel
       // and we should ask web application backend for permission first.
       if ((0, _utils.startsWith)(channel, this._config.privateChannelPrefix)) {
-        // private channel
+        // private channel.
         if (this._isSubscribeBatching) {
           this._privateChannels[channel] = true;
         } else {
@@ -3776,14 +3774,13 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
       // to ask if this client can subscribe on each channel
       this._isSubscribeBatching = false;
       var authChannels = this._privateChannels;
-
       this._privateChannels = {};
+
       var channels = [];
 
       for (var channel in authChannels) {
         if (authChannels.hasOwnProperty(channel)) {
           var sub = this._getSub(channel);
-
           if (!sub) {
             continue;
           }
@@ -3792,6 +3789,7 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
       }
 
       if (channels.length === 0) {
+        this._debug('no private channels found, no need to make request');
         return;
       }
 

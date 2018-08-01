@@ -108,7 +108,7 @@ export class Centrifuge extends EventEmitter {
 
   _ajax(url, params, headers, data, callback) {
     let query = '';
-    this._debug('sending AJAX request to', url);
+    this._debug('sending AJAX request to', url, 'with data', JSON.stringify(data));
 
     const xhr = (global.XMLHttpRequest ? new global.XMLHttpRequest() : new global.ActiveXObject('Microsoft.XMLHTTP'));
 
@@ -566,9 +566,7 @@ export class Centrifuge extends EventEmitter {
         // We don't perform any connection status related actions here as we are
         // relying on server that must close connection eventually.
         this._debug('error refreshing connection token', data);
-        if (!this._reconnecting) {
-          this._numRefreshFailed++;
-        }
+        this._numRefreshFailed++;
         if (this._refreshTimeout !== null) {
           clearTimeout(this._refreshTimeout);
           this._refreshTimeout = null;
@@ -577,10 +575,9 @@ export class Centrifuge extends EventEmitter {
           this._refreshFailed();
           return;
         }
-        if (!this._reconnecting) {
-          const interval = this._config.refreshInterval + Math.round(Math.random() * 1000);
-          this._refreshTimeout = setTimeout(() => this._refresh(), interval);
-        }
+        const jitter = Math.round(Math.random() * 1000 * Math.max(this._numRefreshFailed, 20));
+        const interval = this._config.refreshInterval + jitter;
+        this._refreshTimeout = setTimeout(() => this._refresh(), interval);
         return;
       }
       this._numRefreshFailed = 0;
@@ -742,6 +739,7 @@ export class Centrifuge extends EventEmitter {
   };
 
   _subscribe(sub) {
+    this._debug('subscribing on', sub.channel);
     const channel = sub.channel;
 
     if (!(channel in this._subs)) {
@@ -768,7 +766,7 @@ export class Centrifuge extends EventEmitter {
     // starts with privateChannelPrefix - then this is a private channel
     // and we should ask web application backend for permission first.
     if (startsWith(channel, this._config.privateChannelPrefix)) {
-      // private channel
+      // private channel.
       if (this._isSubscribeBatching) {
         this._privateChannels[channel] = true;
       } else {
@@ -1181,14 +1179,13 @@ export class Centrifuge extends EventEmitter {
     // to ask if this client can subscribe on each channel
     this._isSubscribeBatching = false;
     const authChannels = this._privateChannels;
-
     this._privateChannels = {};
+
     const channels = [];
 
     for (const channel in authChannels) {
       if (authChannels.hasOwnProperty(channel)) {
         const sub = this._getSub(channel);
-
         if (!sub) {
           continue;
         }
@@ -1197,6 +1194,7 @@ export class Centrifuge extends EventEmitter {
     }
 
     if (channels.length === 0) {
+      this._debug('no private channels found, no need to make request');
       return;
     }
 

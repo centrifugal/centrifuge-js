@@ -819,6 +819,8 @@ centrifugeProto._subscribe = function (sub) {
         this._subs[channel] = sub;
     }
 
+    this._noResubscribe = false;
+
     if (!this.isConnected()) {
         // subscribe will be called later
         sub._setNew();
@@ -1059,8 +1061,8 @@ centrifugeProto._unsubscribeResponse = function (message) {
 
     if (!errorExists(message)) {
         if (!uid) {
-            // unsubscribe command from server – unsubscribe all current subs
-            sub._setUnsubscribed();
+            // unsubscribe command from server
+            sub._setUnsubscribed(true);
         }
         // ignore client initiated successful unsubscribe responses as we
         // already unsubscribed on client level.

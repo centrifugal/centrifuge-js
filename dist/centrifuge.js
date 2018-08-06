@@ -239,19 +239,28 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
               _data = JSON.parse(xhr.responseText);
               parsed = true;
             } catch (e) {
-              callback(true, 'JSON returned was invalid, yet status code was 200. Data was: ' + xhr.responseText);
+              callback({
+                error: 'Invalid JSON. Data was: ' + xhr.responseText,
+                status: 200,
+                data: null
+              });
             }
             if (parsed) {
               // prevents double execution.
-              callback(false, _data);
+              callback({
+                data: _data,
+                status: 200
+              });
             }
           } else {
-            _this2._log("Couldn't get auth info from application", xhr.status);
-            callback(true, 'wrong status code ' + xhr.status);
+            _this2._log('wrong status code in AJAX response', xhr.status);
+            callback({
+              status: xhr.status,
+              data: null
+            });
           }
         }
       };
-
       setTimeout(function () {
         return xhr.send(JSON.stringify(data));
       }, 20);
@@ -696,11 +705,15 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
         this._refreshTimeout = null;
       }
 
-      var cb = function cb(error, data) {
-        if (error === true) {
+      var cb = function cb(resp) {
+        if (resp.error || resp.status !== 200) {
           // We don't perform any connection status related actions here as we are
           // relying on server that must close connection eventually.
-          _this6._debug('error refreshing connection token', data);
+          if (resp.error) {
+            _this6._debug('error refreshing connection token', resp.error);
+          } else {
+            _this6._debug('error refreshing connection token: wrong status code', resp.status);
+          }
           _this6._numRefreshFailed++;
           if (_this6._refreshTimeout !== null) {
             clearTimeout(_this6._refreshTimeout);
@@ -718,7 +731,7 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
           return;
         }
         _this6._numRefreshFailed = 0;
-        _this6._token = data.token;
+        _this6._token = resp.data.token;
         if (!_this6._token) {
           _this6._refreshFailed();
           return;
@@ -794,15 +807,15 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
         return;
       }
 
-      var cb = function cb(error, data) {
-        if (error === true) {
+      var cb = function cb(resp) {
+        if (resp.error || resp.status !== 200) {
           return;
         }
 
         var channelsData = {};
-        if (data.channels) {
+        if (resp.data.channels) {
           for (var i in data.channels) {
-            var channelData = data.channels[i];
+            var channelData = resp.data.channels[i];
             if (!channelData.channel) {
               continue;
             }
@@ -1406,8 +1419,8 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
         channels: channels
       };
 
-      var cb = function cb(error, data) {
-        if (error === true) {
+      var cb = function cb(resp) {
+        if (resp.error || resp.status !== 200) {
           _this17._debug('authorization request failed');
           for (var i in channels) {
             if (channels.hasOwnProperty(i)) {
@@ -1419,9 +1432,9 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
         }
 
         var channelsData = {};
-        if (data.channels) {
-          for (var _i in data.channels) {
-            var channelData = data.channels[_i];
+        if (resp.data.channels) {
+          for (var _i in resp.data.channels) {
+            var channelData = resp.data.channels[_i];
             if (!channelData.channel) {
               continue;
             }
@@ -1445,7 +1458,7 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
 
               if (!token) {
                 // subscription:error
-                _this17._subscribeError(channel, _this17._createErrorObject('channel token not provided'));
+                _this17._subscribeError(channel, _this17._createErrorObject('permission denied', 103));
                 return 'continue';
               } else {
                 var msg = {

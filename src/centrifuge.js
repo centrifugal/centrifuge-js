@@ -144,18 +144,27 @@ export class Centrifuge extends EventEmitter {
             data = JSON.parse(xhr.responseText);
             parsed = true;
           } catch (e) {
-            callback(true, 'JSON returned was invalid, yet status code was 200. Data was: ' + xhr.responseText);
+            callback({
+              error: 'Invalid JSON. Data was: ' + xhr.responseText,
+              status: 200,
+              data: null
+            });
           }
           if (parsed) { // prevents double execution.
-            callback(false, data);
+            callback({
+              data: data,
+              status: 200
+            });
           }
         } else {
-          this._log("Couldn't get auth info from application", xhr.status);
-          callback(true, 'wrong status code ' + xhr.status);
+          this._log('wrong status code in AJAX response', xhr.status);
+          callback({
+            status: xhr.status,
+            data: null
+          });
         }
       }
     };
-
     setTimeout(() => xhr.send(JSON.stringify(data)), 20);
     return xhr;
   };
@@ -561,11 +570,15 @@ export class Centrifuge extends EventEmitter {
       this._refreshTimeout = null;
     }
 
-    const cb = (error, data) => {
-      if (error === true) {
+    const cb = (resp) => {
+      if (resp.error || resp.status !== 200) {
         // We don't perform any connection status related actions here as we are
         // relying on server that must close connection eventually.
-        this._debug('error refreshing connection token', data);
+        if (resp.error) {
+          this._debug('error refreshing connection token', resp.error);
+        } else {
+          this._debug('error refreshing connection token: wrong status code', resp.status);
+        }
         this._numRefreshFailed++;
         if (this._refreshTimeout !== null) {
           clearTimeout(this._refreshTimeout);
@@ -581,7 +594,7 @@ export class Centrifuge extends EventEmitter {
         return;
       }
       this._numRefreshFailed = 0;
-      this._token = data.token;
+      this._token = resp.data.token;
       if (!this._token) {
         this._refreshFailed();
         return;
@@ -650,15 +663,15 @@ export class Centrifuge extends EventEmitter {
       return;
     }
 
-    const cb = (error, data) => {
-      if (error === true) {
+    const cb = (resp) => {
+      if (resp.error || resp.status !== 200) {
         return;
       }
 
       let channelsData = {};
-      if (data.channels) {
+      if (resp.data.channels) {
         for (const i in data.channels) {
-          const channelData = data.channels[i];
+          const channelData = resp.data.channels[i];
           if (!channelData.channel) {
             continue;
           }
@@ -688,7 +701,6 @@ export class Centrifuge extends EventEmitter {
       }, err => {
         this._subRefreshError(channel, err);
       });
-
     };
 
     const data = {
@@ -1203,8 +1215,8 @@ export class Centrifuge extends EventEmitter {
       channels: channels
     };
 
-    const cb = (error, data) => {
-      if (error === true) {
+    const cb = (resp) => {
+      if (resp.error || resp.status !== 200) {
         this._debug('authorization request failed');
         for (const i in channels) {
           if (channels.hasOwnProperty(i)) {
@@ -1216,9 +1228,9 @@ export class Centrifuge extends EventEmitter {
       }
 
       let channelsData = {};
-      if (data.channels) {
-        for (const i in data.channels) {
-          const channelData = data.channels[i];
+      if (resp.data.channels) {
+        for (const i in resp.data.channels) {
+          const channelData = resp.data.channels[i];
           if (!channelData.channel) {
             continue;
           }
@@ -1241,7 +1253,7 @@ export class Centrifuge extends EventEmitter {
 
           if (!token) {
             // subscription:error
-            this._subscribeError(channel, this._createErrorObject('channel token not provided'));
+            this._subscribeError(channel, this._createErrorObject('permission denied', 103));
             continue;
           } else {
             const msg = {

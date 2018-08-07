@@ -181,17 +181,13 @@
               "type": "bool",
               "id": 3
             },
-            "expired": {
-              "type": "bool",
-              "id": 4
-            },
             "ttl": {
               "type": "uint32",
-              "id": 5
+              "id": 4
             },
             "data": {
               "type": "bytes",
-              "id": 6
+              "id": 5
             }
           }
         },
@@ -217,13 +213,9 @@
               "type": "bool",
               "id": 3
             },
-            "expired": {
-              "type": "bool",
-              "id": 4
-            },
             "ttl": {
               "type": "uint32",
-              "id": 5
+              "id": 4
             }
           }
         },
@@ -270,13 +262,9 @@
               "type": "bool",
               "id": 4
             },
-            "expired": {
-              "type": "bool",
-              "id": 5
-            },
             "ttl": {
               "type": "uint32",
-              "id": 6
+              "id": 5
             }
           }
         },
@@ -298,13 +286,9 @@
               "type": "bool",
               "id": 1
             },
-            "expired": {
-              "type": "bool",
-              "id": 2
-            },
             "ttl": {
               "type": "uint32",
-              "id": 3
+              "id": 2
             }
           }
         },

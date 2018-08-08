@@ -819,8 +819,6 @@ centrifugeProto._subscribe = function (sub) {
         this._subs[channel] = sub;
     }
 
-    this._noResubscribe = false;
-
     if (!this.isConnected()) {
         // subscribe will be called later
         sub._setNew();
@@ -1723,6 +1721,7 @@ subProto.subscribe = function () {
     if (this._status === _STATE_SUCCESS) {
         return;
     }
+    this._noResubscribe = false;
     this._centrifuge._subscribe(this);
     return this;
 };

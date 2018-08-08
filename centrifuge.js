@@ -3433,6 +3433,8 @@ subProto._setUnsubscribed = function (noResubscribe) {
     this._status = _STATE_UNSUBSCRIBED;
     if (noResubscribe === true) {
         this._noResubscribe = true;
+        this._isResubscribe = false;
+        delete this._centrifuge._lastMessageID[channel];
     }
     this._triggerUnsubscribe();
 };

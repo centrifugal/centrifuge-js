@@ -1726,6 +1726,8 @@ var Subscription = function (_EventEmitter) {
       this._status = _STATE_UNSUBSCRIBED;
       if (noResubscribe === true) {
         this._noResubscribe = true;
+        this._isResubscribe = false;
+        delete this._centrifuge._lastMessageID[this.channel];
       }
       if (needTrigger) {
         this._triggerUnsubscribe();
@@ -1770,6 +1772,7 @@ var Subscription = function (_EventEmitter) {
       if (this._status === _STATE_SUCCESS) {
         return;
       }
+      this._noResubscribe = false;
       this._centrifuge._subscribe(this);
     }
   }, {

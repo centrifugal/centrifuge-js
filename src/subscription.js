@@ -183,6 +183,7 @@ export default class Subscription extends EventEmitter {
     if (this._status === _STATE_SUCCESS) {
       return;
     }
+    this._noResubscribe = false;
     this._centrifuge._subscribe(this);
   };
 

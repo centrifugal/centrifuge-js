@@ -1685,7 +1685,7 @@ subProto._setUnsubscribed = function (noResubscribe) {
     if (noResubscribe === true) {
         this._noResubscribe = true;
         this._isResubscribe = false;
-        delete this._centrifuge._lastMessageID[channel];
+        delete this._centrifuge._lastMessageID[this.channel];
     }
     this._triggerUnsubscribe();
 };

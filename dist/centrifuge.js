@@ -425,9 +425,8 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
 
       // clear sub refresh timers
       for (var _channel in this._subRefreshTimeouts) {
-        if (this._subRefreshTimeouts.hasOwnProperty(_channel) && this._subRefreshTimeouts[_channel] !== null) {
-          clearTimeout(this._subRefreshTimeouts[_channel]);
-          this._subRefreshTimeouts[_channel] = null;
+        if (this._subRefreshTimeouts.hasOwnProperty(_channel) && this._subRefreshTimeouts[_channel]) {
+          this._clearSubRefreshTimeout(_channel);
         }
       }
       this._subRefreshTimeouts = {};
@@ -861,15 +860,20 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
       }
     }
   }, {
+    key: '_clearSubRefreshTimeout',
+    value: function _clearSubRefreshTimeout(channel) {
+      if (this._subRefreshTimeouts[channel] !== undefined) {
+        clearTimeout(this._subRefreshTimeouts[channel]);
+        delete this._subRefreshTimeouts[channel];
+      }
+    }
+  }, {
     key: '_subRefreshError',
     value: function _subRefreshError(channel, err) {
       var _this10 = this;
 
       this._debug('subscription refresh error', channel, err);
-      if (this._subRefreshTimeouts[channel] !== undefined) {
-        clearTimeout(this._subRefreshTimeouts[channel]);
-        delete this._subRefreshTimeouts[channel];
-      }
+      this._clearSubRefreshTimeout(channel);
       var sub = this._getSub(channel);
       if (sub === null) {
         return;
@@ -1718,12 +1722,14 @@ var Subscription = function (_EventEmitter) {
   }, {
     key: '_setUnsubscribed',
     value: function _setUnsubscribed(noResubscribe) {
+      this._centrifuge._clearSubRefreshTimeout(this.channel);
       if (this._status === _STATE_UNSUBSCRIBED) {
         return;
       }
       var needTrigger = this._status === _STATE_SUCCESS;
       this._status = _STATE_UNSUBSCRIBED;
       if (noResubscribe === true) {
+        this._unsubscribedAt = null;
         this._noResubscribe = true;
         delete this._centrifuge._lastPubUID[this.channel];
       }
@@ -1777,7 +1783,6 @@ var Subscription = function (_EventEmitter) {
     key: 'unsubscribe',
     value: function unsubscribe() {
       this._setUnsubscribed(true);
-      this._unsubscribedAt = null;
       this._centrifuge._unsubscribe(this);
     }
   }, {

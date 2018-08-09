@@ -135,12 +135,14 @@ export default class Subscription extends EventEmitter {
   };
 
   _setUnsubscribed(noResubscribe) {
+    this._centrifuge._clearSubRefreshTimeout(this.channel);
     if (this._status === _STATE_UNSUBSCRIBED) {
       return;
     }
     const needTrigger = this._status === _STATE_SUCCESS;
     this._status = _STATE_UNSUBSCRIBED;
     if (noResubscribe === true) {
+      this._unsubscribedAt = null;
       this._noResubscribe = true;
       delete this._centrifuge._lastPubUID[this.channel];
     }
@@ -188,7 +190,6 @@ export default class Subscription extends EventEmitter {
 
   unsubscribe() {
     this._setUnsubscribed(true);
-    this._unsubscribedAt = null;
     this._centrifuge._unsubscribe(this);
   };
 

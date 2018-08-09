@@ -313,9 +313,8 @@ export class Centrifuge extends EventEmitter {
 
     // clear sub refresh timers
     for (const channel in this._subRefreshTimeouts) {
-      if (this._subRefreshTimeouts.hasOwnProperty(channel) && this._subRefreshTimeouts[channel] !== null) {
-        clearTimeout(this._subRefreshTimeouts[channel]);
-        this._subRefreshTimeouts[channel] = null;
+      if (this._subRefreshTimeouts.hasOwnProperty(channel) && this._subRefreshTimeouts[channel]) {
+        this._clearSubRefreshTimeout(channel);
       }
     }
     this._subRefreshTimeouts = {};
@@ -717,12 +716,16 @@ export class Centrifuge extends EventEmitter {
     }
   };
 
-  _subRefreshError(channel, err) {
-    this._debug('subscription refresh error', channel, err);
+  _clearSubRefreshTimeout(channel) {
     if (this._subRefreshTimeouts[channel] !== undefined) {
       clearTimeout(this._subRefreshTimeouts[channel]);
       delete this._subRefreshTimeouts[channel];
     }
+  }
+
+  _subRefreshError(channel, err) {
+    this._debug('subscription refresh error', channel, err);
+    this._clearSubRefreshTimeout(channel);
     const sub = this._getSub(channel);
     if (sub === null) {
       return;

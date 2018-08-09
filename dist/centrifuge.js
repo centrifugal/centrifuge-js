@@ -905,7 +905,7 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
     }
   }, {
     key: '_subscribe',
-    value: function _subscribe(sub) {
+    value: function _subscribe(sub, isResubscribe) {
       var _this12 = this;
 
       this._debug('subscribing on', sub.channel);
@@ -921,7 +921,7 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
         return;
       }
 
-      sub._setSubscribing();
+      sub._setSubscribing(isResubscribe);
 
       var msg = {
         method: this._methodType.SUBSCRIBE,
@@ -997,6 +997,7 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
     value: function _connectResponse(result) {
       var _this13 = this;
 
+      var wasReconnecting = this._reconnecting;
       this._reconnecting = false;
       this._resetRetry();
 
@@ -1028,7 +1029,7 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
         if (this._subs.hasOwnProperty(channel)) {
           var sub = this._subs[channel];
           if (sub._shouldResubscribe()) {
-            this._subscribe(sub);
+            this._subscribe(sub, wasReconnecting);
           }
         }
       }
@@ -1581,7 +1582,6 @@ var Subscription = function (_EventEmitter) {
     _this._status = _STATE_NEW;
     _this._error = null;
     _this._isResubscribe = false;
-    _this._recovered = false;
     _this._ready = false;
     _this._subscriptionPromise = null;
     _this._noResubscribe = false;
@@ -1674,11 +1674,11 @@ var Subscription = function (_EventEmitter) {
     }
   }, {
     key: '_setSubscribing',
-    value: function _setSubscribing() {
+    value: function _setSubscribing(isResubscribe) {
+      this._isResubscribe = isResubscribe || false;
       if (this._ready === true) {
         // new promise for this subscription
         this._initializePromise();
-        this._isResubscribe = true;
       }
       this._status = _STATE_SUBSCRIBING;
     }
@@ -1688,7 +1688,6 @@ var Subscription = function (_EventEmitter) {
       if (this._status === _STATE_SUCCESS) {
         return;
       }
-      this._recovered = recovered;
       this._status = _STATE_SUCCESS;
       var successContext = this._getSubscribeSuccessContext(recovered);
 
@@ -1726,8 +1725,7 @@ var Subscription = function (_EventEmitter) {
       this._status = _STATE_UNSUBSCRIBED;
       if (noResubscribe === true) {
         this._noResubscribe = true;
-        this._isResubscribe = false;
-        delete this._centrifuge._lastMessageID[this.channel];
+        delete this._centrifuge._lastPubUID[this.channel];
       }
       if (needTrigger) {
         this._triggerUnsubscribe();
@@ -1740,11 +1738,11 @@ var Subscription = function (_EventEmitter) {
     }
   }, {
     key: '_getSubscribeSuccessContext',
-    value: function _getSubscribeSuccessContext() {
+    value: function _getSubscribeSuccessContext(recovered) {
       return {
         channel: this.channel,
         isResubscribe: this._isResubscribe,
-        recovered: this._recovered
+        recovered: recovered
       };
     }
   }, {

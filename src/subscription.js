@@ -18,7 +18,6 @@ export default class Subscription extends EventEmitter {
     this._status = _STATE_NEW;
     this._error = null;
     this._isResubscribe = false;
-    this._recovered = false;
     this._ready = false;
     this._subscriptionPromise = null;
     this._noResubscribe = false;
@@ -96,11 +95,11 @@ export default class Subscription extends EventEmitter {
     this._status = _STATE_NEW;
   };
 
-  _setSubscribing() {
+  _setSubscribing(isResubscribe) {
+    this._isResubscribe = isResubscribe || false;
     if (this._ready === true) {
       // new promise for this subscription
       this._initializePromise();
-      this._isResubscribe = true;
     }
     this._status = _STATE_SUBSCRIBING;
   };
@@ -109,7 +108,6 @@ export default class Subscription extends EventEmitter {
     if (this._status === _STATE_SUCCESS) {
       return;
     }
-    this._recovered = recovered;
     this._status = _STATE_SUCCESS;
     const successContext = this._getSubscribeSuccessContext(recovered);
 
@@ -144,8 +142,7 @@ export default class Subscription extends EventEmitter {
     this._status = _STATE_UNSUBSCRIBED;
     if (noResubscribe === true) {
       this._noResubscribe = true;
-      this._isResubscribe = false;
-      delete this._centrifuge._lastMessageID[this.channel];
+      delete this._centrifuge._lastPubUID[this.channel];
     }
     if (needTrigger) {
       this._triggerUnsubscribe();
@@ -156,11 +153,11 @@ export default class Subscription extends EventEmitter {
     return !this._noResubscribe;
   };
 
-  _getSubscribeSuccessContext() {
+  _getSubscribeSuccessContext(recovered) {
     return {
       channel: this.channel,
       isResubscribe: this._isResubscribe,
-      recovered: this._recovered
+      recovered: recovered
     };
   };
 

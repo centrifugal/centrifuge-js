@@ -750,7 +750,7 @@ export class Centrifuge extends EventEmitter {
     return;
   };
 
-  _subscribe(sub) {
+  _subscribe(sub, isResubscribe) {
     this._debug('subscribing on', sub.channel);
     const channel = sub.channel;
 
@@ -764,7 +764,7 @@ export class Centrifuge extends EventEmitter {
       return;
     }
 
-    sub._setSubscribing();
+    sub._setSubscribing(isResubscribe);
 
     const msg = {
       method: this._methodType.SUBSCRIBE,
@@ -834,6 +834,7 @@ export class Centrifuge extends EventEmitter {
   };
 
   _connectResponse(result) {
+    const wasReconnecting = this._reconnecting;
     this._reconnecting = false;
     this._resetRetry();
 
@@ -863,7 +864,7 @@ export class Centrifuge extends EventEmitter {
       if (this._subs.hasOwnProperty(channel)) {
         const sub = this._subs[channel];
         if (sub._shouldResubscribe()) {
-          this._subscribe(sub);
+          this._subscribe(sub, wasReconnecting);
         }
       }
     }

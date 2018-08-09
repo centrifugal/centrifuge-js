@@ -570,7 +570,6 @@ centrifugeProto._setupTransport = function () {
 
     this._transport.onopen = function () {
         self._transportClosed = false;
-        self._reconnecting = false;
 
         if (self._isSockJS) {
             self._transportName = self._transport.transport;
@@ -811,7 +810,7 @@ centrifugeProto._refresh = function () {
     }
 };
 
-centrifugeProto._subscribe = function (sub) {
+centrifugeProto._subscribe = function (sub, isResubscribe) {
 
     var channel = sub.channel;
 
@@ -825,7 +824,7 @@ centrifugeProto._subscribe = function (sub) {
         return;
     }
 
-    sub._setSubscribing();
+    sub._setSubscribing(isResubscribe);
 
     var msg = {
         method: 'subscribe',
@@ -903,6 +902,8 @@ centrifugeProto._connectResponse = function (message) {
         }
         this._clientID = message.body.client;
         this._setStatus('connected');
+        var wasReconnecting = this._reconnecting;
+        this._reconnecting = false;
 
         if (this._refreshTimeout) {
             clearTimeout(this._refreshTimeout);
@@ -923,7 +924,7 @@ centrifugeProto._connectResponse = function (message) {
                 if (this._subs.hasOwnProperty(channel)) {
                     var sub = this._subs[channel];
                     if (sub._shouldResubscribe()) {
-                        this._subscribe(sub);
+                        this._subscribe(sub, wasReconnecting);
                     }
                 }
             }
@@ -1563,13 +1564,12 @@ var _STATE_ERROR = 3;
 var _STATE_UNSUBSCRIBED = 4;
 
 function Sub(centrifuge, channel, events) {
+    this.channel = channel;
+    this._centrifuge = centrifuge;
+    this._setEvents(events);
     this._status = _STATE_NEW;
     this._error = null;
-    this._centrifuge = centrifuge;
-    this.channel = channel;
-    this._setEvents(events);
     this._isResubscribe = false;
-    this._recovered = false;
     this._ready = false;
     this._promise = null;
     this._noResubscribe = false;
@@ -1640,11 +1640,11 @@ subProto._setNew = function () {
     this._status = _STATE_NEW;
 };
 
-subProto._setSubscribing = function () {
+subProto._setSubscribing = function (isResubscribe) {
+    this._isResubscribe = isResubscribe || false;
     if (this._ready === true) {
         // new promise for this subscription
         this._initializePromise();
-        this._isResubscribe = true;
     }
     this._status = _STATE_SUBSCRIBING;
 };
@@ -1653,7 +1653,6 @@ subProto._setSubscribeSuccess = function (recovered) {
     if (this._status === _STATE_SUCCESS) {
         return;
     }
-    this._recovered = recovered;
     this._status = _STATE_SUCCESS;
     var successContext = this._getSubscribeSuccessContext(recovered);
     this.trigger('subscribe', [successContext]);
@@ -1684,7 +1683,6 @@ subProto._setUnsubscribed = function (noResubscribe) {
     this._status = _STATE_UNSUBSCRIBED;
     if (noResubscribe === true) {
         this._noResubscribe = true;
-        this._isResubscribe = false;
         delete this._centrifuge._lastMessageID[this.channel];
     }
     this._triggerUnsubscribe();
@@ -1694,11 +1692,11 @@ subProto._shouldResubscribe = function () {
     return !this._noResubscribe;
 };
 
-subProto._getSubscribeSuccessContext = function () {
+subProto._getSubscribeSuccessContext = function (recovered) {
     return {
         channel: this.channel,
         isResubscribe: this._isResubscribe,
-        recovered: this._recovered
+        recovered: recovered
     };
 };
 

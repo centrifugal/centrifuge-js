@@ -656,8 +656,7 @@ export class Centrifuge extends EventEmitter {
     this._debug('refresh subscription token for channel', channel);
 
     if (this._subRefreshTimeouts[channel] !== undefined) {
-      clearTimeout(this._subRefreshTimeouts[channel]);
-      delete this._subRefreshTimeouts[channel];
+      this._clearSubRefreshTimeout(channel);
     } else {
       return;
     }
@@ -738,10 +737,7 @@ export class Centrifuge extends EventEmitter {
 
   _subRefreshResponse(channel, result) {
     this._debug('subscription refresh success', channel);
-    if (this._subRefreshTimeouts[channel] !== undefined) {
-      clearTimeout(this._subRefreshTimeouts[channel]);
-      delete this._subRefreshTimeouts[channel];
-    }
+    this._clearSubRefreshTimeout(channel);
     const sub = this._getSub(channel);
     if (sub === null) {
       return;

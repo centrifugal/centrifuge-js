@@ -1,3 +1,10 @@
+1.5.0
+=====
+
+* fix isResubscribe flag behaviour to only be `true` after resubscribe on reconnect. See more details in [#62](https://github.com/centrifugal/centrifuge-js/issues/62)
+* fix resubscribe behaviour after `unsubscribe` sent from server - this is th remaining part of [#46](https://github.com/centrifugal/centrifuge-js/issues/46)
+
+
 1.4.9
 =====
 

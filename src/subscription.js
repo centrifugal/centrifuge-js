@@ -46,7 +46,9 @@ export default class Subscription extends EventEmitter {
 
   _getAway() {
     const now = new Date();
-    return Math.round((now - this._unsubscribedAt) / 1000) + Math.round(this._centrifuge._config.timeout / 1000);
+    const lastMessageTime = this._centrifuge._lastMessageTime;
+    const timeout = this._centrifuge._config.timeout;
+    return Math.round((now - lastMessageTime) / 1000) + Math.round(timeout / 1000);
   }
 
   _setEvents(events) {

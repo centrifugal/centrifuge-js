@@ -154,6 +154,7 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
     _this._latencyStart = null;
     _this._connectData = null;
     _this._token = null;
+    _this._lastMessageTime = null;
     _this._config = {
       debug: false,
       sockjs: null,
@@ -408,7 +409,7 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
           if (reconnect) {
             if (sub._isSuccess()) {
               sub._triggerUnsubscribe();
-              sub._unsubscribedAt = new Date();
+              sub._unsubscribedAt = this._lastMessageTime;
             }
             sub._setSubscribing();
           } else {
@@ -532,6 +533,7 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
             _this3._debug('reason is an advice object', advice);
             reason = advice.reason;
             needReconnect = advice.reconnect;
+            _this3._lastMessageTime = new Date();
           } catch (e) {
             reason = closeEvent.reason;
             _this3._debug('reason is a plain string', reason);
@@ -570,6 +572,7 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
       };
 
       this._transport.onmessage = function (event) {
+        _this3._lastMessageTime = new Date();
         var replies = _this3._decoder.decodeReplies(event.data);
         for (var i in replies) {
           if (replies.hasOwnProperty(i)) {
@@ -800,8 +803,7 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
       this._debug('refresh subscription token for channel', channel);
 
       if (this._subRefreshTimeouts[channel] !== undefined) {
-        clearTimeout(this._subRefreshTimeouts[channel]);
-        delete this._subRefreshTimeouts[channel];
+        this._clearSubRefreshTimeout(channel);
       } else {
         return;
       }
@@ -891,10 +893,7 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
       var _this11 = this;
 
       this._debug('subscription refresh success', channel);
-      if (this._subRefreshTimeouts[channel] !== undefined) {
-        clearTimeout(this._subRefreshTimeouts[channel]);
-        delete this._subRefreshTimeouts[channel];
-      }
+      this._clearSubRefreshTimeout(channel);
       var sub = this._getSub(channel);
       if (sub === null) {
         return;
@@ -1620,7 +1619,9 @@ var Subscription = function (_EventEmitter) {
     key: '_getAway',
     value: function _getAway() {
       var now = new Date();
-      return Math.round((now - this._unsubscribedAt) / 1000) + Math.round(this._centrifuge._config.timeout / 1000);
+      var lastMessageTime = this._centrifuge._lastMessageTime;
+      var timeout = this._centrifuge._config.timeout;
+      return Math.round((now - lastMessageTime) / 1000) + Math.round(timeout / 1000);
     }
   }, {
     key: '_setEvents',

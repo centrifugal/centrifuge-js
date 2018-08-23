@@ -21,7 +21,7 @@ export default class Subscription extends EventEmitter {
     this._ready = false;
     this._subscriptionPromise = null;
     this._noResubscribe = false;
-    this._unsubscribedAt = null;
+    this._since = null;
     this._setEvents(events);
     this._initializePromise();
   }
@@ -44,12 +44,9 @@ export default class Subscription extends EventEmitter {
     });
   };
 
-  _getAway() {
-    const now = new Date();
-    const lastMessageTime = this._centrifuge._lastMessageTime;
-    const timeout = this._centrifuge._config.timeout;
-    return Math.round((now - lastMessageTime) / 1000) + Math.round(timeout / 1000);
-  }
+  _needRecover() {
+    return this._since !== null;
+  };
 
   _setEvents(events) {
     if (!events) {
@@ -113,7 +110,7 @@ export default class Subscription extends EventEmitter {
     this._status = _STATE_SUCCESS;
     const successContext = this._getSubscribeSuccessContext(recovered);
 
-    this._unsubscribedAt = null;
+    this._since = null;
     this.emit('subscribe', successContext);
     this._resolve(successContext);
   };
@@ -144,7 +141,7 @@ export default class Subscription extends EventEmitter {
     const needTrigger = this._status === _STATE_SUCCESS;
     this._status = _STATE_UNSUBSCRIBED;
     if (noResubscribe === true) {
-      this._unsubscribedAt = null;
+      this._since = null;
       this._noResubscribe = true;
       delete this._centrifuge._lastPubUID[this.channel];
     }

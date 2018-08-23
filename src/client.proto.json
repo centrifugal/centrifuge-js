@@ -188,6 +188,10 @@
             "data": {
               "type": "bytes",
               "id": 5
+            },
+            "time": {
+              "type": "uint32",
+              "id": 6
             }
           }
         },
@@ -233,7 +237,7 @@
               "type": "string",
               "id": 3
             },
-            "away": {
+            "since": {
               "type": "uint32",
               "id": 4
             },

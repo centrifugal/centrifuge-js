@@ -57,6 +57,8 @@ export class Centrifuge extends EventEmitter {
     this._connectData = null;
     this._token = null;
     this._lastMessageTime = null;
+    this._serverTime = null;
+    this._connectedAt = null;
     this._config = {
       debug: false,
       sockjs: null,
@@ -297,7 +299,7 @@ export class Centrifuge extends EventEmitter {
         if (reconnect) {
           if (sub._isSuccess()) {
             sub._triggerUnsubscribe();
-            sub._unsubscribedAt = this._lastMessageTime;
+            sub._since = this._getSince();
           }
           sub._setSubscribing();
         } else {
@@ -789,7 +791,7 @@ export class Centrifuge extends EventEmitter {
         this.stopSubscribeBatching();
       }
     } else {
-      const recover = this._recover(sub);
+      const recover = sub._needRecover();
 
       if (recover === true) {
         msg.params.recover = true;
@@ -797,9 +799,9 @@ export class Centrifuge extends EventEmitter {
         if (last !== '') {
           msg.params.last = last;
         }
-        const away = sub._getAway();
-        if (away !== 0) {
-          msg.params.away = away;
+        const since = sub._since;
+        if (since) {
+          msg.params.since = since;
         }
       }
 
@@ -835,6 +837,12 @@ export class Centrifuge extends EventEmitter {
     return sub;
   };
 
+  _getSince() {
+    const now = new Date();
+    const delta = Math.floor((now - this._connectedAt) / 1000);
+    return this._serverTime + delta;
+  }
+
   _connectResponse(result) {
     const wasReconnecting = this._reconnecting;
     this._reconnecting = false;
@@ -850,6 +858,8 @@ export class Centrifuge extends EventEmitter {
     }
 
     this._clientID = result.client;
+    this._serverTime = result.time;
+    this._connectedAt = new Date();
     this._setStatus('connected');
 
     if (this._refreshTimeout) {
@@ -1101,10 +1111,6 @@ export class Centrifuge extends EventEmitter {
     });
   };
 
-  _recover(sub) {
-    return sub._unsubscribedAt !== null;
-  };
-
   _getLastID(channel) {
     const lastUID = this._lastPubUID[channel];
 
@@ -1272,7 +1278,7 @@ export class Centrifuge extends EventEmitter {
               continue;
             }
 
-            const recover = this._recover(sub);
+            const recover = sub._needRecover();
 
             if (recover === true) {
               msg.params.recover = true;
@@ -1280,9 +1286,8 @@ export class Centrifuge extends EventEmitter {
               if (last !== '') {
                 msg.params.last = last;
               }
-              const away = sub._getAway();
-              if (away !== 0) {
-                msg.params.away = away;
+              if (sub._since) {
+                msg.params.since = sub._since;
               }
             }
             this._call(msg).then(result => {

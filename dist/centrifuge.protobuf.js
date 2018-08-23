@@ -2547,6 +2547,8 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
     _this._connectData = null;
     _this._token = null;
     _this._lastMessageTime = null;
+    _this._serverTime = null;
+    _this._connectedAt = null;
     _this._config = {
       debug: false,
       sockjs: null,
@@ -2801,7 +2803,7 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
           if (reconnect) {
             if (sub._isSuccess()) {
               sub._triggerUnsubscribe();
-              sub._unsubscribedAt = this._lastMessageTime;
+              sub._since = this._getSince();
             }
             sub._setSubscribing();
           } else {
@@ -3339,7 +3341,7 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
           this.stopSubscribeBatching();
         }
       } else {
-        var recover = this._recover(sub);
+        var recover = sub._needRecover();
 
         if (recover === true) {
           msg.params.recover = true;
@@ -3347,9 +3349,9 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
           if (last !== '') {
             msg.params.last = last;
           }
-          var away = sub._getAway();
-          if (away !== 0) {
-            msg.params.away = away;
+          var since = sub._since;
+          if (since) {
+            msg.params.since = since;
           }
         }
 
@@ -3388,6 +3390,13 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
       return sub;
     }
   }, {
+    key: '_getSince',
+    value: function _getSince() {
+      var now = new Date();
+      var delta = Math.floor((now - this._connectedAt) / 1000);
+      return this._serverTime + delta;
+    }
+  }, {
     key: '_connectResponse',
     value: function _connectResponse(result) {
       var _this13 = this;
@@ -3406,6 +3415,8 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
       }
 
       this._clientID = result.client;
+      this._serverTime = result.time;
+      this._connectedAt = new Date();
       this._setStatus('connected');
 
       if (this._refreshTimeout) {
@@ -3681,11 +3692,6 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
       });
     }
   }, {
-    key: '_recover',
-    value: function _recover(sub) {
-      return sub._unsubscribedAt !== null;
-    }
-  }, {
     key: '_getLastID',
     value: function _getLastID(channel) {
       var lastUID = this._lastPubUID[channel];
@@ -3870,7 +3876,7 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
                   return 'continue';
                 }
 
-                var recover = _this17._recover(_sub);
+                var recover = _sub._needRecover();
 
                 if (recover === true) {
                   msg.params.recover = true;
@@ -3878,9 +3884,8 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
                   if (last !== '') {
                     msg.params.last = last;
                   }
-                  var away = _sub._getAway();
-                  if (away !== 0) {
-                    msg.params.away = away;
+                  if (_sub._since) {
+                    msg.params.since = _sub._since;
                   }
                 }
                 _this17._call(msg).then(function (result) {
@@ -3979,7 +3984,7 @@ var Subscription = function (_EventEmitter) {
     _this._ready = false;
     _this._subscriptionPromise = null;
     _this._noResubscribe = false;
-    _this._unsubscribedAt = null;
+    _this._since = null;
     _this._setEvents(events);
     _this._initializePromise();
     return _this;
@@ -4007,12 +4012,9 @@ var Subscription = function (_EventEmitter) {
       });
     }
   }, {
-    key: '_getAway',
-    value: function _getAway() {
-      var now = new Date();
-      var lastMessageTime = this._centrifuge._lastMessageTime;
-      var timeout = this._centrifuge._config.timeout;
-      return Math.round((now - lastMessageTime) / 1000) + Math.round(timeout / 1000);
+    key: '_needRecover',
+    value: function _needRecover() {
+      return this._since !== null;
     }
   }, {
     key: '_setEvents',
@@ -4087,7 +4089,7 @@ var Subscription = function (_EventEmitter) {
       this._status = _STATE_SUCCESS;
       var successContext = this._getSubscribeSuccessContext(recovered);
 
-      this._unsubscribedAt = null;
+      this._since = null;
       this.emit('subscribe', successContext);
       this._resolve(successContext);
     }
@@ -4121,7 +4123,7 @@ var Subscription = function (_EventEmitter) {
       var needTrigger = this._status === _STATE_SUCCESS;
       this._status = _STATE_UNSUBSCRIBED;
       if (noResubscribe === true) {
-        this._unsubscribedAt = null;
+        this._since = null;
         this._noResubscribe = true;
         delete this._centrifuge._lastPubUID[this.channel];
       }
@@ -9918,7 +9920,7 @@ path.resolve = function resolve(originPath, includePath, alreadyNormalized) {
 /* 49 */
 /***/ (function(module, exports) {
 
-module.exports = {"nested":{"proto":{"nested":{"Error":{"fields":{"code":{"type":"uint32","id":1},"message":{"type":"string","id":2}}},"MethodType":{"values":{"CONNECT":0,"SUBSCRIBE":1,"UNSUBSCRIBE":2,"PUBLISH":3,"PRESENCE":4,"PRESENCE_STATS":5,"HISTORY":6,"PING":7,"SEND":8,"RPC":9,"REFRESH":10,"SUB_REFRESH":11}},"Command":{"fields":{"id":{"type":"uint32","id":1},"method":{"type":"MethodType","id":2},"params":{"type":"bytes","id":3}}},"Reply":{"fields":{"id":{"type":"uint32","id":1},"error":{"type":"Error","id":2},"result":{"type":"bytes","id":3}}},"PushType":{"values":{"PUBLICATION":0,"JOIN":1,"LEAVE":2,"UNSUB":3,"MESSAGE":4}},"Push":{"fields":{"type":{"type":"PushType","id":1},"channel":{"type":"string","id":2},"data":{"type":"bytes","id":3}}},"ClientInfo":{"fields":{"user":{"type":"string","id":1},"client":{"type":"string","id":2},"connInfo":{"type":"bytes","id":3},"chanInfo":{"type":"bytes","id":4}}},"Publication":{"fields":{"uid":{"type":"string","id":1},"data":{"type":"bytes","id":2},"info":{"type":"ClientInfo","id":3}}},"Join":{"fields":{"info":{"type":"ClientInfo","id":1}}},"Leave":{"fields":{"info":{"type":"ClientInfo","id":1}}},"Unsub":{"fields":{"resubscribe":{"type":"bool","id":1}}},"Message":{"fields":{"data":{"type":"bytes","id":1}}},"ConnectRequest":{"fields":{"token":{"type":"string","id":1},"data":{"type":"bytes","id":2}}},"ConnectResult":{"fields":{"client":{"type":"string","id":1},"version":{"type":"string","id":2},"expires":{"type":"bool","id":3},"ttl":{"type":"uint32","id":4},"data":{"type":"bytes","id":5}}},"RefreshRequest":{"fields":{"token":{"type":"string","id":1}}},"RefreshResult":{"fields":{"client":{"type":"string","id":1},"version":{"type":"string","id":2},"expires":{"type":"bool","id":3},"ttl":{"type":"uint32","id":4}}},"SubscribeRequest":{"fields":{"channel":{"type":"string","id":1},"recover":{"type":"bool","id":2},"last":{"type":"string","id":3},"away":{"type":"uint32","id":4},"token":{"type":"string","id":5}}},"SubscribeResult":{"fields":{"last":{"type":"string","id":1},"recovered":{"type":"bool","id":2},"publications":{"rule":"repeated","type":"Publication","id":3},"expires":{"type":"bool","id":4},"ttl":{"type":"uint32","id":5}}},"SubRefreshRequest":{"fields":{"channel":{"type":"string","id":1},"token":{"type":"string","id":2}}},"SubRefreshResult":{"fields":{"expires":{"type":"bool","id":1},"ttl":{"type":"uint32","id":2}}},"UnsubscribeRequest":{"fields":{"channel":{"type":"string","id":1}}},"UnsubscribeResult":{"fields":{}},"PublishRequest":{"fields":{"channel":{"type":"string","id":1},"data":{"type":"bytes","id":2}}},"PublishResult":{"fields":{}},"PresenceRequest":{"fields":{"channel":{"type":"string","id":1}}},"PresenceResult":{"fields":{"presence":{"keyType":"string","type":"ClientInfo","id":1}}},"PresenceStatsRequest":{"fields":{"channel":{"type":"string","id":1}}},"PresenceStatsResult":{"fields":{"numClients":{"type":"uint32","id":1},"numUsers":{"type":"uint32","id":2}}},"HistoryRequest":{"fields":{"channel":{"type":"string","id":1}}},"HistoryResult":{"fields":{"publications":{"rule":"repeated","type":"Publication","id":1}}},"PingRequest":{"fields":{"data":{"type":"string","id":1}}},"PingResult":{"fields":{"data":{"type":"string","id":1}}},"RPCRequest":{"fields":{"data":{"type":"bytes","id":1}}},"RPCResult":{"fields":{"data":{"type":"bytes","id":1}}},"SendRequest":{"fields":{"data":{"type":"bytes","id":1}}}}}}}
+module.exports = {"nested":{"proto":{"nested":{"Error":{"fields":{"code":{"type":"uint32","id":1},"message":{"type":"string","id":2}}},"MethodType":{"values":{"CONNECT":0,"SUBSCRIBE":1,"UNSUBSCRIBE":2,"PUBLISH":3,"PRESENCE":4,"PRESENCE_STATS":5,"HISTORY":6,"PING":7,"SEND":8,"RPC":9,"REFRESH":10,"SUB_REFRESH":11}},"Command":{"fields":{"id":{"type":"uint32","id":1},"method":{"type":"MethodType","id":2},"params":{"type":"bytes","id":3}}},"Reply":{"fields":{"id":{"type":"uint32","id":1},"error":{"type":"Error","id":2},"result":{"type":"bytes","id":3}}},"PushType":{"values":{"PUBLICATION":0,"JOIN":1,"LEAVE":2,"UNSUB":3,"MESSAGE":4}},"Push":{"fields":{"type":{"type":"PushType","id":1},"channel":{"type":"string","id":2},"data":{"type":"bytes","id":3}}},"ClientInfo":{"fields":{"user":{"type":"string","id":1},"client":{"type":"string","id":2},"connInfo":{"type":"bytes","id":3},"chanInfo":{"type":"bytes","id":4}}},"Publication":{"fields":{"uid":{"type":"string","id":1},"data":{"type":"bytes","id":2},"info":{"type":"ClientInfo","id":3}}},"Join":{"fields":{"info":{"type":"ClientInfo","id":1}}},"Leave":{"fields":{"info":{"type":"ClientInfo","id":1}}},"Unsub":{"fields":{"resubscribe":{"type":"bool","id":1}}},"Message":{"fields":{"data":{"type":"bytes","id":1}}},"ConnectRequest":{"fields":{"token":{"type":"string","id":1},"data":{"type":"bytes","id":2}}},"ConnectResult":{"fields":{"client":{"type":"string","id":1},"version":{"type":"string","id":2},"expires":{"type":"bool","id":3},"ttl":{"type":"uint32","id":4},"data":{"type":"bytes","id":5},"time":{"type":"uint32","id":6}}},"RefreshRequest":{"fields":{"token":{"type":"string","id":1}}},"RefreshResult":{"fields":{"client":{"type":"string","id":1},"version":{"type":"string","id":2},"expires":{"type":"bool","id":3},"ttl":{"type":"uint32","id":4}}},"SubscribeRequest":{"fields":{"channel":{"type":"string","id":1},"recover":{"type":"bool","id":2},"last":{"type":"string","id":3},"since":{"type":"uint32","id":4},"token":{"type":"string","id":5}}},"SubscribeResult":{"fields":{"last":{"type":"string","id":1},"recovered":{"type":"bool","id":2},"publications":{"rule":"repeated","type":"Publication","id":3},"expires":{"type":"bool","id":4},"ttl":{"type":"uint32","id":5}}},"SubRefreshRequest":{"fields":{"channel":{"type":"string","id":1},"token":{"type":"string","id":2}}},"SubRefreshResult":{"fields":{"expires":{"type":"bool","id":1},"ttl":{"type":"uint32","id":2}}},"UnsubscribeRequest":{"fields":{"channel":{"type":"string","id":1}}},"UnsubscribeResult":{"fields":{}},"PublishRequest":{"fields":{"channel":{"type":"string","id":1},"data":{"type":"bytes","id":2}}},"PublishResult":{"fields":{}},"PresenceRequest":{"fields":{"channel":{"type":"string","id":1}}},"PresenceResult":{"fields":{"presence":{"keyType":"string","type":"ClientInfo","id":1}}},"PresenceStatsRequest":{"fields":{"channel":{"type":"string","id":1}}},"PresenceStatsResult":{"fields":{"numClients":{"type":"uint32","id":1},"numUsers":{"type":"uint32","id":2}}},"HistoryRequest":{"fields":{"channel":{"type":"string","id":1}}},"HistoryResult":{"fields":{"publications":{"rule":"repeated","type":"Publication","id":1}}},"PingRequest":{"fields":{"data":{"type":"string","id":1}}},"PingResult":{"fields":{"data":{"type":"string","id":1}}},"RPCRequest":{"fields":{"data":{"type":"bytes","id":1}}},"RPCResult":{"fields":{"data":{"type":"bytes","id":1}}},"SendRequest":{"fields":{"data":{"type":"bytes","id":1}}}}}}}
 
 /***/ })
 /******/ ]);

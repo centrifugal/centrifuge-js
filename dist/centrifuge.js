@@ -155,6 +155,8 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
     _this._connectData = null;
     _this._token = null;
     _this._lastMessageTime = null;
+    _this._serverTime = null;
+    _this._connectedAt = null;
     _this._config = {
       debug: false,
       sockjs: null,
@@ -409,7 +411,7 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
           if (reconnect) {
             if (sub._isSuccess()) {
               sub._triggerUnsubscribe();
-              sub._unsubscribedAt = this._lastMessageTime;
+              sub._since = this._getSince();
             }
             sub._setSubscribing();
           } else {
@@ -947,7 +949,7 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
           this.stopSubscribeBatching();
         }
       } else {
-        var recover = this._recover(sub);
+        var recover = sub._needRecover();
 
         if (recover === true) {
           msg.params.recover = true;
@@ -955,9 +957,9 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
           if (last !== '') {
             msg.params.last = last;
           }
-          var away = sub._getAway();
-          if (away !== 0) {
-            msg.params.away = away;
+          var since = sub._since;
+          if (since) {
+            msg.params.since = since;
           }
         }
 
@@ -996,6 +998,13 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
       return sub;
     }
   }, {
+    key: '_getSince',
+    value: function _getSince() {
+      var now = new Date();
+      var delta = Math.floor((now - this._connectedAt) / 1000);
+      return this._serverTime + delta;
+    }
+  }, {
     key: '_connectResponse',
     value: function _connectResponse(result) {
       var _this13 = this;
@@ -1014,6 +1023,8 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
       }
 
       this._clientID = result.client;
+      this._serverTime = result.time;
+      this._connectedAt = new Date();
       this._setStatus('connected');
 
       if (this._refreshTimeout) {
@@ -1289,11 +1300,6 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
       });
     }
   }, {
-    key: '_recover',
-    value: function _recover(sub) {
-      return sub._unsubscribedAt !== null;
-    }
-  }, {
     key: '_getLastID',
     value: function _getLastID(channel) {
       var lastUID = this._lastPubUID[channel];
@@ -1478,7 +1484,7 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
                   return 'continue';
                 }
 
-                var recover = _this17._recover(_sub);
+                var recover = _sub._needRecover();
 
                 if (recover === true) {
                   msg.params.recover = true;
@@ -1486,9 +1492,8 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
                   if (last !== '') {
                     msg.params.last = last;
                   }
-                  var away = _sub._getAway();
-                  if (away !== 0) {
-                    msg.params.away = away;
+                  if (_sub._since) {
+                    msg.params.since = _sub._since;
                   }
                 }
                 _this17._call(msg).then(function (result) {
@@ -1588,7 +1593,7 @@ var Subscription = function (_EventEmitter) {
     _this._ready = false;
     _this._subscriptionPromise = null;
     _this._noResubscribe = false;
-    _this._unsubscribedAt = null;
+    _this._since = null;
     _this._setEvents(events);
     _this._initializePromise();
     return _this;
@@ -1616,12 +1621,9 @@ var Subscription = function (_EventEmitter) {
       });
     }
   }, {
-    key: '_getAway',
-    value: function _getAway() {
-      var now = new Date();
-      var lastMessageTime = this._centrifuge._lastMessageTime;
-      var timeout = this._centrifuge._config.timeout;
-      return Math.round((now - lastMessageTime) / 1000) + Math.round(timeout / 1000);
+    key: '_needRecover',
+    value: function _needRecover() {
+      return this._since !== null;
     }
   }, {
     key: '_setEvents',
@@ -1696,7 +1698,7 @@ var Subscription = function (_EventEmitter) {
       this._status = _STATE_SUCCESS;
       var successContext = this._getSubscribeSuccessContext(recovered);
 
-      this._unsubscribedAt = null;
+      this._since = null;
       this.emit('subscribe', successContext);
       this._resolve(successContext);
     }
@@ -1730,7 +1732,7 @@ var Subscription = function (_EventEmitter) {
       var needTrigger = this._status === _STATE_SUCCESS;
       this._status = _STATE_UNSUBSCRIBED;
       if (noResubscribe === true) {
-        this._unsubscribedAt = null;
+        this._since = null;
         this._noResubscribe = true;
         delete this._centrifuge._lastPubUID[this.channel];
       }

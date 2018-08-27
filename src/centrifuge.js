@@ -47,7 +47,7 @@ export class Centrifuge extends EventEmitter {
     this._privateChannels = {};
     this._numRefreshFailed = 0;
     this._refreshTimeout = null;
-    this._pingInterval = null;
+    this._pingTimeout = null;
     this._pongTimeout = null;
     this._subRefreshTimeouts = {};
     this._retries = 0;
@@ -56,9 +56,8 @@ export class Centrifuge extends EventEmitter {
     this._latencyStart = null;
     this._connectData = null;
     this._token = null;
-    this._lastMessageTime = null;
     this._serverTime = null;
-    this._connectedAt = null;
+    this._hasRecoveryChannel = false;
     this._config = {
       debug: false,
       sockjs: null,
@@ -67,7 +66,7 @@ export class Centrifuge extends EventEmitter {
       maxRetry: 20000,
       timeout: 5000,
       ping: true,
-      pingInterval: 30000,
+      pingInterval: 25000,
       pongWaitTimeout: 5000,
       privateChannelPrefix: '$',
       onTransportClose: null,
@@ -276,6 +275,8 @@ export class Centrifuge extends EventEmitter {
 
   _clearConnectedState(reconnect) {
     this._clientID = null;
+    this._hasRecoveryChannel = false;
+    this._stopPing();
 
     // fire errbacks of registered outgoing calls.
     for (const id in this._callbacks) {
@@ -368,7 +369,7 @@ export class Centrifuge extends EventEmitter {
 
       if (this._isSockjs) {
         this._transportName = 'sockjs-' + this._transport.transport;
-        this._transport.onheartbeat = () => this._restartPing();
+        this._transport.onheartbeat = () => this._restartPingIfNoRecoveryUsed();
       } else {
         this._transportName = 'websocket';
       }
@@ -462,7 +463,7 @@ export class Centrifuge extends EventEmitter {
           this._dispatchReply(replies[i]);
         }
       }
-      this._restartPing();
+      this._restartPingIfNoRecoveryUsed();
     };
   };
 
@@ -838,9 +839,7 @@ export class Centrifuge extends EventEmitter {
   };
 
   _getSince() {
-    const now = new Date();
-    const delta = Math.floor((now - this._connectedAt) / 1000);
-    return this._serverTime + delta;
+    return this._serverTime;
   }
 
   _connectResponse(result) {
@@ -859,7 +858,6 @@ export class Centrifuge extends EventEmitter {
 
     this._clientID = result.client;
     this._serverTime = result.time;
-    this._connectedAt = new Date();
     this._setStatus('connected');
 
     if (this._refreshTimeout) {
@@ -883,7 +881,7 @@ export class Centrifuge extends EventEmitter {
     this.stopSubscribeBatching();
     this.stopBatching();
 
-    this._restartPing();
+    this._startPing();
 
     const ctx = {
       client: result.client,
@@ -902,9 +900,9 @@ export class Centrifuge extends EventEmitter {
       clearTimeout(this._pongTimeout);
       this._pongTimeout = null;
     }
-    if (this._pingInterval !== null) {
-      clearInterval(this._pingInterval);
-      this._pingInterval = null;
+    if (this._pingTimeout !== null) {
+      clearTimeout(this._pingTimeout);
+      this._pingTimeout = null;
     }
   };
 
@@ -916,7 +914,7 @@ export class Centrifuge extends EventEmitter {
       return;
     }
 
-    this._pingInterval = setInterval(() => {
+    this._pingTimeout = setTimeout(() => {
       if (!this.isConnected()) {
         this._stopPing();
         return;
@@ -928,9 +926,11 @@ export class Centrifuge extends EventEmitter {
     }, this._config.pingInterval);
   };
 
-  _restartPing() {
-    this._stopPing();
-    this._startPing();
+  _restartPingIfNoRecoveryUsed() {
+    if (!this._hasRecoveryChannel) {
+      this._stopPing();
+      this._startPing();
+    }
   };
 
   _subscribeError(channel, error) {
@@ -957,9 +957,9 @@ export class Centrifuge extends EventEmitter {
       return;
     }
 
-    if (result.expired === true) {
-      sub._setSubscribeError(this._createErrorObject('token expired'));
-      return;
+    if (result.time) {
+      this._serverTime = result.time;
+      this._hasRecoveryChannel = true;
     }
 
     let recovered = false;
@@ -1106,10 +1106,26 @@ export class Centrifuge extends EventEmitter {
   };
 
   _ping() {
-    this._addMessage({
+    const msg = {
       method: this._methodType.PING
+    };
+    this._call(msg).then(result => {
+      this._pingResponse(this._decoder.decodeCommandResult(this._methodType.PING, result));
+    }, err => {
+      this._debug('ping error', err);
     });
   };
+
+  _pingResponse(result) {
+    if (!this.isConnected()) {
+      return;
+    }
+    if (result && result.time) {
+      this._serverTime = result.time;
+    }
+    this._stopPing();
+    this._startPing();
+  }
 
   _getLastID(channel) {
     const lastUID = this._lastPubUID[channel];

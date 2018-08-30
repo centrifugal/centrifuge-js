@@ -41,6 +41,7 @@ export class Centrifuge extends EventEmitter {
     this._refreshRequired = false;
     this._subs = {};
     this._lastPubUID = {};
+    this._lastPubID = {};
     this._messages = [];
     this._isBatching = false;
     this._isSubscribeBatching = false;
@@ -62,7 +63,7 @@ export class Centrifuge extends EventEmitter {
       debug: false,
       sockjs: null,
       promise: null,
-      minRetry: 1000,
+      minRetry: 5000,
       maxRetry: 20000,
       timeout: 5000,
       ping: true,
@@ -796,9 +797,13 @@ export class Centrifuge extends EventEmitter {
 
       if (recover === true) {
         msg.params.recover = true;
-        const last = this._getLastID(channel);
-        if (last !== '') {
-          msg.params.last = last;
+        const lastUid = this._getLastUID(channel);
+        if (lastUid) {
+          msg.params.from_uid = lastUid;
+        }
+        const lastId = this._getLastID(channel);
+        if (lastId) {
+          msg.params.from_id = lastId;
         }
         const since = sub._since;
         if (since) {
@@ -979,9 +984,13 @@ export class Centrifuge extends EventEmitter {
         }
       }
     } else {
-      if ('last' in result) {
+      if ('last_uid' in result) {
         // no missed messages found so set last message id from result.
-        this._lastPubUID[channel] = result.last;
+        this._lastPubUID[channel] = result.last_uid;
+      }
+      if ('last_id' in result) {
+        // no missed messages found so set last message id from result.
+        this._lastPubID[channel] = result.last_id;
       }
     }
 
@@ -1046,7 +1055,12 @@ export class Centrifuge extends EventEmitter {
 
   _handlePublication(channel, pub) {
     // keep last uid received from channel.
-    this._lastPubUID[channel] = pub.uid;
+    if (pub.id) {
+      this._lastPubID[channel] = pub.id.toString();
+    }
+    if (pub.uid) {
+      this._lastPubUID[channel] = pub.uid;
+    }
     const sub = this._getSub(channel);
     if (!sub) {
       return;
@@ -1127,7 +1141,7 @@ export class Centrifuge extends EventEmitter {
     this._startPing();
   }
 
-  _getLastID(channel) {
+  _getLastUID(channel) {
     const lastUID = this._lastPubUID[channel];
 
     if (lastUID) {
@@ -1136,6 +1150,17 @@ export class Centrifuge extends EventEmitter {
     }
     this._debug('no last uid found for channel', channel);
     return '';
+  };
+
+  _getLastID(channel) {
+    const lastID = this._lastPubID[channel];
+
+    if (lastID) {
+      this._debug('last id found and sent for channel', channel);
+      return lastID;
+    }
+    this._debug('no last id found for channel', channel);
+    return '0';
   };
 
   _createErrorObject(message, code) {
@@ -1187,7 +1212,7 @@ export class Centrifuge extends EventEmitter {
   };
 
   disconnect() {
-    this._disconnect('client', false);
+    this._disconnect('client', true);
   };
 
   ping() {
@@ -1298,9 +1323,13 @@ export class Centrifuge extends EventEmitter {
 
             if (recover === true) {
               msg.params.recover = true;
-              const last = this._getLastID(channel);
-              if (last !== '') {
-                msg.params.last = last;
+              const lastUid = this._getLastUID(channel);
+              if (lastUid) {
+                msg.params.from_uid = lastUid;
+              }
+              const lastId = this._getLastID(channel);
+              if (lastId) {
+                msg.params.from_id = lastId;
               }
               if (sub._since) {
                 msg.params.since = sub._since;

@@ -2531,6 +2531,7 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
     _this._refreshRequired = false;
     _this._subs = {};
     _this._lastPubUID = {};
+    _this._lastPubID = {};
     _this._messages = [];
     _this._isBatching = false;
     _this._isSubscribeBatching = false;
@@ -2552,7 +2553,7 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
       debug: false,
       sockjs: null,
       promise: null,
-      minRetry: 1000,
+      minRetry: 5000,
       maxRetry: 20000,
       timeout: 5000,
       ping: true,
@@ -3346,9 +3347,13 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
 
         if (recover === true) {
           msg.params.recover = true;
-          var last = this._getLastID(channel);
-          if (last !== '') {
-            msg.params.last = last;
+          var lastUid = this._getLastUID(channel);
+          if (lastUid) {
+            msg.params.from_uid = lastUid;
+          }
+          var lastId = this._getLastID(channel);
+          if (lastId) {
+            msg.params.from_id = lastId;
           }
           var since = sub._since;
           if (since) {
@@ -3548,9 +3553,13 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
           }
         }
       } else {
-        if ('last' in result) {
+        if ('last_uid' in result) {
           // no missed messages found so set last message id from result.
-          this._lastPubUID[channel] = result.last;
+          this._lastPubUID[channel] = result.last_uid;
+        }
+        if ('last_id' in result) {
+          // no missed messages found so set last message id from result.
+          this._lastPubID[channel] = result.last_id;
         }
       }
 
@@ -3622,7 +3631,12 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
     key: '_handlePublication',
     value: function _handlePublication(channel, pub) {
       // keep last uid received from channel.
-      this._lastPubUID[channel] = pub.uid;
+      if (pub.id) {
+        this._lastPubID[channel] = pub.id.toString();
+      }
+      if (pub.uid) {
+        this._lastPubUID[channel] = pub.uid;
+      }
       var sub = this._getSub(channel);
       if (!sub) {
         return;
@@ -3711,8 +3725,8 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
       this._startPing();
     }
   }, {
-    key: '_getLastID',
-    value: function _getLastID(channel) {
+    key: '_getLastUID',
+    value: function _getLastUID(channel) {
       var lastUID = this._lastPubUID[channel];
 
       if (lastUID) {
@@ -3721,6 +3735,18 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
       }
       this._debug('no last uid found for channel', channel);
       return '';
+    }
+  }, {
+    key: '_getLastID',
+    value: function _getLastID(channel) {
+      var lastID = this._lastPubID[channel];
+
+      if (lastID) {
+        this._debug('last id found and sent for channel', channel);
+        return lastID;
+      }
+      this._debug('no last id found for channel', channel);
+      return '0';
     }
   }, {
     key: '_createErrorObject',
@@ -3780,7 +3806,7 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
   }, {
     key: 'disconnect',
     value: function disconnect() {
-      this._disconnect('client', false);
+      this._disconnect('client', true);
     }
   }, {
     key: 'ping',
@@ -3899,9 +3925,13 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
 
                 if (recover === true) {
                   msg.params.recover = true;
-                  var last = _this18._getLastID(channel);
-                  if (last !== '') {
-                    msg.params.last = last;
+                  var lastUid = _this18._getLastUID(channel);
+                  if (lastUid) {
+                    msg.params.from_uid = lastUid;
+                  }
+                  var lastId = _this18._getLastID(channel);
+                  if (lastId) {
+                    msg.params.from_id = lastId;
                   }
                   if (_sub._since) {
                     msg.params.since = _sub._since;

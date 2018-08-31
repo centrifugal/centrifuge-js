@@ -21,7 +21,8 @@ export default class Subscription extends EventEmitter {
     this._ready = false;
     this._subscriptionPromise = null;
     this._noResubscribe = false;
-    this._since = null;
+    this._recoverable = false;
+    this._recover = false;
     this._setEvents(events);
     this._initializePromise();
   }
@@ -45,7 +46,7 @@ export default class Subscription extends EventEmitter {
   };
 
   _needRecover() {
-    return this._since !== null;
+    return this._recoverable === true && this._recover === true;
   };
 
   _setEvents(events) {
@@ -110,7 +111,7 @@ export default class Subscription extends EventEmitter {
     this._status = _STATE_SUCCESS;
     const successContext = this._getSubscribeSuccessContext(recovered);
 
-    this._since = null;
+    this._recover = false;
     this.emit('subscribe', successContext);
     this._resolve(successContext);
   };
@@ -141,9 +142,9 @@ export default class Subscription extends EventEmitter {
     const needTrigger = this._status === _STATE_SUCCESS;
     this._status = _STATE_UNSUBSCRIBED;
     if (noResubscribe === true) {
-      this._since = null;
+      this._recover = false;
       this._noResubscribe = true;
-      delete this._centrifuge._lastPubUID[this.channel];
+      delete this._centrifuge._lastPubID[this.channel];
     }
     if (needTrigger) {
       this._triggerUnsubscribe();

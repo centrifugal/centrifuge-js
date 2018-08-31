@@ -2530,7 +2530,6 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
     _this._clientID = null;
     _this._refreshRequired = false;
     _this._subs = {};
-    _this._lastPubUID = {};
     _this._lastPubID = {};
     _this._messages = [];
     _this._isBatching = false;
@@ -2805,7 +2804,7 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
           if (reconnect) {
             if (sub._isSuccess()) {
               sub._triggerUnsubscribe();
-              sub._since = this._getSince();
+              sub._recover = true;
             }
             sub._setSubscribing();
           } else {
@@ -3347,17 +3346,9 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
 
         if (recover === true) {
           msg.params.recover = true;
-          var lastUid = this._getLastUID(channel);
-          if (lastUid) {
-            msg.params.from_uid = lastUid;
-          }
           var lastId = this._getLastID(channel);
           if (lastId) {
-            msg.params.from_id = lastId;
-          }
-          var since = sub._since;
-          if (since) {
-            msg.params.since = since;
+            msg.params.since = lastId;
           }
         }
 
@@ -3394,11 +3385,6 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
         return null;
       }
       return sub;
-    }
-  }, {
-    key: '_getSince',
-    value: function _getSince() {
-      return this._serverTime;
     }
   }, {
     key: '_connectResponse',
@@ -3553,14 +3539,13 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
           }
         }
       } else {
-        if ('last_uid' in result) {
-          // no missed messages found so set last message id from result.
-          this._lastPubUID[channel] = result.last_uid;
+        if ('last' in result) {
+          // no missed messages found so set last publication id from result.
+          this._lastPubID[channel] = result.last;
         }
-        if ('last_id' in result) {
-          // no missed messages found so set last message id from result.
-          this._lastPubID[channel] = result.last_id;
-        }
+      }
+      if (result.recoverable) {
+        sub._recoverable = true;
       }
 
       if (result.expires === true) {
@@ -3633,9 +3618,6 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
       // keep last uid received from channel.
       if (pub.id) {
         this._lastPubID[channel] = pub.id.toString();
-      }
-      if (pub.uid) {
-        this._lastPubUID[channel] = pub.uid;
       }
       var sub = this._getSub(channel);
       if (!sub) {
@@ -3723,18 +3705,6 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
       }
       this._stopPing();
       this._startPing();
-    }
-  }, {
-    key: '_getLastUID',
-    value: function _getLastUID(channel) {
-      var lastUID = this._lastPubUID[channel];
-
-      if (lastUID) {
-        this._debug('last uid found and sent for channel', channel);
-        return lastUID;
-      }
-      this._debug('no last uid found for channel', channel);
-      return '';
     }
   }, {
     key: '_getLastID',
@@ -3925,16 +3895,9 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
 
                 if (recover === true) {
                   msg.params.recover = true;
-                  var lastUid = _this18._getLastUID(channel);
-                  if (lastUid) {
-                    msg.params.from_uid = lastUid;
-                  }
                   var lastId = _this18._getLastID(channel);
                   if (lastId) {
-                    msg.params.from_id = lastId;
-                  }
-                  if (_sub._since) {
-                    msg.params.since = _sub._since;
+                    msg.params.since = lastId;
                   }
                 }
                 _this18._call(msg).then(function (result) {
@@ -4033,7 +3996,8 @@ var Subscription = function (_EventEmitter) {
     _this._ready = false;
     _this._subscriptionPromise = null;
     _this._noResubscribe = false;
-    _this._since = null;
+    _this._recoverable = false;
+    _this._recover = false;
     _this._setEvents(events);
     _this._initializePromise();
     return _this;
@@ -4063,7 +4027,7 @@ var Subscription = function (_EventEmitter) {
   }, {
     key: '_needRecover',
     value: function _needRecover() {
-      return this._since !== null;
+      return this._recoverable === true && this._recover === true;
     }
   }, {
     key: '_setEvents',
@@ -4138,7 +4102,7 @@ var Subscription = function (_EventEmitter) {
       this._status = _STATE_SUCCESS;
       var successContext = this._getSubscribeSuccessContext(recovered);
 
-      this._since = null;
+      this._recover = false;
       this.emit('subscribe', successContext);
       this._resolve(successContext);
     }
@@ -4172,9 +4136,9 @@ var Subscription = function (_EventEmitter) {
       var needTrigger = this._status === _STATE_SUCCESS;
       this._status = _STATE_UNSUBSCRIBED;
       if (noResubscribe === true) {
-        this._since = null;
+        this._recover = false;
         this._noResubscribe = true;
-        delete this._centrifuge._lastPubUID[this.channel];
+        delete this._centrifuge._lastPubID[this.channel];
       }
       if (needTrigger) {
         this._triggerUnsubscribe();

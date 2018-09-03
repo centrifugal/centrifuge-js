@@ -56,13 +56,11 @@ export class Centrifuge extends EventEmitter {
     this._latencyStart = null;
     this._connectData = null;
     this._token = null;
-    this._serverTime = null;
-    this._hasRecoveryChannel = false;
     this._config = {
       debug: false,
       sockjs: null,
       promise: null,
-      minRetry: 5000,
+      minRetry: 1000,
       maxRetry: 20000,
       timeout: 5000,
       ping: true,
@@ -275,7 +273,6 @@ export class Centrifuge extends EventEmitter {
 
   _clearConnectedState(reconnect) {
     this._clientID = null;
-    this._hasRecoveryChannel = false;
     this._stopPing();
 
     // fire errbacks of registered outgoing calls.
@@ -369,7 +366,7 @@ export class Centrifuge extends EventEmitter {
 
       if (this._isSockjs) {
         this._transportName = 'sockjs-' + this._transport.transport;
-        this._transport.onheartbeat = () => this._restartPingIfNoRecoveryUsed();
+        this._transport.onheartbeat = () => this._restartPing();
       } else {
         this._transportName = 'websocket';
       }
@@ -463,7 +460,7 @@ export class Centrifuge extends EventEmitter {
           this._dispatchReply(replies[i]);
         }
       }
-      this._restartPingIfNoRecoveryUsed();
+      this._restartPing();
     };
   };
 
@@ -849,7 +846,6 @@ export class Centrifuge extends EventEmitter {
     }
 
     this._clientID = result.client;
-    this._serverTime = result.time;
     this._setStatus('connected');
 
     if (this._refreshTimeout) {
@@ -918,11 +914,9 @@ export class Centrifuge extends EventEmitter {
     }, this._config.pingInterval);
   };
 
-  _restartPingIfNoRecoveryUsed() {
-    if (!this._hasRecoveryChannel) {
-      this._stopPing();
-      this._startPing();
-    }
+  _restartPing() {
+    this._stopPing();
+    this._startPing();
   };
 
   _subscribeError(channel, error) {
@@ -947,11 +941,6 @@ export class Centrifuge extends EventEmitter {
     }
     if (!sub._isSubscribing()) {
       return;
-    }
-
-    if (result.time) {
-      this._serverTime = result.time;
-      this._hasRecoveryChannel = true;
     }
 
     let recovered = false;
@@ -1041,8 +1030,8 @@ export class Centrifuge extends EventEmitter {
 
   _handlePublication(channel, pub) {
     // keep last uid received from channel.
-    if (pub.id) {
-      this._lastPubID[channel] = pub.id.toString();
+    if (pub.seq) {
+      this._lastPubID[channel] = pub.seq;
     }
     const sub = this._getSub(channel);
     if (!sub) {
@@ -1116,9 +1105,6 @@ export class Centrifuge extends EventEmitter {
   _pingResponse(result) {
     if (!this.isConnected()) {
       return;
-    }
-    if (result && result.time) {
-      this._serverTime = result.time;
     }
     this._stopPing();
     this._startPing();

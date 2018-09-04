@@ -414,7 +414,6 @@ export class Centrifuge extends EventEmitter {
           this._debug('reason is an advice object', advice);
           reason = advice.reason;
           needReconnect = advice.reconnect;
-          this._lastMessageTime = new Date();
         } catch (e) {
           reason = closeEvent.reason;
           this._debug('reason is a plain string', reason);
@@ -453,7 +452,6 @@ export class Centrifuge extends EventEmitter {
     };
 
     this._transport.onmessage = event => {
-      this._lastMessageTime = new Date();
       const replies = this._decoder.decodeReplies(event.data);
       for (const i in replies) {
         if (replies.hasOwnProperty(i)) {

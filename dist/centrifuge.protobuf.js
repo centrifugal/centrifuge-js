@@ -2925,7 +2925,6 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
             _this3._debug('reason is an advice object', advice);
             reason = advice.reason;
             needReconnect = advice.reconnect;
-            _this3._lastMessageTime = new Date();
           } catch (e) {
             reason = closeEvent.reason;
             _this3._debug('reason is a plain string', reason);
@@ -2964,7 +2963,6 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
       };
 
       this._transport.onmessage = function (event) {
-        _this3._lastMessageTime = new Date();
         var replies = _this3._decoder.decodeReplies(event.data);
         for (var i in replies) {
           if (replies.hasOwnProperty(i)) {

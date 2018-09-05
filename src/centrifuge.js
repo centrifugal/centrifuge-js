@@ -390,7 +390,8 @@ export class Centrifuge extends EventEmitter {
 
       this._latencyStart = new Date();
       this._call(msg).then(result => {
-        this._connectResponse(this._decoder.decodeCommandResult(this._methodType.CONNECT, result));
+        this._connectResponse(this._decoder.decodeCommandResult(this._methodType.CONNECT, result.result));
+        result.savedResolve();
       }, err => {
         if (err.code === 109) { // token expired.
           this._refreshRequired = true;
@@ -452,13 +453,7 @@ export class Centrifuge extends EventEmitter {
     };
 
     this._transport.onmessage = event => {
-      const replies = this._decoder.decodeReplies(event.data);
-      for (const i in replies) {
-        if (replies.hasOwnProperty(i)) {
-          this._dispatchReply(replies[i]);
-        }
-      }
-      this._restartPing();
+      this._dataReceived(event.data);
     };
   };
 
@@ -469,7 +464,10 @@ export class Centrifuge extends EventEmitter {
         data: data
       }
     };
-    return this._call(msg).then(result => this._decoder.decodeCommandResult(this._methodType.RPC, result));
+    return this._call(msg).then(result => {
+      result.savedResolve();
+      return this._decoder.decodeCommandResult(this._methodType.RPC, result.result);
+    });
   }
 
   send(data) {
@@ -481,6 +479,20 @@ export class Centrifuge extends EventEmitter {
     };
 
     return this._callAsync(msg);
+  }
+
+  _dataReceived(data) {
+    const replies = this._decoder.decodeReplies(data);
+    let p = Promise.resolve();
+
+    for (const i in replies) {
+      if (replies.hasOwnProperty(i)) {
+        p = p.then(() => {
+          return this._dispatchReply(replies[i]);
+        });
+      }
+    }
+    this._restartPing();
   }
 
   _callAsync(msg) {
@@ -611,7 +623,8 @@ export class Centrifuge extends EventEmitter {
           }
         };
         this._call(msg).then(result => {
-          this._refreshResponse(this._decoder.decodeCommandResult(this._methodType.REFRESH, result));
+          this._refreshResponse(this._decoder.decodeCommandResult(this._methodType.REFRESH, result.result));
+          result.savedResolve();
         }, err => {
           this._refreshError(err);
         });
@@ -696,7 +709,8 @@ export class Centrifuge extends EventEmitter {
       }
 
       this._call(msg).then(result => {
-        this._subRefreshResponse(channel, this._decoder.decodeCommandResult(this._methodType.SUB_REFRESH, result));
+        this._subRefreshResponse(channel, this._decoder.decodeCommandResult(this._methodType.SUB_REFRESH, result.result));
+        result.savedResolve();
       }, err => {
         this._subRefreshError(channel, err);
       });
@@ -798,7 +812,8 @@ export class Centrifuge extends EventEmitter {
       }
 
       this._call(msg).then(result => {
-        this._subscribeResponse(channel, this._decoder.decodeCommandResult(this._methodType.SUBSCRIBE, result));
+        this._subscribeResponse(channel, this._decoder.decodeCommandResult(this._methodType.SUBSCRIBE, result.result));
+        result.savedResolve();
       }, err => {
         this._subscribeError(err);
       });
@@ -973,7 +988,7 @@ export class Centrifuge extends EventEmitter {
     }
   };
 
-  _handleReply(reply) {
+  _handleReply(reply, savedResolve) {
     const id = reply.id;
     const result = reply.result;
 
@@ -989,7 +1004,7 @@ export class Centrifuge extends EventEmitter {
       if (!callback) {
         return;
       }
-      callback(result);
+      callback({result, savedResolve});
     } else {
       const errback = callbacks.errback;
       if (!errback) {
@@ -1042,7 +1057,7 @@ export class Centrifuge extends EventEmitter {
     this.emit('message', message.data);
   };
 
-  _handlePush(data) {
+  _handlePush(data, savedResolve) {
     const push = this._decoder.decodePush(data);
     let type = 0;
     if ('type' in push) {
@@ -1066,21 +1081,30 @@ export class Centrifuge extends EventEmitter {
       const unsub = this._decoder.decodePushData(this._pushType.UNSUB, push.data);
       this._handleUnsub(channel, unsub);
     }
+    savedResolve();
   }
 
   _dispatchReply(reply) {
+    var savedResolve;
+    const p = new Promise(resolve =>{
+      savedResolve = resolve;
+    });
+
     if (reply === undefined || reply === null) {
       this._debug('dispatch: got undefined or null reply');
-      return;
+      savedResolve();
+      return p;
     }
 
     const id = reply.id;
 
     if (id && id > 0) {
-      this._handleReply(reply);
+      this._handleReply(reply, savedResolve);
     } else {
-      this._handlePush(reply.result);
+      this._handlePush(reply.result, savedResolve);
     }
+
+    return p;
   };
 
   _flush() {
@@ -1094,7 +1118,8 @@ export class Centrifuge extends EventEmitter {
       method: this._methodType.PING
     };
     this._call(msg).then(result => {
-      this._pingResponse(this._decoder.decodeCommandResult(this._methodType.PING, result));
+      this._pingResponse(this._decoder.decodeCommandResult(this._methodType.PING, result.result));
+      result.savedResolve();
     }, err => {
       this._debug('ping error', err);
     });
@@ -1285,7 +1310,8 @@ export class Centrifuge extends EventEmitter {
               }
             }
             this._call(msg).then(result => {
-              this._subscribeResponse(channel, this._decoder.decodeCommandResult(this._methodType.SUBSCRIBE, result));
+              this._subscribeResponse(channel, this._decoder.decodeCommandResult(this._methodType.SUBSCRIBE, result.result));
+              result.savedResolve();
             }, err => {
               this._subscribeError(channel, err);
             });

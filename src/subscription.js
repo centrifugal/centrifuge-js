@@ -196,7 +196,7 @@ export default class Subscription extends EventEmitter {
   _methodCall(message, type) {
     return this._subscriptionPromise
       .then(() => this._centrifuge._call(message))
-      .then(result => this._centrifuge._decoder.decodeCommandResult(type, result))
+      .then(result => this._centrifuge._decoder.decodeCommandResult(type, result.result))
     ;
   }
 

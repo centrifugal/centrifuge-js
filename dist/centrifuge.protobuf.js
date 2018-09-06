@@ -2504,8 +2504,6 @@ function _inherits(subClass, superClass) { if (typeof superClass !== "function" 
 
 var _errorTimeout = 'timeout';
 
-var boom = 1;
-
 var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
   _inherits(Centrifuge, _EventEmitter);
 
@@ -2903,7 +2901,7 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
         _this3._latencyStart = new Date();
         _this3._call(msg).then(function (result) {
           _this3._connectResponse(_this3._decoder.decodeCommandResult(_this3._methodType.CONNECT, result.result));
-          result.savedResolve();
+          result.next();
         }, function (err) {
           if (err.code === 109) {
             // token expired.
@@ -2966,11 +2964,6 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
       };
 
       this._transport.onmessage = function (event) {
-        boom++;
-        if (boom === 3) {
-          var d = '{"id":2,"result":{"recoverable":true,"recovered":true,"publications":[{"seq":"7920","data":{"input":7919},"info":{"user":"42","client":"9d6d4545-2b9b-4779-b4c0-f6afdca7464e","conn_info":{"name":"Alexander"}}},{"seq":"7919","data":{"input":7918},"info":{"user":"42","client":"9d6d4545-2b9b-4779-b4c0-f6afdca7464e","conn_info":{"name":"Alexander"}}},{"seq":"7918","data":{"input":7917},"info":{"user":"42","client":"9d6d4545-2b9b-4779-b4c0-f6afdca7464e","conn_info":{"name":"Alexander"}}},{"seq":"7917","data":{"input":7916},"info":{"user":"42","client":"9d6d4545-2b9b-4779-b4c0-f6afdca7464e","conn_info":{"name":"Alexander"}}},{"seq":"7916","data":{"input":7915},"info":{"user":"42","client":"9d6d4545-2b9b-4779-b4c0-f6afdca7464e","conn_info":{"name":"Alexander"}}},{"seq":"7915","data":{"input":7914},"info":{"user":"42","client":"9d6d4545-2b9b-4779-b4c0-f6afdca7464e","conn_info":{"name":"Alexander"}}},{"seq":"7914","data":{"input":7913},"info":{"user":"42","client":"9d6d4545-2b9b-4779-b4c0-f6afdca7464e","conn_info":{"name":"Alexander"}}},{"seq":"7913","data":{"input":7912},"info":{"user":"42","client":"9d6d4545-2b9b-4779-b4c0-f6afdca7464e","conn_info":{"name":"Alexander"}}},{"seq":"7912","data":{"input":7911},"info":{"user":"42","client":"9d6d4545-2b9b-4779-b4c0-f6afdca7464e","conn_info":{"name":"Alexander"}}},{"seq":"7911","data":{"input":7910},"info":{"user":"42","client":"9d6d4545-2b9b-4779-b4c0-f6afdca7464e","conn_info":{"name":"Alexander"}}},{"seq":"7910","data":{"input":7909},"info":{"user":"42","client":"9d6d4545-2b9b-4779-b4c0-f6afdca7464e","conn_info":{"name":"Alexander"}}},{"seq":"7909","data":{"input":7908},"info":{"user":"42","client":"9d6d4545-2b9b-4779-b4c0-f6afdca7464e","conn_info":{"name":"Alexander"}}},{"seq":"7908","data":{"input":7907},"info":{"user":"42","client":"9d6d4545-2b9b-4779-b4c0-f6afdca7464e","conn_info":{"name":"Alexander"}}},{"seq":"7907","data":{"input":7906},"info":{"user":"42","client":"9d6d4545-2b9b-4779-b4c0-f6afdca7464e","conn_info":{"name":"Alexander"}}},{"seq":"7906","data":{"input":7905},"info":{"user":"42","client":"9d6d4545-2b9b-4779-b4c0-f6afdca7464e","conn_info":{"name":"Alexander"}}},{"seq":"7905","data":{"input":7904},"info":{"user":"42","client":"9d6d4545-2b9b-4779-b4c0-f6afdca7464e","conn_info":{"name":"Alexander"}}},{"seq":"7904","data":{"input":7903},"info":{"user":"42","client":"9d6d4545-2b9b-4779-b4c0-f6afdca7464e","conn_info":{"name":"Alexander"}}},{"seq":"7903","data":{"input":7902},"info":{"user":"42","client":"9d6d4545-2b9b-4779-b4c0-f6afdca7464e","conn_info":{"name":"Alexander"}}},{"seq":"7902","data":{"input":7901},"info":{"user":"42","client":"9d6d4545-2b9b-4779-b4c0-f6afdca7464e","conn_info":{"name":"Alexander"}}},{"seq":"7901","data":{"input":7900},"info":{"user":"42","client":"9d6d4545-2b9b-4779-b4c0-f6afdca7464e","conn_info":{"name":"Alexander"}}}]}}\n{"result":{"channel":"chat:index","data":{"seq":"7921","data":{"input":7920},"info":{"user":"42","client":"9d6d4545-2b9b-4779-b4c0-f6afdca7464e","conn_info":{"name":"Alexander"}}}}}';
-          _this3._dataReceived(d);
-        }
         _this3._dataReceived(event.data);
       };
     }
@@ -2986,8 +2979,7 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
         }
       };
       return this._call(msg).then(function (result) {
-        console.log(result);
-        result.savedResolve();
+        result.next();
         return _this4._decoder.decodeCommandResult(_this4._methodType.RPC, result.result);
       });
     }
@@ -3009,12 +3001,15 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
       var _this5 = this;
 
       var replies = this._decoder.decodeReplies(data);
+      // we have to guarantee order of events in replies processing - i.e. start processing
+      // next reply only when we finished processing of current one. Without syncing things in
+      // this way we could get wrong publication events order as reply promises resolve
+      // on next loop tick so for loop continues before we finished emitting all reply events.
       var p = Promise.resolve();
 
       var _loop = function _loop(i) {
         if (replies.hasOwnProperty(i)) {
           p = p.then(function () {
-            console.log(222, JSON.stringify(replies[i]));
             return _this5._dispatchReply(replies[i]);
           });
         }
@@ -3167,7 +3162,7 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
           };
           _this7._call(msg).then(function (result) {
             _this7._refreshResponse(_this7._decoder.decodeCommandResult(_this7._methodType.REFRESH, result.result));
-            result.savedResolve();
+            result.next();
           }, function (err) {
             _this7._refreshError(err);
           });
@@ -3260,7 +3255,7 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
 
         _this10._call(msg).then(function (result) {
           _this10._subRefreshResponse(channel, _this10._decoder.decodeCommandResult(_this10._methodType.SUB_REFRESH, result.result));
-          result.savedResolve();
+          result.next();
         }, function (err) {
           _this10._subRefreshError(channel, err);
         });
@@ -3375,11 +3370,9 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
           }
         }
 
-        console.log(444);
         this._call(msg).then(function (result) {
-          console.log(333);
           _this13._subscribeResponse(channel, _this13._decoder.decodeCommandResult(_this13._methodType.SUBSCRIBE, result.result));
-          result.savedResolve();
+          result.next();
         }, function (err) {
           _this13._subscribeError(err);
         });
@@ -3553,7 +3546,6 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
         pubs = pubs.reverse();
         for (var i in pubs) {
           if (pubs.hasOwnProperty(i)) {
-            console.log(JSON.stringify(pubs[i]));
             this._handlePublication(channel, pubs[i]);
           }
         }
@@ -3576,7 +3568,7 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
     }
   }, {
     key: '_handleReply',
-    value: function _handleReply(reply, savedResolve) {
+    value: function _handleReply(reply, next) {
       var id = reply.id;
       var result = reply.result;
 
@@ -3592,8 +3584,7 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
         if (!callback) {
           return;
         }
-        console.log(555, JSON.stringify(reply));
-        callback({ result: result, savedResolve: savedResolve });
+        callback({ result: result, next: next });
       } else {
         var errback = callbacks.errback;
         if (!errback) {
@@ -3652,7 +3643,7 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
     }
   }, {
     key: '_handlePush',
-    value: function _handlePush(data, savedResolve) {
+    value: function _handlePush(data, next) {
       var push = this._decoder.decodePush(data);
       var type = 0;
       if ('type' in push) {
@@ -3662,7 +3653,6 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
 
       if (type === this._pushType.PUBLICATION) {
         var pub = this._decoder.decodePushData(this._pushType.PUBLICATION, push.data);
-        console.log(JSON.stringify(pub));
         this._handlePublication(channel, pub);
       } else if (type === this._pushType.MESSAGE) {
         var message = this._decoder.decodePushData(this._pushType.MESSAGE, push.data);
@@ -3677,28 +3667,28 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
         var unsub = this._decoder.decodePushData(this._pushType.UNSUB, push.data);
         this._handleUnsub(channel, unsub);
       }
-      savedResolve();
+      next();
     }
   }, {
     key: '_dispatchReply',
     value: function _dispatchReply(reply) {
-      var savedResolve;
+      var next;
       var p = new Promise(function (resolve) {
-        savedResolve = resolve;
+        next = resolve;
       });
 
       if (reply === undefined || reply === null) {
         this._debug('dispatch: got undefined or null reply');
-        savedResolve();
+        next();
         return p;
       }
 
       var id = reply.id;
 
       if (id && id > 0) {
-        this._handleReply(reply, savedResolve);
+        this._handleReply(reply, next);
       } else {
-        this._handlePush(reply.result, savedResolve);
+        this._handlePush(reply.result, next);
       }
 
       return p;
@@ -3720,7 +3710,7 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
       };
       this._call(msg).then(function (result) {
         _this17._pingResponse(_this17._decoder.decodeCommandResult(_this17._methodType.PING, result.result));
-        result.savedResolve();
+        result.next();
       }, function (err) {
         _this17._debug('ping error', err);
       });
@@ -3930,7 +3920,7 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
                 }
                 _this19._call(msg).then(function (result) {
                   _this19._subscribeResponse(channel, _this19._decoder.decodeCommandResult(_this19._methodType.SUBSCRIBE, result.result));
-                  result.savedResolve();
+                  result.next();
                 }, function (err) {
                   _this19._subscribeError(channel, err);
                 });

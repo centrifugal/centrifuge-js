@@ -4219,6 +4219,7 @@ var Subscription = function (_EventEmitter) {
       return this._subscriptionPromise.then(function () {
         return _this3._centrifuge._call(message);
       }).then(function (result) {
+        result.next();
         return _this3._centrifuge._decoder.decodeCommandResult(type, result.result);
       });
     }

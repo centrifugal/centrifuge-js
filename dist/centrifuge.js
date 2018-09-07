@@ -139,7 +139,7 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
     _this._refreshRequired = false;
     _this._subs = {};
     _this._lastPubSeq = {};
-    _this._lastPubGen = {};
+    _this._lastGen = {};
     _this._messages = [];
     _this._isBatching = false;
     _this._isSubscribeBatching = false;
@@ -977,6 +977,10 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
           if (lastId) {
             msg.params.since = lastId;
           }
+          var gen = this._getLastGen(channel);
+          if (gen) {
+            msg.params.gen = gen;
+          }
         }
 
         this._call(msg).then(function (result) {
@@ -1162,6 +1166,9 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
         if ('last' in result) {
           // no missed messages found so set last publication id from result.
           this._lastPubSeq[channel] = result.last;
+          if (result.gen) {
+            this._lastGen[channel] = result.gen;
+          }
         }
       }
       if (result.recoverable) {
@@ -1337,13 +1344,19 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
     key: '_getLastID',
     value: function _getLastID(channel) {
       var lastID = this._lastPubSeq[channel];
-
       if (lastID) {
-        this._debug('last id found and sent for channel', channel);
         return lastID;
       }
-      this._debug('no last id found for channel', channel);
       return '0';
+    }
+  }, {
+    key: '_getLastGen',
+    value: function _getLastGen(channel) {
+      var lastGen = this._lastGen[channel];
+      if (lastGen) {
+        return lastGen;
+      }
+      return '';
     }
   }, {
     key: '_createErrorObject',
@@ -1525,6 +1538,10 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
                   var lastId = _this19._getLastID(channel);
                   if (lastId) {
                     msg.params.since = lastId;
+                  }
+                  var gen = _this19._getLastGen(channel);
+                  if (gen) {
+                    msg.params.gen = gen;
                   }
                 }
                 _this19._call(msg).then(function (result) {

@@ -41,6 +41,7 @@ export class Centrifuge extends EventEmitter {
     this._refreshRequired = false;
     this._subs = {};
     this._lastPubSeq = {};
+    this._lastGen = {};
     this._messages = [];
     this._isBatching = false;
     this._isSubscribeBatching = false;
@@ -813,6 +814,10 @@ export class Centrifuge extends EventEmitter {
         if (lastId) {
           msg.params.since = lastId;
         }
+        const gen = this._getLastGen(channel);
+        if (gen) {
+          msg.params.gen = gen;
+        }
       }
 
       this._call(msg).then(result => {
@@ -980,6 +985,9 @@ export class Centrifuge extends EventEmitter {
       if ('last' in result) {
         // no missed messages found so set last publication id from result.
         this._lastPubSeq[channel] = result.last;
+        if (result.gen) {
+          this._lastGen[channel] = result.gen;
+        }
       }
     }
     if (result.recoverable) {
@@ -1139,13 +1147,18 @@ export class Centrifuge extends EventEmitter {
 
   _getLastID(channel) {
     const lastID = this._lastPubSeq[channel];
-
     if (lastID) {
-      this._debug('last id found and sent for channel', channel);
       return lastID;
     }
-    this._debug('no last id found for channel', channel);
     return '0';
+  };
+
+  _getLastGen(channel) {
+    const lastGen = this._lastGen[channel];
+    if (lastGen) {
+      return lastGen;
+    }
+    return '';
   };
 
   _createErrorObject(message, code) {
@@ -1311,6 +1324,10 @@ export class Centrifuge extends EventEmitter {
               const lastId = this._getLastID(channel);
               if (lastId) {
                 msg.params.since = lastId;
+              }
+              const gen = this._getLastGen(channel);
+              if (gen) {
+                msg.params.gen = gen;
               }
             }
             this._call(msg).then(result => {

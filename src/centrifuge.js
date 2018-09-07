@@ -40,7 +40,7 @@ export class Centrifuge extends EventEmitter {
     this._clientID = null;
     this._refreshRequired = false;
     this._subs = {};
-    this._lastPubSeq = {};
+    this._lastSeq = {};
     this._lastGen = {};
     this._messages = [];
     this._isBatching = false;
@@ -810,9 +810,9 @@ export class Centrifuge extends EventEmitter {
 
       if (recover === true) {
         msg.params.recover = true;
-        const lastId = this._getLastID(channel);
-        if (lastId) {
-          msg.params.since = lastId;
+        const seq = this._getLastSeq(channel);
+        if (seq) {
+          msg.params.since = seq;
         }
         const gen = this._getLastGen(channel);
         if (gen) {
@@ -982,12 +982,12 @@ export class Centrifuge extends EventEmitter {
         }
       }
     } else {
-      if ('last' in result) {
+      if (result.seq) {
         // no missed messages found so set last publication id from result.
-        this._lastPubSeq[channel] = result.last;
-        if (result.gen) {
-          this._lastGen[channel] = result.gen;
-        }
+        this._lastSeq[channel] = result.seq;
+      }
+      if (result.gen) {
+        this._lastGen[channel] = result.gen;
       }
     }
     if (result.recoverable) {
@@ -1054,9 +1054,9 @@ export class Centrifuge extends EventEmitter {
   };
 
   _handlePublication(channel, pub) {
-    // keep last uid received from channel.
+    // keep last seq received from channel.
     if (pub.seq) {
-      this._lastPubSeq[channel] = pub.seq;
+      this._lastSeq[channel] = pub.seq;
     }
     const sub = this._getSub(channel);
     if (!sub) {
@@ -1145,10 +1145,10 @@ export class Centrifuge extends EventEmitter {
     this._startPing();
   }
 
-  _getLastID(channel) {
-    const lastID = this._lastPubSeq[channel];
-    if (lastID) {
-      return lastID;
+  _getLastSeq(channel) {
+    const lastSeq = this._lastSeq[channel];
+    if (lastSeq) {
+      return lastSeq;
     }
     return '0';
   };
@@ -1321,9 +1321,9 @@ export class Centrifuge extends EventEmitter {
 
             if (recover === true) {
               msg.params.recover = true;
-              const lastId = this._getLastID(channel);
-              if (lastId) {
-                msg.params.since = lastId;
+              const seq = this._getLastSeq(channel);
+              if (seq) {
+                msg.params.since = seq;
               }
               const gen = this._getLastGen(channel);
               if (gen) {

@@ -2530,7 +2530,7 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
     _this._clientID = null;
     _this._refreshRequired = false;
     _this._subs = {};
-    _this._lastPubSeq = {};
+    _this._lastSeq = {};
     _this._lastGen = {};
     _this._messages = [];
     _this._isBatching = false;
@@ -3365,9 +3365,9 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
 
         if (recover === true) {
           msg.params.recover = true;
-          var lastId = this._getLastID(channel);
-          if (lastId) {
-            msg.params.since = lastId;
+          var seq = this._getLastSeq(channel);
+          if (seq) {
+            msg.params.since = seq;
           }
           var gen = this._getLastGen(channel);
           if (gen) {
@@ -3555,12 +3555,12 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
           }
         }
       } else {
-        if ('last' in result) {
+        if (result.seq) {
           // no missed messages found so set last publication id from result.
-          this._lastPubSeq[channel] = result.last;
-          if (result.gen) {
-            this._lastGen[channel] = result.gen;
-          }
+          this._lastSeq[channel] = result.seq;
+        }
+        if (result.gen) {
+          this._lastGen[channel] = result.gen;
         }
       }
       if (result.recoverable) {
@@ -3634,9 +3634,9 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
   }, {
     key: '_handlePublication',
     value: function _handlePublication(channel, pub) {
-      // keep last uid received from channel.
+      // keep last seq received from channel.
       if (pub.seq) {
-        this._lastPubSeq[channel] = pub.seq;
+        this._lastSeq[channel] = pub.seq;
       }
       var sub = this._getSub(channel);
       if (!sub) {
@@ -3733,11 +3733,11 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
       this._startPing();
     }
   }, {
-    key: '_getLastID',
-    value: function _getLastID(channel) {
-      var lastID = this._lastPubSeq[channel];
-      if (lastID) {
-        return lastID;
+    key: '_getLastSeq',
+    value: function _getLastSeq(channel) {
+      var lastSeq = this._lastSeq[channel];
+      if (lastSeq) {
+        return lastSeq;
       }
       return '0';
     }
@@ -3927,9 +3927,9 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
 
                 if (recover === true) {
                   msg.params.recover = true;
-                  var lastId = _this19._getLastID(channel);
-                  if (lastId) {
-                    msg.params.since = lastId;
+                  var seq = _this19._getLastSeq(channel);
+                  if (seq) {
+                    msg.params.since = seq;
                   }
                   var gen = _this19._getLastGen(channel);
                   if (gen) {
@@ -4175,7 +4175,7 @@ var Subscription = function (_EventEmitter) {
       if (noResubscribe === true) {
         this._recover = false;
         this._noResubscribe = true;
-        delete this._centrifuge._lastPubSeq[this.channel];
+        delete this._centrifuge._lastSeq[this.channel];
       }
       if (needTrigger) {
         this._triggerUnsubscribe();

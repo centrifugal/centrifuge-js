@@ -144,7 +144,7 @@ export default class Subscription extends EventEmitter {
     if (noResubscribe === true) {
       this._recover = false;
       this._noResubscribe = true;
-      delete this._centrifuge._lastPubSeq[this.channel];
+      delete this._centrifuge._lastSeq[this.channel];
     }
     if (needTrigger) {
       this._triggerUnsubscribe();

@@ -42,6 +42,7 @@ export class Centrifuge extends EventEmitter {
     this._subs = {};
     this._lastSeq = {};
     this._lastGen = {};
+    this._lastEpoch = {};
     this._messages = [];
     this._isBatching = false;
     this._isSubscribeBatching = false;
@@ -812,11 +813,15 @@ export class Centrifuge extends EventEmitter {
         msg.params.recover = true;
         const seq = this._getLastSeq(channel);
         if (seq) {
-          msg.params.since = seq;
+          msg.params.seq = seq;
         }
         const gen = this._getLastGen(channel);
         if (gen) {
           msg.params.gen = gen;
+        }
+        const epoch = this._getLastEpoch(channel);
+        if (epoch) {
+          msg.params.epoch = epoch;
         }
       }
 
@@ -824,7 +829,7 @@ export class Centrifuge extends EventEmitter {
         this._subscribeResponse(channel, this._decoder.decodeCommandResult(this._methodType.SUBSCRIBE, result.result));
         result.next();
       }, err => {
-        this._subscribeError(err);
+        this._subscribeError(channel, err);
       });
     }
   };
@@ -982,14 +987,14 @@ export class Centrifuge extends EventEmitter {
         }
       }
     } else {
-      if (result.seq) {
-        // no missed messages found so set last publication id from result.
-        this._lastSeq[channel] = result.seq;
-      }
-      if (result.gen) {
-        this._lastGen[channel] = result.gen;
+      if (result.recoverable) {
+        this._lastSeq[channel] = result.seq || 0;
+        this._lastGen[channel] = result.gen || 0;
       }
     }
+
+    this._lastEpoch[channel] = result.epoch || '';
+
     if (result.recoverable) {
       sub._recoverable = true;
     }
@@ -1054,13 +1059,15 @@ export class Centrifuge extends EventEmitter {
   };
 
   _handlePublication(channel, pub) {
-    // keep last seq received from channel.
-    if (pub.seq) {
-      this._lastSeq[channel] = pub.seq;
-    }
     const sub = this._getSub(channel);
     if (!sub) {
       return;
+    }
+    if (pub.seq !== undefined) {
+      this._lastSeq[channel] = pub.seq;
+    }
+    if (pub.gen !== undefined) {
+      this._lastGen[channel] = pub.gen;
     }
     sub.emit('publish', pub);
   };
@@ -1150,13 +1157,21 @@ export class Centrifuge extends EventEmitter {
     if (lastSeq) {
       return lastSeq;
     }
-    return '0';
+    return 0;
   };
 
   _getLastGen(channel) {
     const lastGen = this._lastGen[channel];
     if (lastGen) {
       return lastGen;
+    }
+    return 0;
+  };
+
+  _getLastEpoch(channel) {
+    const lastEpoch = this._lastEpoch[channel];
+    if (lastEpoch) {
+      return lastEpoch;
     }
     return '';
   };
@@ -1323,11 +1338,15 @@ export class Centrifuge extends EventEmitter {
               msg.params.recover = true;
               const seq = this._getLastSeq(channel);
               if (seq) {
-                msg.params.since = seq;
+                msg.params.seq = seq;
               }
               const gen = this._getLastGen(channel);
               if (gen) {
                 msg.params.gen = gen;
+              }
+              const epoch = this._getLastEpoch(channel);
+              if (epoch) {
+                msg.params.epoch = epoch;
               }
             }
             this._call(msg).then(result => {

@@ -140,6 +140,7 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
     _this._subs = {};
     _this._lastSeq = {};
     _this._lastGen = {};
+    _this._lastEpoch = {};
     _this._messages = [];
     _this._isBatching = false;
     _this._isSubscribeBatching = false;
@@ -975,11 +976,15 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
           msg.params.recover = true;
           var seq = this._getLastSeq(channel);
           if (seq) {
-            msg.params.since = seq;
+            msg.params.seq = seq;
           }
           var gen = this._getLastGen(channel);
           if (gen) {
             msg.params.gen = gen;
+          }
+          var epoch = this._getLastEpoch(channel);
+          if (epoch) {
+            msg.params.epoch = epoch;
           }
         }
 
@@ -987,7 +992,7 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
           _this13._subscribeResponse(channel, _this13._decoder.decodeCommandResult(_this13._methodType.SUBSCRIBE, result.result));
           result.next();
         }, function (err) {
-          _this13._subscribeError(err);
+          _this13._subscribeError(channel, err);
         });
       }
     }
@@ -1170,6 +1175,9 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
         if (result.gen) {
           this._lastGen[channel] = result.gen;
         }
+        if (result.epoch) {
+          this._lastEpoch[channel] = result.epoch;
+        }
       }
       if (result.recoverable) {
         sub._recoverable = true;
@@ -1242,13 +1250,15 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
   }, {
     key: '_handlePublication',
     value: function _handlePublication(channel, pub) {
-      // keep last seq received from channel.
-      if (pub.seq) {
-        this._lastSeq[channel] = pub.seq;
-      }
       var sub = this._getSub(channel);
       if (!sub) {
         return;
+      }
+      if (pub.seq) {
+        this._lastSeq[channel] = pub.seq;
+      }
+      if (pub.gen) {
+        this._lastGen[channel] = pub.gen;
       }
       sub.emit('publish', pub);
     }
@@ -1347,7 +1357,7 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
       if (lastSeq) {
         return lastSeq;
       }
-      return '0';
+      return 0;
     }
   }, {
     key: '_getLastGen',
@@ -1355,6 +1365,15 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
       var lastGen = this._lastGen[channel];
       if (lastGen) {
         return lastGen;
+      }
+      return 0;
+    }
+  }, {
+    key: '_getLastEpoch',
+    value: function _getLastEpoch(channel) {
+      var lastEpoch = this._lastEpoch[channel];
+      if (lastEpoch) {
+        return lastEpoch;
       }
       return '';
     }
@@ -1537,11 +1556,15 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
                   msg.params.recover = true;
                   var seq = _this19._getLastSeq(channel);
                   if (seq) {
-                    msg.params.since = seq;
+                    msg.params.seq = seq;
                   }
                   var gen = _this19._getLastGen(channel);
                   if (gen) {
                     msg.params.gen = gen;
+                  }
+                  var epoch = _this19._getLastEpoch(channel);
+                  if (epoch) {
+                    msg.params.epoch = epoch;
                   }
                 }
                 _this19._call(msg).then(function (result) {
@@ -1646,6 +1669,7 @@ var Subscription = function (_EventEmitter) {
     _this._recover = false;
     _this._setEvents(events);
     _this._initializePromise();
+    _this._promises = {};
     return _this;
   }
 
@@ -1751,6 +1775,11 @@ var Subscription = function (_EventEmitter) {
       this._recover = false;
       this.emit('subscribe', successContext);
       this._resolve(successContext);
+      for (var to in this._promises) {
+        clearTimeout(to);
+        this._promises[to].resolve();
+        delete this._promises[to];
+      }
     }
   }, {
     key: '_setSubscribeError',
@@ -1761,9 +1790,13 @@ var Subscription = function (_EventEmitter) {
       this._status = _STATE_ERROR;
       this._error = err;
       var errContext = this._getSubscribeErrorContext();
-
       this.emit('error', errContext);
       this._reject(errContext);
+      for (var to in this._promises) {
+        clearTimeout(to);
+        this._promises[to].reject(err);
+        delete this._promises[to];
+      }
     }
   }, {
     key: '_triggerUnsubscribe',
@@ -1785,6 +1818,8 @@ var Subscription = function (_EventEmitter) {
         this._recover = false;
         this._noResubscribe = true;
         delete this._centrifuge._lastSeq[this.channel];
+        delete this._centrifuge._lastGen[this.channel];
+        delete this._centrifuge._lastEpoch[this.channel];
       }
       if (needTrigger) {
         this._triggerUnsubscribe();
@@ -1843,12 +1878,35 @@ var Subscription = function (_EventEmitter) {
     value: function _methodCall(message, type) {
       var _this3 = this;
 
-      return this._subscriptionPromise.then(function () {
-        return _this3._centrifuge._call(message);
-      }).then(function (result) {
-        result.next();
-        return _this3._centrifuge._decoder.decodeCommandResult(type, result.result);
+      var z = new Promise(function (resolve, reject) {
+        var p = void 0;
+        if (_this3._isSuccess()) {
+          p = Promise.resolve();
+        } else if (_this3._isError()) {
+          p = Promise.reject(_this3._error);
+        } else {
+          p = new Promise(function (res, rej) {
+            var timeout = setTimeout(function () {
+              rej({ 'code': 0, 'message': 'timeout' });
+            }, _this3._centrifuge._config.timeout);
+            _this3._promises[timeout] = {
+              resolve: res,
+              reject: rej
+            };
+          });
+        }
+        p.then(function () {
+          return _this3._centrifuge._call(message).then(function (result) {
+            result.next();
+            resolve(_this3._centrifuge._decoder.decodeCommandResult(type, result.result));
+          }, function (error) {
+            reject(error);
+          });
+        }, function (error) {
+          reject(error);
+        });
       });
+      return z;
     }
   }, {
     key: 'publish',

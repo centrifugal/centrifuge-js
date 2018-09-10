@@ -25,6 +25,7 @@ export default class Subscription extends EventEmitter {
     this._recover = false;
     this._setEvents(events);
     this._initializePromise();
+    this._promises = {};
   }
 
   _initializePromise() {
@@ -114,6 +115,11 @@ export default class Subscription extends EventEmitter {
     this._recover = false;
     this.emit('subscribe', successContext);
     this._resolve(successContext);
+    for (const to in this._promises) {
+      clearTimeout(to);
+      this._promises[to].resolve();
+      delete this._promises[to];
+    }
   };
 
   _setSubscribeError(err) {
@@ -123,9 +129,13 @@ export default class Subscription extends EventEmitter {
     this._status = _STATE_ERROR;
     this._error = err;
     const errContext = this._getSubscribeErrorContext();
-
     this.emit('error', errContext);
     this._reject(errContext);
+    for (const to in this._promises) {
+      clearTimeout(to);
+      this._promises[to].reject(err);
+      delete this._promises[to];
+    }
   };
 
   _triggerUnsubscribe() {
@@ -145,6 +155,8 @@ export default class Subscription extends EventEmitter {
       this._recover = false;
       this._noResubscribe = true;
       delete this._centrifuge._lastSeq[this.channel];
+      delete this._centrifuge._lastGen[this.channel];
+      delete this._centrifuge._lastEpoch[this.channel];
     }
     if (needTrigger) {
       this._triggerUnsubscribe();
@@ -194,13 +206,41 @@ export default class Subscription extends EventEmitter {
   };
 
   _methodCall(message, type) {
-    return this._subscriptionPromise
-      .then(() => this._centrifuge._call(message))
-      .then(result => {
-        result.next();
-        return this._centrifuge._decoder.decodeCommandResult(type, result.result);
-      })
-    ;
+    const z = new Promise((resolve, reject) => {
+      let p;
+      if (this._isSuccess()) {
+        p = Promise.resolve();
+      } else if (this._isError()) {
+        p = Promise.reject(this._error);
+      } else {
+        p = new Promise((res, rej) => {
+          const timeout = setTimeout(function () {
+            rej({'code': 0, 'message': 'timeout'});
+          }, this._centrifuge._config.timeout);
+          this._promises[timeout] = {
+            resolve: res,
+            reject: rej
+          };
+        });
+      }
+      p.then(
+        () => {
+          return this._centrifuge._call(message).then(
+            result => {
+              result.next();
+              resolve(this._centrifuge._decoder.decodeCommandResult(type, result.result));
+            },
+            error => {
+              reject(error);
+            }
+          );
+        },
+        error => {
+          reject(error);
+        }
+      );
+    });
+    return z;
   }
 
   publish(data) {

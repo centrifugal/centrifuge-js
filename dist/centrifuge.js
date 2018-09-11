@@ -1168,17 +1168,14 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
           }
         }
       } else {
-        if (result.seq) {
-          // no missed messages found so set last publication id from result.
-          this._lastSeq[channel] = result.seq;
-        }
-        if (result.gen) {
-          this._lastGen[channel] = result.gen;
-        }
-        if (result.epoch) {
-          this._lastEpoch[channel] = result.epoch;
+        if (result.recoverable) {
+          this._lastSeq[channel] = result.seq || 0;
+          this._lastGen[channel] = result.gen || 0;
         }
       }
+
+      this._lastEpoch[channel] = result.epoch || '';
+
       if (result.recoverable) {
         sub._recoverable = true;
       }
@@ -1254,10 +1251,10 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
       if (!sub) {
         return;
       }
-      if (pub.seq) {
+      if (pub.seq !== undefined) {
         this._lastSeq[channel] = pub.seq;
       }
-      if (pub.gen) {
+      if (pub.gen !== undefined) {
         this._lastGen[channel] = pub.gen;
       }
       sub.emit('publish', pub);

@@ -206,14 +206,14 @@ export default class Subscription extends EventEmitter {
   };
 
   _methodCall(message, type) {
-    const z = new Promise((resolve, reject) => {
-      let p;
+    const methodCallPromise = new Promise((resolve, reject) => {
+      let subPromise;
       if (this._isSuccess()) {
-        p = Promise.resolve();
+        subPromise = Promise.resolve();
       } else if (this._isError()) {
-        p = Promise.reject(this._error);
+        subPromise = Promise.reject(this._error);
       } else {
-        p = new Promise((res, rej) => {
+        subPromise = new Promise((res, rej) => {
           const timeout = setTimeout(function () {
             rej({'code': 0, 'message': 'timeout'});
           }, this._centrifuge._config.timeout);
@@ -223,12 +223,14 @@ export default class Subscription extends EventEmitter {
           };
         });
       }
-      p.then(
+      subPromise.then(
         () => {
           return this._centrifuge._call(message).then(
             result => {
-              result.next();
               resolve(this._centrifuge._decoder.decodeCommandResult(type, result.result));
+              if (result.next) {
+                result.next();
+              }
             },
             error => {
               reject(error);
@@ -240,7 +242,7 @@ export default class Subscription extends EventEmitter {
         }
       );
     });
-    return z;
+    return methodCallPromise;
   }
 
   publish(data) {

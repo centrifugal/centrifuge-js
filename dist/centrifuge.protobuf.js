@@ -2903,7 +2903,9 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
         _this3._latencyStart = new Date();
         _this3._call(msg).then(function (result) {
           _this3._connectResponse(_this3._decoder.decodeCommandResult(_this3._methodType.CONNECT, result.result));
-          result.next();
+          if (result.next) {
+            result.next();
+          }
         }, function (err) {
           if (err.code === 109) {
             // token expired.
@@ -2981,7 +2983,9 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
         }
       };
       return this._call(msg).then(function (result) {
-        result.next();
+        if (result.next) {
+          result.next();
+        }
         return _this4._decoder.decodeCommandResult(_this4._methodType.RPC, result.result);
       });
     }
@@ -3164,7 +3168,9 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
           };
           _this7._call(msg).then(function (result) {
             _this7._refreshResponse(_this7._decoder.decodeCommandResult(_this7._methodType.REFRESH, result.result));
-            result.next();
+            if (result.next) {
+              result.next();
+            }
           }, function (err) {
             _this7._refreshError(err);
           });
@@ -3257,7 +3263,9 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
 
         _this10._call(msg).then(function (result) {
           _this10._subRefreshResponse(channel, _this10._decoder.decodeCommandResult(_this10._methodType.SUB_REFRESH, result.result));
-          result.next();
+          if (result.next) {
+            result.next();
+          }
         }, function (err) {
           _this10._subRefreshError(channel, err);
         });
@@ -3382,7 +3390,9 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
 
         this._call(msg).then(function (result) {
           _this13._subscribeResponse(channel, _this13._decoder.decodeCommandResult(_this13._methodType.SUBSCRIBE, result.result));
-          result.next();
+          if (result.next) {
+            result.next();
+          }
         }, function (err) {
           _this13._subscribeError(channel, err);
         });
@@ -3958,7 +3968,9 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
                 }
                 _this19._call(msg).then(function (result) {
                   _this19._subscribeResponse(channel, _this19._decoder.decodeCommandResult(_this19._methodType.SUBSCRIBE, result.result));
-                  result.next();
+                  if (result.next) {
+                    result.next();
+                  }
                 }, function (err) {
                   _this19._subscribeError(channel, err);
                 });
@@ -4266,14 +4278,14 @@ var Subscription = function (_EventEmitter) {
     value: function _methodCall(message, type) {
       var _this3 = this;
 
-      var z = new Promise(function (resolve, reject) {
-        var p = void 0;
+      var methodCallPromise = new Promise(function (resolve, reject) {
+        var subPromise = void 0;
         if (_this3._isSuccess()) {
-          p = Promise.resolve();
+          subPromise = Promise.resolve();
         } else if (_this3._isError()) {
-          p = Promise.reject(_this3._error);
+          subPromise = Promise.reject(_this3._error);
         } else {
-          p = new Promise(function (res, rej) {
+          subPromise = new Promise(function (res, rej) {
             var timeout = setTimeout(function () {
               rej({ 'code': 0, 'message': 'timeout' });
             }, _this3._centrifuge._config.timeout);
@@ -4283,10 +4295,12 @@ var Subscription = function (_EventEmitter) {
             };
           });
         }
-        p.then(function () {
+        subPromise.then(function () {
           return _this3._centrifuge._call(message).then(function (result) {
-            result.next();
             resolve(_this3._centrifuge._decoder.decodeCommandResult(type, result.result));
+            if (result.next) {
+              result.next();
+            }
           }, function (error) {
             reject(error);
           });
@@ -4294,7 +4308,7 @@ var Subscription = function (_EventEmitter) {
           reject(error);
         });
       });
-      return z;
+      return methodCallPromise;
     }
   }, {
     key: 'publish',

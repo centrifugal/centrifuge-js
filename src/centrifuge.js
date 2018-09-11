@@ -393,7 +393,9 @@ export class Centrifuge extends EventEmitter {
       this._latencyStart = new Date();
       this._call(msg).then(result => {
         this._connectResponse(this._decoder.decodeCommandResult(this._methodType.CONNECT, result.result));
-        result.next();
+        if (result.next) {
+          result.next();
+        }
       }, err => {
         if (err.code === 109) { // token expired.
           this._refreshRequired = true;
@@ -467,7 +469,9 @@ export class Centrifuge extends EventEmitter {
       }
     };
     return this._call(msg).then(result => {
-      result.next();
+      if (result.next) {
+        result.next();
+      }
       return this._decoder.decodeCommandResult(this._methodType.RPC, result.result);
     });
   }
@@ -629,7 +633,9 @@ export class Centrifuge extends EventEmitter {
         };
         this._call(msg).then(result => {
           this._refreshResponse(this._decoder.decodeCommandResult(this._methodType.REFRESH, result.result));
-          result.next();
+          if (result.next) {
+            result.next();
+          }
         }, err => {
           this._refreshError(err);
         });
@@ -715,8 +721,12 @@ export class Centrifuge extends EventEmitter {
 
       this._call(msg).then(result => {
         this._subRefreshResponse(
-          channel, this._decoder.decodeCommandResult(this._methodType.SUB_REFRESH, result.result));
-        result.next();
+          channel,
+          this._decoder.decodeCommandResult(this._methodType.SUB_REFRESH, result.result)
+        );
+        if (result.next) {
+          result.next();
+        }
       }, err => {
         this._subRefreshError(channel, err);
       });
@@ -827,7 +837,9 @@ export class Centrifuge extends EventEmitter {
 
       this._call(msg).then(result => {
         this._subscribeResponse(channel, this._decoder.decodeCommandResult(this._methodType.SUBSCRIBE, result.result));
-        result.next();
+        if (result.next) {
+          result.next();
+        }
       }, err => {
         this._subscribeError(channel, err);
       });
@@ -1350,9 +1362,13 @@ export class Centrifuge extends EventEmitter {
               }
             }
             this._call(msg).then(result => {
-              this._subscribeResponse(channel,
-                this._decoder.decodeCommandResult(this._methodType.SUBSCRIBE, result.result));
-              result.next();
+              this._subscribeResponse(
+                channel,
+                this._decoder.decodeCommandResult(this._methodType.SUBSCRIBE, result.result)
+              );
+              if (result.next) {
+                result.next();
+              }
             }, err => {
               this._subscribeError(channel, err);
             });

@@ -1,43 +1,49 @@
 {
   "name": "centrifuge",
-  "version": "1.5.0",
-  "description": "Centrifuge javascript client",
-  "main": "src/centrifuge.js",
-  "dependencies": {
-    "wolfy87-eventemitter": "4.3.0",
-    "es6-promise": "^4.0.5"
-  },
-  "devDependencies": {
-    "browserify": "^6.1.0",
-    "gulp": "^3.8.8",
-    "gulp-util": "^3.0.3",
-    "gulp-notify": "^2.2.0",
-    "gulp-plumber": "^0.6.6",
-    "gulp-sourcemaps": "~1.2.4",
-    "gulp-uglify": "~1.0.1",
-    "vinyl-buffer": "~1.0.0",
-    "vinyl-source-stream": "^1.0.0",
-    "require-dir": "^0.3.2"
-  },
+  "version": "2.0.0",
+  "description": "Centrifuge client for NodeJS and browser",
+  "main": "dist/centrifuge.js",
   "scripts": {
-    "build-js": "browserify --standalone Centrifuge --entry=src/centrifuge.js src/centrifuge.js -o centrifuge.js",
-    "build-minified-js": "browserify --standalone Centrifuge --entry=src/centrifuge.js src/centrifuge.js | uglifyjs -cm > centrifuge.min.js",
-    "build": "npm run build-js && npm run build-minified-js"
+    "build": "webpack --env dev && webpack --env build --optimize-minimize && npm run test",
+    "dev": "webpack --progress --colors --watch --env dev",
+    "test": "mocha --require babel-core/register --colors ./test/*.spec.js",
+    "test:watch": "mocha --require babel-core/register --colors -w ./test/*.spec.js",
+    "proto": "./make-proto"
   },
-  "author": "Alexandr Emelin",
   "repository": {
     "type": "git",
     "url": "https://github.com/centrifugal/centrifuge-js.git"
   },
-  "license": "MIT",
-  "bugs": {
-    "url": "https://github.com/centrifugal/centrifuge-js/issues"
-  },
-  "homepage": "https://github.com/centrifugal/centrifuge-js",
   "keywords": [
     "sockjs",
     "websocket",
     "centrifugo",
     "centrifuge"
-  ]
+  ],
+  "author": "Alexander Emelin",
+  "contributors": [
+    "Oleg V. Kuzmin"
+  ],
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/centrifugal/centrifuge-js/issues"
+  },
+  "homepage": "https://github.com/centrifugal/centrifuge-js",
+  "dependencies": {
+    "protobufjs": "^6.8.6"
+  },
+  "devDependencies": {
+    "babel-cli": "^6.26.0",
+    "babel-core": "^6.26.0",
+    "babel-eslint": "^8.0.3",
+    "babel-loader": "^7.1.2",
+    "babel-plugin-add-module-exports": "^0.2.1",
+    "babel-preset-env": "^1.6.1",
+    "chai": "^4.1.2",
+    "eslint": "^4.13.1",
+    "eslint-loader": "^1.9.0",
+    "mocha": "^4.0.1",
+    "webpack": "^3.10.0",
+    "yargs": "^10.0.3"
+  }
 }

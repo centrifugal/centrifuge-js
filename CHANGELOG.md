@@ -1,3 +1,14 @@
+2.0.0
+=====
+
+This is a new major release of library updated to work with Centrifugo v2 and Centrifuge library. Library is now written using more actual Javascript instruments - with Webpack and ES6 classes. See readme for more information about new API and how to use library in general.
+
+Highlights:
+
+* Webpack and ES6 for code base
+* JSON and Protobuf (only Websocket) serialization formats supported
+* new `presenceStats` method of subscription 
+
 1.5.0
 =====
 

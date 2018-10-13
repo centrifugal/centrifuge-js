@@ -729,7 +729,7 @@ Your server should validate all these subscriptions and return properly construc
 
 Response is a JSON with array `channels` field on top level:
 
-```
+```javascript
 {
   "channels": [
     {
@@ -752,7 +752,13 @@ There are also two public API methods which can help to subscribe to many privat
 
 ## Connection expiration
 
-When connection expiration mechanism is on on server client will automatically ask your backend for updated connection credentials sending AJAX HTTP POST request to `/centrifuge/refresh` endpoint (by default). Client will send that request when connection ttl is close to the end.
+When connection expiration mechanism is on on server client will automatically ask your backend for updated connection credentials sending AJAX HTTP POST request to `/centrifuge/refresh` endpoint (by default, can be changed using `refreshEndpoint` option). Client will send that request when connection ttl is close to the end. In response backend should return response with JSON like this:
+
+```javascript
+{
+  "token": "<ACTUAL JWT TOKEN>"
+}
+```
 
 ## Protobuf support
 

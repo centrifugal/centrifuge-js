@@ -26,6 +26,9 @@ export default class Subscription extends EventEmitter {
     this._setEvents(events);
     this._initializePromise();
     this._promises = {};
+    this.on('error', function (err) {
+      this._centrifuge.emit('error', err);
+    });
   }
 
   _initializePromise() {
@@ -43,7 +46,7 @@ export default class Subscription extends EventEmitter {
         this._ready = true;
         reject(err);
       };
-    });
+    }).then(function () {}, function () {});
   };
 
   _needRecover() {

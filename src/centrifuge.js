@@ -22,6 +22,10 @@ export class Centrifuge extends EventEmitter {
 
   constructor(url, options) {
     super();
+
+    // Set noop error handler to prevent Events module to throw an Error when 'error' event is emitted.
+    this.on('error', function () {});
+
     this._url = url;
     this._sockjs = null;
     this._isSockjs = false;

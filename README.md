@@ -706,8 +706,7 @@ This call will flush all collected messages to network.
 
 ## Private channels subscription
 
-If channel name starts with `$` then subscription on this channel will be checked via
-AJAX POST request from javascript client to your web application backend.
+If channel name starts with `$` then subscription on this channel will be checked via AJAX POST request from Javascript client to your web application backend.
 
 You can subscribe on private channel as usual:
 
@@ -717,13 +716,49 @@ centrifuge.subscribe('$private', function(message) {
 });
 ```
 
-But in this case client will first check subscription via your backend sending AJAX POST request to `/centrifuge/subscribe` endpoint (by default, can be changed via configuration option `subscribeEndpoint`). This request will contain `client` parameter which is your connection client ID and `channels` parameter - one or multiple private channels client wants to subscribe to. Your server should validate all this subscriptions and return properly signed responses.
+But in this case Javascript client will first check subscription via your backend sending AJAX POST request to `/centrifuge/subscribe` endpoint (by default, can be changed via configuration option `subscribeEndpoint`). As said this is a POST request with JSON body. Request will contain `client` field on top level of JSON which is your connection client ID and array `channels` field - one or multiple private channels client wants to subscribe to.
+
+```javascript
+{
+  "client": "<CLIENT ID>",
+  "channels": ["$chan1", "$chan2"]
+}
+```
+
+Your server should validate all these subscriptions and return properly constructed response.
+
+Response is a JSON with array `channels` field on top level:
+
+```javascript
+{
+  "channels": [
+    {
+      "channel": "$chan1",
+      "token": "<SUBSCRIPTION JWT TOKEN>"
+    },
+    {
+      "channel": "$chan2",
+      "token": <SUBSCRIPTION JWT TOKEN>
+    }
+  ]
+}
+```
+
+I.e. you need to return individual subscription tokens for each private channel in request. See [how to generate private channel tokens](https://centrifugal.github.io/centrifugo/server/private_channels/) in Centrifugo docs.
+
+If you don't want to give client access to channel then just do not include it into response.
 
 There are also two public API methods which can help to subscribe to many private channels sending only one POST request to your web application backend: `startSubscribeBatching` and `stopSubscribeBatching`. When you `startSubscribeBatching` javascript client will collect private subscriptions until `stopSubscribeBatching()` called – and then send them all at once.
 
 ## Connection expiration
 
-When connection expiration mechanism is on on server client will automatically ask your backend for updated connection credentials sending AJAX HTTP POST request to `/centrifuge/refresh` endpoint (by default). Client will send that request when connection ttl is close to the end.
+When connection expiration mechanism is on on server client will automatically ask your backend for updated connection credentials sending AJAX HTTP POST request to `/centrifuge/refresh` endpoint (by default, can be changed using `refreshEndpoint` option). Client will send that request when connection ttl is close to the end. In response backend should return response with JSON like this:
+
+```javascript
+{
+  "token": "<ACTUAL JWT TOKEN>"
+}
+```
 
 ## Protobuf support
 

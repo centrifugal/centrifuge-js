@@ -118,10 +118,7 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
   function Centrifuge(url, options) {
     _classCallCheck(this, Centrifuge);
 
-    // Set noop error handler to prevent Events module to throw an Error when 'error' event is emitted.
     var _this = _possibleConstructorReturn(this, (Centrifuge.__proto__ || Object.getPrototypeOf(Centrifuge)).call(this));
-
-    _this.on('error', function () {});
 
     _this._url = url;
     _this._sockjs = null;
@@ -1682,8 +1679,8 @@ var Subscription = function (_EventEmitter) {
     _this._setEvents(events);
     _this._initializePromise();
     _this._promises = {};
-    _this.on('error', function (err) {
-      this._centrifuge.emit('error', err);
+    _this.on('error', function (errContext) {
+      this._centrifuge._debug('subscription error', errContext);
     });
     return _this;
   }

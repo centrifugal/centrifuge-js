@@ -181,14 +181,6 @@ backoff algorithm to get interval between reconnect attempts which value grows e
 `maxRetry` sets upper interval value limit when reconnecting. Or your clients will never reconnect
 as exponent grows very fast:) Default is `20000` milliseconds.
 
-#### resubscribe
-
-`resubscribe` is boolean option that allows to disable automatic resubscribing on
-subscriptions. By default it's `true` - i.e. you don't need to manually handle
-subscriptions resubscribing and no need to wait `connect` event triggered (first
-time or when reconnecting) to start subscribing. `centrifuge-js` will by default
-resubscribe automatically when connection established.
-
 #### subscribeEndpoint
 
 `subscribeEndpoint` is url to use when sending auth request for authorizing subscription on private channel. By default `/centrifuge/subscribe`. See also useful related options:
@@ -460,11 +452,13 @@ I.e. `on("subscribe", function(context) {...})`
 ```javascript
 {
     "channel": "$public:chat",
-    "isResubscribe": true
+    "isResubscribe": true,
+    "recovered": false
 }
 ```
 
-`isResubscribe` – flag showing if this was initial subscribe (`false`) or resubscribe (`true`)
+`isResubscribe` – boolean flag showing if this was initial subscribe (`false`) or resubscribe (`true`)
+`recovered` – boolean flag that indicated whether missed messages were recovered on reconnect or not (recovery works according to Centrifugo channel configuration)
 
 #### format of subscription error event context
 

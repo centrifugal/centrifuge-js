@@ -26,8 +26,8 @@ export default class Subscription extends EventEmitter {
     this._setEvents(events);
     this._initializePromise();
     this._promises = {};
-    this.on('error', function (err) {
-      this._centrifuge.emit('error', err);
+    this.on('error', function (errContext) {
+      this._centrifuge._debug('subscription error', errContext);
     });
   }
 

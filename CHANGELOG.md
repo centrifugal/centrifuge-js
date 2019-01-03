@@ -1,3 +1,8 @@
+2.0.1
+=====
+
+* Prevent unhandled errors to be raised after failed subscription ([#70](https://github.com/centrifugal/centrifuge-js/issues/70))
+
 2.0.0
 =====
 

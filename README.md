@@ -632,6 +632,13 @@ You can call `unsubscribe` method to unsubscribe from subscription:
 subscription.unsubscribe();
 ```
 
+**Important thing to know** is that unsubscribing from subscription does not remove event hanlers you already set to that subscription object. This allows to simple subscribe to cahnnel again later calling `subscribe` method of subscription (see below). Buth there are cases when you need to remove event handlers after unsubscribe **to prevent them be executed twice** in the future. To do this remove event listeners explicitly after calling `unsubscribe()`:
+
+```javascript
+subscription.unsubscribe();
+subscription.removeAllListeners();
+```
+
 ### subscribe method of subscription
 
 You can restore subscription after unsubscribing calling `.subscribe()` method:

@@ -487,6 +487,23 @@ export class Centrifuge extends EventEmitter {
     return this._callAsync(msg);
   }
 
+  publish(channel, data) {
+    const msg = {
+      method: this._methodType.PUBLISH,
+      params: {
+        channel: channel,
+        data: data
+      }
+    };
+
+    return this._call(msg).then(result => {
+      if (result.next) {
+        result.next();
+      }
+      return {};
+    });
+  }
+
   _dataReceived(data) {
     const replies = this._decoder.decodeReplies(data);
     // we have to guarantee order of events in replies processing - i.e. start processing

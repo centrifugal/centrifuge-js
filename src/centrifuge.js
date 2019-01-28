@@ -17,6 +17,7 @@ import {
 } from './utils';
 
 const _errorTimeout = 'timeout';
+const _errorConnectionClosed = 'connection closed';
 
 export class Centrifuge extends EventEmitter {
 
@@ -332,8 +333,25 @@ export class Centrifuge extends EventEmitter {
     if (!commands.length) {
       return;
     }
-    if (!this._transport) {
-      throw new Error('transport not connected');
+
+    const transportOpen = this._transport &&
+      this._transport._transport &&
+      this._transport._transport.readyState === this._transport._transport.OPEN;
+
+    if (!transportOpen) {
+      // resolve pending commands with error if transport is not open
+      for (let command in commands) {
+        let id = command.id;
+        if (!(id in this._callbacks)) {
+          continue;
+        }
+        const callbacks = this._callbacks[id];
+        clearTimeout(this._callbacks[id].timeout);
+        delete this._callbacks[id];
+        const errback = callbacks.errback;
+        errback(this._createErrorObject(_errorConnectionClosed, 0));
+      }
+      return;
     }
     this._transport.send(this._encoder.encodeCommands(commands));
   }
@@ -410,7 +428,7 @@ export class Centrifuge extends EventEmitter {
 
     this._transport.onclose = closeEvent => {
       this._transportClosed = true;
-      let reason = 'connection closed';
+      let reason = _errorConnectionClosed;
       let needReconnect = true;
 
       if (closeEvent && 'reason' in closeEvent && closeEvent.reason) {
@@ -468,6 +486,11 @@ export class Centrifuge extends EventEmitter {
         data: data
       }
     };
+
+    if (!this.isConnected()) {
+      return Promise.reject(this._createErrorObject(_errorConnectionClosed, 0));
+    }
+
     return this._call(msg).then(result => {
       if (result.next) {
         result.next();
@@ -484,6 +507,10 @@ export class Centrifuge extends EventEmitter {
       }
     };
 
+    if (!this.isConnected()) {
+      return Promise.reject(this._createErrorObject(_errorConnectionClosed, 0));
+    }
+
     return this._callAsync(msg);
   }
 
@@ -495,6 +522,10 @@ export class Centrifuge extends EventEmitter {
         data: data
       }
     };
+
+    if (!this.isConnected()) {
+      return Promise.reject(this._createErrorObject(_errorConnectionClosed, 0));
+    }
 
     return this._call(msg).then(result => {
       if (result.next) {
@@ -526,7 +557,7 @@ export class Centrifuge extends EventEmitter {
   }
 
   _call(msg) {
-    return new global.Promise((resolve, reject) => {
+    return new Promise((resolve, reject) => {
       const id = this._addMessage(msg);
       this._registerCall(id, resolve, reject);
     });

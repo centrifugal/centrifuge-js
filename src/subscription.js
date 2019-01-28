@@ -37,7 +37,7 @@ export default class Subscription extends EventEmitter {
     // synchronous way.
     this._ready = false;
 
-    this._subscriptionPromise = new global.Promise((resolve, reject) => {
+    this._subscriptionPromise = new Promise((resolve, reject) => {
       this._resolve = value => {
         this._ready = true;
         resolve(value);

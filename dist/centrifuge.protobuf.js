@@ -2503,6 +2503,7 @@ function _possibleConstructorReturn(self, call) { if (!self) { throw new Referen
 function _inherits(subClass, superClass) { if (typeof superClass !== "function" && superClass !== null) { throw new TypeError("Super expression must either be null or a function, not " + typeof superClass); } subClass.prototype = Object.create(superClass && superClass.prototype, { constructor: { value: subClass, enumerable: false, writable: true, configurable: true } }); if (superClass) Object.setPrototypeOf ? Object.setPrototypeOf(subClass, superClass) : subClass.__proto__ = superClass; }
 
 var _errorTimeout = 'timeout';
+var _errorConnectionClosed = 'connection closed';
 
 var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
   _inherits(Centrifuge, _EventEmitter);
@@ -2835,12 +2836,28 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
     key: '_transportSend',
     value: function _transportSend(commands) {
       if (!commands.length) {
-        return;
+        return true;
       }
-      if (!this._transport) {
-        throw new Error('transport not connected');
+
+      var transportOpen = this._transport && this._transport._transport && this._transport._transport.readyState === this._transport._transport.OPEN;
+
+      if (!transportOpen) {
+        // resolve pending commands with error if transport is not open
+        for (var command in commands) {
+          var id = command.id;
+          if (!(id in this._callbacks)) {
+            continue;
+          }
+          var callbacks = this._callbacks[id];
+          clearTimeout(this._callbacks[id].timeout);
+          delete this._callbacks[id];
+          var errback = callbacks.errback;
+          errback(this._createErrorObject(_errorConnectionClosed, 0));
+        }
+        return false;
       }
       this._transport.send(this._encoder.encodeCommands(commands));
+      return true;
     }
   }, {
     key: '_setupTransport',
@@ -2921,7 +2938,7 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
 
       this._transport.onclose = function (closeEvent) {
         _this3._transportClosed = true;
-        var reason = 'connection closed';
+        var reason = _errorConnectionClosed;
         var needReconnect = true;
 
         if (closeEvent && 'reason' in closeEvent && closeEvent.reason) {
@@ -2982,6 +2999,11 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
           data: data
         }
       };
+
+      if (!this.isConnected()) {
+        return Promise.reject(this._createErrorObject(_errorConnectionClosed, 0));
+      }
+
       return this._call(msg).then(function (result) {
         if (result.next) {
           result.next();
@@ -2999,7 +3021,37 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
         }
       };
 
-      return this._callAsync(msg);
+      if (!this.isConnected()) {
+        return Promise.reject(this._createErrorObject(_errorConnectionClosed, 0));
+      }
+
+      var sent = this._transportSend([msg]); // can send async message to server without id set
+      if (!sent) {
+        return Promise.reject(this._createErrorObject(_errorConnectionClosed, 0));
+      };
+      return Promise.resolve({});
+    }
+  }, {
+    key: 'publish',
+    value: function publish(channel, data) {
+      var msg = {
+        method: this._methodType.PUBLISH,
+        params: {
+          channel: channel,
+          data: data
+        }
+      };
+
+      if (!this.isConnected()) {
+        return Promise.reject(this._createErrorObject(_errorConnectionClosed, 0));
+      }
+
+      return this._call(msg).then(function (result) {
+        if (result.next) {
+          result.next();
+        }
+        return {};
+      });
     }
   }, {
     key: '_dataReceived',
@@ -3027,16 +3079,11 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
       this._restartPing();
     }
   }, {
-    key: '_callAsync',
-    value: function _callAsync(msg) {
-      this._addMessage(msg, true);
-    }
-  }, {
     key: '_call',
     value: function _call(msg) {
       var _this6 = this;
 
-      return new global.Promise(function (resolve, reject) {
+      return new Promise(function (resolve, reject) {
         var id = _this6._addMessage(msg);
         _this6._registerCall(id, resolve, reject);
       });
@@ -3805,21 +3852,15 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
     }
   }, {
     key: '_addMessage',
-    value: function _addMessage(message, async) {
-      var id = void 0;
-      if (!async) {
-        id = this._nextMessageId();
-        message.id = id;
-      }
+    value: function _addMessage(message) {
+      var id = this._nextMessageId();
+      message.id = id;
       if (this._isBatching === true) {
         this._messages.push(message);
       } else {
         this._transportSend([message]);
       }
-      if (!async) {
-        return id;
-      }
-      return 0;
+      return id;
     }
   }, {
     key: 'isConnected',
@@ -4021,7 +4062,7 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
-/* WEBPACK VAR INJECTION */(function(global) {
+
 
 Object.defineProperty(exports, "__esModule", {
   value: true
@@ -4086,7 +4127,7 @@ var Subscription = function (_EventEmitter) {
       // synchronous way.
       this._ready = false;
 
-      this._subscriptionPromise = new global.Promise(function (resolve, reject) {
+      this._subscriptionPromise = new Promise(function (resolve, reject) {
         _this2._resolve = function (value) {
           _this2._ready = true;
           resolve(value);
@@ -4361,7 +4402,6 @@ var Subscription = function (_EventEmitter) {
 
 exports.default = Subscription;
 module.exports = exports['default'];
-/* WEBPACK VAR INJECTION */}.call(exports, __webpack_require__(3)))
 
 /***/ }),
 /* 12 */

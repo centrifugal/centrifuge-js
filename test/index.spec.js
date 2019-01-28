@@ -27,10 +27,10 @@ describe('Given an instance of my Centrifuge', () => {
     centrifugeJSON = new CentrifugeJSON('ws://localhost:8000/connection/websocket');
   });
   describe('when I try to send message in disconnected state', () => {
-    it('should throw an error', () => {
-      expect(function () {
-        centrifugeJSON.send({});
-      }).to.throw('transport not connected');
+    it('send rejects a promise', () => {
+      return centrifugeJSON.send({})
+        .then(function () { throw new Error('was not supposed to succeed'); })
+        .catch(function (m) { expect(m.code).to.equal(0); });
     });
   });
 });

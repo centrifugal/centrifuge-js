@@ -331,7 +331,7 @@ export class Centrifuge extends EventEmitter {
 
   _transportSend(commands) {
     if (!commands.length) {
-      return;
+      return true;
     }
 
     const transportOpen = this._transport &&
@@ -351,9 +351,10 @@ export class Centrifuge extends EventEmitter {
         const errback = callbacks.errback;
         errback(this._createErrorObject(_errorConnectionClosed, 0));
       }
-      return;
+      return false;
     }
     this._transport.send(this._encoder.encodeCommands(commands));
+    return true;
   }
 
   _setupTransport() {
@@ -511,7 +512,11 @@ export class Centrifuge extends EventEmitter {
       return Promise.reject(this._createErrorObject(_errorConnectionClosed, 0));
     }
 
-    return this._callAsync(msg);
+    const sent = this._transportSend([msg]); // can send async message to server without id set
+    if (!sent) {
+      return Promise.reject(this._createErrorObject(_errorConnectionClosed, 0));
+    };
+    return Promise.resolve({});
   }
 
   publish(channel, data) {
@@ -550,10 +555,6 @@ export class Centrifuge extends EventEmitter {
       }
     }
     this._restartPing();
-  }
-
-  _callAsync(msg) {
-    this._addMessage(msg, true);
   }
 
   _call(msg) {
@@ -1259,21 +1260,15 @@ export class Centrifuge extends EventEmitter {
     }, this._config.timeout);
   };
 
-  _addMessage(message, async) {
-    let id;
-    if (!async) {
-      id = this._nextMessageId();
-      message.id = id;
-    }
+  _addMessage(message) {
+    let id = this._nextMessageId();
+    message.id = id;
     if (this._isBatching === true) {
       this._messages.push(message);
     } else {
       this._transportSend([message]);
     }
-    if (!async) {
-      return id;
-    }
-    return 0;
+    return id;
   };
 
   isConnected() {

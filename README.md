@@ -278,6 +278,42 @@ centrifuge.disconnect();
 After calling this client will not try to reestablish connection periodically. You must call
 `connect` method manually again.
 
+#### publish method
+
+Sometimes you need to publish into channel with `publish` option set to `true` without actually being subscribed to it. In this case you can use `publish` method:
+
+```javascript
+centrifuge.publish("channel", {"input": "hello"}).then(function(res) {
+    console.log('successfully published');
+}, function(err) {
+    console.log('publish error', err);
+});
+```
+
+#### send method
+
+This is only valid for Centrifuge library and does not work for Centrifugo server. `send` method allows to send asynchronous message from client to server.
+
+```javascript
+centrifuge.send({"input": "hello"}).then(function(res) {
+    console.log('successfully sent');
+}, function(err) {
+    console.log('send error', err);
+});
+```
+
+#### rpc method
+
+This is only valid for Centrifuge library and does not work for Centrifugo server. `rpc` method allows to send rpc request from client to server and wait for data response.
+
+```javascript
+centrifuge.rpc({"input": "hello"}).then(function(res) {
+    console.log('rpc result', res);
+}, function(err) {
+    console.log('rpc error', err);
+});
+```
+
 ## Subscriptions
 
 Of course being just connected is useless. What we usually want from Centrifugo is to

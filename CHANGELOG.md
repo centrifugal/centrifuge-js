@@ -1,3 +1,10 @@
+2.1.0
+=====
+
+* new `publish` method of Centrifuge object to publish into channels without being subscribed
+* check connection state to prevent writing to closed connection and thus unhandled errors 
+* `send` method now sends message to server immediately and returns Promise
+
 2.0.1
 =====
 

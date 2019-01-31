@@ -2833,15 +2833,21 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
       }
     }
   }, {
+    key: '_isTransportOpen',
+    value: function _isTransportOpen() {
+      if (this._isSockjs) {
+        return this._transport && this._transport.transport && this._transport.transport.readyState === this._transport.transport.OPEN;
+      }
+      return this._transport && this._transport.readyState === this._transport.OPEN;
+    }
+  }, {
     key: '_transportSend',
     value: function _transportSend(commands) {
       if (!commands.length) {
         return true;
       }
 
-      var transportOpen = this._transport && this._transport._transport && this._transport._transport.readyState === this._transport._transport.OPEN;
-
-      if (!transportOpen) {
+      if (!this._isTransportOpen()) {
         // resolve pending commands with error if transport is not open
         for (var command in commands) {
           var id = command.id;

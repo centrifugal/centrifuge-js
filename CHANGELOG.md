@@ -1,3 +1,8 @@
+2.1.1
+=====
+
+* fix websocket transport state check - see [#74](https://github.com/centrifugal/centrifuge-js/issues/74)
+
 2.1.0
 =====
 

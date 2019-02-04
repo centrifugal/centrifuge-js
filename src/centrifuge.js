@@ -59,6 +59,7 @@ export class Centrifuge extends EventEmitter {
     this._latencyStart = null;
     this._connectData = null;
     this._token = null;
+    this._subscribeXhr = null;
     this._config = {
       debug: false,
       sockjs: null,
@@ -1428,6 +1429,7 @@ export class Centrifuge extends EventEmitter {
         this.stopBatching();
       }
 
+      this._subscribeXhr = null;
     };
 
     if (this._config.onPrivateSubscribe !== null) {
@@ -1435,6 +1437,11 @@ export class Centrifuge extends EventEmitter {
         data: data
       }, cb);
     } else {
+      if (this._subscribeXhr) {
+        this._subscribeXhr.abort();
+        this._debug('Subscribe XHR request has been cancelled');
+      }
+
       this._ajax(this._config.subscribeEndpoint, this._config.subscribeParams, this._config.subscribeHeaders, data, cb);
     }
   };

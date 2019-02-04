@@ -59,6 +59,8 @@ export class Centrifuge extends EventEmitter {
     this._latencyStart = null;
     this._connectData = null;
     this._token = null;
+    this._xhrID = 0;
+    this._xhrs = {};
     this._config = {
       debug: false,
       sockjs: null,
@@ -307,6 +309,15 @@ export class Centrifuge extends EventEmitter {
           sub._setUnsubscribed();
         }
       }
+    }
+
+    for (const xhrID in this._xhrs) {
+      try {
+        this._xhrs[xhrID].abort();
+      } catch (e) {
+        this._debug('error aborting xhr', e);
+      }
+      delete this._xhrs[xhrID];
     }
 
     // clear refresh timer
@@ -645,7 +656,16 @@ export class Centrifuge extends EventEmitter {
       this._refreshTimeout = null;
     }
 
+    const clientID = this._clientID;
+    const xhrID = this._newXHRID();
+
     const cb = (resp) => {
+      if (xhrID in this._xhrs) {
+        delete this._xhrs[xhrID];
+      }
+      if (this._clientID !== clientID) {
+        return;
+      }
       if (resp.error || resp.status !== 200) {
         // We don't perform any connection status related actions here as we are
         // relying on server that must close connection eventually.
@@ -700,13 +720,14 @@ export class Centrifuge extends EventEmitter {
       const context = {};
       this._config.onRefresh(context, cb);
     } else {
-      this._ajax(
+      const xhr = this._ajax(
         this._config.refreshEndpoint,
         this._config.refreshParams,
         this._config.refreshHeaders,
         this._config.refreshData,
         cb
       );
+      this._xhrs[xhrID] = xhr;
     }
   };
 
@@ -731,6 +752,11 @@ export class Centrifuge extends EventEmitter {
     }
   };
 
+  _newXHRID() {
+    this._xhrID++;
+    return this._xhrID;
+  }
+
   _subRefresh(channel) {
     this._debug('refresh subscription token for channel', channel);
 
@@ -740,11 +766,18 @@ export class Centrifuge extends EventEmitter {
       return;
     }
 
+    let self = this;
+    const clientID = this._clientID;
+
+    const xhrID = this._newXHRID();
+
     const cb = (resp) => {
-      if (resp.error || resp.status !== 200) {
+      if (xhrID in this._xhrs) {
+        delete this._xhrs[xhrID];
+      }
+      if (resp.error || resp.status !== 200 || self._clientID !== clientID) {
         return;
       }
-
       let channelsData = {};
       if (resp.data.channels) {
         for (const i in data.channels) {
@@ -796,7 +829,9 @@ export class Centrifuge extends EventEmitter {
         data: data
       }, cb);
     } else {
-      this._ajax(this._config.subscribeEndpoint, this._config.subscribeParams, this._config.subscribeHeaders, data, cb);
+      const xhr = this._ajax(
+        this._config.subscribeEndpoint, this._config.subscribeParams, this._config.subscribeHeaders, data, cb);
+      this._xhrs[xhrID] = xhr;
     }
   };
 
@@ -928,6 +963,7 @@ export class Centrifuge extends EventEmitter {
     const wasReconnecting = this._reconnecting;
     this._reconnecting = false;
     this._resetRetry();
+    this._refreshRequired = false;
 
     if (this.isConnected()) {
       return;
@@ -1338,7 +1374,16 @@ export class Centrifuge extends EventEmitter {
       channels: channels
     };
 
+    const clientID = this._clientID;
+    const xhrID = this._newXHRID();
+
     const cb = (resp) => {
+      if (xhrID in this._xhrs) {
+        delete this._xhrs[xhrID];
+      }
+      if (this._clientID !== clientID) {
+        return;
+      }
       if (resp.error || resp.status !== 200) {
         this._debug('authorization request failed');
         for (const i in channels) {
@@ -1435,7 +1480,9 @@ export class Centrifuge extends EventEmitter {
         data: data
       }, cb);
     } else {
-      this._ajax(this._config.subscribeEndpoint, this._config.subscribeParams, this._config.subscribeHeaders, data, cb);
+      const xhr = this._ajax(
+        this._config.subscribeEndpoint, this._config.subscribeParams, this._config.subscribeHeaders, data, cb);
+      this._xhrs[xhrID] = xhr;
     }
   };
 

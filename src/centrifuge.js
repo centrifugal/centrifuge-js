@@ -766,16 +766,14 @@ export class Centrifuge extends EventEmitter {
       return;
     }
 
-    let self = this;
     const clientID = this._clientID;
-
     const xhrID = this._newXHRID();
 
     const cb = (resp) => {
       if (xhrID in this._xhrs) {
         delete this._xhrs[xhrID];
       }
-      if (resp.error || resp.status !== 200 || self._clientID !== clientID) {
+      if (resp.error || resp.status !== 200 || this._clientID !== clientID) {
         return;
       }
       let channelsData = {};

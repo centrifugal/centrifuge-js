@@ -1442,7 +1442,7 @@ export class Centrifuge extends EventEmitter {
         this._debug('Subscribe XHR request has been cancelled');
       }
 
-      this._ajax(this._config.subscribeEndpoint, this._config.subscribeParams, this._config.subscribeHeaders, data, cb);
+      this._subscribeXhr = this._ajax(this._config.subscribeEndpoint, this._config.subscribeParams, this._config.subscribeHeaders, data, cb);
     }
   };
 

@@ -276,6 +276,17 @@ export class Centrifuge extends EventEmitter {
     return interval;
   };
 
+  _abortInflightXHRs() {
+    for (const xhrID in this._xhrs) {
+      try {
+        this._xhrs[xhrID].abort();
+      } catch (e) {
+        this._debug('error aborting xhr', e);
+      }
+      delete this._xhrs[xhrID];
+    }
+  };
+
   _clearConnectedState(reconnect) {
     this._clientID = null;
     this._stopPing();
@@ -311,14 +322,7 @@ export class Centrifuge extends EventEmitter {
       }
     }
 
-    for (const xhrID in this._xhrs) {
-      try {
-        this._xhrs[xhrID].abort();
-      } catch (e) {
-        this._debug('error aborting xhr', e);
-      }
-      delete this._xhrs[xhrID];
-    }
+    this._abortInflightXHRs();
 
     // clear refresh timer
     if (this._refreshTimeout !== null) {

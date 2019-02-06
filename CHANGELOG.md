@@ -1,3 +1,8 @@
+2.1.2
+=====
+
+* fix private subscription races after reconnect, see [#76](https://github.com/centrifugal/centrifuge-js/issues/76) for issue and solution details
+
 2.1.1
 =====
 

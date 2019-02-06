@@ -2549,6 +2549,8 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
     _this._latencyStart = null;
     _this._connectData = null;
     _this._token = null;
+    _this._xhrID = 0;
+    _this._xhrs = {};
     _this._config = {
       debug: false,
       sockjs: null,
@@ -2777,6 +2779,18 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
       return interval;
     }
   }, {
+    key: '_abortInflightXHRs',
+    value: function _abortInflightXHRs() {
+      for (var xhrID in this._xhrs) {
+        try {
+          this._xhrs[xhrID].abort();
+        } catch (e) {
+          this._debug('error aborting xhr', e);
+        }
+        delete this._xhrs[xhrID];
+      }
+    }
+  }, {
     key: '_clearConnectedState',
     value: function _clearConnectedState(reconnect) {
       this._clientID = null;
@@ -2812,6 +2826,8 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
           }
         }
       }
+
+      this._abortInflightXHRs();
 
       // clear refresh timer
       if (this._refreshTimeout !== null) {
@@ -3177,7 +3193,16 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
         this._refreshTimeout = null;
       }
 
+      var clientID = this._clientID;
+      var xhrID = this._newXHRID();
+
       var cb = function cb(resp) {
+        if (xhrID in _this7._xhrs) {
+          delete _this7._xhrs[xhrID];
+        }
+        if (_this7._clientID !== clientID) {
+          return;
+        }
         if (resp.error || resp.status !== 200) {
           // We don't perform any connection status related actions here as we are
           // relying on server that must close connection eventually.
@@ -3234,7 +3259,8 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
         var context = {};
         this._config.onRefresh(context, cb);
       } else {
-        this._ajax(this._config.refreshEndpoint, this._config.refreshParams, this._config.refreshHeaders, this._config.refreshData, cb);
+        var xhr = this._ajax(this._config.refreshEndpoint, this._config.refreshParams, this._config.refreshHeaders, this._config.refreshData, cb);
+        this._xhrs[xhrID] = xhr;
       }
     }
   }, {
@@ -3269,6 +3295,12 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
       }
     }
   }, {
+    key: '_newXHRID',
+    value: function _newXHRID() {
+      this._xhrID++;
+      return this._xhrID;
+    }
+  }, {
     key: '_subRefresh',
     value: function _subRefresh(channel) {
       var _this10 = this;
@@ -3281,11 +3313,16 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
         return;
       }
 
+      var clientID = this._clientID;
+      var xhrID = this._newXHRID();
+
       var cb = function cb(resp) {
-        if (resp.error || resp.status !== 200) {
+        if (xhrID in _this10._xhrs) {
+          delete _this10._xhrs[xhrID];
+        }
+        if (resp.error || resp.status !== 200 || _this10._clientID !== clientID) {
           return;
         }
-
         var channelsData = {};
         if (resp.data.channels) {
           for (var i in data.channels) {
@@ -3334,7 +3371,8 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
           data: data
         }, cb);
       } else {
-        this._ajax(this._config.subscribeEndpoint, this._config.subscribeParams, this._config.subscribeHeaders, data, cb);
+        var xhr = this._ajax(this._config.subscribeEndpoint, this._config.subscribeParams, this._config.subscribeHeaders, data, cb);
+        this._xhrs[xhrID] = xhr;
       }
     }
   }, {
@@ -3486,6 +3524,7 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
       var wasReconnecting = this._reconnecting;
       this._reconnecting = false;
       this._resetRetry();
+      this._refreshRequired = false;
 
       if (this.isConnected()) {
         return;
@@ -3941,7 +3980,16 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
         channels: channels
       };
 
+      var clientID = this._clientID;
+      var xhrID = this._newXHRID();
+
       var cb = function cb(resp) {
+        if (xhrID in _this19._xhrs) {
+          delete _this19._xhrs[xhrID];
+        }
+        if (_this19._clientID !== clientID) {
+          return;
+        }
         if (resp.error || resp.status !== 200) {
           _this19._debug('authorization request failed');
           for (var i in channels) {
@@ -4038,7 +4086,8 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
           data: data
         }, cb);
       } else {
-        this._ajax(this._config.subscribeEndpoint, this._config.subscribeParams, this._config.subscribeHeaders, data, cb);
+        var xhr = this._ajax(this._config.subscribeEndpoint, this._config.subscribeParams, this._config.subscribeHeaders, data, cb);
+        this._xhrs[xhrID] = xhr;
       }
     }
   }, {

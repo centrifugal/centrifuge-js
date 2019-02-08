@@ -170,11 +170,11 @@ This option nice if you want to use Centrifugo for quick real-time ideas prototy
 it allows to connect to Centrifugo without `sign`, `exp` and `user`. And moreover without
 application backend! Please, [read separate chapter about insecure modes](../mixed/insecure_modes.md).
 
-#### retry
+#### minRetry
 
 When client disconnected from server it will automatically try to reconnect using exponential
 backoff algorithm to get interval between reconnect attempts which value grows exponentially.
-`retry` option sets minimal interval value in milliseconds. Default is `1000` milliseconds.
+`minRetry` option sets minimal interval value in milliseconds. Default is `1000` milliseconds.
 
 #### maxRetry
 

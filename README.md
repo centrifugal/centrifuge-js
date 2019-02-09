@@ -58,7 +58,7 @@ In example above we initialize `Centrifuge` object instance, subscribe on channe
 If you want to use SockJS you must also import SockJS client before centrifuge.js
 
 ```html
-<script src="//cdn.jsdelivr.net/sockjs/1.1/sockjs.min.js" type="text/javascript"></script>
+<script src="https://cdn.jsdelivr.net/npm/sockjs-client@1.3/dist/sockjs.min.js" type="text/javascript"></script>
 <script src="centrifuge.js" type="text/javascript"></script>
 ```
 

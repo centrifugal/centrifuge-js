@@ -752,7 +752,7 @@ export class Centrifuge extends EventEmitter {
     }
     if (result.expires) {
       this._clientID = result.client;
-      this._refreshTimeout = setTimeout(() => this._refresh(), result.ttl * 1000);
+      this._refreshTimeout = setTimeout(() => this._refresh(), this._getTTLMilliseconds(result.ttl));
     }
   };
 
@@ -865,7 +865,7 @@ export class Centrifuge extends EventEmitter {
       return;
     }
     if (result.expires === true) {
-      let subRefreshTimeout = setTimeout(() => this._subRefresh(channel), result.ttl * 1000);
+      let subRefreshTimeout = setTimeout(() => this._subRefresh(channel), this._getTTLMilliseconds(result.ttl));
       this._subRefreshTimeouts[channel] = subRefreshTimeout;
     }
     return;
@@ -949,6 +949,11 @@ export class Centrifuge extends EventEmitter {
     }
   };
 
+  _getTTLMilliseconds(ttl) {
+    // https://stackoverflow.com/questions/12633405/what-is-the-maximum-delay-for-setinterval
+    return Math.min(ttl * 1000, 2147483647);
+  }
+
   getSub(channel) {
     return this._getSub(channel);
   }
@@ -984,7 +989,7 @@ export class Centrifuge extends EventEmitter {
     }
 
     if (result.expires) {
-      this._refreshTimeout = setTimeout(() => this._refresh(), result.ttl * 1000);
+      this._refreshTimeout = setTimeout(() => this._refresh(), this._getTTLMilliseconds(result.ttl));
     }
 
     this.startBatching();
@@ -1104,7 +1109,7 @@ export class Centrifuge extends EventEmitter {
     }
 
     if (result.expires === true) {
-      let subRefreshTimeout = setTimeout(() => this._subRefresh(channel), result.ttl * 1000);
+      let subRefreshTimeout = setTimeout(() => this._subRefresh(channel), this._getTTLMilliseconds(result.ttl));
       this._subRefreshTimeouts[channel] = subRefreshTimeout;
     }
   };

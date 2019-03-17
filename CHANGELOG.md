@@ -1,3 +1,8 @@
+2.1.3
+=====
+
+* fix setting setInterval with value greater than `2,147,483,647` which resulted in immediate refresh callback firing
+
 2.1.2
 =====
 

@@ -58,7 +58,7 @@ In example above we initialize `Centrifuge` object instance, subscribe on channe
 If you want to use SockJS you must also import SockJS client before centrifuge.js
 
 ```html
-<script src="//cdn.jsdelivr.net/sockjs/1.1/sockjs.min.js" type="text/javascript"></script>
+<script src="https://cdn.jsdelivr.net/npm/sockjs-client@1.3/dist/sockjs.min.js" type="text/javascript"></script>
 <script src="centrifuge.js" type="text/javascript"></script>
 ```
 
@@ -170,11 +170,11 @@ This option nice if you want to use Centrifugo for quick real-time ideas prototy
 it allows to connect to Centrifugo without `sign`, `exp` and `user`. And moreover without
 application backend! Please, [read separate chapter about insecure modes](../mixed/insecure_modes.md).
 
-#### retry
+#### minRetry
 
 When client disconnected from server it will automatically try to reconnect using exponential
 backoff algorithm to get interval between reconnect attempts which value grows exponentially.
-`retry` option sets minimal interval value in milliseconds. Default is `1000` milliseconds.
+`minRetry` option sets minimal interval value in milliseconds. Default is `1000` milliseconds.
 
 #### maxRetry
 

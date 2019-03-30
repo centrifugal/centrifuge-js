@@ -1,7 +1,7 @@
 2.1.3
 =====
 
-* fix setting setInterval with value greater than `2,147,483,647` which resulted in immediate refresh callback firing
+* fix setting setInterval with value greater than `2,147,483,647` which resulted in immediate refresh callback firing. Thi means that maximum possible TTL for JWT is about 25 days in Javascript.
 
 2.1.2
 =====

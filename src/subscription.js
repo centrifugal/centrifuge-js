@@ -229,14 +229,17 @@ export default class Subscription extends EventEmitter {
       subPromise.then(
         () => {
           return this._centrifuge._call(message).then(
-            result => {
-              resolve(this._centrifuge._decoder.decodeCommandResult(type, result.result));
-              if (result.next) {
-                result.next();
+            resolveCtx => {
+              resolve(this._centrifuge._decoder.decodeCommandResult(type, resolveCtx.result));
+              if (resolveCtx.next) {
+                resolveCtx.next();
               }
             },
-            error => {
-              reject(error);
+            rejectCtx => {
+              reject(rejectCtx.error);
+              if (rejectCtx.next) {
+                rejectCtx.next();
+              }
             }
           );
         },

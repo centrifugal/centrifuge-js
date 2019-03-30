@@ -430,16 +430,20 @@ export class Centrifuge extends EventEmitter {
       }
 
       this._latencyStart = new Date();
-      this._call(msg).then(result => {
-        this._connectResponse(this._decoder.decodeCommandResult(this._methodType.CONNECT, result.result));
-        if (result.next) {
-          result.next();
+      this._call(msg).then(resolveCtx => {
+        this._connectResponse(this._decoder.decodeCommandResult(this._methodType.CONNECT, resolveCtx.result));
+        if (resolveCtx.next) {
+          resolveCtx.next();
         }
-      }, err => {
+      }, rejectCtx => {
+        const err = rejectCtx.error;
         if (err.code === 109) { // token expired.
           this._refreshRequired = true;
         }
         this._disconnect('connect error', true);
+        if (rejectCtx.next) {
+          rejectCtx.next();
+        }
       });
     };
 
@@ -512,11 +516,16 @@ export class Centrifuge extends EventEmitter {
       return Promise.reject(this._createErrorObject(_errorConnectionClosed, 0));
     }
 
-    return this._call(msg).then(result => {
-      if (result.next) {
-        result.next();
+    return this._call(msg).then(resolveCtx => {
+      if (resolveCtx.next) {
+        resolveCtx.next();
       }
-      return this._decoder.decodeCommandResult(this._methodType.RPC, result.result);
+      return this._decoder.decodeCommandResult(this._methodType.RPC, resolveCtx.result);
+    }, rejectCtx => {
+      if (rejectCtx.next) {
+        rejectCtx.next();
+      }
+      return rejectCtx.error;
     });
   }
 
@@ -709,13 +718,16 @@ export class Centrifuge extends EventEmitter {
             token: this._token
           }
         };
-        this._call(msg).then(result => {
-          this._refreshResponse(this._decoder.decodeCommandResult(this._methodType.REFRESH, result.result));
-          if (result.next) {
-            result.next();
+        this._call(msg).then(resolveCtx => {
+          this._refreshResponse(this._decoder.decodeCommandResult(this._methodType.REFRESH, resolveCtx.result));
+          if (resolveCtx.next) {
+            resolveCtx.next();
           }
-        }, err => {
-          this._refreshError(err);
+        }, rejectCtx => {
+          this._refreshError(rejectCtx.error);
+          if (rejectCtx.next) {
+            rejectCtx.next();
+          }
         });
       }
     };
@@ -808,16 +820,19 @@ export class Centrifuge extends EventEmitter {
         return;
       }
 
-      this._call(msg).then(result => {
+      this._call(msg).then(resolveCtx => {
         this._subRefreshResponse(
           channel,
-          this._decoder.decodeCommandResult(this._methodType.SUB_REFRESH, result.result)
+          this._decoder.decodeCommandResult(this._methodType.SUB_REFRESH, resolveCtx.result)
         );
-        if (result.next) {
-          result.next();
+        if (resolveCtx.next) {
+          resolveCtx.next();
         }
-      }, err => {
-        this._subRefreshError(channel, err);
+      }, rejectCtx => {
+        this._subRefreshError(channel, rejectCtx.error);
+        if (rejectCtx.next) {
+          rejectCtx.next();
+        }
       });
     };
 
@@ -926,13 +941,19 @@ export class Centrifuge extends EventEmitter {
         }
       }
 
-      this._call(msg).then(result => {
-        this._subscribeResponse(channel, this._decoder.decodeCommandResult(this._methodType.SUBSCRIBE, result.result));
-        if (result.next) {
-          result.next();
+      this._call(msg).then(resolveCtx => {
+        this._subscribeResponse(
+          channel,
+          this._decoder.decodeCommandResult(this._methodType.SUBSCRIBE, resolveCtx.result)
+        );
+        if (resolveCtx.next) {
+          resolveCtx.next();
         }
-      }, err => {
-        this._subscribeError(channel, err);
+      }, rejectCtx => {
+        this._subscribeError(channel, rejectCtx.error);
+        if (rejectCtx.next) {
+          rejectCtx.next();
+        }
       });
     }
   };
@@ -1119,6 +1140,7 @@ export class Centrifuge extends EventEmitter {
     const result = reply.result;
 
     if (!(id in this._callbacks)) {
+      next();
       return;
     }
     const callbacks = this._callbacks[id];
@@ -1134,9 +1156,11 @@ export class Centrifuge extends EventEmitter {
     } else {
       const errback = callbacks.errback;
       if (!errback) {
+        next();
         return;
       }
-      errback(reply.error);
+      const error = reply.error;
+      errback({error, next});
     }
   }
 
@@ -1245,11 +1269,16 @@ export class Centrifuge extends EventEmitter {
     const msg = {
       method: this._methodType.PING
     };
-    this._call(msg).then(result => {
-      this._pingResponse(this._decoder.decodeCommandResult(this._methodType.PING, result.result));
-      result.next();
-    }, err => {
-      this._debug('ping error', err);
+    this._call(msg).then(resolveCtx => {
+      this._pingResponse(this._decoder.decodeCommandResult(this._methodType.PING, resolveCtx.result));
+      if (resolveCtx.next) {
+        resolveCtx.next();
+      }
+    }, rejectCtx => {
+      this._debug('ping error', rejectCtx.error);
+      if (rejectCtx.next) {
+        rejectCtx.next();
+      }
     });
   };
 
@@ -1461,16 +1490,19 @@ export class Centrifuge extends EventEmitter {
                 msg.params.epoch = epoch;
               }
             }
-            this._call(msg).then(result => {
+            this._call(msg).then(resolveCtx => {
               this._subscribeResponse(
                 channel,
-                this._decoder.decodeCommandResult(this._methodType.SUBSCRIBE, result.result)
+                this._decoder.decodeCommandResult(this._methodType.SUBSCRIBE, resolveCtx.result)
               );
-              if (result.next) {
-                result.next();
+              if (resolveCtx.next) {
+                resolveCtx.next();
               }
-            }, err => {
-              this._subscribeError(channel, err);
+            }, rejectCtx => {
+              this._subscribeError(channel, rejectCtx.error);
+              if (rejectCtx.next) {
+                rejectCtx.next();
+              }
             });
           }
         }

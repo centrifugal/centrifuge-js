@@ -1,3 +1,8 @@
+2.1.4
+=====
+
+* fix broken iteration over several replies in one frame if one of replies had error field set 
+
 2.1.3
 =====
 

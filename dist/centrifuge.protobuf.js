@@ -2940,17 +2940,21 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
         }
 
         _this3._latencyStart = new Date();
-        _this3._call(msg).then(function (result) {
-          _this3._connectResponse(_this3._decoder.decodeCommandResult(_this3._methodType.CONNECT, result.result));
-          if (result.next) {
-            result.next();
+        _this3._call(msg).then(function (resolveCtx) {
+          _this3._connectResponse(_this3._decoder.decodeCommandResult(_this3._methodType.CONNECT, resolveCtx.result));
+          if (resolveCtx.next) {
+            resolveCtx.next();
           }
-        }, function (err) {
+        }, function (rejectCtx) {
+          var err = rejectCtx.error;
           if (err.code === 109) {
             // token expired.
             _this3._refreshRequired = true;
           }
           _this3._disconnect('connect error', true);
+          if (rejectCtx.next) {
+            rejectCtx.next();
+          }
         });
       };
 
@@ -3026,11 +3030,16 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
         return Promise.reject(this._createErrorObject(_errorConnectionClosed, 0));
       }
 
-      return this._call(msg).then(function (result) {
-        if (result.next) {
-          result.next();
+      return this._call(msg).then(function (resolveCtx) {
+        if (resolveCtx.next) {
+          resolveCtx.next();
         }
-        return _this4._decoder.decodeCommandResult(_this4._methodType.RPC, result.result);
+        return _this4._decoder.decodeCommandResult(_this4._methodType.RPC, resolveCtx.result);
+      }, function (rejectCtx) {
+        if (rejectCtx.next) {
+          rejectCtx.next();
+        }
+        return rejectCtx.error;
       });
     }
   }, {
@@ -3244,13 +3253,16 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
               token: _this7._token
             }
           };
-          _this7._call(msg).then(function (result) {
-            _this7._refreshResponse(_this7._decoder.decodeCommandResult(_this7._methodType.REFRESH, result.result));
-            if (result.next) {
-              result.next();
+          _this7._call(msg).then(function (resolveCtx) {
+            _this7._refreshResponse(_this7._decoder.decodeCommandResult(_this7._methodType.REFRESH, resolveCtx.result));
+            if (resolveCtx.next) {
+              resolveCtx.next();
             }
-          }, function (err) {
-            _this7._refreshError(err);
+          }, function (rejectCtx) {
+            _this7._refreshError(rejectCtx.error);
+            if (rejectCtx.next) {
+              rejectCtx.next();
+            }
           });
         }
       };
@@ -3351,13 +3363,16 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
           return;
         }
 
-        _this10._call(msg).then(function (result) {
-          _this10._subRefreshResponse(channel, _this10._decoder.decodeCommandResult(_this10._methodType.SUB_REFRESH, result.result));
-          if (result.next) {
-            result.next();
+        _this10._call(msg).then(function (resolveCtx) {
+          _this10._subRefreshResponse(channel, _this10._decoder.decodeCommandResult(_this10._methodType.SUB_REFRESH, resolveCtx.result));
+          if (resolveCtx.next) {
+            resolveCtx.next();
           }
-        }, function (err) {
-          _this10._subRefreshError(channel, err);
+        }, function (rejectCtx) {
+          _this10._subRefreshError(channel, rejectCtx.error);
+          if (rejectCtx.next) {
+            rejectCtx.next();
+          }
         });
       };
 
@@ -3479,13 +3494,16 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
           }
         }
 
-        this._call(msg).then(function (result) {
-          _this13._subscribeResponse(channel, _this13._decoder.decodeCommandResult(_this13._methodType.SUBSCRIBE, result.result));
-          if (result.next) {
-            result.next();
+        this._call(msg).then(function (resolveCtx) {
+          _this13._subscribeResponse(channel, _this13._decoder.decodeCommandResult(_this13._methodType.SUBSCRIBE, resolveCtx.result));
+          if (resolveCtx.next) {
+            resolveCtx.next();
           }
-        }, function (err) {
-          _this13._subscribeError(channel, err);
+        }, function (rejectCtx) {
+          _this13._subscribeError(channel, rejectCtx.error);
+          if (rejectCtx.next) {
+            rejectCtx.next();
+          }
         });
       }
     }
@@ -3694,6 +3712,7 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
       var result = reply.result;
 
       if (!(id in this._callbacks)) {
+        next();
         return;
       }
       var callbacks = this._callbacks[id];
@@ -3709,9 +3728,11 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
       } else {
         var errback = callbacks.errback;
         if (!errback) {
+          next();
           return;
         }
-        errback(reply.error);
+        var error = reply.error;
+        errback({ error: error, next: next });
       }
     }
   }, {
@@ -3831,11 +3852,16 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
       var msg = {
         method: this._methodType.PING
       };
-      this._call(msg).then(function (result) {
-        _this17._pingResponse(_this17._decoder.decodeCommandResult(_this17._methodType.PING, result.result));
-        result.next();
-      }, function (err) {
-        _this17._debug('ping error', err);
+      this._call(msg).then(function (resolveCtx) {
+        _this17._pingResponse(_this17._decoder.decodeCommandResult(_this17._methodType.PING, resolveCtx.result));
+        if (resolveCtx.next) {
+          resolveCtx.next();
+        }
+      }, function (rejectCtx) {
+        _this17._debug('ping error', rejectCtx.error);
+        if (rejectCtx.next) {
+          rejectCtx.next();
+        }
       });
     }
   }, {
@@ -4067,13 +4093,16 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
                     msg.params.epoch = epoch;
                   }
                 }
-                _this19._call(msg).then(function (result) {
-                  _this19._subscribeResponse(channel, _this19._decoder.decodeCommandResult(_this19._methodType.SUBSCRIBE, result.result));
-                  if (result.next) {
-                    result.next();
+                _this19._call(msg).then(function (resolveCtx) {
+                  _this19._subscribeResponse(channel, _this19._decoder.decodeCommandResult(_this19._methodType.SUBSCRIBE, resolveCtx.result));
+                  if (resolveCtx.next) {
+                    resolveCtx.next();
                   }
-                }, function (err) {
-                  _this19._subscribeError(channel, err);
+                }, function (rejectCtx) {
+                  _this19._subscribeError(channel, rejectCtx.error);
+                  if (rejectCtx.next) {
+                    rejectCtx.next();
+                  }
                 });
               }
             }();
@@ -4401,13 +4430,16 @@ var Subscription = function (_EventEmitter) {
           });
         }
         subPromise.then(function () {
-          return _this3._centrifuge._call(message).then(function (result) {
-            resolve(_this3._centrifuge._decoder.decodeCommandResult(type, result.result));
-            if (result.next) {
-              result.next();
+          return _this3._centrifuge._call(message).then(function (resolveCtx) {
+            resolve(_this3._centrifuge._decoder.decodeCommandResult(type, resolveCtx.result));
+            if (resolveCtx.next) {
+              resolveCtx.next();
             }
-          }, function (error) {
-            reject(error);
+          }, function (rejectCtx) {
+            reject(rejectCtx.error);
+            if (rejectCtx.next) {
+              rejectCtx.next();
+            }
           });
         }, function (error) {
           reject(error);

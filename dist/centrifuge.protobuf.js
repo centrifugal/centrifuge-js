@@ -2805,7 +2805,7 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
           if (!errback) {
             continue;
           }
-          errback(this._createErrorObject('disconnected'));
+          errback({ error: this._createErrorObject('disconnected') });
         }
       }
       this._callbacks = {};
@@ -2874,7 +2874,7 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
           clearTimeout(this._callbacks[id].timeout);
           delete this._callbacks[id];
           var errback = callbacks.errback;
-          errback(this._createErrorObject(_errorConnectionClosed, 0));
+          errback({ error: this._createErrorObject(_errorConnectionClosed, 0) });
         }
         return false;
       }
@@ -3923,7 +3923,7 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
       this._callbacks[id].timeout = setTimeout(function () {
         delete _this18._callbacks[id];
         if ((0, _utils.isFunction)(errback)) {
-          errback(_this18._createErrorObject(_errorTimeout));
+          errback({ error: _this18._createErrorObject(_errorTimeout) });
         }
       }, this._config.timeout);
     }

@@ -300,7 +300,7 @@ export class Centrifuge extends EventEmitter {
         if (!errback) {
           continue;
         }
-        errback(this._createErrorObject('disconnected'));
+        errback({error: this._createErrorObject('disconnected')});
       }
     }
     this._callbacks = {};
@@ -369,7 +369,7 @@ export class Centrifuge extends EventEmitter {
         clearTimeout(this._callbacks[id].timeout);
         delete this._callbacks[id];
         const errback = callbacks.errback;
-        errback(this._createErrorObject(_errorConnectionClosed, 0));
+        errback({error: this._createErrorObject(_errorConnectionClosed, 0)});
       }
       return false;
     }
@@ -1332,7 +1332,7 @@ export class Centrifuge extends EventEmitter {
     this._callbacks[id].timeout = setTimeout(() => {
       delete this._callbacks[id];
       if (isFunction(errback)) {
-        errback(this._createErrorObject(_errorTimeout));
+        errback({error: this._createErrorObject(_errorTimeout)});
       }
     }, this._config.timeout);
   };

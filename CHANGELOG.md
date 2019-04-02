@@ -1,3 +1,8 @@
+2.1.5
+=====
+
+* fix wrong error object format (on timeout, disconnect and connection closed errors) introduced in 2.1.4 
+
 2.1.4
 =====
 

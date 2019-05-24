@@ -2820,7 +2820,9 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
               sub._triggerUnsubscribe();
               sub._recover = true;
             }
-            sub._setSubscribing();
+            if (sub._shouldResubscribe()) {
+              sub._setSubscribing();
+            }
           } else {
             sub._setUnsubscribed();
           }

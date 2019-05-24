@@ -1,3 +1,8 @@
+2.1.6
+=====
+
+* fix subscribe after clearing connection state, see [#83](https://github.com/centrifugal/centrifuge-js/issues/83) for details
+
 2.1.5
 =====
 

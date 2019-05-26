@@ -12,8 +12,8 @@ declare class Centrifuge extends EventEmitter {
     setToken(token: string): void;
     setConnectData(data: any): void;
     rpc(data: any): Promise<any>;
-    send(data: any): Promise<any>;
-    publish(channel: string, data: any): Promise<any>;
+    send(data: any): Promise<{}>;
+    publish(channel: string, data: any): Promise<{}>;
     getSub(channel: string): Centrifuge.Subscription;
     isConnected(): boolean;
     connect(): void;

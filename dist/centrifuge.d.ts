@@ -1,12 +1,7 @@
 // Type definitions for centrifuge 2.1.5
 // Project: https://github.com/centrifugal/centrifuge-js
 // Definitions by: Jekaspekas <https://github.com/jekaspekas>
-// Definitions: https://github.com/DefinitelyTyped/DefinitelyTyped
 // TypeScript Version: 3.4.5
-
-// SOME PROBLEMS:
-// Promise callback typing ???
-// .on() argument typing (enum for event & type for listener) ???
 
 import EventEmitter from 'events';
 

@@ -1171,7 +1171,7 @@ export class Centrifuge extends EventEmitter {
     if (!sub) {
       return;
     }
-    sub.emit('join', join);
+    sub.emit('join', {'info': join.info});
   };
 
   _handleLeave(channel, leave) {
@@ -1179,7 +1179,7 @@ export class Centrifuge extends EventEmitter {
     if (!sub) {
       return;
     }
-    sub.emit('leave', leave);
+    sub.emit('leave', {'info': leave.info});
   };
 
   _handleUnsub(channel, unsub) {
@@ -1204,7 +1204,16 @@ export class Centrifuge extends EventEmitter {
     if (pub.gen !== undefined) {
       this._lastGen[channel] = pub.gen;
     }
-    sub.emit('publish', pub);
+    const pubContext = {
+      'data': pub.data
+    };
+    if (pub.client !== undefined) {
+      pubContext['client'] = pub.client;
+    }
+    if (pub.info !== undefined) {
+      pubContext['info'] = pub.info;
+    }
+    sub.emit('publish', pubContext);
   };
 
   _handleMessage(message) {

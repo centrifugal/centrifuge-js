@@ -161,15 +161,6 @@ of random chars. See SockJS docs for more info.
 messages will be logged into javascript console. Mostly useful for development or
 troubleshooting.
 
-#### insecure
-
-`insecure` is a boolean option which is `false` by default. When enabled client will connect
-to server in insecure mode - read about this mode in [special docs chapter](../mixed/insecure_modes.md).
-
-This option nice if you want to use Centrifugo for quick real-time ideas prototyping, demos as
-it allows to connect to Centrifugo without `sign`, `exp` and `user`. And moreover without
-application backend! Please, [read separate chapter about insecure modes](../mixed/insecure_modes.md).
-
 #### minRetry
 
 When client disconnected from server it will automatically try to reconnect using exponential

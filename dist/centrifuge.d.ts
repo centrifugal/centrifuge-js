@@ -1,4 +1,4 @@
-// Type definitions for centrifuge 2.1.5
+// Type definitions for centrifuge 2.*.*
 // Project: https://github.com/centrifugal/centrifuge-js
 // Definitions by: Jekaspekas <https://github.com/jekaspekas>
 // TypeScript Version: 3.4.5
@@ -54,10 +54,9 @@ declare namespace Centrifuge {
         subscribeHeaders?: object;
         subscribeParams?: object;
         subRefreshInterval?: number;
-        onPrivateSubscribe?: (message: {data: SubscribePrivateMessage}, cb: (resp: any) => void) => void;
+        onPrivateSubscribe?: (message: {data: SubscribePrivateContext}, cb: (resp: any) => void) => void;
     }
     export class Subscription extends EventEmitter {
-        constructor(centrifuge: Centrifuge, channel: string, events: (...args: any[]) => void);
         channel: string;
         ready(callback: (context: SubscribeSuccessContext) => void, errback: (context: SubscribeErrorContext) => void): void;
         subscribe(): void;
@@ -96,7 +95,7 @@ declare namespace Centrifuge {
         conn_info?: object;
         chan_info?: object;
     }
-    export interface SubscribePrivateMessage {
+    export interface SubscribePrivateContext {
         client: string;
         channels: string[] | object[];
     }

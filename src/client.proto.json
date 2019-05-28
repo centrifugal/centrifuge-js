@@ -97,11 +97,11 @@
               "type": "string",
               "id": 2
             },
-            "connInfo": {
+            "conn_info": {
               "type": "bytes",
               "id": 3
             },
-            "chanInfo": {
+            "chan_info": {
               "type": "bytes",
               "id": 4
             }
@@ -369,11 +369,11 @@
         },
         "PresenceStatsResult": {
           "fields": {
-            "numClients": {
+            "num_clients": {
               "type": "uint32",
               "id": 1
             },
-            "numUsers": {
+            "num_users": {
               "type": "uint32",
               "id": 2
             }

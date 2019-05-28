@@ -432,7 +432,6 @@ it was provided when publishing new message:
 
 ```javascript
 {
-    "uid":"6778c79fccb2",
     "data":{"input":"hello"},
     "client":"7080fd2a-bd69-4f1f-6648-5f3ceba4b643"
 }
@@ -443,12 +442,11 @@ published by javascript client directly using `publish` method (see details belo
 
 ```javascript
 {
-    "uid":"6778c79f-ccb2-4a1b-5768-2e7381bc5410",
     "info":{
         "user":"2694",
         "client":"7080fd2a-bd69-4f1f-6648-5f3ceba4b643",
-        "default_info":{"name":"Alexandr"},
-        "channel_info":{"extra":"extra JSON data when authorizing private channel"}
+        "conn_info":{"name":"Alexandr"},
+        "chan_info":{"extra":"extra JSON data when authorizing private channel"}
     },
     "data":{"input":"hello"},
     "client":"7080fd2a-bd69-4f1f-6648-5f3ceba4b643"
@@ -537,8 +535,7 @@ Format of success callback `message`:
 
 ```javascript
 {
-    "channel":"$public:chat",
-    "data":{
+    "presence":{
         "2724adea-6e9b-460b-4430-a9f999e94c36": {
             "user":"2694",
             "client":"2724adea-6e9b-460b-4430-a9f999e94c36"
@@ -589,21 +586,18 @@ Success callback `message` format:
 
 ```javascript
 {
-    "channel": "$public:chat",
-    "data": [
+    "publications": [
         {
-            "uid": "87219102-a31d-44ed-489d-52b1a7fa520c",
             "data": {"input": "hello2"}
         },
         {
-            "uid": "71617557-7466-4cbb-760e-639042a5cade",
             "data": {"input": "hello1"}
         }
     ]
 }
 ```
 
-Where `data` is an array of messages published into channel.
+Where `publications` is an array of messages published into channel.
 
 Note that also additional fields can be included in messages - `client`, `info` if those
 fields were in original messages.

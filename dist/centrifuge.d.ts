@@ -54,7 +54,7 @@ declare namespace Centrifuge {
         subscribeHeaders?: object;
         subscribeParams?: object;
         subRefreshInterval?: number;
-        onPrivateSubscribe?: (message: {data: SubscribePrivateContext}, cb: (resp: any) => void) => void;
+        onPrivateSubscribe?: (message: {data: SubscribePrivateContext}, cb: (resp: SubscribePrivateResponse) => void) => void;
     }
     export class Subscription extends EventEmitter {
         channel: string;
@@ -83,8 +83,8 @@ declare namespace Centrifuge {
     export interface MessageInfo {
         user? : string;
         client? : string;
-        default_info?: object;
-        channel_info?: object;
+        default_info?: any;
+        channel_info?: any;
     }
     export interface JoinLeaveMessage {
         info: JoinLeaveMessageInfo;
@@ -95,10 +95,7 @@ declare namespace Centrifuge {
         conn_info?: object;
         chan_info?: object;
     }
-    export interface SubscribePrivateContext {
-        client: string;
-        channels: string[] | object[];
-    }
+
     export interface SubscribeSuccessContext {
         channel: string;
         isResubscribe: boolean;
@@ -112,4 +109,19 @@ declare namespace Centrifuge {
     export interface UnsubscribeContext {
         channel: string;
     }
+  
+    export interface SubscribePrivateContext {
+        client: string;
+        channels: string[];
+    }
+  
+    export interface SubscribePrivateResponse {
+        channels: PrivateChannelData[];
+    }
+
+    export interface PrivateChannelData {
+        channel: string;
+        token: string;
+    }
+ 
 }

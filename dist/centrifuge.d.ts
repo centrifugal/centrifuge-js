@@ -28,6 +28,7 @@ declare class Centrifuge extends EventEmitter {
 }
 
 declare namespace Centrifuge {
+    
     export interface Options {
         debug?: boolean;
         sockjs?: any;
@@ -56,16 +57,18 @@ declare namespace Centrifuge {
         subRefreshInterval?: number;
         onPrivateSubscribe?: (message: {data: SubscribePrivateContext}, cb: (resp: SubscribePrivateResponse) => void) => void;
     }
+
     export class Subscription extends EventEmitter {
         channel: string;
         ready(callback: (context: SubscribeSuccessContext) => void, errback: (context: SubscribeErrorContext) => void): void;
         subscribe(): void;
         unsubscribe(): void;
-        publish(data: any): Promise<any>;
-        presence(): Promise<any>;
-        presenceStats(): Promise<any>;
-        history(): Promise<any>;
+        publish(data: any): Promise<undefined>;
+        presence(): Promise<PresenceResult>;
+        presenceStats(): Promise<PresenceStatsResult>;
+        history(): Promise<HistoryResult>;
     }
+
     export interface SubscriptionEvents {
         publish?: (message: PublishContext) => void;
         join?: (message: JoinLeaveMessage) => void;
@@ -74,23 +77,27 @@ declare namespace Centrifuge {
         error?: (errContext: SubscribeErrorContext) => void;
         unsubscribe?: (context: UnsubscribeContext) => void;
     }
+
     export interface PublishContext {
         data: any;
         client?: string;
         info?: MessageInfo;
     }
+
     export interface MessageInfo {
         user? : string;
         client? : string;
         default_info?: any;
         channel_info?: any;
     }
+
     export interface JoinLeaveMessage {
-        info: JoinLeaveMessageInfo;
+        info: ClientInfo;
     }
-    export interface JoinLeaveMessageInfo {
-        user : string;
-        client : string;
+
+    export interface ClientInfo {
+        user?: string;
+        client?: string;
         conn_info?: object;
         chan_info?: object;
     }
@@ -100,11 +107,13 @@ declare namespace Centrifuge {
         isResubscribe: boolean;
         recovered: boolean;
     }
+
     export interface SubscribeErrorContext {
         error: string;
         channel: string;
         isResubscribe: boolean;
     }
+
     export interface UnsubscribeContext {
         channel: string;
     }
@@ -122,5 +131,30 @@ declare namespace Centrifuge {
         channel: string;
         token: string;
     }
- 
+
+    export interface PresenceResult {
+        presence: PresenceMap;
+    }
+
+    export interface PresenceMap {
+        [key: string]: ClientInfo;
+    }
+
+    export interface PresenceStatsResult {
+        num_clients: number;
+        num_users: number;
+    }
+
+    export interface HistoryResult {
+        publications: Publication[];
+    }
+
+    export interface Publication {
+        seq?: number;
+        gen?: number;
+        uid?: string;
+        data?: any;
+        info?: ClientInfo;
+    }
+
 }

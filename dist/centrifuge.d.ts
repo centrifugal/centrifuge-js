@@ -67,14 +67,14 @@ declare namespace Centrifuge {
         history(): Promise<any>;
     }
     export interface SubscriptionEvents {
-        publish?: (message: PublishMessage) => void;
+        publish?: (message: PublishContext) => void;
         join?: (message: JoinLeaveMessage) => void;
         leave?: (message: JoinLeaveMessage) => void;
         subscribe?: (context: SubscribeSuccessContext) => void;
         error?: (errContext: SubscribeErrorContext) => void;
         unsubscribe?: (context: UnsubscribeContext) => void;
     }
-    export interface PublishMessage {
+    export interface PublishContext {
         data: any;
         client?: string;
         info?: MessageInfo;

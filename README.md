@@ -778,6 +778,8 @@ If you don't want to give client access to channel then just do not include it i
 
 There are also two public API methods which can help to subscribe to many private channels sending only one POST request to your web application backend: `startSubscribeBatching` and `stopSubscribeBatching`. When you `startSubscribeBatching` javascript client will collect private subscriptions until `stopSubscribeBatching()` called – and then send them all at once.
 
+As we just described when client subscribes on private channel by default AJAX request will be sent to `subscribeEndpoint` automatically if channel starts with `$`. In this case developer only needs to return proper response from server. But there is a way to override default behaviour and take full control on authorizing private channels. To do this it's possible to provide custom `onPrivateSubscribe` function in configuration options. This function will be called with all data required to authorize private channels client subscribes to and should call callback (will be provided by centrifuge-js as second argument) with authorization data when done. See our type declarations in `dist` folder to find out data format.
+
 ## Connection expiration
 
 When connection expiration mechanism is on on server client will automatically ask your backend for updated connection credentials sending AJAX HTTP POST request to `/centrifuge/refresh` endpoint (by default, can be changed using `refreshEndpoint` option). Client will send that request when connection ttl is close to the end. In response backend should return response with JSON like this:

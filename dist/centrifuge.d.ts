@@ -75,7 +75,6 @@ declare namespace Centrifuge {
         unsubscribe?: (context: UnsubscribeContext) => void;
     }
     export interface PublishMessage {
-        uid: string;
         data: any;
         client?: string;
         info?: MessageInfo;

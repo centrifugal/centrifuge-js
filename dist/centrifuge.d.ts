@@ -12,8 +12,8 @@ declare class Centrifuge extends EventEmitter {
     setToken(token: string): void;
     setConnectData(data: any): void;
     rpc(data: any): Promise<any>;
-    send(data: any): Promise<{}>;
-    publish(channel: string, data: any): Promise<{}>;
+    send(data: any): Promise<any>;
+    publish(channel: string, data: any): Promise<any>;
     getSub(channel: string): Centrifuge.Subscription;
     isConnected(): boolean;
     connect(): void;
@@ -28,9 +28,10 @@ declare class Centrifuge extends EventEmitter {
 }
 
 declare namespace Centrifuge {
-    
+
     export interface Options {
         debug?: boolean;
+        websocket?: any;
         sockjs?: any;
         promise?: any;
         minRetry?: number;
@@ -40,66 +41,60 @@ declare namespace Centrifuge {
         pingInterval?: number;
         pongWaitTimeout?: number;
         privateChannelPrefix?: string;
-        onTransportClose?: boolean;
-        sockjsServer?: string | null;
+        onTransportClose?: (ctx: object) => void;
+        sockjsServer?: string;
         sockjsTransports?: string[];
         refreshEndpoint?: string;
         refreshHeaders?: object;
         refreshParams?: object;
         refreshData?: object;
-        refreshAttempts?: number | null;
+        refreshAttempts?: number;
         refreshInterval?: number;
         onRefreshFailed?: () => void;
-        onRefresh?: (context: object, cb: (resp: any) => void) => void;
+        onRefresh?: (ctx: object, cb: (resp: any) => void) => void;
         subscribeEndpoint?: string;
         subscribeHeaders?: object;
         subscribeParams?: object;
         subRefreshInterval?: number;
-        onPrivateSubscribe?: (message: {data: SubscribePrivateContext}, cb: (resp: SubscribePrivateResponse) => void) => void;
+        onPrivateSubscribe?: (ctx: SubscribePrivateContext, cb: (resp: SubscribePrivateResponse) => void) => void;
     }
 
     export class Subscription extends EventEmitter {
         channel: string;
-        ready(callback: (context: SubscribeSuccessContext) => void, errback: (context: SubscribeErrorContext) => void): void;
+        ready(callback: (ctx: SubscribeSuccessContext) => void, errback: (ctx: SubscribeErrorContext) => void): void;
         subscribe(): void;
         unsubscribe(): void;
-        publish(data: any): Promise<undefined>;
+        publish(data: any): Promise<any>;
         presence(): Promise<PresenceResult>;
         presenceStats(): Promise<PresenceStatsResult>;
         history(): Promise<HistoryResult>;
     }
 
     export interface SubscriptionEvents {
-        publish?: (message: PublishContext) => void;
-        join?: (message: JoinLeaveMessage) => void;
-        leave?: (message: JoinLeaveMessage) => void;
-        subscribe?: (context: SubscribeSuccessContext) => void;
-        error?: (errContext: SubscribeErrorContext) => void;
-        unsubscribe?: (context: UnsubscribeContext) => void;
+        publish?: (ctx: PublicationContext) => void;
+        join?: (ctx: JoinLeaveContext) => void;
+        leave?: (ctx: JoinLeaveContext) => void;
+        subscribe?: (ctx: SubscribeSuccessContext) => void;
+        error?: (ctx: SubscribeErrorContext) => void;
+        unsubscribe?: (ctx: UnsubscribeContext) => void;
     }
 
-    export interface PublishContext {
+    export interface PublicationContext {
         data: any;
-        client?: string;
-        info?: MessageInfo;
-    }
-
-    export interface MessageInfo {
-        user? : string;
-        client? : string;
-        default_info?: any;
-        channel_info?: any;
-    }
-
-    export interface JoinLeaveMessage {
-        info: ClientInfo;
+        info?: ClientInfo;
+        seq?: number;
+        gen?: number;
     }
 
     export interface ClientInfo {
-        user?: string;
-        client?: string;
-        conn_info?: object;
-        chan_info?: object;
+        user? : string;
+        client? : string;
+        conn_info?: any;
+        chan_info?: any;
+    }
+
+    export interface JoinLeaveContext {
+        info: ClientInfo;
     }
 
     export interface SubscribeSuccessContext {
@@ -119,10 +114,14 @@ declare namespace Centrifuge {
     }
   
     export interface SubscribePrivateContext {
+        data: SubscribePrivateData;
+    }
+
+    export interface SubscribePrivateData {
         client: string;
         channels: string[];
     }
-  
+
     export interface SubscribePrivateResponse {
         channels: PrivateChannelData[];
     }
@@ -146,15 +145,6 @@ declare namespace Centrifuge {
     }
 
     export interface HistoryResult {
-        publications: Publication[];
+        publications: PublicationContext[];
     }
-
-    export interface Publication {
-        seq?: number;
-        gen?: number;
-        uid?: string;
-        data?: any;
-        info?: ClientInfo;
-    }
-
 }

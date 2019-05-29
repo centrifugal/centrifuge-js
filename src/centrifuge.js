@@ -1214,16 +1214,7 @@ export class Centrifuge extends EventEmitter {
     if (pub.gen !== undefined) {
       this._lastGen[channel] = pub.gen;
     }
-    const pubContext = {
-      'data': pub.data
-    };
-    if (pub.client !== undefined) {
-      pubContext['client'] = pub.client;
-    }
-    if (pub.info !== undefined) {
-      pubContext['info'] = pub.info;
-    }
-    sub.emit('publish', pubContext);
+    sub.emit('publish', pub);
   };
 
   _handleMessage(message) {

@@ -24,6 +24,7 @@ export class Centrifuge extends EventEmitter {
   constructor(url, options) {
     super();
     this._url = url;
+    this._websocket = null;
     this._sockjs = null;
     this._isSockjs = false;
     this._binary = false;
@@ -63,6 +64,7 @@ export class Centrifuge extends EventEmitter {
     this._xhrs = {};
     this._config = {
       debug: false,
+      websocket: null,
       sockjs: null,
       promise: null,
       minRetry: 1000,
@@ -185,6 +187,9 @@ export class Centrifuge extends EventEmitter {
   };
 
   _websocketSupported() {
+    if (this._config.websocket !== null) {
+      return true;
+    }
     return !(typeof WebSocket !== 'function' && typeof WebSocket !== 'object');
   };
 
@@ -398,7 +403,12 @@ export class Centrifuge extends EventEmitter {
         this._debug('No Websocket support and no SockJS configured, can not connect');
         return;
       }
-      this._transport = new WebSocket(this._url);
+      if (this._config.websocket !== null) {
+        this._websocket = this._config.websocket;
+      } else {
+        this._websocket = WebSocket;
+      }
+      this._transport = new this._websocket(this._url);
       if (this._binary === true) {
         this._transport.binaryType = 'arraybuffer';
       }

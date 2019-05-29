@@ -26,9 +26,14 @@ export default class Subscription extends EventEmitter {
     this._setEvents(events);
     this._initializePromise();
     this._promises = {};
+    this._promiseId = 0;
     this.on('error', function (errContext) {
       this._centrifuge._debug('subscription error', errContext);
     });
+  }
+
+  _nextPromiseId() {
+    return ++this._promiseId;
   }
 
   _initializePromise() {
@@ -118,10 +123,10 @@ export default class Subscription extends EventEmitter {
     this._recover = false;
     this.emit('subscribe', successContext);
     this._resolve(successContext);
-    for (const to in this._promises) {
-      clearTimeout(to);
-      this._promises[to].resolve();
-      delete this._promises[to];
+    for (const id in this._promises) {
+      clearTimeout(this._promises[id].timeout);
+      this._promises[id].resolve();
+      delete this._promises[id];
     }
   };
 
@@ -134,10 +139,10 @@ export default class Subscription extends EventEmitter {
     const errContext = this._getSubscribeErrorContext();
     this.emit('error', errContext);
     this._reject(errContext);
-    for (const to in this._promises) {
-      clearTimeout(to);
-      this._promises[to].reject(err);
-      delete this._promises[to];
+    for (const id in this._promises) {
+      clearTimeout(this._promises[id].timeout);
+      this._promises[id].reject(err);
+      delete this._promises[id];
     }
   };
 
@@ -220,7 +225,8 @@ export default class Subscription extends EventEmitter {
           const timeout = setTimeout(function () {
             rej({'code': 0, 'message': 'timeout'});
           }, this._centrifuge._config.timeout);
-          this._promises[timeout] = {
+          this._promises[this._nextPromiseId()] = {
+            timeout: timeout,
             resolve: res,
             reject: rej
           };

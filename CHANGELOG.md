@@ -1,3 +1,11 @@
+2.2.0
+=====
+
+* fix wrong case of fields in Publication info and in result of `presence()` and `presenceStats()` responses in  Protobuf format case. Those fields were not compliant with JSON format due to the fact that Protobuf compiler does not keep original case defined in proto schema by default. **If you are using Protobuf this can be a breaking change** - see [this commit](https://github.com/centrifugal/centrifuge-js/commit/0b8e65df0ef6ed3f959233f99ae0cf1463560a6a) for fix details and all fields that now use snake_case instead of camelCase in Protobuf case. If you are using JSON you are not affected with these changes
+* fix unhandled promise exceptions on NodeJS when calling subscription methods
+* add TypeScript [type definitions](https://github.com/centrifugal/centrifuge-js/blob/master/dist/centrifuge.d.ts), thanks to @jekaspekas for contribution
+* add `websocket` option to explicitly provide custom WebSocket implementation to use
+
 2.1.6
 =====
 

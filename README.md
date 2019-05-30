@@ -99,6 +99,25 @@ This token contains information about user of your application that tries to con
 
 Let's also look at optional configuration parameters available when initializing `Centrifuge` object instance.
 
+#### websocket
+
+`websocket` option allows to explicitly provide custom WebSocket client to use. By default centrifuge-js will try to use global WebSocket object, so if you are in web browser – it will just use native WebSocket implementation.
+
+#### sockjs
+
+`sockjs` option allows to explicitly provide SockJS client object to Centrifuge client.
+
+For example this can be useful if you develop in ES6 with imports:
+
+```javascript
+import Centrifuge from 'centrifuge'
+import SockJS from 'sockjs-client'
+
+var centrifuge = new Centrifuge('https://centrifuge.example.com/connection/sockjs', {
+  sockjs: SockJS
+});
+```
+
 #### sockjsTransports
 
 In case of using SockJS additional configuration parameter can be used - `sockjsTransports`.
@@ -132,21 +151,6 @@ using SockJS endpoint:
 ```javascript
 var centrifuge = new Centrifuge('http://centrifuge.example.com/connection/sockjs', {
     sockjsTransports: ["websocket", "xhr-streaming"]
-});
-```
-
-#### sockjs
-
-`sockjs` option allows to explicitly provide SockJS client object to Centrifuge client.
-
-For example this can be useful if you develop in ES6 with imports:
-
-```javascript
-import Centrifuge from 'centrifuge'
-import SockJS from 'sockjs-client'
-
-var centrifuge = new Centrifuge('https://centrifuge.example.com/connection/sockjs', {
-  sockjs: SockJS
 });
 ```
 

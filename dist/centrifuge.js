@@ -122,6 +122,7 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
     var _this = _possibleConstructorReturn(this, (Centrifuge.__proto__ || Object.getPrototypeOf(Centrifuge)).call(this));
 
     _this._url = url;
+    _this._websocket = null;
     _this._sockjs = null;
     _this._isSockjs = false;
     _this._binary = false;
@@ -161,6 +162,7 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
     _this._xhrs = {};
     _this._config = {
       debug: false,
+      websocket: null,
       sockjs: null,
       promise: null,
       minRetry: 1000,
@@ -286,6 +288,9 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
   }, {
     key: '_websocketSupported',
     value: function _websocketSupported() {
+      if (this._config.websocket !== null) {
+        return true;
+      }
       return !(typeof WebSocket !== 'function' && (typeof WebSocket === 'undefined' ? 'undefined' : _typeof(WebSocket)) !== 'object');
     }
   }, {
@@ -514,7 +519,12 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
           this._debug('No Websocket support and no SockJS configured, can not connect');
           return;
         }
-        this._transport = new WebSocket(this._url);
+        if (this._config.websocket !== null) {
+          this._websocket = this._config.websocket;
+        } else {
+          this._websocket = WebSocket;
+        }
+        this._transport = new this._websocket(this._url);
         if (this._binary === true) {
           this._transport.binaryType = 'arraybuffer';
         }
@@ -1352,7 +1362,7 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
       if (!sub) {
         return;
       }
-      sub.emit('join', join);
+      sub.emit('join', { 'info': join.info });
     }
   }, {
     key: '_handleLeave',
@@ -1361,7 +1371,7 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
       if (!sub) {
         return;
       }
-      sub.emit('leave', leave);
+      sub.emit('leave', { 'info': leave.info });
     }
   }, {
     key: '_handleUnsub',
@@ -1812,6 +1822,7 @@ var Subscription = function (_EventEmitter) {
     _this._setEvents(events);
     _this._initializePromise();
     _this._promises = {};
+    _this._promiseId = 0;
     _this.on('error', function (errContext) {
       this._centrifuge._debug('subscription error', errContext);
     });
@@ -1819,6 +1830,11 @@ var Subscription = function (_EventEmitter) {
   }
 
   _createClass(Subscription, [{
+    key: '_nextPromiseId',
+    value: function _nextPromiseId() {
+      return ++this._promiseId;
+    }
+  }, {
     key: '_initializePromise',
     value: function _initializePromise() {
       var _this2 = this;
@@ -1920,10 +1936,10 @@ var Subscription = function (_EventEmitter) {
       this._recover = false;
       this.emit('subscribe', successContext);
       this._resolve(successContext);
-      for (var to in this._promises) {
-        clearTimeout(to);
-        this._promises[to].resolve();
-        delete this._promises[to];
+      for (var id in this._promises) {
+        clearTimeout(this._promises[id].timeout);
+        this._promises[id].resolve();
+        delete this._promises[id];
       }
     }
   }, {
@@ -1937,10 +1953,10 @@ var Subscription = function (_EventEmitter) {
       var errContext = this._getSubscribeErrorContext();
       this.emit('error', errContext);
       this._reject(errContext);
-      for (var to in this._promises) {
-        clearTimeout(to);
-        this._promises[to].reject(err);
-        delete this._promises[to];
+      for (var id in this._promises) {
+        clearTimeout(this._promises[id].timeout);
+        this._promises[id].reject(err);
+        delete this._promises[id];
       }
     }
   }, {
@@ -2034,7 +2050,8 @@ var Subscription = function (_EventEmitter) {
             var timeout = setTimeout(function () {
               rej({ 'code': 0, 'message': 'timeout' });
             }, _this3._centrifuge._config.timeout);
-            _this3._promises[timeout] = {
+            _this3._promises[_this3._nextPromiseId()] = {
+              timeout: timeout,
               resolve: res,
               reject: rej
             };

@@ -1,3 +1,8 @@
+2.2.1
+=====
+
+* Fix error on resolving `EventEmitter` import while building TypeScript project with definitions added in 2.2.0.
+
 2.2.0
 =====
 

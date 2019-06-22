@@ -105,6 +105,26 @@ export class Centrifuge extends EventEmitter {
     this._configure(options);
   }
 
+  setRefreshHeaders(headers) {
+    this._config.refreshHeaders = headers;
+  }
+  setRefreshParams(params) {
+    this._config.refreshParams = params;
+  }
+  setRefreshData(data) {
+    this._config.refreshData = data;
+  }
+
+  setSubscribeHeaders(headers) {
+    this._config.subscribeHeaders = headers;
+  }
+  setSubscribeParams(params) {
+    this._config.subscribeParams = params;
+  }
+  setSubscribeData(data) {
+    this._config.subscribeData = data;
+  }
+
   setToken(token) {
     this._token = token;
   }

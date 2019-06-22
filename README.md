@@ -126,10 +126,10 @@ It defines allowed SockJS transports and by default equals
 
 ```javascript
 var centrifuge = new Centrifuge(
-  'http://centrifuge.example.com/connection/sockjs', 
+  'http://centrifuge.example.com/connection/sockjs',
   {
     sockjsTransports: [
-        'websocket', 
+        'websocket',
         'xdr-streaming',
         'xhr-streaming',
         'eventsource',
@@ -191,7 +191,8 @@ as exponent grows very fast:) Default is `20000` milliseconds.
 * `refreshParams` - map of params to include in refresh url (default `{}`)
 * `refreshData` - send extra data in body (as JSON payload) when sending AJAX POST refresh request.
 * `refreshAttempts` - limit amount of refresh requests before giving up (by default `null` - unlimited)
-* `onRefreshFailed` - callback function called when `refreshAttempts` came to the end. By default `null` - i.e. nothing called.
+* `onRefreshFailed()` - callback function called when `refreshAttempts` came to the end. By default `null` - i.e. nothing called.
+* `onRefreshAttempt(success: Boolean, context: Object)` - callback function called after any refresh attempt. By default `null` - i.e. nothing called.
 
 ## Client API
 
@@ -337,7 +338,7 @@ can happen with subscription:
 * `subscribe` – called when subscription on channel successful and acknowledged by Centrifugo
     server. It can be called several times during lifetime as browser client automatically resubscribes on channels after successful reconnect (caused by temporary network disconnect for example or Centrifugo server restart)
 * `error` – called when subscription on channel failed with error. It can be called several times
-    during lifetime as browser client automatically resubscribes on channels after successful reconnect 
+    during lifetime as browser client automatically resubscribes on channels after successful reconnect
     (caused by temporary network disconnect for example or Centrifugo server restart)
 * `unsubscribe` – called every time subscription that was successfully subscribed
     unsubscribes from channel (can be caused by network disconnect or by calling

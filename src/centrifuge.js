@@ -735,10 +735,16 @@ export class Centrifuge extends EventEmitter {
           if (resolveCtx.next) {
             resolveCtx.next();
           }
+          if (this._config.onRefreshAttempt) {
+            this._config.onRefreshAttempt(true, resolveCtx);
+          }
         }, rejectCtx => {
           this._refreshError(rejectCtx.error);
           if (rejectCtx.next) {
             rejectCtx.next();
+          }
+          if (this._config.onRefreshAttempt) {
+            this._config.onRefreshAttempt(false, rejectCtx);
           }
         });
       }

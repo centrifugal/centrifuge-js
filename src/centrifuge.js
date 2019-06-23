@@ -121,9 +121,6 @@ export class Centrifuge extends EventEmitter {
   setSubscribeParams(params) {
     this._config.subscribeParams = params;
   }
-  setSubscribeData(data) {
-    this._config.subscribeData = data;
-  }
 
   setToken(token) {
     this._token = token;
@@ -756,7 +753,7 @@ export class Centrifuge extends EventEmitter {
             resolveCtx.next();
           }
           if (this._config.onRefreshAttempt) {
-            this._config.onRefreshAttempt(true, resolveCtx);
+            this._config.onRefreshAttempt(true, {result: resolveCtx.result});
           }
         }, rejectCtx => {
           this._refreshError(rejectCtx.error);
@@ -764,7 +761,7 @@ export class Centrifuge extends EventEmitter {
             rejectCtx.next();
           }
           if (this._config.onRefreshAttempt) {
-            this._config.onRefreshAttempt(false, rejectCtx);
+            this._config.onRefreshAttempt(false, {error: rejectCtx.error});
           }
         });
       }

@@ -192,7 +192,9 @@ as exponent grows very fast:) Default is `20000` milliseconds.
 * `refreshData` - send extra data in body (as JSON payload) when sending AJAX POST refresh request.
 * `refreshAttempts` - limit amount of refresh requests before giving up (by default `null` - unlimited)
 * `onRefreshFailed()` - callback function called when `refreshAttempts` came to the end. By default `null` - i.e. nothing called.
-* `onRefreshAttempt(success: Boolean, context: Object)` - callback function called after any refresh attempt. By default `null` - i.e. nothing called.
+* `onRefreshAttempt(success: Boolean, context: Object)` - callback function called after any refresh attempt.
+    If `success`, `context.result` contains the result. If `!success`, `context.error` contains the error.
+    By default `null` - i.e. nothing called.
 
 ## Client API
 

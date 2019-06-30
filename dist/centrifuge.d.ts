@@ -29,6 +29,11 @@ declare class Centrifuge extends EventEmitter {
     constructor(url: string, options?: Centrifuge.Options);
     setToken(token: string): void;
     setConnectData(data: any): void;
+    setRefreshHeaders(data: any): void;
+    setRefreshParams(data: any): void;
+    setRefreshData(data: any): void;
+    setSubscribeHeaders(data: any): void;
+    setSubscribeParams(data: any): void;
     rpc(data: any): Promise<any>;
     send(data: any): Promise<any>;
     publish(channel: string, data: any): Promise<any>;
@@ -70,6 +75,7 @@ declare namespace Centrifuge {
         refreshInterval?: number;
         onRefreshFailed?: () => void;
         onRefresh?: (ctx: object, cb: (resp: any) => void) => void;
+        onRefreshAttempt?: (success: boolean, ctx: object) => void;
         subscribeEndpoint?: string;
         subscribeHeaders?: object;
         subscribeParams?: object;
@@ -130,7 +136,7 @@ declare namespace Centrifuge {
     export interface UnsubscribeContext {
         channel: string;
     }
-  
+
     export interface SubscribePrivateContext {
         data: SubscribePrivateData;
     }

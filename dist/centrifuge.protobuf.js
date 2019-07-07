@@ -84,7 +84,7 @@ return /******/ (function(modules) { // webpackBootstrap
  * Various utility functions.
  * @namespace
  */
-var util = module.exports = __webpack_require__(2);
+var util = module.exports = __webpack_require__(1);
 
 var roots = __webpack_require__(20);
 
@@ -237,7 +237,7 @@ util.decorateEnum = function decorateEnum(object) {
 
     /* istanbul ignore next */
     if (!Enum)
-        Enum = __webpack_require__(1);
+        Enum = __webpack_require__(2);
 
     var enm = new Enum("Enum" + decorateEnumIndex++, object);
     util.decorateRoot.add(enm);
@@ -260,194 +260,6 @@ Object.defineProperty(util, "decorateRoot", {
 
 /***/ }),
 /* 1 */
-/***/ (function(module, exports, __webpack_require__) {
-
-"use strict";
-
-module.exports = Enum;
-
-// extends ReflectionObject
-var ReflectionObject = __webpack_require__(4);
-((Enum.prototype = Object.create(ReflectionObject.prototype)).constructor = Enum).className = "Enum";
-
-var Namespace = __webpack_require__(8),
-    util = __webpack_require__(0);
-
-/**
- * Constructs a new enum instance.
- * @classdesc Reflected enum.
- * @extends ReflectionObject
- * @constructor
- * @param {string} name Unique name within its namespace
- * @param {Object.<string,number>} [values] Enum values as an object, by name
- * @param {Object.<string,*>} [options] Declared options
- * @param {string} [comment] The comment for this enum
- * @param {Object.<string,string>} [comments] The value comments for this enum
- */
-function Enum(name, values, options, comment, comments) {
-    ReflectionObject.call(this, name, options);
-
-    if (values && typeof values !== "object")
-        throw TypeError("values must be an object");
-
-    /**
-     * Enum values by id.
-     * @type {Object.<number,string>}
-     */
-    this.valuesById = {};
-
-    /**
-     * Enum values by name.
-     * @type {Object.<string,number>}
-     */
-    this.values = Object.create(this.valuesById); // toJSON, marker
-
-    /**
-     * Enum comment text.
-     * @type {string|null}
-     */
-    this.comment = comment;
-
-    /**
-     * Value comment texts, if any.
-     * @type {Object.<string,string>}
-     */
-    this.comments = comments || {};
-
-    /**
-     * Reserved ranges, if any.
-     * @type {Array.<number[]|string>}
-     */
-    this.reserved = undefined; // toJSON
-
-    // Note that values inherit valuesById on their prototype which makes them a TypeScript-
-    // compatible enum. This is used by pbts to write actual enum definitions that work for
-    // static and reflection code alike instead of emitting generic object definitions.
-
-    if (values)
-        for (var keys = Object.keys(values), i = 0; i < keys.length; ++i)
-            if (typeof values[keys[i]] === "number") // use forward entries only
-                this.valuesById[ this.values[keys[i]] = values[keys[i]] ] = keys[i];
-}
-
-/**
- * Enum descriptor.
- * @interface IEnum
- * @property {Object.<string,number>} values Enum values
- * @property {Object.<string,*>} [options] Enum options
- */
-
-/**
- * Constructs an enum from an enum descriptor.
- * @param {string} name Enum name
- * @param {IEnum} json Enum descriptor
- * @returns {Enum} Created enum
- * @throws {TypeError} If arguments are invalid
- */
-Enum.fromJSON = function fromJSON(name, json) {
-    var enm = new Enum(name, json.values, json.options, json.comment, json.comments);
-    enm.reserved = json.reserved;
-    return enm;
-};
-
-/**
- * Converts this enum to an enum descriptor.
- * @param {IToJSONOptions} [toJSONOptions] JSON conversion options
- * @returns {IEnum} Enum descriptor
- */
-Enum.prototype.toJSON = function toJSON(toJSONOptions) {
-    var keepComments = toJSONOptions ? Boolean(toJSONOptions.keepComments) : false;
-    return util.toObject([
-        "options"  , this.options,
-        "values"   , this.values,
-        "reserved" , this.reserved && this.reserved.length ? this.reserved : undefined,
-        "comment"  , keepComments ? this.comment : undefined,
-        "comments" , keepComments ? this.comments : undefined
-    ]);
-};
-
-/**
- * Adds a value to this enum.
- * @param {string} name Value name
- * @param {number} id Value id
- * @param {string} [comment] Comment, if any
- * @returns {Enum} `this`
- * @throws {TypeError} If arguments are invalid
- * @throws {Error} If there is already a value with this name or id
- */
-Enum.prototype.add = function add(name, id, comment) {
-    // utilized by the parser but not by .fromJSON
-
-    if (!util.isString(name))
-        throw TypeError("name must be a string");
-
-    if (!util.isInteger(id))
-        throw TypeError("id must be an integer");
-
-    if (this.values[name] !== undefined)
-        throw Error("duplicate name '" + name + "' in " + this);
-
-    if (this.isReservedId(id))
-        throw Error("id " + id + " is reserved in " + this);
-
-    if (this.isReservedName(name))
-        throw Error("name '" + name + "' is reserved in " + this);
-
-    if (this.valuesById[id] !== undefined) {
-        if (!(this.options && this.options.allow_alias))
-            throw Error("duplicate id " + id + " in " + this);
-        this.values[name] = id;
-    } else
-        this.valuesById[this.values[name] = id] = name;
-
-    this.comments[name] = comment || null;
-    return this;
-};
-
-/**
- * Removes a value from this enum
- * @param {string} name Value name
- * @returns {Enum} `this`
- * @throws {TypeError} If arguments are invalid
- * @throws {Error} If `name` is not a name of this enum
- */
-Enum.prototype.remove = function remove(name) {
-
-    if (!util.isString(name))
-        throw TypeError("name must be a string");
-
-    var val = this.values[name];
-    if (val == null)
-        throw Error("name '" + name + "' does not exist in " + this);
-
-    delete this.valuesById[val];
-    delete this.values[name];
-    delete this.comments[name];
-
-    return this;
-};
-
-/**
- * Tests if the specified id is reserved.
- * @param {number} id Id to test
- * @returns {boolean} `true` if reserved, otherwise `false`
- */
-Enum.prototype.isReservedId = function isReservedId(id) {
-    return Namespace.isReservedId(this.reserved, id);
-};
-
-/**
- * Tests if the specified name is reserved.
- * @param {string} name Name to test
- * @returns {boolean} `true` if reserved, otherwise `false`
- */
-Enum.prototype.isReservedName = function isReservedName(name) {
-    return Namespace.isReservedName(this.reserved, name);
-};
-
-
-/***/ }),
-/* 2 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -478,6 +290,12 @@ util.pool = __webpack_require__(41);
 // utility to work with the low and high bits of a 64 bit value
 util.LongBits = __webpack_require__(42);
 
+// global object reference
+util.global = typeof window !== "undefined" && window
+           || typeof global !== "undefined" && global
+           || typeof self   !== "undefined" && self
+           || this; // eslint-disable-line no-invalid-this
+
 /**
  * An immuable empty array.
  * @memberof util
@@ -499,7 +317,7 @@ util.emptyObject = Object.freeze ? Object.freeze({}) : /* istanbul ignore next *
  * @type {boolean}
  * @const
  */
-util.isNode = Boolean(global.process && global.process.versions && global.process.versions.node);
+util.isNode = Boolean(util.global.process && util.global.process.versions && util.global.process.versions.node);
 
 /**
  * Tests if the specified value is an integer.
@@ -617,7 +435,9 @@ util.Array = typeof Uint8Array !== "undefined" ? Uint8Array /* istanbul ignore n
  * Long.js's Long class if available.
  * @type {Constructor<Long>}
  */
-util.Long = /* istanbul ignore next */ global.dcodeIO && /* istanbul ignore next */ global.dcodeIO.Long || util.inquire("long");
+util.Long = /* istanbul ignore next */ util.global.dcodeIO && /* istanbul ignore next */ util.global.dcodeIO.Long
+         || /* istanbul ignore next */ util.global.Long
+         || util.inquire("long");
 
 /**
  * Regular expression used to verify 2 bit (`bool`) map keys.
@@ -836,6 +656,7 @@ util.toJSONOptions = {
     json: true
 };
 
+// Sets up buffer utility according to the environment (called in index-minimal)
 util._configure = function() {
     var Buffer = util.Buffer;
     /* istanbul ignore if */
@@ -858,6 +679,194 @@ util._configure = function() {
 };
 
 /* WEBPACK VAR INJECTION */}.call(exports, __webpack_require__(3)))
+
+/***/ }),
+/* 2 */
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+
+module.exports = Enum;
+
+// extends ReflectionObject
+var ReflectionObject = __webpack_require__(4);
+((Enum.prototype = Object.create(ReflectionObject.prototype)).constructor = Enum).className = "Enum";
+
+var Namespace = __webpack_require__(8),
+    util = __webpack_require__(0);
+
+/**
+ * Constructs a new enum instance.
+ * @classdesc Reflected enum.
+ * @extends ReflectionObject
+ * @constructor
+ * @param {string} name Unique name within its namespace
+ * @param {Object.<string,number>} [values] Enum values as an object, by name
+ * @param {Object.<string,*>} [options] Declared options
+ * @param {string} [comment] The comment for this enum
+ * @param {Object.<string,string>} [comments] The value comments for this enum
+ */
+function Enum(name, values, options, comment, comments) {
+    ReflectionObject.call(this, name, options);
+
+    if (values && typeof values !== "object")
+        throw TypeError("values must be an object");
+
+    /**
+     * Enum values by id.
+     * @type {Object.<number,string>}
+     */
+    this.valuesById = {};
+
+    /**
+     * Enum values by name.
+     * @type {Object.<string,number>}
+     */
+    this.values = Object.create(this.valuesById); // toJSON, marker
+
+    /**
+     * Enum comment text.
+     * @type {string|null}
+     */
+    this.comment = comment;
+
+    /**
+     * Value comment texts, if any.
+     * @type {Object.<string,string>}
+     */
+    this.comments = comments || {};
+
+    /**
+     * Reserved ranges, if any.
+     * @type {Array.<number[]|string>}
+     */
+    this.reserved = undefined; // toJSON
+
+    // Note that values inherit valuesById on their prototype which makes them a TypeScript-
+    // compatible enum. This is used by pbts to write actual enum definitions that work for
+    // static and reflection code alike instead of emitting generic object definitions.
+
+    if (values)
+        for (var keys = Object.keys(values), i = 0; i < keys.length; ++i)
+            if (typeof values[keys[i]] === "number") // use forward entries only
+                this.valuesById[ this.values[keys[i]] = values[keys[i]] ] = keys[i];
+}
+
+/**
+ * Enum descriptor.
+ * @interface IEnum
+ * @property {Object.<string,number>} values Enum values
+ * @property {Object.<string,*>} [options] Enum options
+ */
+
+/**
+ * Constructs an enum from an enum descriptor.
+ * @param {string} name Enum name
+ * @param {IEnum} json Enum descriptor
+ * @returns {Enum} Created enum
+ * @throws {TypeError} If arguments are invalid
+ */
+Enum.fromJSON = function fromJSON(name, json) {
+    var enm = new Enum(name, json.values, json.options, json.comment, json.comments);
+    enm.reserved = json.reserved;
+    return enm;
+};
+
+/**
+ * Converts this enum to an enum descriptor.
+ * @param {IToJSONOptions} [toJSONOptions] JSON conversion options
+ * @returns {IEnum} Enum descriptor
+ */
+Enum.prototype.toJSON = function toJSON(toJSONOptions) {
+    var keepComments = toJSONOptions ? Boolean(toJSONOptions.keepComments) : false;
+    return util.toObject([
+        "options"  , this.options,
+        "values"   , this.values,
+        "reserved" , this.reserved && this.reserved.length ? this.reserved : undefined,
+        "comment"  , keepComments ? this.comment : undefined,
+        "comments" , keepComments ? this.comments : undefined
+    ]);
+};
+
+/**
+ * Adds a value to this enum.
+ * @param {string} name Value name
+ * @param {number} id Value id
+ * @param {string} [comment] Comment, if any
+ * @returns {Enum} `this`
+ * @throws {TypeError} If arguments are invalid
+ * @throws {Error} If there is already a value with this name or id
+ */
+Enum.prototype.add = function add(name, id, comment) {
+    // utilized by the parser but not by .fromJSON
+
+    if (!util.isString(name))
+        throw TypeError("name must be a string");
+
+    if (!util.isInteger(id))
+        throw TypeError("id must be an integer");
+
+    if (this.values[name] !== undefined)
+        throw Error("duplicate name '" + name + "' in " + this);
+
+    if (this.isReservedId(id))
+        throw Error("id " + id + " is reserved in " + this);
+
+    if (this.isReservedName(name))
+        throw Error("name '" + name + "' is reserved in " + this);
+
+    if (this.valuesById[id] !== undefined) {
+        if (!(this.options && this.options.allow_alias))
+            throw Error("duplicate id " + id + " in " + this);
+        this.values[name] = id;
+    } else
+        this.valuesById[this.values[name] = id] = name;
+
+    this.comments[name] = comment || null;
+    return this;
+};
+
+/**
+ * Removes a value from this enum
+ * @param {string} name Value name
+ * @returns {Enum} `this`
+ * @throws {TypeError} If arguments are invalid
+ * @throws {Error} If `name` is not a name of this enum
+ */
+Enum.prototype.remove = function remove(name) {
+
+    if (!util.isString(name))
+        throw TypeError("name must be a string");
+
+    var val = this.values[name];
+    if (val == null)
+        throw Error("name '" + name + "' does not exist in " + this);
+
+    delete this.valuesById[val];
+    delete this.values[name];
+    delete this.comments[name];
+
+    return this;
+};
+
+/**
+ * Tests if the specified id is reserved.
+ * @param {number} id Id to test
+ * @returns {boolean} `true` if reserved, otherwise `false`
+ */
+Enum.prototype.isReservedId = function isReservedId(id) {
+    return Namespace.isReservedId(this.reserved, id);
+};
+
+/**
+ * Tests if the specified name is reserved.
+ * @param {string} name Name to test
+ * @returns {boolean} `true` if reserved, otherwise `false`
+ */
+Enum.prototype.isReservedName = function isReservedName(name) {
+    return Namespace.isReservedName(this.reserved, name);
+};
+
 
 /***/ }),
 /* 3 */
@@ -1087,6 +1096,7 @@ ReflectionObject.prototype.toString = function toString() {
     return className;
 };
 
+// Sets up cyclic dependencies (called in index-light)
 ReflectionObject._configure = function(Root_) {
     Root = Root_;
 };
@@ -1104,7 +1114,7 @@ module.exports = Field;
 var ReflectionObject = __webpack_require__(4);
 ((Field.prototype = Object.create(ReflectionObject.prototype)).constructor = Field).className = "Field";
 
-var Enum  = __webpack_require__(1),
+var Enum  = __webpack_require__(2),
     types = __webpack_require__(9),
     util  = __webpack_require__(0);
 
@@ -1464,6 +1474,7 @@ Field.d = function decorateField(fieldId, fieldType, fieldRule, defaultValue) {
  */
 // like Field.d but without a default value
 
+// Sets up cyclic dependencies (called in index-light)
 Field._configure = function configure(Type_) {
     Type = Type_;
 };
@@ -1471,8 +1482,9 @@ Field._configure = function configure(Type_) {
 
 /***/ }),
 /* 6 */
-/***/ (function(module, exports) {
+/***/ (function(module, exports, __webpack_require__) {
 
+"use strict";
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -1494,9 +1506,39 @@ Field._configure = function configure(Type_) {
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 
+
+
+var R = typeof Reflect === 'object' ? Reflect : null
+var ReflectApply = R && typeof R.apply === 'function'
+  ? R.apply
+  : function ReflectApply(target, receiver, args) {
+    return Function.prototype.apply.call(target, receiver, args);
+  }
+
+var ReflectOwnKeys
+if (R && typeof R.ownKeys === 'function') {
+  ReflectOwnKeys = R.ownKeys
+} else if (Object.getOwnPropertySymbols) {
+  ReflectOwnKeys = function ReflectOwnKeys(target) {
+    return Object.getOwnPropertyNames(target)
+      .concat(Object.getOwnPropertySymbols(target));
+  };
+} else {
+  ReflectOwnKeys = function ReflectOwnKeys(target) {
+    return Object.getOwnPropertyNames(target);
+  };
+}
+
+function ProcessEmitWarning(warning) {
+  if (console && console.warn) console.warn(warning);
+}
+
+var NumberIsNaN = Number.isNaN || function NumberIsNaN(value) {
+  return value !== value;
+}
+
 function EventEmitter() {
-  this._events = this._events || {};
-  this._maxListeners = this._maxListeners || undefined;
+  EventEmitter.init.call(this);
 }
 module.exports = EventEmitter;
 
@@ -1504,276 +1546,392 @@ module.exports = EventEmitter;
 EventEmitter.EventEmitter = EventEmitter;
 
 EventEmitter.prototype._events = undefined;
+EventEmitter.prototype._eventsCount = 0;
 EventEmitter.prototype._maxListeners = undefined;
 
 // By default EventEmitters will print a warning if more than 10 listeners are
 // added to it. This is a useful default which helps finding memory leaks.
-EventEmitter.defaultMaxListeners = 10;
+var defaultMaxListeners = 10;
+
+Object.defineProperty(EventEmitter, 'defaultMaxListeners', {
+  enumerable: true,
+  get: function() {
+    return defaultMaxListeners;
+  },
+  set: function(arg) {
+    if (typeof arg !== 'number' || arg < 0 || NumberIsNaN(arg)) {
+      throw new RangeError('The value of "defaultMaxListeners" is out of range. It must be a non-negative number. Received ' + arg + '.');
+    }
+    defaultMaxListeners = arg;
+  }
+});
+
+EventEmitter.init = function() {
+
+  if (this._events === undefined ||
+      this._events === Object.getPrototypeOf(this)._events) {
+    this._events = Object.create(null);
+    this._eventsCount = 0;
+  }
+
+  this._maxListeners = this._maxListeners || undefined;
+};
 
 // Obviously not all Emitters should be limited to 10. This function allows
 // that to be increased. Set to zero for unlimited.
-EventEmitter.prototype.setMaxListeners = function(n) {
-  if (!isNumber(n) || n < 0 || isNaN(n))
-    throw TypeError('n must be a positive number');
+EventEmitter.prototype.setMaxListeners = function setMaxListeners(n) {
+  if (typeof n !== 'number' || n < 0 || NumberIsNaN(n)) {
+    throw new RangeError('The value of "n" is out of range. It must be a non-negative number. Received ' + n + '.');
+  }
   this._maxListeners = n;
   return this;
 };
 
-EventEmitter.prototype.emit = function(type) {
-  var er, handler, len, args, i, listeners;
+function $getMaxListeners(that) {
+  if (that._maxListeners === undefined)
+    return EventEmitter.defaultMaxListeners;
+  return that._maxListeners;
+}
 
-  if (!this._events)
-    this._events = {};
+EventEmitter.prototype.getMaxListeners = function getMaxListeners() {
+  return $getMaxListeners(this);
+};
 
-  // If there is no 'error' event listener then throw.
-  if (type === 'error') {
-    if (!this._events.error ||
-        (isObject(this._events.error) && !this._events.error.length)) {
-      er = arguments[1];
-      if (er instanceof Error) {
-        throw er; // Unhandled 'error' event
-      } else {
-        // At least give some kind of context to the user
-        var err = new Error('Uncaught, unspecified "error" event. (' + er + ')');
-        err.context = er;
-        throw err;
-      }
-    }
-  }
+EventEmitter.prototype.emit = function emit(type) {
+  var args = [];
+  for (var i = 1; i < arguments.length; i++) args.push(arguments[i]);
+  var doError = (type === 'error');
 
-  handler = this._events[type];
-
-  if (isUndefined(handler))
+  var events = this._events;
+  if (events !== undefined)
+    doError = (doError && events.error === undefined);
+  else if (!doError)
     return false;
 
-  if (isFunction(handler)) {
-    switch (arguments.length) {
-      // fast cases
-      case 1:
-        handler.call(this);
-        break;
-      case 2:
-        handler.call(this, arguments[1]);
-        break;
-      case 3:
-        handler.call(this, arguments[1], arguments[2]);
-        break;
-      // slower
-      default:
-        args = Array.prototype.slice.call(arguments, 1);
-        handler.apply(this, args);
+  // If there is no 'error' event listener then throw.
+  if (doError) {
+    var er;
+    if (args.length > 0)
+      er = args[0];
+    if (er instanceof Error) {
+      // Note: The comments on the `throw` lines are intentional, they show
+      // up in Node's output if this results in an unhandled exception.
+      throw er; // Unhandled 'error' event
     }
-  } else if (isObject(handler)) {
-    args = Array.prototype.slice.call(arguments, 1);
-    listeners = handler.slice();
-    len = listeners.length;
-    for (i = 0; i < len; i++)
-      listeners[i].apply(this, args);
+    // At least give some kind of context to the user
+    var err = new Error('Unhandled error.' + (er ? ' (' + er.message + ')' : ''));
+    err.context = er;
+    throw err; // Unhandled 'error' event
+  }
+
+  var handler = events[type];
+
+  if (handler === undefined)
+    return false;
+
+  if (typeof handler === 'function') {
+    ReflectApply(handler, this, args);
+  } else {
+    var len = handler.length;
+    var listeners = arrayClone(handler, len);
+    for (var i = 0; i < len; ++i)
+      ReflectApply(listeners[i], this, args);
   }
 
   return true;
 };
 
-EventEmitter.prototype.addListener = function(type, listener) {
+function _addListener(target, type, listener, prepend) {
   var m;
+  var events;
+  var existing;
 
-  if (!isFunction(listener))
-    throw TypeError('listener must be a function');
+  if (typeof listener !== 'function') {
+    throw new TypeError('The "listener" argument must be of type Function. Received type ' + typeof listener);
+  }
 
-  if (!this._events)
-    this._events = {};
+  events = target._events;
+  if (events === undefined) {
+    events = target._events = Object.create(null);
+    target._eventsCount = 0;
+  } else {
+    // To avoid recursion in the case that type === "newListener"! Before
+    // adding it to the listeners, first emit "newListener".
+    if (events.newListener !== undefined) {
+      target.emit('newListener', type,
+                  listener.listener ? listener.listener : listener);
 
-  // To avoid recursion in the case that type === "newListener"! Before
-  // adding it to the listeners, first emit "newListener".
-  if (this._events.newListener)
-    this.emit('newListener', type,
-              isFunction(listener.listener) ?
-              listener.listener : listener);
+      // Re-assign `events` because a newListener handler could have caused the
+      // this._events to be assigned to a new object
+      events = target._events;
+    }
+    existing = events[type];
+  }
 
-  if (!this._events[type])
+  if (existing === undefined) {
     // Optimize the case of one listener. Don't need the extra array object.
-    this._events[type] = listener;
-  else if (isObject(this._events[type]))
-    // If we've already got an array, just append.
-    this._events[type].push(listener);
-  else
-    // Adding the second element, need to change to array.
-    this._events[type] = [this._events[type], listener];
-
-  // Check for listener leak
-  if (isObject(this._events[type]) && !this._events[type].warned) {
-    if (!isUndefined(this._maxListeners)) {
-      m = this._maxListeners;
+    existing = events[type] = listener;
+    ++target._eventsCount;
+  } else {
+    if (typeof existing === 'function') {
+      // Adding the second element, need to change to array.
+      existing = events[type] =
+        prepend ? [listener, existing] : [existing, listener];
+      // If we've already got an array, just append.
+    } else if (prepend) {
+      existing.unshift(listener);
     } else {
-      m = EventEmitter.defaultMaxListeners;
+      existing.push(listener);
     }
 
-    if (m && m > 0 && this._events[type].length > m) {
-      this._events[type].warned = true;
-      console.error('(node) warning: possible EventEmitter memory ' +
-                    'leak detected. %d listeners added. ' +
-                    'Use emitter.setMaxListeners() to increase limit.',
-                    this._events[type].length);
-      if (typeof console.trace === 'function') {
-        // not supported in IE 10
-        console.trace();
-      }
+    // Check for listener leak
+    m = $getMaxListeners(target);
+    if (m > 0 && existing.length > m && !existing.warned) {
+      existing.warned = true;
+      // No error code for this since it is a Warning
+      // eslint-disable-next-line no-restricted-syntax
+      var w = new Error('Possible EventEmitter memory leak detected. ' +
+                          existing.length + ' ' + String(type) + ' listeners ' +
+                          'added. Use emitter.setMaxListeners() to ' +
+                          'increase limit');
+      w.name = 'MaxListenersExceededWarning';
+      w.emitter = target;
+      w.type = type;
+      w.count = existing.length;
+      ProcessEmitWarning(w);
     }
   }
 
-  return this;
+  return target;
+}
+
+EventEmitter.prototype.addListener = function addListener(type, listener) {
+  return _addListener(this, type, listener, false);
 };
 
 EventEmitter.prototype.on = EventEmitter.prototype.addListener;
 
-EventEmitter.prototype.once = function(type, listener) {
-  if (!isFunction(listener))
-    throw TypeError('listener must be a function');
+EventEmitter.prototype.prependListener =
+    function prependListener(type, listener) {
+      return _addListener(this, type, listener, true);
+    };
 
-  var fired = false;
-
-  function g() {
-    this.removeListener(type, g);
-
-    if (!fired) {
-      fired = true;
-      listener.apply(this, arguments);
-    }
+function onceWrapper() {
+  var args = [];
+  for (var i = 0; i < arguments.length; i++) args.push(arguments[i]);
+  if (!this.fired) {
+    this.target.removeListener(this.type, this.wrapFn);
+    this.fired = true;
+    ReflectApply(this.listener, this.target, args);
   }
+}
 
-  g.listener = listener;
-  this.on(type, g);
+function _onceWrap(target, type, listener) {
+  var state = { fired: false, wrapFn: undefined, target: target, type: type, listener: listener };
+  var wrapped = onceWrapper.bind(state);
+  wrapped.listener = listener;
+  state.wrapFn = wrapped;
+  return wrapped;
+}
 
+EventEmitter.prototype.once = function once(type, listener) {
+  if (typeof listener !== 'function') {
+    throw new TypeError('The "listener" argument must be of type Function. Received type ' + typeof listener);
+  }
+  this.on(type, _onceWrap(this, type, listener));
   return this;
 };
 
-// emits a 'removeListener' event iff the listener was removed
-EventEmitter.prototype.removeListener = function(type, listener) {
-  var list, position, length, i;
-
-  if (!isFunction(listener))
-    throw TypeError('listener must be a function');
-
-  if (!this._events || !this._events[type])
-    return this;
-
-  list = this._events[type];
-  length = list.length;
-  position = -1;
-
-  if (list === listener ||
-      (isFunction(list.listener) && list.listener === listener)) {
-    delete this._events[type];
-    if (this._events.removeListener)
-      this.emit('removeListener', type, listener);
-
-  } else if (isObject(list)) {
-    for (i = length; i-- > 0;) {
-      if (list[i] === listener ||
-          (list[i].listener && list[i].listener === listener)) {
-        position = i;
-        break;
+EventEmitter.prototype.prependOnceListener =
+    function prependOnceListener(type, listener) {
+      if (typeof listener !== 'function') {
+        throw new TypeError('The "listener" argument must be of type Function. Received type ' + typeof listener);
       }
-    }
-
-    if (position < 0)
+      this.prependListener(type, _onceWrap(this, type, listener));
       return this;
+    };
 
-    if (list.length === 1) {
-      list.length = 0;
-      delete this._events[type];
-    } else {
-      list.splice(position, 1);
-    }
+// Emits a 'removeListener' event if and only if the listener was removed.
+EventEmitter.prototype.removeListener =
+    function removeListener(type, listener) {
+      var list, events, position, i, originalListener;
 
-    if (this._events.removeListener)
-      this.emit('removeListener', type, listener);
-  }
+      if (typeof listener !== 'function') {
+        throw new TypeError('The "listener" argument must be of type Function. Received type ' + typeof listener);
+      }
 
-  return this;
+      events = this._events;
+      if (events === undefined)
+        return this;
+
+      list = events[type];
+      if (list === undefined)
+        return this;
+
+      if (list === listener || list.listener === listener) {
+        if (--this._eventsCount === 0)
+          this._events = Object.create(null);
+        else {
+          delete events[type];
+          if (events.removeListener)
+            this.emit('removeListener', type, list.listener || listener);
+        }
+      } else if (typeof list !== 'function') {
+        position = -1;
+
+        for (i = list.length - 1; i >= 0; i--) {
+          if (list[i] === listener || list[i].listener === listener) {
+            originalListener = list[i].listener;
+            position = i;
+            break;
+          }
+        }
+
+        if (position < 0)
+          return this;
+
+        if (position === 0)
+          list.shift();
+        else {
+          spliceOne(list, position);
+        }
+
+        if (list.length === 1)
+          events[type] = list[0];
+
+        if (events.removeListener !== undefined)
+          this.emit('removeListener', type, originalListener || listener);
+      }
+
+      return this;
+    };
+
+EventEmitter.prototype.off = EventEmitter.prototype.removeListener;
+
+EventEmitter.prototype.removeAllListeners =
+    function removeAllListeners(type) {
+      var listeners, events, i;
+
+      events = this._events;
+      if (events === undefined)
+        return this;
+
+      // not listening for removeListener, no need to emit
+      if (events.removeListener === undefined) {
+        if (arguments.length === 0) {
+          this._events = Object.create(null);
+          this._eventsCount = 0;
+        } else if (events[type] !== undefined) {
+          if (--this._eventsCount === 0)
+            this._events = Object.create(null);
+          else
+            delete events[type];
+        }
+        return this;
+      }
+
+      // emit removeListener for all listeners on all events
+      if (arguments.length === 0) {
+        var keys = Object.keys(events);
+        var key;
+        for (i = 0; i < keys.length; ++i) {
+          key = keys[i];
+          if (key === 'removeListener') continue;
+          this.removeAllListeners(key);
+        }
+        this.removeAllListeners('removeListener');
+        this._events = Object.create(null);
+        this._eventsCount = 0;
+        return this;
+      }
+
+      listeners = events[type];
+
+      if (typeof listeners === 'function') {
+        this.removeListener(type, listeners);
+      } else if (listeners !== undefined) {
+        // LIFO order
+        for (i = listeners.length - 1; i >= 0; i--) {
+          this.removeListener(type, listeners[i]);
+        }
+      }
+
+      return this;
+    };
+
+function _listeners(target, type, unwrap) {
+  var events = target._events;
+
+  if (events === undefined)
+    return [];
+
+  var evlistener = events[type];
+  if (evlistener === undefined)
+    return [];
+
+  if (typeof evlistener === 'function')
+    return unwrap ? [evlistener.listener || evlistener] : [evlistener];
+
+  return unwrap ?
+    unwrapListeners(evlistener) : arrayClone(evlistener, evlistener.length);
+}
+
+EventEmitter.prototype.listeners = function listeners(type) {
+  return _listeners(this, type, true);
 };
 
-EventEmitter.prototype.removeAllListeners = function(type) {
-  var key, listeners;
-
-  if (!this._events)
-    return this;
-
-  // not listening for removeListener, no need to emit
-  if (!this._events.removeListener) {
-    if (arguments.length === 0)
-      this._events = {};
-    else if (this._events[type])
-      delete this._events[type];
-    return this;
-  }
-
-  // emit removeListener for all listeners on all events
-  if (arguments.length === 0) {
-    for (key in this._events) {
-      if (key === 'removeListener') continue;
-      this.removeAllListeners(key);
-    }
-    this.removeAllListeners('removeListener');
-    this._events = {};
-    return this;
-  }
-
-  listeners = this._events[type];
-
-  if (isFunction(listeners)) {
-    this.removeListener(type, listeners);
-  } else if (listeners) {
-    // LIFO order
-    while (listeners.length)
-      this.removeListener(type, listeners[listeners.length - 1]);
-  }
-  delete this._events[type];
-
-  return this;
-};
-
-EventEmitter.prototype.listeners = function(type) {
-  var ret;
-  if (!this._events || !this._events[type])
-    ret = [];
-  else if (isFunction(this._events[type]))
-    ret = [this._events[type]];
-  else
-    ret = this._events[type].slice();
-  return ret;
-};
-
-EventEmitter.prototype.listenerCount = function(type) {
-  if (this._events) {
-    var evlistener = this._events[type];
-
-    if (isFunction(evlistener))
-      return 1;
-    else if (evlistener)
-      return evlistener.length;
-  }
-  return 0;
+EventEmitter.prototype.rawListeners = function rawListeners(type) {
+  return _listeners(this, type, false);
 };
 
 EventEmitter.listenerCount = function(emitter, type) {
-  return emitter.listenerCount(type);
+  if (typeof emitter.listenerCount === 'function') {
+    return emitter.listenerCount(type);
+  } else {
+    return listenerCount.call(emitter, type);
+  }
 };
 
-function isFunction(arg) {
-  return typeof arg === 'function';
+EventEmitter.prototype.listenerCount = listenerCount;
+function listenerCount(type) {
+  var events = this._events;
+
+  if (events !== undefined) {
+    var evlistener = events[type];
+
+    if (typeof evlistener === 'function') {
+      return 1;
+    } else if (evlistener !== undefined) {
+      return evlistener.length;
+    }
+  }
+
+  return 0;
 }
 
-function isNumber(arg) {
-  return typeof arg === 'number';
+EventEmitter.prototype.eventNames = function eventNames() {
+  return this._eventsCount > 0 ? ReflectOwnKeys(this._events) : [];
+};
+
+function arrayClone(arr, n) {
+  var copy = new Array(n);
+  for (var i = 0; i < n; ++i)
+    copy[i] = arr[i];
+  return copy;
 }
 
-function isObject(arg) {
-  return typeof arg === 'object' && arg !== null;
+function spliceOne(list, index) {
+  for (; index + 1 < list.length; index++)
+    list[index] = list[index + 1];
+  list.pop();
 }
 
-function isUndefined(arg) {
-  return arg === void 0;
+function unwrapListeners(arr) {
+  var ret = new Array(arr.length);
+  for (var i = 0; i < ret.length; ++i) {
+    ret[i] = arr[i].listener || arr[i];
+  }
+  return ret;
 }
 
 
@@ -1837,12 +1995,12 @@ module.exports = Namespace;
 var ReflectionObject = __webpack_require__(4);
 ((Namespace.prototype = Object.create(ReflectionObject.prototype)).constructor = Namespace).className = "Namespace";
 
-var Enum     = __webpack_require__(1),
-    Field    = __webpack_require__(5),
+var Field    = __webpack_require__(5),
     util     = __webpack_require__(0);
 
 var Type,    // cyclic
-    Service; // "
+    Service,
+    Enum;
 
 /**
  * Constructs a new namespace instance.
@@ -2257,9 +2415,11 @@ Namespace.prototype.lookupService = function lookupService(path) {
     return found;
 };
 
-Namespace._configure = function(Type_, Service_) {
+// Sets up cyclic dependencies (called in index-light)
+Namespace._configure = function(Type_, Service_, Enum_) {
     Type    = Type_;
     Service = Service_;
+    Enum    = Enum_;
 };
 
 
@@ -3507,7 +3667,7 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
         }
 
         this._call(msg).then(function (resolveCtx) {
-          _this13._subscribeResponse(channel, _this13._decoder.decodeCommandResult(_this13._methodType.SUBSCRIBE, resolveCtx.result));
+          _this13._subscribeResponse(channel, recover, _this13._decoder.decodeCommandResult(_this13._methodType.SUBSCRIBE, resolveCtx.result));
           if (resolveCtx.next) {
             resolveCtx.next();
           }
@@ -3670,7 +3830,7 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
     }
   }, {
     key: '_subscribeResponse',
-    value: function _subscribeResponse(channel, result) {
+    value: function _subscribeResponse(channel, isRecover, result) {
       var _this16 = this;
 
       var sub = this._getSub(channel);
@@ -3688,20 +3848,18 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
       sub._setSubscribeSuccess(recovered);
 
       var pubs = result.publications;
-
       if (pubs && pubs.length > 0) {
-        // handle missed pubs.
         pubs = pubs.reverse();
         for (var i in pubs) {
           if (pubs.hasOwnProperty(i)) {
             this._handlePublication(channel, pubs[i]);
           }
         }
-      } else {
-        if (result.recoverable) {
-          this._lastSeq[channel] = result.seq || 0;
-          this._lastGen[channel] = result.gen || 0;
-        }
+      }
+
+      if (result.recoverable && (!isRecover || !recovered)) {
+        this._lastSeq[channel] = result.seq || 0;
+        this._lastGen[channel] = result.gen || 0;
       }
 
       this._lastEpoch[channel] = result.epoch || '';
@@ -4106,7 +4264,7 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
                   }
                 }
                 _this19._call(msg).then(function (resolveCtx) {
-                  _this19._subscribeResponse(channel, _this19._decoder.decodeCommandResult(_this19._methodType.SUBSCRIBE, resolveCtx.result));
+                  _this19._subscribeResponse(channel, recover, _this19._decoder.decodeCommandResult(_this19._methodType.SUBSCRIBE, resolveCtx.result));
                   if (resolveCtx.next) {
                     resolveCtx.next();
                   }
@@ -4623,7 +4781,7 @@ var JsonDecoder = exports.JsonDecoder = function () {
 
 module.exports = Writer;
 
-var util      = __webpack_require__(2);
+var util      = __webpack_require__(1);
 
 var BufferWriter; // cyclic
 
@@ -5089,7 +5247,7 @@ Writer._configure = function(BufferWriter_) {
 
 module.exports = Reader;
 
-var util      = __webpack_require__(2);
+var util      = __webpack_require__(1);
 
 var BufferReader; // cyclic
 
@@ -5448,11 +5606,9 @@ Reader.prototype.skipType = function(wireType) {
             this.skip(this.uint32());
             break;
         case 3:
-            do { // eslint-disable-line no-constant-condition
-                if ((wireType = this.uint32() & 7) === 4)
-                    break;
+            while ((wireType = this.uint32() & 7) !== 4) {
                 this.skipType(wireType);
-            } while (true);
+            }
             break;
         case 5:
             this.skip(4);
@@ -5713,14 +5869,14 @@ OneOf.d = function decorateOneOf() {
 
 module.exports = Message;
 
-var util = __webpack_require__(2);
+var util = __webpack_require__(1);
 
 /**
  * Constructs a new message instance.
  * @classdesc Abstract runtime message.
  * @constructor
  * @param {Properties<T>} [properties] Properties to set
- * @template T extends object
+ * @template T extends object = object
  */
 function Message(properties) {
     // not used internally
@@ -6009,7 +6165,7 @@ module.exports = {};
 
 module.exports = encoder;
 
-var Enum     = __webpack_require__(1),
+var Enum     = __webpack_require__(2),
     types    = __webpack_require__(9),
     util     = __webpack_require__(0);
 
@@ -6119,7 +6275,7 @@ module.exports = Type;
 var Namespace = __webpack_require__(8);
 ((Type.prototype = Object.create(Namespace.prototype)).constructor = Type).className = "Type";
 
-var Enum      = __webpack_require__(1),
+var Enum      = __webpack_require__(2),
     OneOf     = __webpack_require__(15),
     Field     = __webpack_require__(5),
     MapField  = __webpack_require__(23),
@@ -7176,7 +7332,7 @@ Method.prototype.resolve = function resolve() {
 
 module.exports = decoder;
 
-var Enum    = __webpack_require__(1),
+var Enum    = __webpack_require__(2),
     types   = __webpack_require__(9),
     util    = __webpack_require__(0);
 
@@ -7289,7 +7445,7 @@ function decoder(mtype) {
 
 module.exports = verifier;
 
-var Enum      = __webpack_require__(1),
+var Enum      = __webpack_require__(2),
     util      = __webpack_require__(0);
 
 function invalid(field, expected) {
@@ -7476,7 +7632,7 @@ function verifier(mtype) {
  */
 var converter = exports;
 
-var Enum = __webpack_require__(1),
+var Enum = __webpack_require__(2),
     util = __webpack_require__(0);
 
 /**
@@ -7715,9 +7871,15 @@ converter.toObject = function toObject(mtype) {
             ("d%s=o.longs===String?n.toString():o.longs===Number?n.toNumber():n", prop)
         ("}else")
             ("d%s=o.longs===String?%j:%i", prop, field.typeDefault.toString(), field.typeDefault.toNumber());
-            else if (field.bytes) gen
-        ("d%s=o.bytes===String?%j:%s", prop, String.fromCharCode.apply(String, field.typeDefault), "[" + Array.prototype.slice.call(field.typeDefault).join(",") + "]");
-            else gen
+            else if (field.bytes) {
+                var arrayDefault = "[" + Array.prototype.slice.call(field.typeDefault).join(",") + "]";
+                gen
+        ("if(o.bytes===String)d%s=%j", prop, String.fromCharCode.apply(String, field.typeDefault))
+        ("else{")
+            ("d%s=%s", prop, arrayDefault)
+            ("if(o.bytes!==Array)d%s=util.newBuffer(d%s)", prop, prop)
+        ("}");
+            } else gen
         ("d%s=%j", prop, field.typeDefault); // also messages (=null)
         } gen
     ("}");
@@ -7861,7 +8023,7 @@ var Namespace = __webpack_require__(8);
 ((Root.prototype = Object.create(Namespace.prototype)).constructor = Root).className = "Root";
 
 var Field   = __webpack_require__(5),
-    Enum    = __webpack_require__(1),
+    Enum    = __webpack_require__(2),
     OneOf   = __webpack_require__(15),
     util    = __webpack_require__(0);
 
@@ -8198,9 +8360,10 @@ Root.prototype._handleRemove = function _handleRemove(object) {
     }
 };
 
+// Sets up cyclic dependencies (called in index-light)
 Root._configure = function(Type_, parse_, common_) {
-    Type = Type_;
-    parse = parse_;
+    Type   = Type_;
+    parse  = parse_;
     common = common_;
 };
 
@@ -8592,7 +8755,7 @@ protobuf.converter        = __webpack_require__(28);
 protobuf.ReflectionObject = __webpack_require__(4);
 protobuf.Namespace        = __webpack_require__(8);
 protobuf.Root             = __webpack_require__(30);
-protobuf.Enum             = __webpack_require__(1);
+protobuf.Enum             = __webpack_require__(2);
 protobuf.Type             = __webpack_require__(22);
 protobuf.Field            = __webpack_require__(5);
 protobuf.OneOf            = __webpack_require__(15);
@@ -8608,9 +8771,9 @@ protobuf.wrappers         = __webpack_require__(29);
 protobuf.types            = __webpack_require__(9);
 protobuf.util             = __webpack_require__(0);
 
-// Configure reflection
+// Set up possibly cyclic reflection dependencies
 protobuf.ReflectionObject._configure(protobuf.Root);
-protobuf.Namespace._configure(protobuf.Type, protobuf.Service);
+protobuf.Namespace._configure(protobuf.Type, protobuf.Service, protobuf.Enum);
 protobuf.Root._configure(protobuf.Type);
 protobuf.Field._configure(protobuf.Type);
 
@@ -8638,7 +8801,7 @@ protobuf.Reader       = __webpack_require__(14);
 protobuf.BufferReader = __webpack_require__(44);
 
 // Utility
-protobuf.util         = __webpack_require__(2);
+protobuf.util         = __webpack_require__(1);
 protobuf.rpc          = __webpack_require__(19);
 protobuf.roots        = __webpack_require__(20);
 protobuf.configure    = configure;
@@ -8653,7 +8816,7 @@ function configure() {
     protobuf.util._configure();
 }
 
-// Configure serialization
+// Set up buffer utility according to the environment
 protobuf.Writer._configure(protobuf.BufferWriter);
 configure();
 
@@ -9404,7 +9567,7 @@ function pool(alloc, slice, size) {
 
 module.exports = LongBits;
 
-var util = __webpack_require__(2);
+var util = __webpack_require__(1);
 
 /**
  * Constructs new long bits.
@@ -9615,7 +9778,7 @@ module.exports = BufferWriter;
 var Writer = __webpack_require__(13);
 (BufferWriter.prototype = Object.create(Writer.prototype)).constructor = BufferWriter;
 
-var util = __webpack_require__(2);
+var util = __webpack_require__(1);
 
 var Buffer = util.Buffer;
 
@@ -9703,7 +9866,7 @@ module.exports = BufferReader;
 var Reader = __webpack_require__(14);
 (BufferReader.prototype = Object.create(Reader.prototype)).constructor = BufferReader;
 
-var util = __webpack_require__(2);
+var util = __webpack_require__(1);
 
 /**
  * Constructs a new buffer reader instance.
@@ -9750,7 +9913,7 @@ BufferReader.prototype.string = function read_string_buffer() {
 
 module.exports = Service;
 
-var util = __webpack_require__(2);
+var util = __webpack_require__(1);
 
 // Extends EventEmitter
 (Service.prototype = Object.create(util.EventEmitter.prototype)).constructor = Service;

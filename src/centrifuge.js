@@ -956,6 +956,7 @@ export class Centrifuge extends EventEmitter {
       this._call(msg).then(resolveCtx => {
         this._subscribeResponse(
           channel,
+          recover,
           this._decoder.decodeCommandResult(this._methodType.SUBSCRIBE, resolveCtx.result)
         );
         if (resolveCtx.next) {
@@ -1103,7 +1104,7 @@ export class Centrifuge extends EventEmitter {
     sub._setSubscribeError(error);
   };
 
-  _subscribeResponse(channel, result) {
+  _subscribeResponse(channel, isRecover, result) {
     const sub = this._getSub(channel);
     if (!sub) {
       return;
@@ -1119,20 +1120,18 @@ export class Centrifuge extends EventEmitter {
     sub._setSubscribeSuccess(recovered);
 
     let pubs = result.publications;
-
     if (pubs && pubs.length > 0) {
-      // handle missed pubs.
       pubs = pubs.reverse();
       for (let i in pubs) {
         if (pubs.hasOwnProperty(i)) {
           this._handlePublication(channel, pubs[i]);
         }
       }
-    } else {
-      if (result.recoverable) {
-        this._lastSeq[channel] = result.seq || 0;
-        this._lastGen[channel] = result.gen || 0;
-      }
+    }
+
+    if (result.recoverable && (!isRecover || !recovered)) {
+      this._lastSeq[channel] = result.seq || 0;
+      this._lastGen[channel] = result.gen || 0;
     }
 
     this._lastEpoch[channel] = result.epoch || '';
@@ -1505,6 +1504,7 @@ export class Centrifuge extends EventEmitter {
             this._call(msg).then(resolveCtx => {
               this._subscribeResponse(
                 channel,
+                recover,
                 this._decoder.decodeCommandResult(this._methodType.SUBSCRIBE, resolveCtx.result)
               );
               if (resolveCtx.next) {

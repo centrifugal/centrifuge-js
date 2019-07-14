@@ -204,9 +204,11 @@ centrifuge = new Centrifuge("http://localhost:8000/connection/websocket", {
             method: "POST"
         }).then(function(resp) {
             resp.json().then(function(data) {
-                // {"status": 200, "data": {"token": "JWT"}}
-                // Setting status to 200 is required at moment.
-                cb({status: 200, data: data});
+                // Data must be like {"status": 200, "data": {"token": "JWT"}} - see 
+                // type definitions in dist folder. Note that setting status to 200 is
+                // required at moment. Any other status will result in refresh process
+                // failure so client will eventually be disconnected by server.
+                cb(data);
             });
         });
     }

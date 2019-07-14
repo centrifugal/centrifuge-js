@@ -199,7 +199,7 @@ Here is an example of using custom `onRefresh` function:
 ```javascript
 centrifuge = new Centrifuge("http://localhost:8000/connection/websocket", {
     debug: true,
-    onRefresh: function(ctx, tokenCallback) {
+    onRefresh: function(ctx, cb) {
         let promise = fetch("http://localhost:3000/centrifuge/refresh", {
             method: "POST"
         }).then(function(resp) {

@@ -192,6 +192,24 @@ as exponent grows very fast:) Default is `20000` milliseconds.
 * `refreshData` - send extra data in body (as JSON payload) when sending AJAX POST refresh request.
 * `refreshAttempts` - limit amount of refresh requests before giving up (by default `null` - unlimited)
 * `onRefreshFailed` - callback function called when `refreshAttempts` came to the end. By default `null` - i.e. nothing called.
+* `onRefresh` - optional callback to fully control refresh behaviour. This function will ve called as soon as connection token needs to be refreshed. After this it's up to application to get new token in a way it needs. As soon as application got token it must call callback passed as argument with proper data - see example below. *In this case `centrifuge-js` will not send automatic AJAX requests to your application*.
+
+Here is an example of using custom `onRefresh` function:
+
+```javascript
+centrifuge = new Centrifuge("http://localhost:8000/connection/websocket", {
+    debug: true,
+    onRefresh: function(ctx, tokenCallback) {
+        let promise = fetch("http://localhost:3000/centrifuge/refresh", {
+            method: "POST"
+        }).then(function(response) {
+            // Response should be {"token": "JWT"}
+            // The final callback data must be {"data": {"token": "JWT"}}
+            cb({data: response});
+        });
+    }
+});
+```
 
 ## Client API
 

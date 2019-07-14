@@ -69,7 +69,7 @@ declare namespace Centrifuge {
         refreshAttempts?: number;
         refreshInterval?: number;
         onRefreshFailed?: () => void;
-        onRefresh?: (ctx: object, cb: (resp: any) => void) => void;
+        onRefresh?: (ctx: object, cb: (resp: RefreshResponse) => void) => void;
         subscribeEndpoint?: string;
         subscribeHeaders?: object;
         subscribeParams?: object;
@@ -138,6 +138,14 @@ declare namespace Centrifuge {
     export interface SubscribePrivateData {
         client: string;
         channels: string[];
+    }
+
+    export interface RefreshResponse {
+        data: RefreshTokenData;
+    }
+
+    export interface RefreshTokenData {
+        token: string;
     }
 
     export interface SubscribePrivateResponse {

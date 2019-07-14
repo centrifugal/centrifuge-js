@@ -29,3 +29,12 @@ export function backoff(step, min, max) {
 export function errorExists(data) {
   return 'error' in data && data.error !== null;
 };
+
+export function extend(a, b) {
+  for (const key in b) {
+    if (b.hasOwnProperty(key)) {
+      a[key] = b[key];
+    }
+  }
+  return a;
+};

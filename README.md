@@ -202,10 +202,12 @@ centrifuge = new Centrifuge("http://localhost:8000/connection/websocket", {
     onRefresh: function(ctx, tokenCallback) {
         let promise = fetch("http://localhost:3000/centrifuge/refresh", {
             method: "POST"
-        }).then(function(response) {
-            // Response should be {"token": "JWT"}
-            // The final callback data must be {"data": {"token": "JWT"}}
-            cb({data: response});
+        }).then(function(resp) {
+            resp.json().then(function(data) {
+                // {"status": 200, "data": {"token": "JWT"}}
+                // Setting status to 200 is required at moment.
+                cb({status: 200, data: data});
+            });
         });
     }
 });

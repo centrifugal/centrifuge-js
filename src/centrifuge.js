@@ -13,7 +13,8 @@ import {
   log,
   startsWith,
   errorExists,
-  backoff
+  backoff,
+  extend
 } from './utils';
 
 const _errorTimeout = 'timeout';
@@ -216,7 +217,7 @@ export class Centrifuge extends EventEmitter {
       throw new Error('Promise polyfill required');
     }
 
-    Object.assign(this._config, configuration || {});
+    extend(this._config, configuration || {});
     this._debug('centrifuge config', this._config);
 
     if (!this._url) {

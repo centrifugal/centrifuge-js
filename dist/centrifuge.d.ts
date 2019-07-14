@@ -141,6 +141,7 @@ declare namespace Centrifuge {
     }
 
     export interface RefreshResponse {
+        status: number;
         data: RefreshTokenData;
     }
 
@@ -149,6 +150,7 @@ declare namespace Centrifuge {
     }
 
     export interface SubscribePrivateResponse {
+        status: number;
         channels: PrivateChannelData[];
     }
 

@@ -114,6 +114,23 @@ export class Centrifuge extends EventEmitter {
     this._connectData = data;
   }
 
+  setRefreshHeaders(headers) {
+    this._config.refreshHeaders = headers;
+  }
+  setRefreshParams(params) {
+    this._config.refreshParams = params;
+  }
+  setRefreshData(data) {
+    this._config.refreshData = data;
+  }
+
+  setSubscribeHeaders(headers) {
+    this._config.subscribeHeaders = headers;
+  }
+  setSubscribeParams(params) {
+    this._config.subscribeParams = params;
+  }
+
   _ajax(url, params, headers, data, callback) {
     let query = '';
     this._debug('sending AJAX request to', url, 'with data', JSON.stringify(data));

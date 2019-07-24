@@ -10,6 +10,7 @@ This client can connect to [Centrifuge](https://github.com/centrifugal/centrifug
 * [Connection expiration](#connection-expiration)
 * [Protobuf support](#protobuf-support)
 * [Browser support](#browser-support)
+* [Using with NodeJS](#using-with-nodejs)
 
 Javascript client can connect to the server in two ways: using pure Websockets or using [SockJS](https://github.com/sockjs/sockjs-client) library to be able to use various available fallback transports if client browser does not support Websockets.
 
@@ -845,3 +846,42 @@ You can easily polyfill `Promise` via CDN (example here uses [es6-promise](https
 ```
 
 Or you can explicitly polyfill `Promise` in your code, see [auto-polyfill of es6-promise](https://github.com/stefanpenner/es6-promise#auto-polyfill)
+
+## Using with NodeJS
+
+NodeJS does not have native WebSocket library in std lib. To use `centrifuge-js` on Node you need to provide WebSocket object. You need to install WebSocket dependency:
+
+```
+npm install ws
+```
+
+At this point you have 2 options. Explicitly pass WebSocket object to Centrifuge.
+
+```javascript
+const Centrifuge = require('centrifuge');
+const WebSocket = require('ws');
+
+var centrifuge = new Centrifuge('ws://localhost:8000/connection/websocket', {
+    websocket: WebSocket
+})
+```
+
+Or define it globally:
+
+```javascript
+const Centrifuge = require('centrifuge');
+global.WebSocket = require('ws'); 
+
+var centrifuge = new Centrifuge('ws://localhost:8000/connection/websocket')
+```
+
+The same if you want to use `SockJS`:
+
+```javascript
+const Centrifuge = require('centrifuge');
+const SockJS = require('sockjs-client');
+
+var centrifuge = new Centrifuge('ws://localhost:8000/connection/sockjs', {
+    sockjs: SockJS
+})
+```

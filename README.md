@@ -1,6 +1,6 @@
 # Centrifuge client for NodeJS and browser
 
-This client can connect to [Centrifuge](https://github.com/centrifugal/centrifuge) server (and [Centrifugo](https://github.com/centrifugal/centrifugo) in particular) using Websocket or SockJS transports from web browser or NodeJS environments.
+This client can connect to [Centrifuge](https://github.com/centrifugal/centrifuge) server (and [Centrifugo](https://github.com/centrifugal/centrifugo) in particular) using pure WebSocket or [SockJS](https://github.com/sockjs/sockjs-client) polyfill transports from web browser or NodeJS environments.
 
 * [Install and quick start](#install-and-quick-start)
 * [Connection Token](#connection-token)
@@ -12,11 +12,9 @@ This client can connect to [Centrifuge](https://github.com/centrifugal/centrifug
 * [Browser support](#browser-support)
 * [Using with NodeJS](#using-with-nodejs)
 
-Javascript client can connect to the server in two ways: using pure Websockets or using [SockJS](https://github.com/sockjs/sockjs-client) library to be able to use various available fallback transports if client browser does not support Websockets.
-
 ## Install and quick start
 
-The simplest way to use javascript client is download it from `dist` folder and include into your web page using `script` tag:
+The simplest way to use `centrifuge-js` client is download it from `dist` folder and include into your web page using `script` tag:
 
 ```html
 <script src="centrifuge.js"></script>
@@ -42,7 +40,7 @@ var Centrifuge = require("centrifuge");
 
 Default library works with JSON only, see `Protobuf support` section to see how to import client with Protobuf support.
 
-As soon as you included all libraries you can create new `Centrifuge` object instance, subscribe on channel and call `.connect()` method to make actual connection to server:
+As soon as you installed and imported `centrifuge-js` you can create new `Centrifuge` object instance, subscribe on channel and call `.connect()` method to make actual connection to server:
 
 ```javascript
 var centrifuge = new Centrifuge('ws://centrifuge.example.com/connection/websocket');
@@ -54,7 +52,7 @@ centrifuge.subscribe("news", function(message) {
 centrifuge.connect();
 ```
 
-In example above we initialize `Centrifuge` object instance, subscribe on channel `news`, print all new messages received from channel `news` into console and actually make connection to Centrifugo. And that's all code which required for simple real-time messaging handling on client side!
+In example above we initialize `Centrifuge` object instance, subscribe on channel `news`, print all new messages received from channel `news` into console and actually make connection to server. And that's all for basic real-time messaging on client side!
 
 If you want to use SockJS you must also import SockJS client before centrifuge.js
 
@@ -78,7 +76,7 @@ var centrifuge = new Centrifuge("http://localhost:8000/connection/sockjs", {
 
 ## Connection Token
 
-If you are connecting to Centrifugo you must also provide connection token:
+If you are connecting to Centrifugo **you must also provide connection token**:
 
 ```javascript
 var centrifuge = new Centrifuge('ws://centrifuge.example.com/connection/websocket');
@@ -92,9 +90,9 @@ centrifuge.subscribe("news", function(message) {
 centrifuge.connect();
 ```
 
-This token contains information about user of your application that tries to connect. See documentation for connection JWT token in Centrifugo docs.
+This token contains information about user of your application that tries to connect. See [server authentication documentation](https://centrifugal.github.io/centrifugo/server/authentication/) for details on how to generate it on your backend side.
 
-**Connection token comes to Javascript code from application backend - i.e. generated on backend**.
+**Connection JWT comes to Javascript code from application backend - i.e. must be generated on backend**.
 
 ## Configuration parameters
 
@@ -102,7 +100,7 @@ Let's also look at optional configuration parameters available when initializing
 
 #### websocket
 
-`websocket` option allows to explicitly provide custom WebSocket client to use. By default centrifuge-js will try to use global WebSocket object, so if you are in web browser – it will just use native WebSocket implementation.
+`websocket` option allows to explicitly provide custom WebSocket client to use. By default centrifuge-js will try to use global WebSocket object, so if you are in web browser – it will just use native WebSocket implementation. See notes about using `centrifuge-js` with NodeJS below.
 
 #### sockjs
 
@@ -447,25 +445,13 @@ Let's look at message format of new message received from channel:
 
 ```javascript
 {
-    "uid":"6778c79fccb2",
     "data":{"input":"hello"},
 }
 ```
 
 I.e. `data` field contains actual data that was published.
 
-Message can optionally contain `client` field (client ID that published message) - if
-it was provided when publishing new message:
-
-```javascript
-{
-    "data":{"input":"hello"},
-    "client":"7080fd2a-bd69-4f1f-6648-5f3ceba4b643"
-}
-```
-
-And it can optionally contain additional client `info` in case when this message was
-published by javascript client directly using `publish` method (see details below):
+Message can optionally contain additional client `info` in case when this message was published by javascript client directly using `publish` method (see details below):
 
 ```javascript
 {
@@ -475,8 +461,7 @@ published by javascript client directly using `publish` method (see details belo
         "conn_info":{"name":"Alexandr"},
         "chan_info":{"extra":"extra JSON data when authorizing private channel"}
     },
-    "data":{"input":"hello"},
-    "client":"7080fd2a-bd69-4f1f-6648-5f3ceba4b643"
+    "data":{"input":"hello"}
 }
 ```
 
@@ -582,11 +567,13 @@ Format of `err` in error callback:
 
 ```javascript
 {
-    "error": "timeout",
+    "code": 0,
+    "message": "timeout"
 }
 ```
 
-* `error` – error description (string)
+* `code` - error code (number)
+* `message` – error description (string)
 
 *Note, that in order presence to work corresponding options must be enabled in server channel configuration (on top level or for channel namespace)*
 
@@ -635,25 +622,11 @@ fields were in original messages.
 
 ### publish method of subscription
 
-`publish` method of subscription object allows to publish data into channel directly
-from client. The main idea of Centrifugo is server side only push. Usually your application
-backend receives new event (for example new comment created, someone clicked like button
-etc) and then backend posts that event into Centrifugo over API. But in some cases you may
-need to allow clients to publish data into channels themselves. This can be used for demo
-projects, when prototyping ideas for example, for personal usage. And this allow to make
-something with real-time features without any application backend at all. Just javascript
-code and Centrifugo.
+`publish` method of subscription object allows to publish data into channel directly from client. The main idea of Centrifugo is server side only push. Usually your application backend receives new event (for example new comment created, someone clicked like button etc) and then backend posts that event into Centrifugo over API. But in some cases you may need to allow clients to publish data into channels themselves. This can be used for demo projects, when prototyping ideas for example, for personal usage. And this allow to make something with real-time features without any application backend at all. Just Javascript code and Centrifugo.
 
-**So to emphasize: using client publish is not an idiomatic Centrifugo usage. It's not for
-production applications but in some cases (demos, personal usage, Centrifugo as backend
-microservice) can be justified and convenient. In most real-life apps you need to send new
-data to your application backend first (using the convenient way, for example AJAX request
-in web app) and then publish data to Centrifugo over Centrifugo API.**
+**So to emphasize: using client publish is not an idiomatic Centrifugo usage. It's not for production applications but in some cases (demos, personal usage, Centrifugo as backend microservice) can be justified and convenient. In most real-life apps you need to send new data to your application backend first (using the convenient way, for example AJAX request in web app) and then publish data to Centrifugo over Centrifugo API.**
 
-To do this you can use `publish` method. Note that just like presence and history publish
-must be allowed in Centrifugo configuration for all channels or for channel namespace. When
-using `publish` data will go through Centrifugo to all clients in channel. Your application
-backend won't receive this message.
+To do this you can use `publish` method. Note that just like presence and history publish must be allowed in Centrifugo configuration for all channels or for channel namespace. When using `publish` data will go through Centrifugo to all clients in channel. Your application backend won't receive this message.
 
 ```javascript
 var subscription = centrifuge.subscribe("news", function(message) {

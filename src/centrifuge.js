@@ -641,32 +641,31 @@ export class Centrifuge extends EventEmitter {
 
   _disconnect(reason, shouldReconnect) {
 
-    if (this._isDisconnected()) {
-      return;
-    }
-
-    this._debug('disconnected:', reason, shouldReconnect);
-
     const reconnect = shouldReconnect || false;
-
     if (reconnect === false) {
       this._reconnect = false;
     }
 
-    this._clearConnectedState(reconnect);
+    if (this._isDisconnected()) {
+      if (!reconnect) {
+        this._clearConnectedState(reconnect);
+      }
+      return;
+    }
 
-    if (!this._isDisconnected()) {
-      this._setStatus('disconnected');
-      if (this._refreshTimeout) {
-        clearTimeout(this._refreshTimeout);
-        this._refreshTimeout = null;
-      }
-      if (this._reconnecting === false) {
-        this.emit('disconnect', {
-          reason: reason,
-          reconnect: reconnect
-        });
-      }
+    this._clearConnectedState(reconnect);
+    this._debug('disconnected:', reason, shouldReconnect);
+    this._setStatus('disconnected');
+
+    if (this._refreshTimeout) {
+      clearTimeout(this._refreshTimeout);
+      this._refreshTimeout = null;
+    }
+    if (this._reconnecting === false) {
+      this.emit('disconnect', {
+        reason: reason,
+        reconnect: reconnect
+      });
     }
 
     if (!this._transportClosed) {

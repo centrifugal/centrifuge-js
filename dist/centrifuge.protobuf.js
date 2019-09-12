@@ -1950,6 +1950,7 @@ exports.isFunction = isFunction;
 exports.log = log;
 exports.backoff = backoff;
 exports.errorExists = errorExists;
+exports.extend = extend;
 function startsWith(value, prefix) {
   return value.lastIndexOf(prefix, 0) === 0;
 };
@@ -1980,6 +1981,15 @@ function backoff(step, min, max) {
 
 function errorExists(data) {
   return 'error' in data && data.error !== null;
+};
+
+function extend(a, b) {
+  for (var key in b) {
+    if (b.hasOwnProperty(key)) {
+      a[key] = b[key];
+    }
+  }
+  return a;
 };
 /* WEBPACK VAR INJECTION */}.call(exports, __webpack_require__(3)))
 
@@ -2756,6 +2766,31 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
       this._connectData = data;
     }
   }, {
+    key: 'setRefreshHeaders',
+    value: function setRefreshHeaders(headers) {
+      this._config.refreshHeaders = headers;
+    }
+  }, {
+    key: 'setRefreshParams',
+    value: function setRefreshParams(params) {
+      this._config.refreshParams = params;
+    }
+  }, {
+    key: 'setRefreshData',
+    value: function setRefreshData(data) {
+      this._config.refreshData = data;
+    }
+  }, {
+    key: 'setSubscribeHeaders',
+    value: function setSubscribeHeaders(headers) {
+      this._config.subscribeHeaders = headers;
+    }
+  }, {
+    key: 'setSubscribeParams',
+    value: function setSubscribeParams(params) {
+      this._config.subscribeParams = params;
+    }
+  }, {
     key: '_ajax',
     value: function _ajax(url, params, headers, data, callback) {
       var _this2 = this;
@@ -2872,7 +2907,7 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
         throw new Error('Promise polyfill required');
       }
 
-      Object.assign(this._config, configuration || {});
+      (0, _utils.extend)(this._config, configuration || {});
       this._debug('centrifuge config', this._config);
 
       if (!this._url) {
@@ -3312,32 +3347,31 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
     key: '_disconnect',
     value: function _disconnect(reason, shouldReconnect) {
 
-      if (this._isDisconnected()) {
-        return;
-      }
-
-      this._debug('disconnected:', reason, shouldReconnect);
-
       var reconnect = shouldReconnect || false;
-
       if (reconnect === false) {
         this._reconnect = false;
       }
 
-      this._clearConnectedState(reconnect);
+      if (this._isDisconnected()) {
+        if (!reconnect) {
+          this._clearConnectedState(reconnect);
+        }
+        return;
+      }
 
-      if (!this._isDisconnected()) {
-        this._setStatus('disconnected');
-        if (this._refreshTimeout) {
-          clearTimeout(this._refreshTimeout);
-          this._refreshTimeout = null;
-        }
-        if (this._reconnecting === false) {
-          this.emit('disconnect', {
-            reason: reason,
-            reconnect: reconnect
-          });
-        }
+      this._clearConnectedState(reconnect);
+      this._debug('disconnected:', reason, shouldReconnect);
+      this._setStatus('disconnected');
+
+      if (this._refreshTimeout) {
+        clearTimeout(this._refreshTimeout);
+        this._refreshTimeout = null;
+      }
+      if (this._reconnecting === false) {
+        this.emit('disconnect', {
+          reason: reason,
+          reconnect: reconnect
+        });
       }
 
       if (!this._transportClosed) {

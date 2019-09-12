@@ -1,3 +1,8 @@
+2.2.2
+=====
+
+* Do not reconnect after disconnect called in disconnected state, more details in [#92](https://github.com/centrifugal/centrifuge-js/issues/92).
+
 2.2.1
 =====
 

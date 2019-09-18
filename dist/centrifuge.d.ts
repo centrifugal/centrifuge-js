@@ -156,6 +156,10 @@ declare namespace Centrifuge {
 
     export interface SubscribePrivateResponse {
         status: number;
+        data: SubscribePrivateResponseData;
+    }
+
+    export interface SubscribePrivateResponseData {
         channels: PrivateChannelData[];
     }
 

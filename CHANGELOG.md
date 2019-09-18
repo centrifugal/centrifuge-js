@@ -1,3 +1,8 @@
+2.2.3
+=====
+
+* Fix type declarations for `onPrivateSubscribe` callback. See [#94](https://github.com/centrifugal/centrifuge-js/issues/94) for details.
+
 2.2.2
 =====
 

@@ -555,7 +555,7 @@ export class Centrifuge extends EventEmitter {
       if (rejectCtx.next) {
         rejectCtx.next();
       }
-      return rejectCtx.error;
+      return Promise.reject(rejectCtx.error);
     });
   }
 

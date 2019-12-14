@@ -1,3 +1,8 @@
+2.3.0
+=====
+
+* Fix fulfilling Promise when RPC error happens. Before this fix RPC error did not properly called Promise error handler, now it does. 
+
 2.2.3
 =====
 

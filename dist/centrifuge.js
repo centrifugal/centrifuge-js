@@ -684,7 +684,7 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
         if (rejectCtx.next) {
           rejectCtx.next();
         }
-        return rejectCtx.error;
+        return Promise.reject(rejectCtx.error);
       });
     }
   }, {

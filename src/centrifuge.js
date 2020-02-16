@@ -43,6 +43,7 @@ export class Centrifuge extends EventEmitter {
     this._clientID = null;
     this._refreshRequired = false;
     this._subs = {};
+    this._serverSubs = {};
     this._lastSeq = {};
     this._lastGen = {};
     this._lastEpoch = {};
@@ -459,9 +460,34 @@ export class Centrifuge extends EventEmitter {
         msg.params.data = this._connectData;
       }
 
+      let subs = {};
+      let hasSubs = false;
+      for (const channel in this._serverSubs) {
+        if (this._serverSubs.hasOwnProperty(channel) && this._serverSubs[channel].recoverable) {
+          hasSubs = true;
+          let sub = {
+            'recover': true
+          };
+          if (this._serverSubs[channel].seq) {
+            sub['seq'] = this._serverSubs[channel].seq;
+          }
+          if (this._serverSubs[channel].gen) {
+            sub['gen'] = this._serverSubs[channel].gen;
+          }
+          if (this._serverSubs[channel].epoch) {
+            sub['epoch'] = this._serverSubs[channel].epoch;
+          }
+          subs[channel] = sub;
+        }
+      }
+      if (hasSubs) {
+        if (!msg.params) {msg.params = {};}
+        msg.params.subs = subs;
+      }
+
       this._latencyStart = new Date();
       this._call(msg).then(resolveCtx => {
-        this._connectResponse(this._decoder.decodeCommandResult(this._methodType.CONNECT, resolveCtx.result));
+        this._connectResponse(this._decoder.decodeCommandResult(this._methodType.CONNECT, resolveCtx.result), hasSubs);
         if (resolveCtx.next) {
           resolveCtx.next();
         }
@@ -654,6 +680,7 @@ export class Centrifuge extends EventEmitter {
     }
 
     this._clearConnectedState(reconnect);
+
     this._debug('disconnected:', reason, shouldReconnect);
     this._setStatus('disconnected');
 
@@ -662,10 +689,21 @@ export class Centrifuge extends EventEmitter {
       this._refreshTimeout = null;
     }
     if (this._reconnecting === false) {
+      // fire unsubscribe events for server side subs.
+      for (const channel in this._serverSubs) {
+        if (this._serverSubs.hasOwnProperty(channel)) {
+          this.emit('unsubscribe', {channel: channel});
+        }
+      }
       this.emit('disconnect', {
         reason: reason,
         reconnect: reconnect
       });
+    }
+
+    if (reconnect === false) {
+      this._subs = {};
+      this._serverSubs = {};
     }
 
     if (!this._transportClosed) {
@@ -1017,7 +1055,7 @@ export class Centrifuge extends EventEmitter {
     return sub;
   };
 
-  _connectResponse(result) {
+  _connectResponse(result, isRecover) {
     const wasReconnecting = this._reconnecting;
     this._reconnecting = false;
     this._resetRetry();
@@ -1068,6 +1106,40 @@ export class Centrifuge extends EventEmitter {
     }
 
     this.emit('connect', ctx);
+
+    if (result.subs) {
+      for (const channel in result.subs) {
+        if (result.subs.hasOwnProperty(channel)) {
+          const recovered = result.subs[channel].recovered === true;
+          let subCtx = {channel: channel, isResubscribe: isRecover, recovered: recovered};
+          this.emit('subscribe', subCtx);
+        }
+      }
+    }
+
+    if (result.subs) {
+      for (const channel in result.subs) {
+        if (result.subs.hasOwnProperty(channel)) {
+          if (result.subs[channel].recovered) {
+            let pubs = result.subs[channel].publications;
+            if (pubs && pubs.length > 0) {
+              pubs = pubs.reverse();
+              for (let i in pubs) {
+                if (pubs.hasOwnProperty(i)) {
+                  this._handlePublication(channel, pubs[i]);
+                }
+              }
+            }
+          }
+          this._serverSubs[channel] = {
+            'seq': result.subs[channel].seq,
+            'gen': result.subs[channel].gen,
+            'epoch': result.subs[channel].epoch,
+            'recoverable': result.subs[channel].recoverable
+          };
+        }
+      }
+    }
   };
 
   _stopPing() {
@@ -1193,24 +1265,34 @@ export class Centrifuge extends EventEmitter {
   }
 
   _handleJoin(channel, join) {
+    const ctx = {'info': join.info};
     const sub = this._getSub(channel);
     if (!sub) {
+      ctx.channel = channel;
+      this.emit('join', ctx);
       return;
     }
-    sub.emit('join', {'info': join.info});
+    sub.emit('join', ctx);
   };
 
   _handleLeave(channel, leave) {
+    const ctx = {'info': leave.info};
     const sub = this._getSub(channel);
     if (!sub) {
+      ctx.channel = channel;
+      this.emit('leave', ctx);
       return;
     }
-    sub.emit('leave', {'info': leave.info});
+    sub.emit('leave', ctx);
   };
 
   _handleUnsub(channel, unsub) {
+    const ctx = {};
     const sub = this._getSub(channel);
     if (!sub) {
+      delete this._serverSubs[channel];
+      ctx.channel = channel;
+      this.emit('unsubscribe', ctx);
       return;
     }
     sub.unsubscribe();
@@ -1219,9 +1301,35 @@ export class Centrifuge extends EventEmitter {
     }
   };
 
+  _handleSub(channel, sub) {
+    this._serverSubs[channel] = {
+      'seq': sub.seq,
+      'gen': sub.gen,
+      'epoch': sub.epoch,
+      'recoverable': sub.recoverable
+    };
+    const ctx = {'channel': channel, isResubscribe: false, recovered: false};
+    this.emit('subscribe', ctx);
+  };
+
   _handlePublication(channel, pub) {
     const sub = this._getSub(channel);
+    const ctx = {
+      'data': pub.data,
+      'seq': pub.seq,
+      'gen': pub.gen
+    };
     if (!sub) {
+      if (this._serverSubs[channel] !== undefined) {
+        if (pub.seq !== undefined) {
+          this._serverSubs[channel].seq = pub.seq;
+        }
+        if (pub.gen !== undefined) {
+          this._serverSubs[channel].gen = pub.gen;
+        }
+      }
+      ctx.channel = channel;
+      this.emit('publish', ctx);
       return;
     }
     if (pub.seq !== undefined) {
@@ -1230,7 +1338,7 @@ export class Centrifuge extends EventEmitter {
     if (pub.gen !== undefined) {
       this._lastGen[channel] = pub.gen;
     }
-    sub.emit('publish', pub);
+    sub.emit('publish', ctx);
   };
 
   _handleMessage(message) {
@@ -1260,6 +1368,9 @@ export class Centrifuge extends EventEmitter {
     } else if (type === this._pushType.UNSUB) {
       const unsub = this._decoder.decodePushData(this._pushType.UNSUB, push.data);
       this._handleUnsub(channel, unsub);
+    } else if (type === this._pushType.SUB) {
+      const sub = this._decoder.decodePushData(this._pushType.SUB, push.data);
+      this._handleSub(channel, sub);
     }
     next();
   }

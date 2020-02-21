@@ -22,51 +22,51 @@ const protobufMethodType = {
 
 const methodSchema = {
   CONNECT: [
-    proto.lookupType('proto.ConnectRequest'),
-    proto.lookupType('proto.ConnectResult')
+    proto.lookupType('protocol.ConnectRequest'),
+    proto.lookupType('protocol.ConnectResult')
   ],
   REFRESH: [
-    proto.lookupType('proto.RefreshRequest'),
-    proto.lookupType('proto.RefreshResult')
+    proto.lookupType('protocol.RefreshRequest'),
+    proto.lookupType('protocol.RefreshResult')
   ],
   SUBSCRIBE: [
-    proto.lookupType('proto.SubscribeRequest'),
-    proto.lookupType('proto.SubscribeResult')
+    proto.lookupType('protocol.SubscribeRequest'),
+    proto.lookupType('protocol.SubscribeResult')
   ],
   SUB_REFRESH: [
-    proto.lookupType('proto.SubRefreshRequest'),
-    proto.lookupType('proto.SubRefreshResult')
+    proto.lookupType('protocol.SubRefreshRequest'),
+    proto.lookupType('protocol.SubRefreshResult')
   ],
   UNSUBSCRIBE: [
-    proto.lookupType('proto.UnsubscribeRequest'),
-    proto.lookupType('proto.UnsubscribeResult')
+    proto.lookupType('protocol.UnsubscribeRequest'),
+    proto.lookupType('protocol.UnsubscribeResult')
   ],
   PUBLISH: [
-    proto.lookupType('proto.PublishRequest'),
-    proto.lookupType('proto.PublishResult')
+    proto.lookupType('protocol.PublishRequest'),
+    proto.lookupType('protocol.PublishResult')
   ],
   PRESENCE: [
-    proto.lookupType('proto.PresenceRequest'),
-    proto.lookupType('proto.PresenceResult')
+    proto.lookupType('protocol.PresenceRequest'),
+    proto.lookupType('protocol.PresenceResult')
   ],
   PRESENCE_STATS: [
-    proto.lookupType('proto.PresenceStatsRequest'),
-    proto.lookupType('proto.PresenceStatsResult')
+    proto.lookupType('protocol.PresenceStatsRequest'),
+    proto.lookupType('protocol.PresenceStatsResult')
   ],
   HISTORY: [
-    proto.lookupType('proto.HistoryRequest'),
-    proto.lookupType('proto.HistoryResult')
+    proto.lookupType('protocol.HistoryRequest'),
+    proto.lookupType('protocol.HistoryResult')
   ],
   PING: [
-    proto.lookupType('proto.PingRequest'),
-    proto.lookupType('proto.PingResult')
+    proto.lookupType('protocol.PingRequest'),
+    proto.lookupType('protocol.PingResult')
   ],
   RPC: [
-    proto.lookupType('proto.RPCRequest'),
-    proto.lookupType('proto.RPCResult')
+    proto.lookupType('protocol.RPCRequest'),
+    proto.lookupType('protocol.RPCResult')
   ],
   SEND: [
-    proto.lookupType('proto.SendRequest'),
+    proto.lookupType('protocol.SendRequest'),
     null
   ]
 };
@@ -80,16 +80,17 @@ const protobufPushType = {
 };
 
 const PushSchema = {
-  PUBLICATION: proto.lookupType('proto.Publication'),
-  JOIN: proto.lookupType('proto.Join'),
-  LEAVE: proto.lookupType('proto.Leave'),
-  UNSUB: proto.lookupType('proto.Unsub'),
-  MESSAGE: proto.lookupType('proto.Message')
+  PUBLICATION: proto.lookupType('protocol.Publication'),
+  JOIN: proto.lookupType('protocol.Join'),
+  LEAVE: proto.lookupType('protocol.Leave'),
+  UNSUB: proto.lookupType('protocol.Unsub'),
+  MESSAGE: proto.lookupType('protocol.Message'),
+  SUB: proto.lookupType('protocol.Sub')
 };
 
-const Push = proto.lookupType('proto.Push');
-const Command = proto.lookupType('proto.Command');
-const Reply = proto.lookupType('proto.Reply');
+const Push = proto.lookupType('protocol.Push');
+const Command = proto.lookupType('protocol.Command');
+const Reply = proto.lookupType('protocol.Reply');
 
 export class ProtobufEncoder {
   encodeCommands(commands) {
@@ -221,6 +222,9 @@ export class ProtobufDecoder {
         break;
       case protobufPushType.UNSUB:
         type = PushSchema.UNSUB;
+        break;
+      case protobufPushType.SUB:
+        type = PushSchema.SUB;
         break;
     }
     return this._decode(type, data);

@@ -1108,36 +1108,39 @@ export class Centrifuge extends EventEmitter {
     this.emit('connect', ctx);
 
     if (result.subs) {
-      for (const channel in result.subs) {
-        if (result.subs.hasOwnProperty(channel)) {
-          const recovered = result.subs[channel].recovered === true;
-          let subCtx = {channel: channel, isResubscribe: isRecover, recovered: recovered};
-          this.emit('subscribe', subCtx);
-        }
+      this._processServerSubs(result.subs, isRecover);
+    }
+  };
+
+  _processServerSubs(subs, isRecover) {
+    for (const channel in subs) {
+      if (subs.hasOwnProperty(channel)) {
+        const sub = subs[channel];
+        const recovered = sub.recovered === true;
+        let subCtx = {channel: channel, isResubscribe: isRecover, recovered: recovered};
+        this.emit('subscribe', subCtx);
       }
     }
-
-    if (result.subs) {
-      for (const channel in result.subs) {
-        if (result.subs.hasOwnProperty(channel)) {
-          if (result.subs[channel].recovered) {
-            let pubs = result.subs[channel].publications;
-            if (pubs && pubs.length > 0) {
-              pubs = pubs.reverse();
-              for (let i in pubs) {
-                if (pubs.hasOwnProperty(i)) {
-                  this._handlePublication(channel, pubs[i]);
-                }
+    for (const channel in subs) {
+      if (subs.hasOwnProperty(channel)) {
+        const sub = subs[channel];
+        if (sub.recovered) {
+          let pubs = sub.publications;
+          if (pubs && pubs.length > 0) {
+            pubs = pubs.reverse();
+            for (let i in pubs) {
+              if (pubs.hasOwnProperty(i)) {
+                this._handlePublication(channel, pubs[i]);
               }
             }
           }
-          this._serverSubs[channel] = {
-            'seq': result.subs[channel].seq,
-            'gen': result.subs[channel].gen,
-            'epoch': result.subs[channel].epoch,
-            'recoverable': result.subs[channel].recoverable
-          };
         }
+        this._serverSubs[channel] = {
+          'seq': sub.seq,
+          'gen': sub.gen,
+          'epoch': sub.epoch,
+          'recoverable': sub.recoverable
+        };
       }
     }
   };

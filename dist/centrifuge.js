@@ -140,6 +140,7 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
     _this._clientID = null;
     _this._refreshRequired = false;
     _this._subs = {};
+    _this._serverSubs = {};
     _this._lastSeq = {};
     _this._lastGen = {};
     _this._lastEpoch = {};
@@ -584,9 +585,36 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
           msg.params.data = _this3._connectData;
         }
 
+        var subs = {};
+        var hasSubs = false;
+        for (var channel in _this3._serverSubs) {
+          if (_this3._serverSubs.hasOwnProperty(channel) && _this3._serverSubs[channel].recoverable) {
+            hasSubs = true;
+            var sub = {
+              'recover': true
+            };
+            if (_this3._serverSubs[channel].seq) {
+              sub['seq'] = _this3._serverSubs[channel].seq;
+            }
+            if (_this3._serverSubs[channel].gen) {
+              sub['gen'] = _this3._serverSubs[channel].gen;
+            }
+            if (_this3._serverSubs[channel].epoch) {
+              sub['epoch'] = _this3._serverSubs[channel].epoch;
+            }
+            subs[channel] = sub;
+          }
+        }
+        if (hasSubs) {
+          if (!msg.params) {
+            msg.params = {};
+          }
+          msg.params.subs = subs;
+        }
+
         _this3._latencyStart = new Date();
         _this3._call(msg).then(function (resolveCtx) {
-          _this3._connectResponse(_this3._decoder.decodeCommandResult(_this3._methodType.CONNECT, resolveCtx.result));
+          _this3._connectResponse(_this3._decoder.decodeCommandResult(_this3._methodType.CONNECT, resolveCtx.result), hasSubs);
           if (resolveCtx.next) {
             resolveCtx.next();
           }
@@ -798,6 +826,7 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
       }
 
       this._clearConnectedState(reconnect);
+
       this._debug('disconnected:', reason, shouldReconnect);
       this._setStatus('disconnected');
 
@@ -806,10 +835,21 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
         this._refreshTimeout = null;
       }
       if (this._reconnecting === false) {
+        // fire unsubscribe events for server side subs.
+        for (var channel in this._serverSubs) {
+          if (this._serverSubs.hasOwnProperty(channel)) {
+            this.emit('unsubscribe', { channel: channel });
+          }
+        }
         this.emit('disconnect', {
           reason: reason,
           reconnect: reconnect
         });
+      }
+
+      if (reconnect === false) {
+        this._subs = {};
+        this._serverSubs = {};
       }
 
       if (!this._transportClosed) {
@@ -1186,7 +1226,7 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
     }
   }, {
     key: '_connectResponse',
-    value: function _connectResponse(result) {
+    value: function _connectResponse(result, isRecover) {
       var _this14 = this;
 
       var wasReconnecting = this._reconnecting;
@@ -1241,6 +1281,44 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
       }
 
       this.emit('connect', ctx);
+
+      if (result.subs) {
+        this._processServerSubs(result.subs, isRecover);
+      }
+    }
+  }, {
+    key: '_processServerSubs',
+    value: function _processServerSubs(subs, isRecover) {
+      for (var channel in subs) {
+        if (subs.hasOwnProperty(channel)) {
+          var sub = subs[channel];
+          var recovered = sub.recovered === true;
+          var subCtx = { channel: channel, isResubscribe: isRecover, recovered: recovered };
+          this.emit('subscribe', subCtx);
+        }
+      }
+      for (var _channel2 in subs) {
+        if (subs.hasOwnProperty(_channel2)) {
+          var _sub = subs[_channel2];
+          if (_sub.recovered) {
+            var pubs = _sub.publications;
+            if (pubs && pubs.length > 0) {
+              pubs = pubs.reverse();
+              for (var i in pubs) {
+                if (pubs.hasOwnProperty(i)) {
+                  this._handlePublication(_channel2, pubs[i]);
+                }
+              }
+            }
+          }
+          this._serverSubs[_channel2] = {
+            'seq': _sub.seq,
+            'gen': _sub.gen,
+            'epoch': _sub.epoch,
+            'recoverable': _sub.recoverable
+          };
+        }
+      }
     }
   }, {
     key: '_stopPing',
@@ -1380,26 +1458,36 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
   }, {
     key: '_handleJoin',
     value: function _handleJoin(channel, join) {
+      var ctx = { 'info': join.info };
       var sub = this._getSub(channel);
       if (!sub) {
+        ctx.channel = channel;
+        this.emit('join', ctx);
         return;
       }
-      sub.emit('join', { 'info': join.info });
+      sub.emit('join', ctx);
     }
   }, {
     key: '_handleLeave',
     value: function _handleLeave(channel, leave) {
+      var ctx = { 'info': leave.info };
       var sub = this._getSub(channel);
       if (!sub) {
+        ctx.channel = channel;
+        this.emit('leave', ctx);
         return;
       }
-      sub.emit('leave', { 'info': leave.info });
+      sub.emit('leave', ctx);
     }
   }, {
     key: '_handleUnsub',
     value: function _handleUnsub(channel, unsub) {
+      var ctx = {};
       var sub = this._getSub(channel);
       if (!sub) {
+        delete this._serverSubs[channel];
+        ctx.channel = channel;
+        this.emit('unsubscribe', ctx);
         return;
       }
       sub.unsubscribe();
@@ -1408,10 +1496,37 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
       }
     }
   }, {
+    key: '_handleSub',
+    value: function _handleSub(channel, sub) {
+      this._serverSubs[channel] = {
+        'seq': sub.seq,
+        'gen': sub.gen,
+        'epoch': sub.epoch,
+        'recoverable': sub.recoverable
+      };
+      var ctx = { 'channel': channel, isResubscribe: false, recovered: false };
+      this.emit('subscribe', ctx);
+    }
+  }, {
     key: '_handlePublication',
     value: function _handlePublication(channel, pub) {
       var sub = this._getSub(channel);
+      var ctx = {
+        'data': pub.data,
+        'seq': pub.seq,
+        'gen': pub.gen
+      };
       if (!sub) {
+        if (this._serverSubs[channel] !== undefined) {
+          if (pub.seq !== undefined) {
+            this._serverSubs[channel].seq = pub.seq;
+          }
+          if (pub.gen !== undefined) {
+            this._serverSubs[channel].gen = pub.gen;
+          }
+        }
+        ctx.channel = channel;
+        this.emit('publish', ctx);
         return;
       }
       if (pub.seq !== undefined) {
@@ -1420,7 +1535,7 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
       if (pub.gen !== undefined) {
         this._lastGen[channel] = pub.gen;
       }
-      sub.emit('publish', pub);
+      sub.emit('publish', ctx);
     }
   }, {
     key: '_handleMessage',
@@ -1452,6 +1567,9 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
       } else if (type === this._pushType.UNSUB) {
         var unsub = this._decoder.decodePushData(this._pushType.UNSUB, push.data);
         this._handleUnsub(channel, unsub);
+      } else if (type === this._pushType.SUB) {
+        var sub = this._decoder.decodePushData(this._pushType.SUB, push.data);
+        this._handleSub(channel, sub);
       }
       next();
     }
@@ -1668,8 +1786,8 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
           _this19._debug('authorization request failed');
           for (var i in channels) {
             if (channels.hasOwnProperty(i)) {
-              var _channel2 = channels[i];
-              _this19._subscribeError(_channel2, _this19._createErrorObject('authorization request failed'));
+              var _channel3 = channels[i];
+              _this19._subscribeError(_channel3, _this19._createErrorObject('authorization request failed'));
             }
           }
           return;
@@ -1713,12 +1831,12 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
                   }
                 };
 
-                var _sub = _this19._getSub(channel);
-                if (_sub === null) {
+                var _sub2 = _this19._getSub(channel);
+                if (_sub2 === null) {
                   return 'continue';
                 }
 
-                var recover = _sub._needRecover();
+                var recover = _sub2._needRecover();
 
                 if (recover === true) {
                   msg.params.recover = true;
@@ -2182,7 +2300,8 @@ var JsonPushType = exports.JsonPushType = {
   JOIN: 1,
   LEAVE: 2,
   UNSUB: 3,
-  MESSAGE: 4
+  MESSAGE: 4,
+  SUB: 5
 };
 
 var JsonEncoder = exports.JsonEncoder = function () {

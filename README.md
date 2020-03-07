@@ -7,6 +7,7 @@ This client can connect to [Centrifuge](https://github.com/centrifugal/centrifug
 * [Configuration parameters](#configuration-parameters)
 * [Client API](#client-api)
 * [Private channels subscription](#private-channels-subscription)
+* [Server-side subscriptions](#server-side-subscriptions)
 * [Connection expiration](#connection-expiration)
 * [Protobuf support](#protobuf-support)
 * [Browser support](#browser-support)
@@ -773,6 +774,38 @@ If you don't want to give client access to channel then just do not include it i
 There are also two public API methods which can help to subscribe to many private channels sending only one POST request to your web application backend: `startSubscribeBatching` and `stopSubscribeBatching`. When you `startSubscribeBatching` javascript client will collect private subscriptions until `stopSubscribeBatching()` called – and then send them all at once.
 
 As we just described when client subscribes on private channel by default AJAX request will be sent to `subscribeEndpoint` automatically if channel starts with `$`. In this case developer only needs to return proper response from server. But there is a way to override default behaviour and take full control on authorizing private channels. To do this it's possible to provide custom `onPrivateSubscribe` function in configuration options. This function will be called with all data required to authorize private channels client subscribes to and should call callback (will be provided by centrifuge-js as second argument) with authorization data when done. See our type declarations in `dist` folder to find out data format.
+
+## Server-side subscriptions
+
+`centrifuge-js` v2.4.0 added support for server-side subscriptions. This means several new event handlers have been added.
+
+The main one is `publish` event of Centrifuge instance to handle publications coming from server-side channels:
+
+```javascript
+var centrifuge = new Centrifuge(address);
+
+centrifuge.on('publish', function(ctx) {
+    const channel = ctx.channel;
+    const payload = JSON.stringify(ctx.data);
+    console.log('Publication from server-side channel', channel, payload);
+});
+
+centrifuge.connect();
+```
+
+Also there are event handlers for `join`, `leave`, `subscribe` and `unsubscribe` events. Actually they work the same way as analogues from Subscription instance but binded to Centrifuge instance instead.
+
+For example:
+
+```javascript
+centrifuge.on('subscribe', function(ctx) {
+    console.log('Subscribe to server-side channel ' + ctx.channel);
+});
+
+centrifuge.on('unsubscribe', function(ctx) {
+    console.log('Unsubscribe from server-side channel ' + ctx.channel);
+});
+```
 
 ## Connection expiration
 

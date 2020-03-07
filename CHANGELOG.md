@@ -1,3 +1,8 @@
+2.4.0
+=====
+
+* Server-side subscriptions support, see [related README section](https://github.com/centrifugal/centrifuge-js#server-side-subscriptions)
+
 2.3.0
 =====
 

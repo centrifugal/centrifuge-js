@@ -1,3 +1,9 @@
+2.5.0
+=====
+
+* Remove subscription from internal `_subs` map after `.unsubscribe()` called, see [this discussion](https://github.com/centrifugal/centrifuge-js/issues/98) for more details
+* Make sure that server-side subscription exists before calling server-side subscription events
+
 2.4.0
 =====
 

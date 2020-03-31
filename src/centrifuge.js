@@ -1027,6 +1027,7 @@ export class Centrifuge extends EventEmitter {
   };
 
   _unsubscribe(sub) {
+    delete this._subs[sub.channel];
     if (this.isConnected()) {
       // No need to unsubscribe in disconnected state - i.e. client already unsubscribed.
       this._addMessage({
@@ -1053,6 +1054,10 @@ export class Centrifuge extends EventEmitter {
       return null;
     }
     return sub;
+  };
+
+  _isServerSub(channel) {
+    return this._serverSubs[channel] !== undefined;
   };
 
   _connectResponse(result, isRecover) {
@@ -1271,8 +1276,10 @@ export class Centrifuge extends EventEmitter {
     const ctx = {'info': join.info};
     const sub = this._getSub(channel);
     if (!sub) {
-      ctx.channel = channel;
-      this.emit('join', ctx);
+      if (this._isServerSub(channel)) {
+        ctx.channel = channel;
+        this.emit('join', ctx);
+      }
       return;
     }
     sub.emit('join', ctx);
@@ -1282,8 +1289,10 @@ export class Centrifuge extends EventEmitter {
     const ctx = {'info': leave.info};
     const sub = this._getSub(channel);
     if (!sub) {
-      ctx.channel = channel;
-      this.emit('leave', ctx);
+      if (this._isServerSub(channel)) {
+        ctx.channel = channel;
+        this.emit('leave', ctx);
+      }
       return;
     }
     sub.emit('leave', ctx);
@@ -1293,9 +1302,11 @@ export class Centrifuge extends EventEmitter {
     const ctx = {};
     const sub = this._getSub(channel);
     if (!sub) {
-      delete this._serverSubs[channel];
-      ctx.channel = channel;
-      this.emit('unsubscribe', ctx);
+      if (this._isServerSub(channel)) {
+        delete this._serverSubs[channel];
+        ctx.channel = channel;
+        this.emit('unsubscribe', ctx);
+      }
       return;
     }
     sub.unsubscribe();
@@ -1323,16 +1334,16 @@ export class Centrifuge extends EventEmitter {
       'gen': pub.gen
     };
     if (!sub) {
-      if (this._serverSubs[channel] !== undefined) {
+      if (this._isServerSub(channel)) {
         if (pub.seq !== undefined) {
           this._serverSubs[channel].seq = pub.seq;
         }
         if (pub.gen !== undefined) {
           this._serverSubs[channel].gen = pub.gen;
         }
+        ctx.channel = channel;
+        this.emit('publish', ctx);
       }
-      ctx.channel = channel;
-      this.emit('publish', ctx);
       return;
     }
     if (pub.seq !== undefined) {

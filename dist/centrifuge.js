@@ -1194,6 +1194,7 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
   }, {
     key: '_unsubscribe',
     value: function _unsubscribe(sub) {
+      delete this._subs[sub.channel];
       if (this.isConnected()) {
         // No need to unsubscribe in disconnected state - i.e. client already unsubscribed.
         this._addMessage({
@@ -1223,6 +1224,11 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
         return null;
       }
       return sub;
+    }
+  }, {
+    key: '_isServerSub',
+    value: function _isServerSub(channel) {
+      return this._serverSubs[channel] !== undefined;
     }
   }, {
     key: '_connectResponse',
@@ -1461,8 +1467,10 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
       var ctx = { 'info': join.info };
       var sub = this._getSub(channel);
       if (!sub) {
-        ctx.channel = channel;
-        this.emit('join', ctx);
+        if (this._isServerSub(channel)) {
+          ctx.channel = channel;
+          this.emit('join', ctx);
+        }
         return;
       }
       sub.emit('join', ctx);
@@ -1473,8 +1481,10 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
       var ctx = { 'info': leave.info };
       var sub = this._getSub(channel);
       if (!sub) {
-        ctx.channel = channel;
-        this.emit('leave', ctx);
+        if (this._isServerSub(channel)) {
+          ctx.channel = channel;
+          this.emit('leave', ctx);
+        }
         return;
       }
       sub.emit('leave', ctx);
@@ -1485,9 +1495,11 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
       var ctx = {};
       var sub = this._getSub(channel);
       if (!sub) {
-        delete this._serverSubs[channel];
-        ctx.channel = channel;
-        this.emit('unsubscribe', ctx);
+        if (this._isServerSub(channel)) {
+          delete this._serverSubs[channel];
+          ctx.channel = channel;
+          this.emit('unsubscribe', ctx);
+        }
         return;
       }
       sub.unsubscribe();
@@ -1517,16 +1529,16 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
         'gen': pub.gen
       };
       if (!sub) {
-        if (this._serverSubs[channel] !== undefined) {
+        if (this._isServerSub(channel)) {
           if (pub.seq !== undefined) {
             this._serverSubs[channel].seq = pub.seq;
           }
           if (pub.gen !== undefined) {
             this._serverSubs[channel].gen = pub.gen;
           }
+          ctx.channel = channel;
+          this.emit('publish', ctx);
         }
-        ctx.channel = channel;
-        this.emit('publish', ctx);
         return;
       }
       if (pub.seq !== undefined) {

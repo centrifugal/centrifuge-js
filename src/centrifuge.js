@@ -46,6 +46,7 @@ export class Centrifuge extends EventEmitter {
     this._serverSubs = {};
     this._lastSeq = {};
     this._lastGen = {};
+    this._lastOffset = {};
     this._lastEpoch = {};
     this._messages = [];
     this._isBatching = false;
@@ -468,11 +469,17 @@ export class Centrifuge extends EventEmitter {
           let sub = {
             'recover': true
           };
-          if (this._serverSubs[channel].seq) {
-            sub['seq'] = this._serverSubs[channel].seq;
-          }
-          if (this._serverSubs[channel].gen) {
-            sub['gen'] = this._serverSubs[channel].gen;
+          if (this._serverSubs[channel].seq || this._serverSubs[channel].gen) {
+            if (this._serverSubs[channel].seq) {
+              sub['seq'] = this._serverSubs[channel].seq;
+            }
+            if (this._serverSubs[channel].gen) {
+              sub['gen'] = this._serverSubs[channel].gen;
+            }
+          } else {
+            if (this._serverSubs[channel].offset) {
+              sub['offset'] = this._serverSubs[channel].offset;
+            }
           }
           if (this._serverSubs[channel].epoch) {
             sub['epoch'] = this._serverSubs[channel].epoch;
@@ -995,12 +1002,19 @@ export class Centrifuge extends EventEmitter {
       if (recover === true) {
         msg.params.recover = true;
         const seq = this._getLastSeq(channel);
-        if (seq) {
-          msg.params.seq = seq;
-        }
         const gen = this._getLastGen(channel);
-        if (gen) {
-          msg.params.gen = gen;
+        if (seq || gen) {
+          if (seq) {
+            msg.params.seq = seq;
+          }
+          if (gen) {
+            msg.params.gen = gen;
+          }
+        } else {
+          const offset = this._getLastOffset(channel);
+          if (offset) {
+            msg.params.offset = offset;
+          }
         }
         const epoch = this._getLastEpoch(channel);
         if (epoch) {
@@ -1028,6 +1042,9 @@ export class Centrifuge extends EventEmitter {
 
   _unsubscribe(sub) {
     delete this._subs[sub.channel];
+    delete this._lastOffset[sub.channel];
+    delete this._lastSeq[sub.channel];
+    delete this._lastGen[sub.channel];
     if (this.isConnected()) {
       // No need to unsubscribe in disconnected state - i.e. client already unsubscribed.
       this._addMessage({
@@ -1132,7 +1149,10 @@ export class Centrifuge extends EventEmitter {
         if (sub.recovered) {
           let pubs = sub.publications;
           if (pubs && pubs.length > 0) {
-            pubs = pubs.reverse();
+            if (pubs.length >= 2 && !pubs[0].offset && !pubs[1].offset) {
+              // handle legacy order.
+              pubs = pubs.reverse();
+            }
             for (let i in pubs) {
               if (pubs.hasOwnProperty(i)) {
                 this._handlePublication(channel, pubs[i]);
@@ -1143,6 +1163,7 @@ export class Centrifuge extends EventEmitter {
         this._serverSubs[channel] = {
           'seq': sub.seq,
           'gen': sub.gen,
+          'offset': sub.offset,
           'epoch': sub.epoch,
           'recoverable': sub.recoverable
         };
@@ -1218,7 +1239,10 @@ export class Centrifuge extends EventEmitter {
 
     let pubs = result.publications;
     if (pubs && pubs.length > 0) {
-      pubs = pubs.reverse();
+      if (pubs.length >= 2 && !pubs[0].offset && !pubs[1].offset) {
+        // handle legacy order.
+        pubs = pubs.reverse();
+      }
       for (let i in pubs) {
         if (pubs.hasOwnProperty(i)) {
           this._handlePublication(channel, pubs[i]);
@@ -1229,6 +1253,7 @@ export class Centrifuge extends EventEmitter {
     if (result.recoverable && (!isRecover || !recovered)) {
       this._lastSeq[channel] = result.seq || 0;
       this._lastGen[channel] = result.gen || 0;
+      this._lastOffset[channel] = result.offset || 0;
     }
 
     this._lastEpoch[channel] = result.epoch || '';
@@ -1319,6 +1344,7 @@ export class Centrifuge extends EventEmitter {
     this._serverSubs[channel] = {
       'seq': sub.seq,
       'gen': sub.gen,
+      'offset': sub.offset,
       'epoch': sub.epoch,
       'recoverable': sub.recoverable
     };
@@ -1331,7 +1357,8 @@ export class Centrifuge extends EventEmitter {
     const ctx = {
       'data': pub.data,
       'seq': pub.seq,
-      'gen': pub.gen
+      'gen': pub.gen,
+      'offset': pub.offset
     };
     if (!sub) {
       if (this._isServerSub(channel)) {
@@ -1340,6 +1367,9 @@ export class Centrifuge extends EventEmitter {
         }
         if (pub.gen !== undefined) {
           this._serverSubs[channel].gen = pub.gen;
+        }
+        if (pub.offset !== undefined) {
+          this._serverSubs[channel].offset = pub.offset;
         }
         ctx.channel = channel;
         this.emit('publish', ctx);
@@ -1351,6 +1381,9 @@ export class Centrifuge extends EventEmitter {
     }
     if (pub.gen !== undefined) {
       this._lastGen[channel] = pub.gen;
+    }
+    if (pub.offset !== undefined) {
+      this._lastOffset[channel] = pub.offset;
     }
     sub.emit('publish', ctx);
   };
@@ -1447,6 +1480,14 @@ export class Centrifuge extends EventEmitter {
     const lastSeq = this._lastSeq[channel];
     if (lastSeq) {
       return lastSeq;
+    }
+    return 0;
+  };
+
+  _getLastOffset(channel) {
+    const lastOffset = this._lastOffset[channel];
+    if (lastOffset) {
+      return lastOffset;
     }
     return 0;
   };
@@ -1631,12 +1672,19 @@ export class Centrifuge extends EventEmitter {
             if (recover === true) {
               msg.params.recover = true;
               const seq = this._getLastSeq(channel);
-              if (seq) {
-                msg.params.seq = seq;
-              }
               const gen = this._getLastGen(channel);
-              if (gen) {
-                msg.params.gen = gen;
+              if (seq || gen) {
+                if (seq) {
+                  msg.params.seq = seq;
+                }
+                if (gen) {
+                  msg.params.gen = gen;
+                }
+              } else {
+                const offset = this._getLastOffset(channel);
+                if (offset) {
+                  msg.params.offset = offset;
+                }
               }
               const epoch = this._getLastEpoch(channel);
               if (epoch) {

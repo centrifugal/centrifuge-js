@@ -129,6 +129,10 @@
             "info": {
               "type": "ClientInfo",
               "id": 5
+            },
+            "offset": {
+              "type": "uint64",
+              "id": 6
             }
           }
         },
@@ -174,9 +178,8 @@
               "type": "string",
               "id": 4
             },
-            "publications": {
-              "rule": "repeated",
-              "type": "Publication",
+            "offset": {
+              "type": "uint64",
               "id": 5
             }
           }
@@ -288,6 +291,10 @@
             "epoch": {
               "type": "string",
               "id": 6
+            },
+            "offset": {
+              "type": "uint64",
+              "id": 7
             }
           }
         },
@@ -325,6 +332,10 @@
             "recovered": {
               "type": "bool",
               "id": 8
+            },
+            "offset": {
+              "type": "uint64",
+              "id": 9
             }
           }
         },
@@ -443,10 +454,6 @@
             "data": {
               "type": "bytes",
               "id": 1
-            },
-            "method": {
-              "type": "string",
-              "id": 2
             }
           }
         },

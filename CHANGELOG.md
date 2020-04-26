@@ -1,3 +1,8 @@
+2.6.0
+=====
+
+* Support `Offset` protocol field which is replacing `Seq` and `Gen`, client will work with both `Offset` and `Seq/Gen` based servers until next major release. Then support for `Seq/Gen` will be removed.
+
 2.5.0
 =====
 

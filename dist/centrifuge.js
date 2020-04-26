@@ -143,6 +143,7 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
     _this._serverSubs = {};
     _this._lastSeq = {};
     _this._lastGen = {};
+    _this._lastOffset = {};
     _this._lastEpoch = {};
     _this._messages = [];
     _this._isBatching = false;
@@ -593,11 +594,17 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
             var sub = {
               'recover': true
             };
-            if (_this3._serverSubs[channel].seq) {
-              sub['seq'] = _this3._serverSubs[channel].seq;
-            }
-            if (_this3._serverSubs[channel].gen) {
-              sub['gen'] = _this3._serverSubs[channel].gen;
+            if (_this3._serverSubs[channel].seq || _this3._serverSubs[channel].gen) {
+              if (_this3._serverSubs[channel].seq) {
+                sub['seq'] = _this3._serverSubs[channel].seq;
+              }
+              if (_this3._serverSubs[channel].gen) {
+                sub['gen'] = _this3._serverSubs[channel].gen;
+              }
+            } else {
+              if (_this3._serverSubs[channel].offset) {
+                sub['offset'] = _this3._serverSubs[channel].offset;
+              }
             }
             if (_this3._serverSubs[channel].epoch) {
               sub['epoch'] = _this3._serverSubs[channel].epoch;
@@ -1165,12 +1172,19 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
         if (recover === true) {
           msg.params.recover = true;
           var seq = this._getLastSeq(channel);
-          if (seq) {
-            msg.params.seq = seq;
-          }
           var gen = this._getLastGen(channel);
-          if (gen) {
-            msg.params.gen = gen;
+          if (seq || gen) {
+            if (seq) {
+              msg.params.seq = seq;
+            }
+            if (gen) {
+              msg.params.gen = gen;
+            }
+          } else {
+            var offset = this._getLastOffset(channel);
+            if (offset) {
+              msg.params.offset = offset;
+            }
           }
           var epoch = this._getLastEpoch(channel);
           if (epoch) {
@@ -1195,6 +1209,9 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
     key: '_unsubscribe',
     value: function _unsubscribe(sub) {
       delete this._subs[sub.channel];
+      delete this._lastOffset[sub.channel];
+      delete this._lastSeq[sub.channel];
+      delete this._lastGen[sub.channel];
       if (this.isConnected()) {
         // No need to unsubscribe in disconnected state - i.e. client already unsubscribed.
         this._addMessage({
@@ -1309,7 +1326,13 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
           if (_sub.recovered) {
             var pubs = _sub.publications;
             if (pubs && pubs.length > 0) {
-              pubs = pubs.reverse();
+
+              // handle legacy order.
+              // TODO: remove as soon as Centrifuge v1 released.
+              if (pubs.length > 1 && (!pubs[0].offset || pubs[0].offset > pubs[1].offset)) {
+                pubs = pubs.reverse();
+              }
+
               for (var i in pubs) {
                 if (pubs.hasOwnProperty(i)) {
                   this._handlePublication(_channel2, pubs[i]);
@@ -1320,6 +1343,7 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
           this._serverSubs[_channel2] = {
             'seq': _sub.seq,
             'gen': _sub.gen,
+            'offset': _sub.offset,
             'epoch': _sub.epoch,
             'recoverable': _sub.recoverable
           };
@@ -1405,7 +1429,10 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
 
       var pubs = result.publications;
       if (pubs && pubs.length > 0) {
-        pubs = pubs.reverse();
+        if (pubs.length >= 2 && !pubs[0].offset && !pubs[1].offset) {
+          // handle legacy order.
+          pubs = pubs.reverse();
+        }
         for (var i in pubs) {
           if (pubs.hasOwnProperty(i)) {
             this._handlePublication(channel, pubs[i]);
@@ -1416,6 +1443,7 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
       if (result.recoverable && (!isRecover || !recovered)) {
         this._lastSeq[channel] = result.seq || 0;
         this._lastGen[channel] = result.gen || 0;
+        this._lastOffset[channel] = result.offset || 0;
       }
 
       this._lastEpoch[channel] = result.epoch || '';
@@ -1513,6 +1541,7 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
       this._serverSubs[channel] = {
         'seq': sub.seq,
         'gen': sub.gen,
+        'offset': sub.offset,
         'epoch': sub.epoch,
         'recoverable': sub.recoverable
       };
@@ -1526,7 +1555,8 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
       var ctx = {
         'data': pub.data,
         'seq': pub.seq,
-        'gen': pub.gen
+        'gen': pub.gen,
+        'offset': pub.offset
       };
       if (!sub) {
         if (this._isServerSub(channel)) {
@@ -1535,6 +1565,9 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
           }
           if (pub.gen !== undefined) {
             this._serverSubs[channel].gen = pub.gen;
+          }
+          if (pub.offset !== undefined) {
+            this._serverSubs[channel].offset = pub.offset;
           }
           ctx.channel = channel;
           this.emit('publish', ctx);
@@ -1546,6 +1579,9 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
       }
       if (pub.gen !== undefined) {
         this._lastGen[channel] = pub.gen;
+      }
+      if (pub.offset !== undefined) {
+        this._lastOffset[channel] = pub.offset;
       }
       sub.emit('publish', ctx);
     }
@@ -1651,6 +1687,15 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
       var lastSeq = this._lastSeq[channel];
       if (lastSeq) {
         return lastSeq;
+      }
+      return 0;
+    }
+  }, {
+    key: '_getLastOffset',
+    value: function _getLastOffset(channel) {
+      var lastOffset = this._lastOffset[channel];
+      if (lastOffset) {
+        return lastOffset;
       }
       return 0;
     }
@@ -1853,12 +1898,19 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
                 if (recover === true) {
                   msg.params.recover = true;
                   var seq = _this19._getLastSeq(channel);
-                  if (seq) {
-                    msg.params.seq = seq;
-                  }
                   var gen = _this19._getLastGen(channel);
-                  if (gen) {
-                    msg.params.gen = gen;
+                  if (seq || gen) {
+                    if (seq) {
+                      msg.params.seq = seq;
+                    }
+                    if (gen) {
+                      msg.params.gen = gen;
+                    }
+                  } else {
+                    var offset = _this19._getLastOffset(channel);
+                    if (offset) {
+                      msg.params.offset = offset;
+                    }
                   }
                   var epoch = _this19._getLastEpoch(channel);
                   if (epoch) {

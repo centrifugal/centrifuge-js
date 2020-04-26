@@ -1149,10 +1149,13 @@ export class Centrifuge extends EventEmitter {
         if (sub.recovered) {
           let pubs = sub.publications;
           if (pubs && pubs.length > 0) {
-            if (pubs.length >= 2 && !pubs[0].offset && !pubs[1].offset) {
-              // handle legacy order.
+
+            // handle legacy order.
+            // TODO: remove as soon as Centrifuge v1 released.
+            if (pubs.length > 1 && (!pubs[0].offset || pubs[0].offset > pubs[1].offset)) {
               pubs = pubs.reverse();
             }
+
             for (let i in pubs) {
               if (pubs.hasOwnProperty(i)) {
                 this._handlePublication(channel, pubs[i]);

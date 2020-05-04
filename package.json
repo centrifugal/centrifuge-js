@@ -31,7 +31,7 @@
   },
   "homepage": "https://github.com/centrifugal/centrifuge-js",
   "dependencies": {
-    "protobufjs": "^6.8.6"
+    "protobufjs": "^6.9.0"
   },
   "devDependencies": {
     "babel-core": "^6.26.0",
@@ -43,6 +43,7 @@
     "eslint": "^4.13.1",
     "eslint-loader": "^1.9.0",
     "mocha": "^6.1.4",
-    "webpack": "^3.12.0"
+    "webpack": "^3.12.0",
+    "webpack-dev-server": "^2.11.5"
   }
 }

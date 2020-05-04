@@ -568,11 +568,23 @@ export class Centrifuge extends EventEmitter {
   };
 
   rpc(data) {
+    return this._rpc('', data);
+  }
+
+  namedRPC(method, data) {
+    return this._rpc(method, data);
+  }
+
+  _rpc(method, data) {
+    let params = {
+      data: data
+    };
+    if (method !== '') {
+      params.method = method;
+    };
     const msg = {
       method: this._methodType.RPC,
-      params: {
-        data: data
-      }
+      params: params
     };
 
     if (!this.isConnected()) {

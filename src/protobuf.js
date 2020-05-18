@@ -108,7 +108,7 @@ export class ProtobufEncoder {
               type = methodSchema.CONNECT[0];
               break;
             case protobufMethodType.REFRESH:
-              type = methodSchema.REFRESH;
+              type = methodSchema.REFRESH[0];
               break;
             case protobufMethodType.SUBSCRIBE:
               type = methodSchema.SUBSCRIBE[0];

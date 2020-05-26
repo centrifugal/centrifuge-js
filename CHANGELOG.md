@@ -1,3 +1,8 @@
+2.6.1
+=====
+
+* fix TypeError on refresh token with protobuf, [#107](https://github.com/centrifugal/centrifuge-js/issues/107)
+
 2.6.0
 =====
 

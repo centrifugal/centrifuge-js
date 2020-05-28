@@ -1028,7 +1028,7 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
         }
         var channelsData = {};
         if (resp.data.channels) {
-          for (var i in data.channels) {
+          for (var i in resp.data.channels) {
             var channelData = resp.data.channels[i];
             if (!channelData.channel) {
               continue;

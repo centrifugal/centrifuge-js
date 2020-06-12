@@ -24,7 +24,7 @@ The simplest way to use `centrifuge-js` client is download it from `dist` folder
 Or using cdn (replace `X` to concrete version number):
 
 ```html
-<script src="//cdn.rawgit.com/centrifugal/centrifuge-js/2.X.X/dist/centrifuge.min.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/centrifugal/centrifuge-js@2.X.X/dist/centrifuge.min.js"></script>
 ```
 
 Client is also available via `npm`:
@@ -822,7 +822,7 @@ When connection expiration mechanism is on on server client will automatically a
 To import client with Protobuf protocol support:
 
 ```html
-<script src="//cdn.rawgit.com/centrifugal/centrifuge-js/2.X.X/dist/centrifuge.protobuf.min.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/centrifugal/centrifuge-js@2.X.X/dist/centrifuge.protobuf.min.js"></script>
 ```
 
 Or if you are developing with npm:

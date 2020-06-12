@@ -880,7 +880,7 @@ export class Centrifuge extends EventEmitter {
       }
       let channelsData = {};
       if (resp.data.channels) {
-        for (const i in data.channels) {
+        for (const i in resp.data.channels) {
           const channelData = resp.data.channels[i];
           if (!channelData.channel) {
             continue;

@@ -1,3 +1,8 @@
+2.6.3
+=====
+
+* fix possible event loss in server-side subscriptions due to Promise execution order
+
 2.6.2
 =====
 

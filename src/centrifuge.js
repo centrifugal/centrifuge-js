@@ -65,6 +65,7 @@ export class Centrifuge extends EventEmitter {
     this._token = null;
     this._xhrID = 0;
     this._xhrs = {};
+    this._dispatchPromise = Promise.resolve();
     this._config = {
       debug: false,
       websocket: null,
@@ -638,6 +639,17 @@ export class Centrifuge extends EventEmitter {
     // next reply only when we finished processing of current one. Without syncing things in
     // this way we could get wrong publication events order as reply promises resolve
     // on next loop tick so for loop continues before we finished emitting all reply events.
+    this._dispatchPromise = this._dispatchPromise.then(() => {
+      let finishDispatch;
+      this._dispatchPromise = new Promise(resolve =>{
+        finishDispatch = resolve;
+      });
+      this._dispatchSynchronized(replies, finishDispatch);
+    });
+    this._restartPing();
+  }
+
+  _dispatchSynchronized(replies, finishDispatch) {
     let p = Promise.resolve();
     for (const i in replies) {
       if (replies.hasOwnProperty(i)) {
@@ -646,8 +658,33 @@ export class Centrifuge extends EventEmitter {
         });
       }
     }
-    this._restartPing();
+    p = p.then(() => {
+      finishDispatch();
+    });
   }
+
+  _dispatchReply(reply) {
+    var next;
+    const p = new Promise(resolve =>{
+      next = resolve;
+    });
+
+    if (reply === undefined || reply === null) {
+      this._debug('dispatch: got undefined or null reply');
+      next();
+      return p;
+    }
+
+    const id = reply.id;
+
+    if (id && id > 0) {
+      this._handleReply(reply, next);
+    } else {
+      this._handlePush(reply.result, next);
+    }
+
+    return p;
+  };
 
   _call(msg) {
     return new Promise((resolve, reject) => {
@@ -1424,29 +1461,6 @@ export class Centrifuge extends EventEmitter {
     }
     next();
   }
-
-  _dispatchReply(reply) {
-    var next;
-    const p = new Promise(resolve =>{
-      next = resolve;
-    });
-
-    if (reply === undefined || reply === null) {
-      this._debug('dispatch: got undefined or null reply');
-      next();
-      return p;
-    }
-
-    const id = reply.id;
-
-    if (id && id > 0) {
-      this._handleReply(reply, next);
-    } else {
-      this._handlePush(reply.result, next);
-    }
-
-    return p;
-  };
 
   _flush() {
     const messages = this._messages.slice(0);

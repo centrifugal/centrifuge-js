@@ -1400,6 +1400,9 @@ export class Centrifuge extends EventEmitter {
       'gen': pub.gen,
       'offset': pub.offset
     };
+    if (pub.info) {
+      ctx.info = pub.info;
+    }
     if (!sub) {
       if (this._isServerSub(channel)) {
         if (pub.seq !== undefined) {

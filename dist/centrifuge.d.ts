@@ -35,6 +35,7 @@ declare class Centrifuge extends EventEmitter {
     setSubscribeHeaders(data: any): void;
     setSubscribeParams(data: any): void;
     rpc(data: any): Promise<any>;
+    namedRPC(method: string, data: any): Promise<any>;
     send(data: any): Promise<any>;
     publish(channel: string, data: any): Promise<any>;
     getSub(channel: string): Centrifuge.Subscription;

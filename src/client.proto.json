@@ -454,6 +454,10 @@
             "data": {
               "type": "bytes",
               "id": 1
+            },
+            "method": {
+              "type": "string",
+              "id": 2
             }
           }
         },

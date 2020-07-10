@@ -1,3 +1,9 @@
+2.6.4
+=====
+
+* fix missing `info` in Publication context
+* add `namedRPC` method to call RPC with method string
+
 2.6.3
 =====
 

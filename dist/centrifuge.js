@@ -698,13 +698,27 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
   }, {
     key: 'rpc',
     value: function rpc(data) {
+      return this._rpc('', data);
+    }
+  }, {
+    key: 'namedRPC',
+    value: function namedRPC(method, data) {
+      return this._rpc(method, data);
+    }
+  }, {
+    key: '_rpc',
+    value: function _rpc(method, data) {
       var _this4 = this;
 
+      var params = {
+        data: data
+      };
+      if (method !== '') {
+        params.method = method;
+      };
       var msg = {
         method: this._methodType.RPC,
-        params: {
-          data: data
-        }
+        params: params
       };
 
       if (!this.isConnected()) {
@@ -1599,6 +1613,9 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
         'gen': pub.gen,
         'offset': pub.offset
       };
+      if (pub.info) {
+        ctx.info = pub.info;
+      }
       if (!sub) {
         if (this._isServerSub(channel)) {
           if (pub.seq !== undefined) {

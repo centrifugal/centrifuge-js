@@ -321,10 +321,22 @@ centrifuge.send({"input": "hello"}).then(function(res) {
 
 #### rpc method
 
-This is only valid for Centrifuge library and does not work for Centrifugo server. `rpc` method allows to send rpc request from client to server and wait for data response.
+`rpc` method allows to send RPC request from client to server and wait for data response.
 
 ```javascript
 centrifuge.rpc({"input": "hello"}).then(function(res) {
+    console.log('rpc result', res);
+}, function(err) {
+    console.log('rpc error', err);
+});
+```
+
+#### namedRPC method
+
+`namedRPC` method allows to send rpc request from client to server and wait for data response. Unlike `rpc` it additionally allows to provide method name string (which can be handy to have on RPC request top level).
+
+```javascript
+centrifuge.namedRPC({"input": "hello"}).then(function(res) {
     console.log('rpc result', res);
 }, function(err) {
     console.log('rpc error', err);

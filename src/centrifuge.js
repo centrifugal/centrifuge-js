@@ -26,6 +26,7 @@ export class Centrifuge extends EventEmitter {
     super();
     this._url = url;
     this._websocket = null;
+    this._websocketType = 'default';
     this._sockjs = null;
     this._isSockjs = false;
     this._binary = false;
@@ -211,7 +212,15 @@ export class Centrifuge extends EventEmitter {
     if (this._config.websocket !== null) {
       return true;
     }
-    return !(typeof WebSocket !== 'function' && typeof WebSocket !== 'object');
+
+    // Support uniapp and wechat mini program
+    if (!(typeof WebSocket !== 'function' && typeof WebSocket !== 'object') ||
+      typeof uni !== 'undefined' ||
+      typeof wx !== 'undefined') {
+      return true;
+    }
+
+    return false;
   };
 
   _setFormat(format) {
@@ -401,7 +410,14 @@ export class Centrifuge extends EventEmitter {
       }
       return false;
     }
-    this._transport.send(this._encoder.encodeCommands(commands));
+
+    if (this._websocketType === 'uni_wx') {
+      // Parameter assembly of wechat and uniapp
+      this._transport.send({'data': this._encoder.encodeCommands(commands)});
+    } else {
+      this._transport.send(this._encoder.encodeCommands(commands));
+    }
+
     return true;
   }
 
@@ -426,10 +442,41 @@ export class Centrifuge extends EventEmitter {
       }
       if (this._config.websocket !== null) {
         this._websocket = this._config.websocket;
+        this._transport = new this._websocket(this._url);
       } else {
-        this._websocket = WebSocket;
+        // Support uniapp and wechat mini program
+        if (!(typeof WebSocket !== 'function' && typeof WebSocket !== 'object')) {
+          this._websocket = WebSocket;
+          this._transport = new this._websocket(this._url);
+        } else if (typeof uni !== 'undefined' || typeof wx !== 'undefined') {
+
+          if (typeof uni !== 'undefined') {
+            this._transport = uni.connectSocket({ url: this._url, complete: ()=> {} }); // eslint-disable-line
+          } else {
+            this._transport = wx.connectSocket({ url: this._url, complete: ()=> {} }); // eslint-disable-line
+          }
+
+          this._websocketType = 'uni_wx';
+
+          let that = this;
+
+          this._transport.onOpen(function(){ // eslint-disable-line
+            that._transport.onopen(); // eslint-disable-line
+          }); // eslint-disable-line
+
+          this._transport.onError(function(error){ // eslint-disable-line
+            that._transport.onerror(error); // eslint-disable-line
+          }); // eslint-disable-line
+
+          this._transport.onClose(function(closeEvent){ // eslint-disable-line
+            that._transport.onclose(closeEvent); // eslint-disable-line
+          }); // eslint-disable-line
+
+          this._transport.onMessage(function(event){ // eslint-disable-line
+            that._transport.onmessage(event); // eslint-disable-line
+          }); // eslint-disable-line
+        }
       }
-      this._transport = new this._websocket(this._url);
       if (this._binary === true) {
         this._transport.binaryType = 'arraybuffer';
       }

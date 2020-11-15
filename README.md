@@ -180,14 +180,14 @@ as exponent grows very fast:) Default is `20000` milliseconds.
 
 `subscribeEndpoint` is url to use when sending auth request for authorizing subscription on private channel. By default `/centrifuge/subscribe`. See also useful related options:
 
-* `subscribeHeaders` - map of headers to send with subscribe request (default `{}``)
+* `subscribeHeaders` - map of headers to send with subscribe request (default `{}`)
 * `subscribeParams` - map of params to include in subscribe endpoint url (default `{}`)
 
 #### refreshEndpoint
 
 `refreshEndpoint` is url to use when refreshing client connection parameters when connection check mechanism enabled in Centrifugo configuration. See also related options:
 
-* `refreshHeaders` - map of headers to send with refresh request (default `{}``)
+* `refreshHeaders` - map of headers to send with refresh request (default `{}`)
 * `refreshParams` - map of params to include in refresh url (default `{}`)
 * `refreshData` - send extra data in body (as JSON payload) when sending AJAX POST refresh request.
 * `refreshAttempts` - limit amount of refresh requests before giving up (by default `null` - unlimited)

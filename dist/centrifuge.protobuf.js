@@ -2795,8 +2795,8 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
       this._config.subscribeParams = params;
     }
   }, {
-    key: 'middleware',
-    value: function middleware() {
+    key: 'setMiddleware',
+    value: function setMiddleware() {
       for (var _len = arguments.length, fns = Array(_len), _key = 0; _key < _len; _key++) {
         fns[_key] = arguments[_key];
       }

@@ -71,6 +71,7 @@ export class Centrifuge extends EventEmitter {
       websocket: null,
       sockjs: null,
       promise: null,
+      middleware: [],
       minRetry: 1000,
       maxRetry: 20000,
       timeout: 5000,
@@ -132,6 +133,9 @@ export class Centrifuge extends EventEmitter {
   }
   setSubscribeParams(params) {
     this._config.subscribeParams = params;
+  }
+  setMiddleware(...fns) {
+    this._config.middleware = fns;
   }
 
   _ajax(url, params, headers, data, callback) {
@@ -661,11 +665,27 @@ export class Centrifuge extends EventEmitter {
     this._restartPing();
   }
 
+  _hookMiddleware(data) {
+    const {middleware} = this._config;
+    if (Array.isArray(middleware)) {
+      middleware.forEach(mw => {
+        if (typeof mw === 'function') {
+          mw(data);
+        }
+      });
+    }
+
+    if (typeof middleware === 'function') {
+      middleware(data);
+    }
+  }
+
   _dispatchSynchronized(replies, finishDispatch) {
     let p = Promise.resolve();
     for (const i in replies) {
       if (replies.hasOwnProperty(i)) {
         p = p.then(() => {
+          this._hookMiddleware(replies[i]);
           return this._dispatchReply(replies[i]);
         });
       }

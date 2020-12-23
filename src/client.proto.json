@@ -181,6 +181,10 @@
             "offset": {
               "type": "uint64",
               "id": 5
+            },
+            "positioned": {
+              "type": "bool",
+              "id": 6
             }
           }
         },
@@ -206,6 +210,14 @@
               "keyType": "string",
               "type": "SubscribeRequest",
               "id": 3
+            },
+            "name": {
+              "type": "string",
+              "id": 4
+            },
+            "version": {
+              "type": "string",
+              "id": 5
             }
           }
         },
@@ -336,6 +348,10 @@
             "offset": {
               "type": "uint64",
               "id": 9
+            },
+            "positioned": {
+              "type": "bool",
+              "id": 10
             }
           }
         },
@@ -431,6 +447,26 @@
             "channel": {
               "type": "string",
               "id": 1
+            },
+            "use_since": {
+              "type": "bool",
+              "id": 2
+            },
+            "offset": {
+              "type": "uint64",
+              "id": 3
+            },
+            "epoch": {
+              "type": "string",
+              "id": 4
+            },
+            "use_limit": {
+              "type": "bool",
+              "id": 5
+            },
+            "limit": {
+              "type": "int32",
+              "id": 6
             }
           }
         },
@@ -440,6 +476,14 @@
               "rule": "repeated",
               "type": "Publication",
               "id": 1
+            },
+            "epoch": {
+              "type": "string",
+              "id": 2
+            },
+            "offset": {
+              "type": "uint64",
+              "id": 3
             }
           }
         },

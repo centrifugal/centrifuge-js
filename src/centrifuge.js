@@ -1287,7 +1287,19 @@ export class Centrifuge extends EventEmitter {
     if ('recovered' in result) {
       recovered = result.recovered;
     }
-    sub._setSubscribeSuccess(recovered);
+    let positioned = false;
+    if ('positioned' in result) {
+      positioned = result.positioned;
+    }
+    let epoch = '';
+    if ('epoch' in result) {
+      epoch = result.epoch;
+    }
+    let offset = 0;
+    if ('offset' in result) {
+      offset = result.offset;
+    }
+    sub._setSubscribeSuccess(recovered, positioned, offset, epoch);
 
     let pubs = result.publications;
     if (pubs && pubs.length > 0) {

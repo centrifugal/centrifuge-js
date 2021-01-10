@@ -176,7 +176,7 @@ export default class Subscription extends EventEmitter {
   };
 
   _getSubscribeSuccessContext(recovered, positioned, offset, epoch) {
-    return {
+    let ctx = {
       channel: this.channel,
       isResubscribe: this._isResubscribe,
       recovered: recovered,
@@ -184,6 +184,13 @@ export default class Subscription extends EventEmitter {
       offset: offset,
       epoch: epoch
     };
+    if (positioned) {
+      ctx.streamPosition = {
+        'offset': offset,
+        'epoch': epoch
+      };
+    };
+    return ctx;
   };
 
   _getSubscribeErrorContext() {

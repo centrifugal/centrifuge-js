@@ -4805,7 +4805,7 @@ var Subscription = function (_EventEmitter) {
   }, {
     key: '_getSubscribeSuccessContext',
     value: function _getSubscribeSuccessContext(recovered, positioned, offset, epoch) {
-      return {
+      var ctx = {
         channel: this.channel,
         isResubscribe: this._isResubscribe,
         recovered: recovered,
@@ -4813,6 +4813,13 @@ var Subscription = function (_EventEmitter) {
         offset: offset,
         epoch: epoch
       };
+      if (positioned) {
+        ctx.streamPosition = {
+          'offset': offset,
+          'epoch': epoch
+        };
+      };
+      return ctx;
     }
   }, {
     key: '_getSubscribeErrorContext',

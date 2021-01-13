@@ -4808,10 +4808,7 @@ var Subscription = function (_EventEmitter) {
       var ctx = {
         channel: this.channel,
         isResubscribe: this._isResubscribe,
-        recovered: recovered,
-        positioned: positioned,
-        offset: offset,
-        epoch: epoch
+        recovered: recovered
       };
       if (positioned) {
         ctx.streamPosition = {

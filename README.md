@@ -601,7 +601,7 @@ var subscription = centrifuge.subscribe("news", function(message) {
     // handle message
 });
 
-subscription.history().then(function(message) {
+subscription.history().then(function(response) {
         // history messages received
     }, function(err) {
         // history call failed with error
@@ -609,29 +609,50 @@ subscription.history().then(function(message) {
 });
 ```
 
-Success callback `message` format:
+Success callback `response` format:
 
 ```javascript
 {
     "publications": [
         {
-            "data": {"input": "hello2"}
+            "data": {"input": "hello2"},
+            "offset": 1
         },
         {
-            "data": {"input": "hello1"}
+            "data": {"input": "hello1"},
+            "offset": 2
         }
-    ]
+    ],
+    "offset": 2,
+    "epoch": "xcf4w"
 }
 ```
 
-Where `publications` is an array of messages published into channel.
+Where `publications` is an array of messages published into channel, `offset` is a current stream top offset (added in v2.7.0), `epoch` is a current stream epoch (added in v2.7.0).
 
-Note that also additional fields can be included in messages - `client`, `info` if those
-fields were in original messages.
+Note that also additional fields can be included in publication objects - `client`, `info` if those fields were set in original publications.
 
 `err` format – the same as for `presence` method.
 
 *Note, that in order history to work corresponding options must be enabled in server channel configuration (on top level or for channel namespace)*
+
+Starting from v2.7.0 it's possible to iterate over history stream:
+
+```javascript
+resp = await subscription.history({'since': {'offset': 2, 'epoch': 'xcf4w'}, limit: 100});
+```
+
+If server can't fulfill a query for history (due to stream retention - size or expiration, or malformed offset, or stream already has another epoch) then an Unrecoverable Position Error will be returned (code `112`).
+
+To only call for current `offset` and `epoch` use:
+
+```javascript
+resp = await subscription.history({limit: 0});
+```
+
+I.e. not providing `since` and using zero `limit`.
+
+**For now history pagination feature only works with [Centrifuge](https://github.com/centrifugal/centrifuge) library based server and not available in Centrifugo**.
 
 ### publish method of subscription
 

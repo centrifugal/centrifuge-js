@@ -1,3 +1,30 @@
+2.7.0
+=====
+
+* add history iteration API
+* subscribe success event context in positioned streams now contains `streamPosition` object (with current `offset` and `epoch` fields)
+* add missing `offset` to TS definitions for `PublicationContext`
+
+So now it's possible to iterate over history this way:
+
+```javascript
+resp = await subscription.history({'since': {'offset': 2, 'epoch': 'xcf4w'}, limit: 100});
+```
+
+If server can't fulfill a query for history (due to stream retention - size or expiration, or malformed offset, or stream already has another epoch) then an Unrecoverable Position Error will be returned (code `112`).
+
+To only call for current `offset` and `epoch` use:
+
+```javascript
+resp = await subscription.history({limit: 0});
+```
+
+I.e. not providing `since` and using zero `limit`.
+
+Due to backward compatibility `history` call without arguments will return full existing history in channel (though it's possible to limit max number of publications to return on server side).
+
+**For now history pagination feature only works with [Centrifuge](https://github.com/centrifugal/centrifuge) library based server and not available in Centrifugo**.
+
 2.6.4
 =====
 

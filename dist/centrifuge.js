@@ -1480,7 +1480,19 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
       if ('recovered' in result) {
         recovered = result.recovered;
       }
-      sub._setSubscribeSuccess(recovered);
+      var positioned = false;
+      if ('positioned' in result) {
+        positioned = result.positioned;
+      }
+      var epoch = '';
+      if ('epoch' in result) {
+        epoch = result.epoch;
+      }
+      var offset = 0;
+      if ('offset' in result) {
+        offset = result.offset;
+      }
+      sub._setSubscribeSuccess(recovered, positioned, offset, epoch);
 
       var pubs = result.publications;
       if (pubs && pubs.length > 0) {
@@ -2164,12 +2176,12 @@ var Subscription = function (_EventEmitter) {
     }
   }, {
     key: '_setSubscribeSuccess',
-    value: function _setSubscribeSuccess(recovered) {
+    value: function _setSubscribeSuccess(recovered, positioned, offset, epoch) {
       if (this._status === _STATE_SUCCESS) {
         return;
       }
       this._status = _STATE_SUCCESS;
-      var successContext = this._getSubscribeSuccessContext(recovered);
+      var successContext = this._getSubscribeSuccessContext(recovered, positioned, offset, epoch);
 
       this._recover = false;
       this.emit('subscribe', successContext);
@@ -2231,12 +2243,19 @@ var Subscription = function (_EventEmitter) {
     }
   }, {
     key: '_getSubscribeSuccessContext',
-    value: function _getSubscribeSuccessContext(recovered) {
-      return {
+    value: function _getSubscribeSuccessContext(recovered, positioned, offset, epoch) {
+      var ctx = {
         channel: this.channel,
         isResubscribe: this._isResubscribe,
         recovered: recovered
       };
+      if (positioned) {
+        ctx.streamPosition = {
+          'offset': offset,
+          'epoch': epoch
+        };
+      };
+      return ctx;
     }
   }, {
     key: '_getSubscribeErrorContext',
@@ -2346,12 +2365,28 @@ var Subscription = function (_EventEmitter) {
     }
   }, {
     key: 'history',
-    value: function history() {
+    value: function history(filter) {
+      var params = {
+        channel: this.channel
+      };
+      if (filter !== undefined) {
+        if (filter.since) {
+          params['use_since'] = true;
+          if (filter.since.offset) {
+            params['offset'] = filter.since.offset;
+          }
+          if (filter.since.epoch) {
+            params['epoch'] = filter.since.epoch;
+          }
+        };
+        if (filter.limit !== undefined) {
+          params['use_limit'] = true;
+          params['limit'] = filter.limit;
+        }
+      };
       return this._methodCall({
         method: this._centrifuge._methodType.HISTORY,
-        params: {
-          channel: this.channel
-        }
+        params: params
       }, this._centrifuge._methodType.HISTORY);
     }
   }]);

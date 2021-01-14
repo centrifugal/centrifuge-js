@@ -91,7 +91,7 @@ declare namespace Centrifuge {
         publish(data: any): Promise<any>;
         presence(): Promise<PresenceResult>;
         presenceStats(): Promise<PresenceStatsResult>;
-        history(): Promise<HistoryResult>;
+        history(options?: HistoryOptions): Promise<HistoryResult>;
     }
 
     export interface SubscriptionEvents {
@@ -108,6 +108,7 @@ declare namespace Centrifuge {
         info?: ClientInfo;
         seq?: number;
         gen?: number;
+        offset?: number;
     }
 
     export interface ClientInfo {
@@ -184,5 +185,17 @@ declare namespace Centrifuge {
 
     export interface HistoryResult {
         publications: PublicationContext[];
+        offset: number;
+        epoch: string;
+    }
+
+    export interface HistoryOptions {
+        limit?: number;
+        since?: StreamPosition;
+    }
+
+    export interface StreamPosition {
+        offset: number;
+        epoch: string;
     }
 }

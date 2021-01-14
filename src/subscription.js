@@ -113,12 +113,12 @@ export default class Subscription extends EventEmitter {
     this._status = _STATE_SUBSCRIBING;
   };
 
-  _setSubscribeSuccess(recovered) {
+  _setSubscribeSuccess(recovered, positioned, offset, epoch) {
     if (this._status === _STATE_SUCCESS) {
       return;
     }
     this._status = _STATE_SUCCESS;
-    const successContext = this._getSubscribeSuccessContext(recovered);
+    const successContext = this._getSubscribeSuccessContext(recovered, positioned, offset, epoch);
 
     this._recover = false;
     this.emit('subscribe', successContext);
@@ -175,12 +175,19 @@ export default class Subscription extends EventEmitter {
     return !this._noResubscribe;
   };
 
-  _getSubscribeSuccessContext(recovered) {
-    return {
+  _getSubscribeSuccessContext(recovered, positioned, offset, epoch) {
+    let ctx = {
       channel: this.channel,
       isResubscribe: this._isResubscribe,
       recovered: recovered
     };
+    if (positioned) {
+      ctx.streamPosition = {
+        'offset': offset,
+        'epoch': epoch
+      };
+    };
+    return ctx;
   };
 
   _getSubscribeErrorContext() {
@@ -285,12 +292,28 @@ export default class Subscription extends EventEmitter {
     }, this._centrifuge._methodType.PRESENCE_STATS);
   };
 
-  history() {
+  history(filter) {
+    let params = {
+      channel: this.channel
+    };
+    if (filter !== undefined) {
+      if (filter.since) {
+        params['use_since'] = true;
+        if (filter.since.offset) {
+          params['offset'] = filter.since.offset;
+        }
+        if (filter.since.epoch) {
+          params['epoch'] = filter.since.epoch;
+        }
+      };
+      if (filter.limit !== undefined) {
+        params['use_limit'] = true;
+        params['limit'] = filter.limit;
+      }
+    };
     return this._methodCall({
       method: this._centrifuge._methodType.HISTORY,
-      params: {
-        channel: this.channel
-      }
+      params: params
     }, this._centrifuge._methodType.HISTORY);
   };
 }

@@ -113,12 +113,12 @@ export default class Subscription extends EventEmitter {
     this._status = _STATE_SUBSCRIBING;
   };
 
-  _setSubscribeSuccess(subCtx) {
+  _setSubscribeSuccess(subscribeResult) {
     if (this._status === _STATE_SUCCESS) {
       return;
     }
     this._status = _STATE_SUCCESS;
-    const successContext = subCtx;
+    const successContext = this._getSubscribeSuccessContext(subscribeResult);
     this._recover = false;
     this.emit('subscribe', successContext);
     this._resolve(successContext);
@@ -179,7 +179,9 @@ export default class Subscription extends EventEmitter {
       channel: this.channel,
       isResubscribe: this._isResubscribe
     };
-    ctx = this._centrifuge._expandSubscribeContext(ctx, subscribeResult);
+    if (subscribeResult) {
+      ctx = this._centrifuge._expandSubscribeContext(ctx, subscribeResult);
+    }
     return ctx;
   };
 

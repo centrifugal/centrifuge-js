@@ -587,21 +587,8 @@ export class Centrifuge extends EventEmitter {
       method: this._methodType.RPC,
       params: params
     };
-
-    if (!this.isConnected()) {
-      return Promise.reject(this._createErrorObject(_errorConnectionClosed, 0));
-    }
-
-    return this._call(msg).then(resolveCtx => {
-      if (resolveCtx.next) {
-        resolveCtx.next();
-      }
-      return this._decoder.decodeCommandResult(this._methodType.RPC, resolveCtx.result);
-    }, rejectCtx => {
-      if (rejectCtx.next) {
-        rejectCtx.next();
-      }
-      return Promise.reject(rejectCtx.error);
+    return this._methodCall(msg, function (result) {
+      return result;
     });
   }
 
@@ -646,20 +633,13 @@ export class Centrifuge extends EventEmitter {
     return params;
   }
 
-  history(channel, options) {
-    const params = this._getHistoryParams(channel, options);
-    const msg = {
-      method: this._methodType.HISTORY,
-      params: params
-    };
-
+  _methodCall(msg, resultCB) {
     if (!this.isConnected()) {
       return Promise.reject(this._createErrorObject(_errorConnectionClosed, 0));
     }
-
     return new Promise((resolve, reject) => {
       this._call(msg).then(resolveCtx => {
-        resolve(resolveCtx.result);
+        resolve(resultCB(this._decoder.decodeCommandResult(msg.method, resolveCtx.result)));
         if (resolveCtx.next) {
           resolveCtx.next();
         }
@@ -680,23 +660,43 @@ export class Centrifuge extends EventEmitter {
         data: data
       }
     };
+    return this._methodCall(msg, function (result) {
+      return {};
+    });
+  }
 
-    if (!this.isConnected()) {
-      return Promise.reject(this._createErrorObject(_errorConnectionClosed, 0));
-    }
+  history(channel, options) {
+    const params = this._getHistoryParams(channel, options);
+    const msg = {
+      method: this._methodType.HISTORY,
+      params: params
+    };
+    return this._methodCall(msg, function (result) {
+      return result;
+    });
+  }
 
-    return new Promise((resolve, reject) => {
-      this._call(msg).then(resolveCtx => {
-        resolve({});
-        if (resolveCtx.next) {
-          resolveCtx.next();
-        }
-      }, rejectCtx => {
-        reject(rejectCtx.error);
-        if (rejectCtx.next) {
-          rejectCtx.next();
-        }
-      });
+  presence(channel) {
+    const msg = {
+      method: this._methodType.PRESENCE,
+      params: {
+        channel: channel
+      }
+    };
+    return this._methodCall(msg, function (result) {
+      return result;
+    });
+  }
+
+  presenceStats(channel) {
+    const msg = {
+      method: this._methodType.PRESENCE_STATS,
+      params: {
+        channel: channel
+      }
+    };
+    return this._methodCall(msg, function (result) {
+      return result;
     });
   }
 
@@ -1234,11 +1234,11 @@ export class Centrifuge extends EventEmitter {
     this.emit('connect', ctx);
 
     if (result.subs) {
-      this._processServerSubs(result.subs, isRecover);
+      this._processServerSubs(result.subs);
     }
   };
 
-  _processServerSubs(subs, isRecover) {
+  _processServerSubs(subs) {
     for (const channel in subs) {
       if (subs.hasOwnProperty(channel)) {
         const sub = subs[channel];

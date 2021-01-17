@@ -2,8 +2,10 @@
 =====
 
 * add history iteration API
-* subscribe success event context in positioned streams now contains `streamPosition` object (with current `offset` and `epoch` fields)
+* subscribe success event context in positioned subscriptions (added in Centrifuge library v0.15.0) now contains `streamPosition` object (with current `offset` and `epoch` fields)
 * add missing `offset` to TS definitions for `PublicationContext`
+* add top-level methods: `history`, `presence`, `presenceStats`
+* fix wrong error format of top-level `publish` Promise reject branch 
 
 So now it's possible to iterate over history this way:
 

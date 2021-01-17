@@ -38,6 +38,9 @@ declare class Centrifuge extends EventEmitter {
     namedRPC(method: string, data: any): Promise<any>;
     send(data: any): Promise<any>;
     publish(channel: string, data: any): Promise<any>;
+    history(channel: string, options?: HistoryOptions): Promise<Centrifuge.HistoryResult>;
+    presence(channel: string): Promise<Centrifuge.PresenceResult>;
+    presenceStats(channel: string): Promise<Centrifuge.PresenceStatsResult>;
     getSub(channel: string): Centrifuge.Subscription;
     isConnected(): boolean;
     connect(): void;

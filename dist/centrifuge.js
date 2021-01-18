@@ -165,9 +165,10 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
     _this._dispatchPromise = Promise.resolve();
     _this._config = {
       debug: false,
+      name: '',
+      version: '',
       websocket: null,
       sockjs: null,
-      promise: null,
       minRetry: 1000,
       maxRetry: 20000,
       timeout: 5000,
@@ -575,16 +576,20 @@ var Centrifuge = exports.Centrifuge = function (_EventEmitter) {
           // method: this._methodType.CONNECT
         };
 
-        if (_this3._token || _this3._connectData) {
+        if (_this3._token || _this3._connectData || _this3._config.name || _this3._config.version) {
           msg.params = {};
         }
-
         if (_this3._token) {
           msg.params.token = _this3._token;
         }
-
         if (_this3._connectData) {
           msg.params.data = _this3._connectData;
+        }
+        if (_this3._config.name) {
+          msg.params.name = _this3._config.name;
+        }
+        if (_this3._config.version) {
+          msg.params.version = _this3._config.version;
         }
 
         var subs = {};
@@ -2322,6 +2327,7 @@ var Subscription = function (_EventEmitter) {
         isResubscribe: this._isResubscribe
       };
       if (subscribeResult) {
+        // subscribeResult not available when called from Subscription.ready method at the moment.
         ctx = this._centrifuge._expandSubscribeContext(ctx, subscribeResult);
       }
       return ctx;

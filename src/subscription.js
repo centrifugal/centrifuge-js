@@ -180,6 +180,7 @@ export default class Subscription extends EventEmitter {
       isResubscribe: this._isResubscribe
     };
     if (subscribeResult) {
+      // subscribeResult not available when called from Subscription.ready method at the moment.
       ctx = this._centrifuge._expandSubscribeContext(ctx, subscribeResult);
     }
     return ctx;

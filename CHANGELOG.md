@@ -1,11 +1,13 @@
 2.7.0
 =====
 
-* add history iteration API
+* add missing `offset` to TS definitions for `PublicationContext`, note that `seq` and `gen` fields considered deprecated and will go away with Centrifugo v3 release
+* add top-level methods: `history`, `presence`, `presenceStats` – those are useful when using sever-side subscriptions
+* fix wrong error format of top-level `publish` Promise reject branch – it's now contains protocol error object (with `code` and `message` fields)
+* possibility to set `name` and `version` protocol fields over Centrifuge config options
+* remove unused `promise` option from configuration
+* add history iteration API (usage limited to Centrifuge library for Go at the moment) - see example below
 * subscribe success event context in positioned subscriptions (added in Centrifuge library v0.15.0) now contains `streamPosition` object (with current `offset` and `epoch` fields)
-* add missing `offset` to TS definitions for `PublicationContext`
-* add top-level methods: `history`, `presence`, `presenceStats`
-* fix wrong error format of top-level `publish` Promise reject branch 
 
 So now it's possible to iterate over history this way:
 

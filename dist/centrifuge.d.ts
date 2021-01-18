@@ -37,7 +37,7 @@ declare class Centrifuge extends EventEmitter {
     rpc(data: any): Promise<any>;
     namedRPC(method: string, data: any): Promise<any>;
     send(data: any): Promise<any>;
-    publish(channel: string, data: any): Promise<any>;
+    publish(channel: string, data: any): Promise<Centrifuge.PublishResult>;
     history(channel: string, options?: HistoryOptions): Promise<Centrifuge.HistoryResult>;
     presence(channel: string): Promise<Centrifuge.PresenceResult>;
     presenceStats(channel: string): Promise<Centrifuge.PresenceStatsResult>;
@@ -58,9 +58,10 @@ declare namespace Centrifuge {
 
     export interface Options {
         debug?: boolean;
+        name?: string;
+        version?: string;
         websocket?: any;
         sockjs?: any;
-        promise?: any;
         minRetry?: number;
         maxRetry?: number;
         timeout?: number;
@@ -91,7 +92,7 @@ declare namespace Centrifuge {
         ready(callback: (ctx: SubscribeSuccessContext) => void, errback: (ctx: SubscribeErrorContext) => void): void;
         subscribe(): void;
         unsubscribe(): void;
-        publish(data: any): Promise<any>;
+        publish(data: any): Promise<PublishResult>;
         presence(): Promise<PresenceResult>;
         presenceStats(): Promise<PresenceStatsResult>;
         history(options?: HistoryOptions): Promise<HistoryResult>;
@@ -129,6 +130,7 @@ declare namespace Centrifuge {
         channel: string;
         isResubscribe: boolean;
         recovered: boolean;
+        streamPosition?: StreamPosition;
     }
 
     export interface SubscribeErrorContext {
@@ -171,6 +173,9 @@ declare namespace Centrifuge {
     export interface PrivateChannelData {
         channel: string;
         token: string;
+    }
+
+    export interface PublishResult {
     }
 
     export interface PresenceResult {

@@ -68,9 +68,10 @@ export class Centrifuge extends EventEmitter {
     this._dispatchPromise = Promise.resolve();
     this._config = {
       debug: false,
+      name: '',
+      version: '',
       websocket: null,
       sockjs: null,
-      promise: null,
       minRetry: 1000,
       maxRetry: 20000,
       timeout: 5000,
@@ -450,16 +451,20 @@ export class Centrifuge extends EventEmitter {
         // method: this._methodType.CONNECT
       };
 
-      if (this._token || this._connectData) {
+      if (this._token || this._connectData || this._config.name || this._config.version) {
         msg.params = {};
       }
-
       if (this._token) {
         msg.params.token = this._token;
       }
-
       if (this._connectData) {
         msg.params.data = this._connectData;
+      }
+      if (this._config.name) {
+        msg.params.name = this._config.name;
+      }
+      if (this._config.version) {
+        msg.params.version = this._config.version;
       }
 
       let subs = {};

@@ -343,6 +343,48 @@ centrifuge.namedRPC({"input": "hello"}).then(function(res) {
 });
 ```
 
+#### history method
+
+Available since v2.7.0
+
+Allows to get history from a server. This is a top-level analogue of `Subscription.history` method. But accepts a channel as first argument.
+
+```javascript
+centrifuge.history("channel", {since: {offset: 0, epoch: "xyz"}, limit: 10}).then(function(resp) {
+    console.log(resp);
+}, function(err) {
+    console.log('history error', err);
+});
+```
+
+#### presence method
+
+Available since v2.7.0
+
+Allows to get presence info from a server. This is a top-level analogue of `Subscription.presence` method. But accepts a channel as first argument.
+
+```javascript
+centrifuge.presence("channel").then(function(resp) {
+    console.log(resp);
+}, function(err) {
+    console.log('presence error', err);
+});
+```
+
+#### presenceStats method
+
+Available since v2.7.0
+
+Allows to get presence stats from a server. This is a top-level analogue of `Subscription.presenceStats` method. But accepts a channel as first argument.
+
+```javascript
+centrifuge.presenceStats("channel").then(function(resp) {
+    console.log(resp);
+}, function(err) {
+    console.log('presence stats error', err);
+});
+```
+
 ## Subscriptions
 
 Of course being just connected is useless. What we usually want from Centrifugo is to
@@ -589,6 +631,22 @@ Format of `err` in error callback:
 * `message` – error description (string)
 
 *Note, that in order presence to work corresponding options must be enabled in server channel configuration (on top level or for channel namespace)*
+
+### presenceStats method of subscription
+
+`presenceStats` allows to get two counters from a server: number of total clients currently subscribed and number of unique users currently subscribed. Note that this information is only available if `presence` option enabled in server configuration for a channel.
+
+```javascript
+var subscription = centrifuge.subscribe("news", function(message) {
+    // handle message
+});
+
+subscription.presenceStats().then(function(resp) {
+    // presence stats data received
+}, function(err) {
+    // presence stats call failed with error
+});
+```
 
 ### history method of subscription
 

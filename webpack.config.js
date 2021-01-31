@@ -21,11 +21,20 @@ const config = {
   },
   devtool: 'source-map',
   output: {
-    globalObject: "this",
+    globalObject: 'this',
     filename: outputFile,
     library: library,
     libraryTarget: 'umd',
     umdNamedDefine: true
+  },
+  module: {
+    rules: [
+      {
+        test: /(\.jsx|\.js)$/,
+        loader: 'babel-loader',
+        exclude: /(node_modules|bower_components)/
+      }
+    ]
   },
   target: ['web', 'es5'], // TODO: remove this line for v3
   resolve: {

@@ -7,7 +7,7 @@
   "scripts": {
     "build": "webpack --mode production && webpack --mode production --env build && npm run test",
     "dev": "webpack --progress --watch --mode development",
-    "test": "mocha --require babel-core/register --colors ./test/*.spec.js",
+    "test": "mocha --require @babel/register --colors ./test/*.spec.js",
     "test:watch": "mocha --require babel-core/register --colors -w ./test/*.spec.js",
     "proto": "./make-proto"
   },
@@ -36,6 +36,9 @@
   "devDependencies": {
     "@babel/core": "^7.12.10",
     "@babel/eslint-parser": "^7.12.1",
+    "@babel/plugin-transform-modules-commonjs": "^7.12.1",
+    "@babel/preset-env": "^7.12.11",
+    "@babel/register": "^7.12.10",
     "babel-core": "^6.26.3",
     "babel-loader": "^8.2.2",
     "babel-plugin-add-module-exports": "^0.2.1",

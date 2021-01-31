@@ -5,7 +5,7 @@
   "main": "dist/centrifuge.js",
   "types": "dist/centrifuge.d.ts",
   "scripts": {
-    "build": "webpack --mode production && npm run test",
+    "build": "webpack --mode production && webpack --mode production --env build && npm run test",
     "dev": "webpack --progress --watch --mode development",
     "test": "mocha --require babel-core/register --colors ./test/*.spec.js",
     "test:watch": "mocha --require babel-core/register --colors -w ./test/*.spec.js",

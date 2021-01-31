@@ -33,7 +33,7 @@ export class Centrifuge extends EventEmitter {
     this._pushType = null;
     this._encoder = null;
     this._decoder = null;
-    this._status = 'disconnected';
+    this._status = 'disconnecte';
     this._reconnect = true;
     this._reconnecting = false;
     this._transport = null;

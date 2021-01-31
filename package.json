@@ -5,8 +5,8 @@
   "main": "dist/centrifuge.js",
   "types": "dist/centrifuge.d.ts",
   "scripts": {
-    "build": "webpack --env dev && webpack --env build --optimize-minimize && npm run test",
-    "dev": "webpack --progress --colors --watch --env dev",
+    "build": "webpack --mode production && npm run test",
+    "dev": "webpack --progress --watch --mode development",
     "test": "mocha --require babel-core/register --colors ./test/*.spec.js",
     "test:watch": "mocha --require babel-core/register --colors -w ./test/*.spec.js",
     "proto": "./make-proto"
@@ -31,19 +31,21 @@
   },
   "homepage": "https://github.com/centrifugal/centrifuge-js",
   "dependencies": {
-    "protobufjs": "^6.9.0"
+    "protobufjs": "^6.10.2"
   },
   "devDependencies": {
-    "babel-core": "^6.26.0",
-    "babel-eslint": "^8.0.3",
-    "babel-loader": "^7.1.2",
+    "@babel/eslint-parser": "^7.12.1",
+    "babel-core": "^6.26.3",
+    "babel-loader": "^8.2.2",
     "babel-plugin-add-module-exports": "^0.2.1",
-    "babel-preset-env": "^1.6.1",
-    "chai": "^4.1.2",
-    "eslint": "^4.13.1",
-    "eslint-loader": "^1.9.0",
-    "mocha": "^6.1.4",
-    "webpack": "^3.12.0",
-    "webpack-dev-server": "^3.1.11"
+    "babel-preset-env": "^1.7.0",
+    "chai": "^4.2.0",
+    "eslint": "^7.19.0",
+    "eslint-webpack-plugin": "^2.4.3",
+    "mocha": "^8.2.1",
+    "uglify-js": "^3.12.5",
+    "webpack": "^5.19.0",
+    "webpack-cli": "^4.4.0",
+    "webpack-dev-server": "^3.11.2"
   }
 }

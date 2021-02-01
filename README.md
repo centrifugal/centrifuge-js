@@ -12,6 +12,7 @@ This client can connect to [Centrifuge](https://github.com/centrifugal/centrifug
 * [Protobuf support](#protobuf-support)
 * [Browser support](#browser-support)
 * [Using with NodeJS](#using-with-nodejs)
+* [Feature Matrix](#feature-matrix)
 
 ## Install and quick start
 
@@ -982,3 +983,37 @@ var centrifuge = new Centrifuge('ws://localhost:8000/connection/sockjs', {
     sockjs: SockJS
 })
 ```
+
+## Feature matrix
+
+- [x] connect to server using JSON protocol format
+- [x] connect to server using Protobuf protocol format
+- [x] connect with JWT
+- [x] connect with custom header
+- [x] automatic reconnect in case of errors, network problems etc
+- [x] an exponential backoff for reconnect
+- [x] connect and disconnect events
+- [x] handle disconnect reason
+- [x] subscribe on a channel and handle asynchronous Publications
+- [x] handle Join and Leave messages
+- [x] handle Unsubscribe notifications
+- [x] reconnect on subscribe timeout
+- [x] publish method of Subscription
+- [x] unsubscribe method of Subscription
+- [x] presence method of Subscription
+- [x] presence stats method of Subscription
+- [x] history method of Subscription
+- [x] send asynchronous messages to server
+- [x] handle asynchronous messages from server
+- [x] send RPC commands
+- [x] publish to channel without being subscribed
+- [x] subscribe to private channels with JWT
+- [x] connection token (JWT) refresh
+- [x] private channel subscription token (JWT) refresh
+- [x] handle connection expired error
+- [x] handle subscription expired error
+- [x] ping/pong to find broken connection
+- [x] message recovery mechanism for client-side subscriptions
+- [x] server-side subscriptions
+- [x] message recovery mechanism for server-side subscriptions
+- [x] history stream pagination

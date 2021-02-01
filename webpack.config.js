@@ -1,14 +1,17 @@
 const path = require('path');
 const env = require('yargs').argv.env;
+const ESLintPlugin = require('eslint-webpack-plugin');
 
 let library = 'Centrifuge';
 
-let plugins = [], outputFile;
+let outputFile, minimize;
 
 if (env === 'build') {
   outputFile = '[name].min.js';
+  minimize = true;
 } else {
   outputFile = '[name].js';
+  minimize = false;
 }
 
 const config = {
@@ -18,7 +21,7 @@ const config = {
   },
   devtool: 'source-map',
   output: {
-    path: __dirname + '/dist',
+    globalObject: 'this',
     filename: outputFile,
     library: library,
     libraryTarget: 'umd',
@@ -30,19 +33,20 @@ const config = {
         test: /(\.jsx|\.js)$/,
         loader: 'babel-loader',
         exclude: /(node_modules|bower_components)/
-      },
-      {
-        test: /(\.jsx|\.js)$/,
-        loader: 'eslint-loader',
-        exclude: /node_modules/
       }
     ]
   },
+  target: ['web', 'es5'], // TODO: remove this line for v3
   resolve: {
     modules: [path.resolve('./node_modules'), path.resolve('./src')],
     extensions: ['.json', '.js']
   },
-  plugins: plugins
+  plugins: [
+    new ESLintPlugin({}),
+  ],
+  optimization: {
+    minimize: minimize
+  }
 };
 
 module.exports = config;

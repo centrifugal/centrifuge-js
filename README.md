@@ -988,8 +988,8 @@ var centrifuge = new Centrifuge('ws://localhost:8000/connection/sockjs', {
 
 - [x] connect to server using JSON protocol format
 - [x] connect to server using Protobuf protocol format
-- [x] connect with JWT
-- [x] connect with custom header
+- [x] connect with token (JWT)
+- [ ] connect with custom header (not supported by browser API)
 - [x] automatic reconnect in case of errors, network problems etc
 - [x] an exponential backoff for reconnect
 - [x] connect and disconnect events
@@ -1003,11 +1003,15 @@ var centrifuge = new Centrifuge('ws://localhost:8000/connection/sockjs', {
 - [x] presence method of Subscription
 - [x] presence stats method of Subscription
 - [x] history method of Subscription
+- [x] top-level publish method
+- [x] top-level presence method
+- [x] top-level presence stats method
+- [x] top-level history method
+- [ ] top-level unsubscribe method
 - [x] send asynchronous messages to server
 - [x] handle asynchronous messages from server
 - [x] send RPC commands
-- [x] publish to channel without being subscribed
-- [x] subscribe to private channels with JWT
+- [x] subscribe to private channels with token (JWT)
 - [x] connection token (JWT) refresh
 - [x] private channel subscription token (JWT) refresh
 - [x] handle connection expired error

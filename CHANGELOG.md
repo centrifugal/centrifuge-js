@@ -1,15 +1,17 @@
 2.7.0
 =====
 
-* add missing `offset` to TS definitions for `PublicationContext`, note that `seq` and `gen` fields considered deprecated and will go away with Centrifugo v3 release
+* add missing `offset` to TS definitions for `PublicationContext`, note that `seq` and `gen` fields considered deprecated and will go away with next major `centrifuge-js` release
 * add top-level methods: `history`, `presence`, `presenceStats` – those are useful when using sever-side subscriptions
-* fix wrong error format of top-level `publish` Promise reject branch – it's now contains protocol error object (with `code` and `message` fields)
+* fix wrong error format of top-level `publish` Promise reject branch – it now contains protocol error object (with `code` and `message` fields)
 * possibility to set `name` and `version` protocol fields over Centrifuge config options
 * remove unused `promise` option from configuration
 * add history iteration API (usage limited to Centrifuge library for Go at the moment) - see example below
-* subscribe success event context in positioned subscriptions (added in Centrifuge library v0.15.0) now contains `streamPosition` object (with current `offset` and `epoch` fields)
+* subscribe success event context in positioned subscriptions (added in Centrifuge library [v0.15.0](https://github.com/centrifugal/centrifuge/releases/tag/v0.15.0)) now contains `streamPosition` object (with current `offset` and `epoch` fields)
+* Protobuf-js dependency updated to `^6.10.2`
+* All dev dependencies updated and now use the latest versions of webpack, babel, eslint, mocha etc
 
-So now it's possible to iterate over history this way:
+Let's look at history pagination feature in more detail. It's now possible to iterate over channel  history this way:
 
 ```javascript
 resp = await subscription.history({'since': {'offset': 2, 'epoch': 'xcf4w'}, limit: 100});

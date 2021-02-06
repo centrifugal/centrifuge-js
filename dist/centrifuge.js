@@ -830,7 +830,7 @@ var Centrifuge = /*#__PURE__*/function (_EventEmitter) {
           data: data
         }
       };
-      return this._methodCall(msg, function (result) {
+      return this._methodCall(msg, function () {
         return {};
       });
     }
@@ -844,7 +844,11 @@ var Centrifuge = /*#__PURE__*/function (_EventEmitter) {
         params: params
       };
       return this._methodCall(msg, function (result) {
-        return result;
+        return {
+          'publications': result.publications,
+          'epoch': result.epoch || '',
+          'offset': result.offset || 0
+        };
       });
     }
   }, {
@@ -857,7 +861,9 @@ var Centrifuge = /*#__PURE__*/function (_EventEmitter) {
         }
       };
       return this._methodCall(msg, function (result) {
-        return result;
+        return {
+          'presence': result.presence
+        };
       });
     }
   }, {
@@ -870,7 +876,10 @@ var Centrifuge = /*#__PURE__*/function (_EventEmitter) {
         }
       };
       return this._methodCall(msg, function (result) {
-        return result;
+        return {
+          'num_users': result.num_users,
+          'num_clients': result.num_clients
+        };
       });
     }
   }, {
@@ -2796,92 +2805,61 @@ var Subscription = /*#__PURE__*/function (_EventEmitter) {
     }
   }, {
     key: "_methodCall",
-    value: function _methodCall(message, type) {
+    value: function _methodCall() {
       var _this3 = this;
 
-      var methodCallPromise = new Promise(function (resolve, reject) {
-        var subPromise;
+      if (this._isSuccess()) {
+        return Promise.resolve();
+      } else if (this._isError()) {
+        return Promise.reject(this._error);
+      }
 
-        if (_this3._isSuccess()) {
-          subPromise = Promise.resolve();
-        } else if (_this3._isError()) {
-          subPromise = Promise.reject(_this3._error);
-        } else {
-          subPromise = new Promise(function (res, rej) {
-            var timeout = setTimeout(function () {
-              rej({
-                'code': 0,
-                'message': 'timeout'
-              });
-            }, _this3._centrifuge._config.timeout);
-            _this3._promises[_this3._nextPromiseId()] = {
-              timeout: timeout,
-              resolve: res,
-              reject: rej
-            };
+      var subPromise = new Promise(function (res, rej) {
+        var timeout = setTimeout(function () {
+          rej({
+            'code': 0,
+            'message': 'timeout'
           });
-        }
-
-        subPromise.then(function () {
-          return _this3._centrifuge._call(message).then(function (resolveCtx) {
-            resolve(_this3._centrifuge._decoder.decodeCommandResult(type, resolveCtx.result));
-
-            if (resolveCtx.next) {
-              resolveCtx.next();
-            }
-          }, function (rejectCtx) {
-            reject(rejectCtx.error);
-
-            if (rejectCtx.next) {
-              rejectCtx.next();
-            }
-          });
-        }, function (error) {
-          reject(error);
-        });
+        }, _this3._centrifuge._config.timeout);
+        _this3._promises[_this3._nextPromiseId()] = {
+          timeout: timeout,
+          resolve: res,
+          reject: rej
+        };
       });
-      return methodCallPromise;
+      return subPromise;
     }
   }, {
     key: "publish",
     value: function publish(data) {
-      return this._methodCall({
-        method: this._centrifuge._methodType.PUBLISH,
-        params: {
-          channel: this.channel,
-          data: data
-        }
-      }, this._centrifuge._methodType.PUBLISH);
+      var self = this;
+      return this._methodCall().then(function () {
+        return self._centrifuge.publish(self.channel, data);
+      });
     }
   }, {
     key: "presence",
     value: function presence() {
-      return this._methodCall({
-        method: this._centrifuge._methodType.PRESENCE,
-        params: {
-          channel: this.channel
-        }
-      }, this._centrifuge._methodType.PRESENCE);
+      var self = this;
+      return this._methodCall().then(function () {
+        return self._centrifuge.presence(self.channel);
+      });
     }
   }, {
     key: "presenceStats",
     value: function presenceStats() {
-      return this._methodCall({
-        method: this._centrifuge._methodType.PRESENCE_STATS,
-        params: {
-          channel: this.channel
-        }
-      }, this._centrifuge._methodType.PRESENCE_STATS);
+      var self = this;
+      return this._methodCall().then(function () {
+        return self._centrifuge.presenceStats(self.channel);
+      });
     }
   }, {
     key: "history",
     value: function history(options) {
-      var params = this._centrifuge._getHistoryParams(this.channel, options);
-
-      return this._methodCall({
-        method: this._centrifuge._methodType.HISTORY,
-        params: params
-      }, this._centrifuge._methodType.HISTORY);
+      var self = this;
+      return this._methodCall().then(function () {
+        return self._centrifuge.history(self.channel, options);
+      });
     }
   }]);
 

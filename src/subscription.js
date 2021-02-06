@@ -216,83 +216,50 @@ export default class Subscription extends EventEmitter {
     this._centrifuge._unsubscribe(this);
   };
 
-  _methodCall(message, type) {
-    const methodCallPromise = new Promise((resolve, reject) => {
-      let subPromise;
-      if (this._isSuccess()) {
-        subPromise = Promise.resolve();
-      } else if (this._isError()) {
-        subPromise = Promise.reject(this._error);
-      } else {
-        subPromise = new Promise((res, rej) => {
-          const timeout = setTimeout(function () {
-            rej({'code': 0, 'message': 'timeout'});
-          }, this._centrifuge._config.timeout);
-          this._promises[this._nextPromiseId()] = {
-            timeout: timeout,
-            resolve: res,
-            reject: rej
-          };
-        });
-      }
-      subPromise.then(
-        () => {
-          return this._centrifuge._call(message).then(
-            resolveCtx => {
-              resolve(this._centrifuge._decoder.decodeCommandResult(type, resolveCtx.result));
-              if (resolveCtx.next) {
-                resolveCtx.next();
-              }
-            },
-            rejectCtx => {
-              reject(rejectCtx.error);
-              if (rejectCtx.next) {
-                rejectCtx.next();
-              }
-            }
-          );
-        },
-        error => {
-          reject(error);
-        }
-      );
+  _methodCall() {
+    if (this._isSuccess()) {
+      return Promise.resolve();
+    } else if (this._isError()) {
+      return Promise.reject(this._error);
+    }
+    let subPromise = new Promise((res, rej) => {
+      const timeout = setTimeout(function () {
+        rej({'code': 0, 'message': 'timeout'});
+      }, this._centrifuge._config.timeout);
+      this._promises[this._nextPromiseId()] = {
+        timeout: timeout,
+        resolve: res,
+        reject: rej
+      };
     });
-    return methodCallPromise;
+    return subPromise;
   }
 
   publish(data) {
-    return this._methodCall({
-      method: this._centrifuge._methodType.PUBLISH,
-      params: {
-        channel: this.channel,
-        data: data
-      }
-    }, this._centrifuge._methodType.PUBLISH);
+    const self = this;
+    return this._methodCall().then(function () {
+      return self._centrifuge.publish(self.channel, data);
+    });
   };
 
   presence() {
-    return this._methodCall({
-      method: this._centrifuge._methodType.PRESENCE,
-      params: {
-        channel: this.channel
-      }
-    }, this._centrifuge._methodType.PRESENCE);
+    const self = this;
+    return this._methodCall().then(function () {
+      return self._centrifuge.presence(self.channel);
+    });
   };
 
   presenceStats() {
-    return this._methodCall({
-      method: this._centrifuge._methodType.PRESENCE_STATS,
-      params: {
-        channel: this.channel
-      }
-    }, this._centrifuge._methodType.PRESENCE_STATS);
+    const self = this;
+    return this._methodCall().then(function () {
+      return self._centrifuge.presenceStats(self.channel);
+    });
   };
 
   history(options) {
-    const params = this._centrifuge._getHistoryParams(this.channel, options);
-    return this._methodCall({
-      method: this._centrifuge._methodType.HISTORY,
-      params: params
-    }, this._centrifuge._methodType.HISTORY);
+    const self = this;
+    return this._methodCall().then(function () {
+      return self._centrifuge.history(self.channel, options);
+    });
   };
 }

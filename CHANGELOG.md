@@ -8,8 +8,9 @@
 * remove unused `promise` option from configuration
 * add history iteration API (usage limited to Centrifuge library for Go at the moment) - see example below
 * subscribe success event context in positioned subscriptions (added in Centrifuge library [v0.15.0](https://github.com/centrifugal/centrifuge/releases/tag/v0.15.0)) now contains `streamPosition` object (with current `offset` and `epoch` fields)
-* Protobuf-js dependency updated to `^6.10.2`
-* All dev dependencies updated and now use the latest versions of webpack, babel, eslint, mocha etc
+* updated `protobuf-js` dependency (now `^6.10.2`)
+* all dev-dependencies updated and now use the latest versions of webpack, babel, eslint, mocha etc
+* internal code refactoring of Subscrption methods - code is simplified and more reusable now
 
 Let's look at history pagination feature in more detail. It's now possible to iterate over channel  history this way:
 

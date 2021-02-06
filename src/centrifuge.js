@@ -665,7 +665,7 @@ export class Centrifuge extends EventEmitter {
         data: data
       }
     };
-    return this._methodCall(msg, function (result) {
+    return this._methodCall(msg, function () {
       return {};
     });
   }
@@ -677,7 +677,11 @@ export class Centrifuge extends EventEmitter {
       params: params
     };
     return this._methodCall(msg, function (result) {
-      return result;
+      return {
+        'publications': result.publications,
+        'epoch': result.epoch || '',
+        'offset': result.offset || 0
+      };
     });
   }
 
@@ -689,7 +693,9 @@ export class Centrifuge extends EventEmitter {
       }
     };
     return this._methodCall(msg, function (result) {
-      return result;
+      return {
+        'presence': result.presence
+      };
     });
   }
 
@@ -701,7 +707,10 @@ export class Centrifuge extends EventEmitter {
       }
     };
     return this._methodCall(msg, function (result) {
-      return result;
+      return {
+        'num_users': result.num_users,
+        'num_clients': result.num_clients
+      };
     });
   }
 

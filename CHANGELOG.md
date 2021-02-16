@@ -1,3 +1,8 @@
+2.7.1
+=====
+
+* Fix type definitions - see [#133](https://github.com/centrifugal/centrifuge-js/pull/133)
+
 2.7.0
 =====
 

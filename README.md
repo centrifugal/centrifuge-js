@@ -973,6 +973,24 @@ global.WebSocket = require('ws');
 var centrifuge = new Centrifuge('ws://localhost:8000/connection/websocket')
 ```
 
+If you have authorization by [headers](https://centrifugal.github.io/centrifugo/server/proxy/):
+```javascript
+var Centrifuge = require("centrifuge");
+const WebSocket = require('ws');
+
+const myWs = function (options) {
+    return class wsClass extends WebSocket {
+        constructor(...args) {
+            super(...[...args, ...[options]])
+        }
+    }
+}
+
+var centrifuge = new Centrifuge('ws://localhost:8000/connection/websocket', {
+    websocket: myWs({ headers: { Authorization: '<token or key>' } }),
+});
+```
+
 The same if you want to use `SockJS`:
 
 ```javascript

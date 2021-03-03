@@ -1014,7 +1014,7 @@ var centrifuge = new Centrifuge('ws://localhost:8000/connection/websocket', {
 - [x] connect to server using JSON protocol format
 - [x] connect to server using Protobuf protocol format
 - [x] connect with token (JWT)
-- [ ] connect with custom header (not supported by browser API)
+- [ ] connect with custom header (not supported by browser API, though [possible for a non-browser target env](https://github.com/centrifugal/centrifuge-js#custom-websocket-constructor))
 - [x] automatic reconnect in case of errors, network problems etc
 - [x] an exponential backoff for reconnect
 - [x] connect and disconnect events

@@ -973,7 +973,21 @@ global.WebSocket = require('ws');
 var centrifuge = new Centrifuge('ws://localhost:8000/connection/websocket')
 ```
 
-If you have authorization by [headers](https://centrifugal.github.io/centrifugo/server/proxy/):
+The same if you want to use `SockJS`:
+
+```javascript
+const Centrifuge = require('centrifuge');
+const SockJS = require('sockjs-client');
+
+var centrifuge = new Centrifuge('ws://localhost:8000/connection/sockjs', {
+    sockjs: SockJS
+})
+```
+
+### Custom WebSocket constructor
+
+If you are building a client for a non-browser environment and want to pass custom headers then you can use the following approach to wrap a WebSocket constructor and let custom options to be used on connection initialization:
+
 ```javascript
 var Centrifuge = require("centrifuge");
 const WebSocket = require('ws');
@@ -985,21 +999,14 @@ const myWs = function (options) {
         }
     }
 }
+```
 
+It should be now possible to use pass your custom WebSocket constructor to `centrifuge-js` and so custom headers will be used when connecting to a server:
+
+```javascript
 var centrifuge = new Centrifuge('ws://localhost:8000/connection/websocket', {
     websocket: myWs({ headers: { Authorization: '<token or key>' } }),
 });
-```
-
-The same if you want to use `SockJS`:
-
-```javascript
-const Centrifuge = require('centrifuge');
-const SockJS = require('sockjs-client');
-
-var centrifuge = new Centrifuge('ws://localhost:8000/connection/sockjs', {
-    sockjs: SockJS
-})
 ```
 
 ## Feature matrix

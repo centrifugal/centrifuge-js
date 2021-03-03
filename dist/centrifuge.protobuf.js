@@ -3679,7 +3679,8 @@ var protobufPushType = {
   JOIN: proto.lookupEnum('PushType').values.JOIN,
   LEAVE: proto.lookupEnum('PushType').values.LEAVE,
   UNSUB: proto.lookupEnum('PushType').values.UNSUB,
-  MESSAGE: proto.lookupEnum('PushType').values.MESSAGE
+  MESSAGE: proto.lookupEnum('PushType').values.MESSAGE,
+  SUB: proto.lookupEnum('PushType').values.SUB
 };
 var PushSchema = {
   PUBLICATION: proto.lookupType('protocol.Publication'),

@@ -1,3 +1,8 @@
+2.7.2
+=====
+
+* Handle server-side SUB push in Protobuf case (previously ignored). Sub push is a message that contains information about server-side subscription made after connection already established.
+
 2.7.1
 =====
 

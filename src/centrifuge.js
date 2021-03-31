@@ -1369,6 +1369,9 @@ export class Centrifuge extends EventEmitter {
         'epoch': epoch
       };
     };
+    if (result.data) {
+      ctx.data = result.data;
+    }
     return ctx;
   }
 

@@ -1,3 +1,8 @@
+2.7.3
+=====
+
+* `SubscribeSuccessContext` can contain `data` field if custom data returned from a server in a subscribe result.
+
 2.7.2
 =====
 

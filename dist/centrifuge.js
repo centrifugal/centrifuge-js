@@ -1706,6 +1706,11 @@ var Centrifuge = /*#__PURE__*/function (_EventEmitter) {
       }
 
       ;
+
+      if (result.data) {
+        ctx.data = result.data;
+      }
+
       return ctx;
     }
   }, {

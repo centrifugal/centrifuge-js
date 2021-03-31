@@ -131,6 +131,7 @@ declare namespace Centrifuge {
         isResubscribe: boolean;
         recovered: boolean;
         streamPosition?: StreamPosition;
+        data?: any;
     }
 
     export interface SubscribeErrorContext {

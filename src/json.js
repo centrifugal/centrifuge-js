@@ -24,30 +24,13 @@ export const JsonPushType = {
 
 export class JsonEncoder {
   encodeCommands(commands) {
-    const encodedCommands = [];
-    for (const i in commands) {
-      if (commands.hasOwnProperty(i)) {
-        encodedCommands.push(JSON.stringify(commands[i]));
-      }
-    }
-    return encodedCommands.join('\n');
+    return commands.map(c => JSON.stringify(c)).join('\n');
   }
 }
 
 export class JsonDecoder {
   decodeReplies(data) {
-    const replies = [];
-    const encodedReplies = data.split('\n');
-    for (const i in encodedReplies) {
-      if (encodedReplies.hasOwnProperty(i)) {
-        if (!encodedReplies[i]) {
-          continue;
-        }
-        const reply = JSON.parse(encodedReplies[i]);
-        replies.push(reply);
-      }
-    }
-    return replies;
+    return data.split('\n').map(r => JSON.parse(r));
   }
 
   decodeCommandResult(methodType, data) {

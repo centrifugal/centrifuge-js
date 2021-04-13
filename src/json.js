@@ -30,7 +30,7 @@ export class JsonEncoder {
 
 export class JsonDecoder {
   decodeReplies(data) {
-    return data.split('\n').map(r => JSON.parse(r));
+    return data.split('\n').filter(r => r !== '').map(r => JSON.parse(r));
   }
 
   decodeCommandResult(methodType, data) {

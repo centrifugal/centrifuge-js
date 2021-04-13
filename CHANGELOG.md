@@ -1,3 +1,8 @@
+2.7.5
+=====
+
+* Fix regression of 2.7.4 - `Invalid end of JSON input error`
+
 2.7.4
 =====
 

@@ -2446,7 +2446,9 @@ var JsonDecoder = /*#__PURE__*/function () {
   _createClass(JsonDecoder, [{
     key: "decodeReplies",
     value: function decodeReplies(data) {
-      return data.split('\n').map(function (r) {
+      return data.split('\n').filter(function (r) {
+        return r !== '';
+      }).map(function (r) {
         return JSON.parse(r);
       });
     }

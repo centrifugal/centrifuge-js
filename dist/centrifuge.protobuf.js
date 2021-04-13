@@ -3548,15 +3548,9 @@ var JsonEncoder = /*#__PURE__*/function () {
   _createClass(JsonEncoder, [{
     key: "encodeCommands",
     value: function encodeCommands(commands) {
-      var encodedCommands = [];
-
-      for (var i in commands) {
-        if (commands.hasOwnProperty(i)) {
-          encodedCommands.push(JSON.stringify(commands[i]));
-        }
-      }
-
-      return encodedCommands.join('\n');
+      return commands.map(function (c) {
+        return JSON.stringify(c);
+      }).join('\n');
     }
   }]);
 
@@ -3573,21 +3567,9 @@ var JsonDecoder = /*#__PURE__*/function () {
   _createClass(JsonDecoder, [{
     key: "decodeReplies",
     value: function decodeReplies(data) {
-      var replies = [];
-      var encodedReplies = data.split('\n');
-
-      for (var i in encodedReplies) {
-        if (encodedReplies.hasOwnProperty(i)) {
-          if (!encodedReplies[i]) {
-            continue;
-          }
-
-          var reply = JSON.parse(encodedReplies[i]);
-          replies.push(reply);
-        }
-      }
-
-      return replies;
+      return data.split('\n').map(function (r) {
+        return JSON.parse(r);
+      });
     }
   }, {
     key: "decodeCommandResult",

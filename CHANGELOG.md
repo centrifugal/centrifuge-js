@@ -1,3 +1,8 @@
+2.7.4
+=====
+
+* Optimize & simplify json encode/decode, see [#138](https://github.com/centrifugal/centrifuge-js/pull/138)
+
 2.7.3
 =====
 

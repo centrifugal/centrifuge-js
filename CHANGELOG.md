@@ -1,7 +1,7 @@
 2.7.5
 =====
 
-* Fix regression of 2.7.4 - `Invalid end of JSON input error`
+* Fix regression of 2.7.4 - `Unexpected end of JSON input`
 
 2.7.4
 =====

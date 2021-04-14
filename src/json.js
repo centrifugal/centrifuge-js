@@ -22,6 +22,13 @@ export const JsonPushType = {
   SUB: 5
 };
 
+// trim() shim for IE < 10
+if (typeof String.prototype.trim !== 'function') {
+  String.prototype.trim = function () {
+    return this.replace(/^\s+|\s+$/g, '');
+  };
+}
+
 export class JsonEncoder {
   encodeCommands(commands) {
     return commands.map(c => JSON.stringify(c)).join('\n');
@@ -30,7 +37,7 @@ export class JsonEncoder {
 
 export class JsonDecoder {
   decodeReplies(data) {
-    return data.split('\n').filter(r => r !== '').map(r => JSON.parse(r));
+    return data.trim().split('\n').map(r => JSON.parse(r));
   }
 
   decodeCommandResult(methodType, data) {

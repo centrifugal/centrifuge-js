@@ -29,8 +29,6 @@ jobs:
     if: contains(github.ref, 'tags/')
     environment: release
     runs-on: ubuntu-latest
-    # Prevent duplicate builds on internal PRs.
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name != github.repository
     steps:
       - name: Checkout repository
         uses: actions/checkout@v2

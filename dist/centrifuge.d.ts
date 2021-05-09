@@ -50,8 +50,8 @@ declare class Centrifuge extends EventEmitter {
     stopBatching(): void;
     startSubscribeBatching(): void;
     stopSubscribeBatching(): void;
-    subscribe(channel: string, events?: (...args: any[]) => void): Centrifuge.Subscription;
-    subscribe(channel: string, events?: Centrifuge.SubscriptionEvents): Centrifuge.Subscription;
+    subscribe(channel: string, events?: (...args: any[], opts?: Centrifuge.SubscribeOptions) => void): Centrifuge.Subscription;
+    subscribe(channel: string, events?: Centrifuge.SubscriptionEvents, opts?: Centrifuge.SubscribeOptions): Centrifuge.Subscription;
 }
 
 declare namespace Centrifuge {
@@ -90,7 +90,7 @@ declare namespace Centrifuge {
     export class Subscription extends EventEmitter {
         channel: string;
         ready(callback: (ctx: SubscribeSuccessContext) => void, errback: (ctx: SubscribeErrorContext) => void): void;
-        subscribe(): void;
+        subscribe(opts?: SubscribeOptions): void;
         unsubscribe(): void;
         publish(data: any): Promise<PublishResult>;
         presence(): Promise<PresenceResult>;
@@ -200,6 +200,10 @@ declare namespace Centrifuge {
 
     export interface HistoryOptions {
         limit?: number;
+        since?: StreamPosition;
+    }
+
+    export interface SubscribeOptions {
         since?: StreamPosition;
     }
 

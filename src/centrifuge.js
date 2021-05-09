@@ -1856,7 +1856,13 @@ export class Centrifuge extends EventEmitter {
     }
   };
 
-  subscribe(channel, events) {
+  _setSubscribeSince(sub, since) {
+    this._lastOffset[sub.channel] = since.offset;
+    this._lastEpoch[sub.channel] = since.epoch;
+    sub._setNeedRecover(true);
+  }
+
+  subscribe(channel, events, opts) {
     const currentSub = this._getSub(channel);
     if (currentSub !== null) {
       currentSub._setEvents(events);
@@ -1867,6 +1873,9 @@ export class Centrifuge extends EventEmitter {
     }
     const sub = new Subscription(this, channel, events);
     this._subs[channel] = sub;
+    if (opts && opts.since) {
+      this._setSubscribeSince(sub, opts.since);
+    }
     sub.subscribe();
     return sub;
   };

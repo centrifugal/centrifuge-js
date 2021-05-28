@@ -28,6 +28,7 @@ export class Centrifuge extends EventEmitter {
     this._websocket = null;
     this._sockjs = null;
     this._isSockjs = false;
+    this._xmlhttprequest = null;
     this._binary = false;
     this._methodType = null;
     this._pushType = null;
@@ -72,6 +73,7 @@ export class Centrifuge extends EventEmitter {
       version: '',
       websocket: null,
       sockjs: null,
+      xmlhttprequest: null,
       minRetry: 1000,
       maxRetry: 20000,
       timeout: 5000,
@@ -139,7 +141,13 @@ export class Centrifuge extends EventEmitter {
     let query = '';
     this._debug('sending AJAX request to', url, 'with data', JSON.stringify(data));
 
-    const xhr = (global.XMLHttpRequest ? new global.XMLHttpRequest() : new global.ActiveXObject('Microsoft.XMLHTTP'));
+    let xhr;
+    if (this._xmlhttprequest !== null) {
+      // use explicitly passed XMLHttpRequest object.
+      xhr = new this._xmlhttprequest();
+    } else {
+      xhr = (global.XMLHttpRequest ? new global.XMLHttpRequest() : new global.ActiveXObject('Microsoft.XMLHTTP'));
+    }
 
     for (const i in params) {
       if (params.hasOwnProperty(i)) {
@@ -266,6 +274,8 @@ export class Centrifuge extends EventEmitter {
     } else {
       this._debug('client will connect to websocket endpoint');
     }
+
+    this._xmlhttprequest = this._config.xmlhttprequest;
   };
 
   _setStatus(newStatus) {

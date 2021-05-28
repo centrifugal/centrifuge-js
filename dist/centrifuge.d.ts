@@ -62,6 +62,7 @@ declare namespace Centrifuge {
         version?: string;
         websocket?: any;
         sockjs?: any;
+        xmlhttprequest?: any;
         minRetry?: number;
         maxRetry?: number;
         timeout?: number;

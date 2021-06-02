@@ -993,7 +993,7 @@ const Centrifuge = require('centrifuge');
 const WebSocket = require('ws');
 const XMLHttpRequest = require("xmlhttprequest").XMLHttpRequest;
 
-var centrifuge = new Centrifuge('ws://localhost:8000/connection/sockjs', {
+var centrifuge = new Centrifuge('ws://localhost:8000/connection/websocket', {
     websocket: WebSocket,
     xmlhttprequest: XMLHttpRequest
 })

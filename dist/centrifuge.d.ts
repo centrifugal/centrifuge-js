@@ -57,6 +57,7 @@ declare class Centrifuge extends EventEmitter {
 declare namespace Centrifuge {
 
     export interface Options {
+        protocol?: string;
         debug?: boolean;
         name?: string;
         version?: string;

@@ -984,6 +984,23 @@ var centrifuge = new Centrifuge('ws://localhost:8000/connection/sockjs', {
 })
 ```
 
+### Custom XMLHttpRequest
+
+To work with private channels you may need to pass `XMLHttpRequest` object to library:
+
+```javascript
+const Centrifuge = require('centrifuge');
+const WebSocket = require('ws');
+const XMLHttpRequest = require("xmlhttprequest").XMLHttpRequest;
+
+var centrifuge = new Centrifuge('ws://localhost:8000/connection/sockjs', {
+    websocket: WebSocket,
+    xmlhttprequest: XMLHttpRequest
+})
+```
+
+Or define XMLHttpRequest globally over `global.XMLHttpRequest = require("xmlhttprequest").XMLHttpRequest;`
+
 ### Custom WebSocket constructor
 
 If you are building a client for a non-browser environment and want to pass custom headers then you can use the following approach to wrap a WebSocket constructor and let custom options to be used on connection initialization:

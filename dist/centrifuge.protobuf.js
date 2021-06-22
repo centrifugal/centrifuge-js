@@ -1193,6 +1193,7 @@ var Centrifuge = /*#__PURE__*/function (_EventEmitter) {
     _this._websocket = null;
     _this._sockjs = null;
     _this._isSockjs = false;
+    _this._xmlhttprequest = null;
     _this._binary = false;
     _this._methodType = null;
     _this._pushType = null;
@@ -1237,6 +1238,7 @@ var Centrifuge = /*#__PURE__*/function (_EventEmitter) {
       version: '',
       websocket: null,
       sockjs: null,
+      xmlhttprequest: null,
       minRetry: 1000,
       maxRetry: 20000,
       timeout: 5000,
@@ -1311,7 +1313,14 @@ var Centrifuge = /*#__PURE__*/function (_EventEmitter) {
 
       this._debug('sending AJAX request to', url, 'with data', JSON.stringify(data));
 
-      var xhr = __webpack_require__.g.XMLHttpRequest ? new __webpack_require__.g.XMLHttpRequest() : new __webpack_require__.g.ActiveXObject('Microsoft.XMLHTTP');
+      var xhr;
+
+      if (this._xmlhttprequest !== null) {
+        // use explicitly passed XMLHttpRequest object.
+        xhr = new this._xmlhttprequest();
+      } else {
+        xhr = __webpack_require__.g.XMLHttpRequest ? new __webpack_require__.g.XMLHttpRequest() : new __webpack_require__.g.ActiveXObject('Microsoft.XMLHTTP');
+      }
 
       for (var i in params) {
         if (params.hasOwnProperty(i)) {
@@ -1465,6 +1474,8 @@ var Centrifuge = /*#__PURE__*/function (_EventEmitter) {
       } else {
         this._debug('client will connect to websocket endpoint');
       }
+
+      this._xmlhttprequest = this._config.xmlhttprequest;
     }
   }, {
     key: "_setStatus",

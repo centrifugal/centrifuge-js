@@ -54,6 +54,11 @@ export default class Subscription extends EventEmitter {
     }).then(function () {}, function () {});
   };
 
+  _setNeedRecover(enabled) {
+    this._recoverable = enabled;
+    this._recover = enabled;
+  }
+
   _needRecover() {
     return this._recoverable === true && this._recover === true;
   };
@@ -203,11 +208,14 @@ export default class Subscription extends EventEmitter {
     }
   };
 
-  subscribe() {
+  subscribe(opts) {
     if (this._status === _STATE_SUCCESS) {
       return;
     }
     this._noResubscribe = false;
+    if (opts && opts.since) {
+      this._centrifuge._setSubscribeSince(this, opts.since);
+    }
     this._centrifuge._subscribe(this);
   };
 

@@ -1,3 +1,8 @@
+2.7.6
+=====
+
+* `xmlhttprequest` option to explicitly pass XMLHttpRequest (for NodeJS environment)
+
 2.7.5
 =====
 

@@ -69,7 +69,7 @@ export class Centrifuge extends EventEmitter {
     this._dispatchPromise = Promise.resolve();
     this._config = {
       debug: false,
-      name: '',
+      name: 'js',
       version: '',
       websocket: null,
       sockjs: null,

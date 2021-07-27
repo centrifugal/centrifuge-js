@@ -216,6 +216,12 @@ centrifuge = new Centrifuge("http://localhost:8000/connection/websocket", {
 });
 ```
 
+#### disableWithCredentials
+
+`disableWithCredentials` is a reverse boolean option for control
+[withCredentials](https://developer.mozilla.org/en-US/docs/Web/API/XMLHttpRequest/withCredentials)
+property of XMLHttpRequest. By default `false`.
+
 ## Client API
 
 When `Centrifuge` object properly initialized then it is ready to start communicating with server.

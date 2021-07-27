@@ -107,7 +107,8 @@ export class Centrifuge extends EventEmitter {
       subscribeHeaders: {},
       subscribeParams: {},
       subRefreshInterval: 1000,
-      onPrivateSubscribe: null
+      onPrivateSubscribe: null,
+      disableWithCredentials: false
     };
     this._configure(options);
   }
@@ -162,7 +163,7 @@ export class Centrifuge extends EventEmitter {
     }
     xhr.open('POST', url + query, true);
     if ('withCredentials' in xhr) {
-      xhr.withCredentials = true;
+      xhr.withCredentials = !this._config.disableWithCredentials;
     }
 
     xhr.setRequestHeader('X-Requested-With', 'XMLHttpRequest');

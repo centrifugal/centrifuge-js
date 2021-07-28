@@ -1261,7 +1261,8 @@ var Centrifuge = /*#__PURE__*/function (_EventEmitter) {
       subscribeHeaders: {},
       subscribeParams: {},
       subRefreshInterval: 1000,
-      onPrivateSubscribe: null
+      onPrivateSubscribe: null,
+      disableWithCredentials: false
     };
 
     _this._configure(options);
@@ -1339,7 +1340,7 @@ var Centrifuge = /*#__PURE__*/function (_EventEmitter) {
       xhr.open('POST', url + query, true);
 
       if ('withCredentials' in xhr) {
-        xhr.withCredentials = true;
+        xhr.withCredentials = !this._config.disableWithCredentials;
       }
 
       xhr.setRequestHeader('X-Requested-With', 'XMLHttpRequest');

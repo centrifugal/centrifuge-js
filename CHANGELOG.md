@@ -1,3 +1,8 @@
+2.7.7
+=====
+
+* possibility to set `disableWithCredentials` boolean option (`false` by default) to control `withCredentials` option of `XMLHttpRequest`. See [#155](https://github.com/centrifugal/centrifuge-js/issues/155).
+
 2.7.6
 =====
 

@@ -1,6 +1,6 @@
 {
   "name": "centrifuge",
-  "version": "2.7.6",
+  "version": "2.7.7",
   "description": "Centrifuge and Centrifugo client for NodeJS and browser",
   "main": "dist/centrifuge.js",
   "types": "dist/centrifuge.d.ts",

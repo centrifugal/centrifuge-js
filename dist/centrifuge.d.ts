@@ -86,6 +86,7 @@ declare namespace Centrifuge {
         subscribeParams?: object;
         subRefreshInterval?: number;
         onPrivateSubscribe?: (ctx: SubscribePrivateContext, cb: (resp: SubscribePrivateResponse) => void) => void;
+        disableWithCredentials?: boolean;
     }
 
     export class Subscription extends EventEmitter {

@@ -220,7 +220,7 @@ centrifuge = new Centrifuge("http://localhost:8000/connection/websocket", {
 
 `disableWithCredentials` is a reverse boolean option for control
 [withCredentials](https://developer.mozilla.org/en-US/docs/Web/API/XMLHttpRequest/withCredentials)
-property of XMLHttpRequest. By default `false`.
+property of XMLHttpRequest. By default `false` - i.e. `withCredentials` property is enabled.
 
 ## Client API
 

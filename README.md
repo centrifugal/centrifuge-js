@@ -392,6 +392,14 @@ centrifuge.presenceStats("channel").then(function(resp) {
 });
 ```
 
+### setConnectData method
+
+Allows setting custom data sent to a server in first message. This data will be available on a server side in OnConnecting callback (if using Centrifugo library) or proxied to application backend (in using Centrifugo with connect proxy enabled).
+
+```
+centrifuge.setConnectData({"any": "key"});
+```
+
 ## Subscriptions
 
 Of course being just connected is useless. What we usually want from Centrifugo is to

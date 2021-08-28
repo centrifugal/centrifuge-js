@@ -202,6 +202,7 @@ declare namespace Centrifuge {
     export interface HistoryOptions {
         limit?: number;
         since?: StreamPosition;
+        reverse?: boolean;
     }
 
     export interface StreamPosition {

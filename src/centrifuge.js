@@ -69,7 +69,7 @@ export class Centrifuge extends EventEmitter {
     this._dispatchPromise = Promise.resolve();
     this._config = {
       debug: false,
-      name: '',
+      name: 'js',
       version: '',
       websocket: null,
       sockjs: null,
@@ -338,7 +338,7 @@ export class Centrifuge extends EventEmitter {
         if (!errback) {
           continue;
         }
-        errback({error: this._createErrorObject('disconnected')});
+        errback({ error: this._createErrorObject('disconnected') });
       }
     }
     this._callbacks = {};
@@ -409,7 +409,7 @@ export class Centrifuge extends EventEmitter {
         clearTimeout(this._callbacks[id].timeout);
         delete this._callbacks[id];
         const errback = callbacks.errback;
-        errback({error: this._createErrorObject(_errorConnectionClosed, 0)});
+        errback({ error: this._createErrorObject(_errorConnectionClosed, 0) });
       }
       return false;
     }
@@ -505,7 +505,7 @@ export class Centrifuge extends EventEmitter {
         }
       }
       if (hasSubs) {
-        if (!msg.params) {msg.params = {};}
+        if (!msg.params) { msg.params = {}; }
         msg.params.subs = subs;
       }
 
@@ -633,17 +633,18 @@ export class Centrifuge extends EventEmitter {
     };
     if (options !== undefined) {
       if (options.since) {
-        params['use_since'] = true;
-        if (options.since.offset) {
-          params['offset'] = options.since.offset;
-        }
+        params['since'] = {
+          'offset': options.since.offset
+        };
         if (options.since.epoch) {
-          params['epoch'] = options.since.epoch;
+          params['since']['epoch'] = options.since.epoch;
         }
       };
       if (options.limit !== undefined) {
-        params['use_limit'] = true;
         params['limit'] = options.limit;
+      }
+      if (options.reverse === true) {
+        params['reverse'] = true;
       }
     };
     return params;
@@ -733,7 +734,7 @@ export class Centrifuge extends EventEmitter {
     // on next loop tick so for loop continues before we finished emitting all reply events.
     this._dispatchPromise = this._dispatchPromise.then(() => {
       let finishDispatch;
-      this._dispatchPromise = new Promise(resolve =>{
+      this._dispatchPromise = new Promise(resolve => {
         finishDispatch = resolve;
       });
       this._dispatchSynchronized(replies, finishDispatch);
@@ -757,7 +758,7 @@ export class Centrifuge extends EventEmitter {
 
   _dispatchReply(reply) {
     var next;
-    const p = new Promise(resolve =>{
+    const p = new Promise(resolve => {
       next = resolve;
     });
 
@@ -828,7 +829,7 @@ export class Centrifuge extends EventEmitter {
       // fire unsubscribe events for server side subs.
       for (const channel in this._serverSubs) {
         if (this._serverSubs.hasOwnProperty(channel)) {
-          this.emit('unsubscribe', {channel: channel});
+          this.emit('unsubscribe', { channel: channel });
         }
       }
       this.emit('disconnect', {
@@ -1268,7 +1269,7 @@ export class Centrifuge extends EventEmitter {
       if (subs.hasOwnProperty(channel)) {
         const sub = subs[channel];
         const isResubscribe = this._serverSubs[channel] !== undefined;
-        let subCtx = {channel: channel, isResubscribe: isResubscribe};
+        let subCtx = { channel: channel, isResubscribe: isResubscribe };
         subCtx = this._expandSubscribeContext(subCtx, sub);
         this.emit('subscribe', subCtx);
       }
@@ -1444,7 +1445,7 @@ export class Centrifuge extends EventEmitter {
       if (!callback) {
         return;
       }
-      callback({result, next});
+      callback({ result, next });
     } else {
       const errback = callbacks.errback;
       if (!errback) {
@@ -1452,12 +1453,12 @@ export class Centrifuge extends EventEmitter {
         return;
       }
       const error = reply.error;
-      errback({error, next});
+      errback({ error, next });
     }
   }
 
   _handleJoin(channel, join) {
-    const ctx = {'info': join.info};
+    const ctx = { 'info': join.info };
     const sub = this._getSub(channel);
     if (!sub) {
       if (this._isServerSub(channel)) {
@@ -1470,7 +1471,7 @@ export class Centrifuge extends EventEmitter {
   };
 
   _handleLeave(channel, leave) {
-    const ctx = {'info': leave.info};
+    const ctx = { 'info': leave.info };
     const sub = this._getSub(channel);
     if (!sub) {
       if (this._isServerSub(channel)) {
@@ -1507,7 +1508,7 @@ export class Centrifuge extends EventEmitter {
       'epoch': sub.epoch,
       'recoverable': sub.recoverable
     };
-    let ctx = {'channel': channel, isResubscribe: false};
+    let ctx = { 'channel': channel, isResubscribe: false };
     ctx = this._expandSubscribeContext(ctx, sub);
     this.emit('subscribe', ctx);
   };
@@ -1666,7 +1667,7 @@ export class Centrifuge extends EventEmitter {
     this._callbacks[id].timeout = setTimeout(() => {
       delete this._callbacks[id];
       if (isFunction(errback)) {
-        errback({error: this._createErrorObject(_errorTimeout)});
+        errback({ error: this._createErrorObject(_errorTimeout) });
       }
     }, this._config.timeout);
   };

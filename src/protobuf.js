@@ -75,18 +75,18 @@ const protobufPushType = {
   PUBLICATION: proto.lookupEnum('PushType').values.PUBLICATION,
   JOIN: proto.lookupEnum('PushType').values.JOIN,
   LEAVE: proto.lookupEnum('PushType').values.LEAVE,
-  UNSUB: proto.lookupEnum('PushType').values.UNSUB,
+  UNSUBSCRIBE: proto.lookupEnum('PushType').values.UNSUBSCRIBE,
   MESSAGE: proto.lookupEnum('PushType').values.MESSAGE,
-  SUB: proto.lookupEnum('PushType').values.SUB
+  SUBSCRIBE: proto.lookupEnum('PushType').values.SUBSCRIBE
 };
 
 const PushSchema = {
   PUBLICATION: proto.lookupType('protocol.Publication'),
   JOIN: proto.lookupType('protocol.Join'),
   LEAVE: proto.lookupType('protocol.Leave'),
-  UNSUB: proto.lookupType('protocol.Unsub'),
+  UNSUBSCRIBE: proto.lookupType('protocol.Unsubscribe'),
   MESSAGE: proto.lookupType('protocol.Message'),
-  SUB: proto.lookupType('protocol.Sub')
+  SUBSCRIBE: proto.lookupType('protocol.Subscribe')
 };
 
 const Push = proto.lookupType('protocol.Push');
@@ -221,11 +221,11 @@ export class ProtobufDecoder {
       case protobufPushType.LEAVE:
         type = PushSchema.LEAVE;
         break;
-      case protobufPushType.UNSUB:
-        type = PushSchema.UNSUB;
+      case protobufPushType.UNSUBSCRIBE:
+        type = PushSchema.UNSUBSCRIBE;
         break;
-      case protobufPushType.SUB:
-        type = PushSchema.SUB;
+      case protobufPushType.SUBSCRIBE:
+        type = PushSchema.SUBSCRIBE;
         break;
     }
     return this._decode(type, data);

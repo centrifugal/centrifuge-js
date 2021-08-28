@@ -96,7 +96,8 @@
                         "MESSAGE": 4,
                         "SUBSCRIBE": 5,
                         "CONNECT": 6,
-                        "DISCONNECT": 7
+                        "DISCONNECT": 7,
+                        "REFRESH": 8
                       }
                     }
                   }
@@ -154,12 +155,7 @@
                   }
                 },
                 "Unsubscribe": {
-                  "fields": {
-                    "resubscribe": {
-                      "type": "bool",
-                      "id": 1
-                    }
-                  }
+                  "fields": {}
                 },
                 "Subscribe": {
                   "fields": {
@@ -211,6 +207,14 @@
                       "keyType": "string",
                       "type": "SubscribeResult",
                       "id": 4
+                    },
+                    "expires": {
+                      "type": "bool",
+                      "id": 5
+                    },
+                    "ttl": {
+                      "type": "uint32",
+                      "id": 6
                     }
                   }
                 },
@@ -227,6 +231,18 @@
                     "reconnect": {
                       "type": "bool",
                       "id": 3
+                    }
+                  }
+                },
+                "Refresh": {
+                  "fields": {
+                    "expires": {
+                      "type": "bool",
+                      "id": 1
+                    },
+                    "ttl": {
+                      "type": "uint32",
+                      "id": 2
                     }
                   }
                 },
@@ -489,6 +505,10 @@
                     "since": {
                       "type": "StreamPosition",
                       "id": 8
+                    },
+                    "reverse": {
+                      "type": "bool",
+                      "id": 9
                     }
                   }
                 },

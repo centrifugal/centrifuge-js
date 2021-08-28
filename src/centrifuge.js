@@ -67,7 +67,9 @@ export class Centrifuge extends EventEmitter {
     this._xhrID = 0;
     this._xhrs = {};
     this._dispatchPromise = Promise.resolve();
+    this._protocol = '';
     this._config = {
+      protocol: '',
       debug: false,
       name: 'js',
       version: '',
@@ -254,9 +256,14 @@ export class Centrifuge extends EventEmitter {
       throw new Error('url required');
     }
 
-    if (startsWith(this._url, 'ws') && this._url.indexOf('format=protobuf') > -1) {
+    const isProtobufURL = startsWith(this._url, 'ws') && this._url.indexOf('format=protobuf') > -1;
+    if (isProtobufURL || this._config.protocol === 'protobuf') {
       this._setFormat('protobuf');
+      this._protocol = 'protobuf';
     } else {
+      if (this._config.protocol !== '' && this._config.protocol !== 'json') {
+        throw new Error('unsupported protocol ' + this._config.protocol);
+      }
       this._setFormat('json');
     }
 
@@ -417,6 +424,13 @@ export class Centrifuge extends EventEmitter {
     return true;
   }
 
+  _getSubProtocol() {
+    if (!this._protocol) {
+      return '';
+    }
+    return 'centrifuge-' + this._protocol;
+  }
+
   _setupTransport() {
     this._isSockjs = false;
 
@@ -441,7 +455,12 @@ export class Centrifuge extends EventEmitter {
       } else {
         this._websocket = WebSocket;
       }
-      this._transport = new this._websocket(this._url);
+      const subProtocol = this._getSubProtocol();
+      if (subProtocol !== '') {
+        this._transport = new this._websocket(this._url, subProtocol);
+      } else {
+        this._transport = new this._websocket(this._url);
+      }
       if (this._binary === true) {
         this._transport.binaryType = 'arraybuffer';
       }

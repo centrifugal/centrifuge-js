@@ -3684,7 +3684,7 @@ function _createClass(Constructor, protoProps, staticProps) { if (protoProps) _d
 
 var protobuf = __webpack_require__(492);
 
-var proto = protobuf.Root.fromJSON(__webpack_require__(261));
+var proto = protobuf.Root.fromJSON(__webpack_require__(881));
 var methodValues = proto.lookupEnum('MethodType').values;
 var protobufMethodType = {
   CONNECT: methodValues.CONNECT,
@@ -4904,31 +4904,52 @@ function unwrapListeners(arr) {
 
 function once(emitter, name) {
   return new Promise(function (resolve, reject) {
-    function eventListener() {
-      if (errorListener !== undefined) {
+    function errorListener(err) {
+      emitter.removeListener(name, resolver);
+      reject(err);
+    }
+
+    function resolver() {
+      if (typeof emitter.removeListener === 'function') {
         emitter.removeListener('error', errorListener);
       }
       resolve([].slice.call(arguments));
     };
-    var errorListener;
 
-    // Adding an error listener is not optional because
-    // if an error is thrown on an event emitter we cannot
-    // guarantee that the actual event we are waiting will
-    // be fired. The result could be a silent way to create
-    // memory or file descriptor leaks, which is something
-    // we should avoid.
+    eventTargetAgnosticAddListener(emitter, name, resolver, { once: true });
     if (name !== 'error') {
-      errorListener = function errorListener(err) {
-        emitter.removeListener(name, eventListener);
-        reject(err);
-      };
-
-      emitter.once('error', errorListener);
+      addErrorHandlerIfEventEmitter(emitter, errorListener, { once: true });
     }
-
-    emitter.once(name, eventListener);
   });
+}
+
+function addErrorHandlerIfEventEmitter(emitter, handler, flags) {
+  if (typeof emitter.on === 'function') {
+    eventTargetAgnosticAddListener(emitter, 'error', handler, flags);
+  }
+}
+
+function eventTargetAgnosticAddListener(emitter, name, listener, flags) {
+  if (typeof emitter.on === 'function') {
+    if (flags.once) {
+      emitter.once(name, listener);
+    } else {
+      emitter.on(name, listener);
+    }
+  } else if (typeof emitter.addEventListener === 'function') {
+    // EventTarget does not have `error` event semantics like Node
+    // EventEmitters, we do not listen for `error` events here.
+    emitter.addEventListener(name, function wrapListener(arg) {
+      // IE does not have builtin `{ once: true }` support so we
+      // have to do it manually.
+      if (flags.once) {
+        emitter.removeEventListener(name, wrapListener);
+      }
+      listener(arg);
+    });
+  } else {
+    throw new TypeError('The "emitter" argument must be of type EventEmitter. Received type ' + typeof emitter);
+  }
 }
 
 
@@ -11294,10 +11315,10 @@ BufferWriter._configure();
 
 /***/ }),
 
-/***/ 261:
+/***/ 881:
 /***/ (function(module) {
 
-module.exports = JSON.parse("{\"nested\":{\"centrifugal\":{\"nested\":{\"centrifuge\":{\"nested\":{\"protocol\":{\"options\":{\"go_package\":\"./;protocol\"},\"nested\":{\"Error\":{\"fields\":{\"code\":{\"type\":\"uint32\",\"id\":1},\"message\":{\"type\":\"string\",\"id\":2}}},\"Command\":{\"fields\":{\"id\":{\"type\":\"uint32\",\"id\":1},\"method\":{\"type\":\"MethodType\",\"id\":2},\"params\":{\"type\":\"bytes\",\"id\":3}},\"nested\":{\"MethodType\":{\"values\":{\"CONNECT\":0,\"SUBSCRIBE\":1,\"UNSUBSCRIBE\":2,\"PUBLISH\":3,\"PRESENCE\":4,\"PRESENCE_STATS\":5,\"HISTORY\":6,\"PING\":7,\"SEND\":8,\"RPC\":9,\"REFRESH\":10,\"SUB_REFRESH\":11}}}},\"Reply\":{\"fields\":{\"id\":{\"type\":\"uint32\",\"id\":1},\"error\":{\"type\":\"Error\",\"id\":2},\"result\":{\"type\":\"bytes\",\"id\":3}}},\"Push\":{\"fields\":{\"type\":{\"type\":\"PushType\",\"id\":1},\"channel\":{\"type\":\"string\",\"id\":2},\"data\":{\"type\":\"bytes\",\"id\":3}},\"nested\":{\"PushType\":{\"values\":{\"PUBLICATION\":0,\"JOIN\":1,\"LEAVE\":2,\"UNSUBSCRIBE\":3,\"MESSAGE\":4,\"SUBSCRIBE\":5,\"CONNECT\":6,\"DISCONNECT\":7,\"REFRESH\":8}}}},\"ClientInfo\":{\"fields\":{\"user\":{\"type\":\"string\",\"id\":1},\"client\":{\"type\":\"string\",\"id\":2},\"conn_info\":{\"type\":\"bytes\",\"id\":3},\"chan_info\":{\"type\":\"bytes\",\"id\":4}}},\"Publication\":{\"fields\":{\"data\":{\"type\":\"bytes\",\"id\":4},\"info\":{\"type\":\"ClientInfo\",\"id\":5},\"offset\":{\"type\":\"uint64\",\"id\":6}}},\"Join\":{\"fields\":{\"info\":{\"type\":\"ClientInfo\",\"id\":1}}},\"Leave\":{\"fields\":{\"info\":{\"type\":\"ClientInfo\",\"id\":1}}},\"Unsubscribe\":{\"fields\":{}},\"Subscribe\":{\"fields\":{\"recoverable\":{\"type\":\"bool\",\"id\":1},\"epoch\":{\"type\":\"string\",\"id\":4},\"offset\":{\"type\":\"uint64\",\"id\":5},\"positioned\":{\"type\":\"bool\",\"id\":6},\"data\":{\"type\":\"bytes\",\"id\":7}}},\"Message\":{\"fields\":{\"data\":{\"type\":\"bytes\",\"id\":1}}},\"Connect\":{\"fields\":{\"client\":{\"type\":\"string\",\"id\":1},\"version\":{\"type\":\"string\",\"id\":2},\"data\":{\"type\":\"bytes\",\"id\":3},\"subs\":{\"keyType\":\"string\",\"type\":\"SubscribeResult\",\"id\":4},\"expires\":{\"type\":\"bool\",\"id\":5},\"ttl\":{\"type\":\"uint32\",\"id\":6}}},\"Disconnect\":{\"fields\":{\"code\":{\"type\":\"uint32\",\"id\":1},\"reason\":{\"type\":\"string\",\"id\":2},\"reconnect\":{\"type\":\"bool\",\"id\":3}}},\"Refresh\":{\"fields\":{\"expires\":{\"type\":\"bool\",\"id\":1},\"ttl\":{\"type\":\"uint32\",\"id\":2}}},\"ConnectRequest\":{\"fields\":{\"token\":{\"type\":\"string\",\"id\":1},\"data\":{\"type\":\"bytes\",\"id\":2},\"subs\":{\"keyType\":\"string\",\"type\":\"SubscribeRequest\",\"id\":3},\"name\":{\"type\":\"string\",\"id\":4},\"version\":{\"type\":\"string\",\"id\":5}}},\"ConnectResult\":{\"fields\":{\"client\":{\"type\":\"string\",\"id\":1},\"version\":{\"type\":\"string\",\"id\":2},\"expires\":{\"type\":\"bool\",\"id\":3},\"ttl\":{\"type\":\"uint32\",\"id\":4},\"data\":{\"type\":\"bytes\",\"id\":5},\"subs\":{\"keyType\":\"string\",\"type\":\"SubscribeResult\",\"id\":6}}},\"RefreshRequest\":{\"fields\":{\"token\":{\"type\":\"string\",\"id\":1}}},\"RefreshResult\":{\"fields\":{\"client\":{\"type\":\"string\",\"id\":1},\"version\":{\"type\":\"string\",\"id\":2},\"expires\":{\"type\":\"bool\",\"id\":3},\"ttl\":{\"type\":\"uint32\",\"id\":4}}},\"SubscribeRequest\":{\"fields\":{\"channel\":{\"type\":\"string\",\"id\":1},\"token\":{\"type\":\"string\",\"id\":2},\"recover\":{\"type\":\"bool\",\"id\":3},\"epoch\":{\"type\":\"string\",\"id\":6},\"offset\":{\"type\":\"uint64\",\"id\":7}}},\"SubscribeResult\":{\"fields\":{\"expires\":{\"type\":\"bool\",\"id\":1},\"ttl\":{\"type\":\"uint32\",\"id\":2},\"recoverable\":{\"type\":\"bool\",\"id\":3},\"epoch\":{\"type\":\"string\",\"id\":6},\"publications\":{\"rule\":\"repeated\",\"type\":\"Publication\",\"id\":7},\"recovered\":{\"type\":\"bool\",\"id\":8},\"offset\":{\"type\":\"uint64\",\"id\":9},\"positioned\":{\"type\":\"bool\",\"id\":10},\"data\":{\"type\":\"bytes\",\"id\":11}}},\"SubRefreshRequest\":{\"fields\":{\"channel\":{\"type\":\"string\",\"id\":1},\"token\":{\"type\":\"string\",\"id\":2}}},\"SubRefreshResult\":{\"fields\":{\"expires\":{\"type\":\"bool\",\"id\":1},\"ttl\":{\"type\":\"uint32\",\"id\":2}}},\"UnsubscribeRequest\":{\"fields\":{\"channel\":{\"type\":\"string\",\"id\":1}}},\"UnsubscribeResult\":{\"fields\":{}},\"PublishRequest\":{\"fields\":{\"channel\":{\"type\":\"string\",\"id\":1},\"data\":{\"type\":\"bytes\",\"id\":2}}},\"PublishResult\":{\"fields\":{}},\"PresenceRequest\":{\"fields\":{\"channel\":{\"type\":\"string\",\"id\":1}}},\"PresenceResult\":{\"fields\":{\"presence\":{\"keyType\":\"string\",\"type\":\"ClientInfo\",\"id\":1}}},\"PresenceStatsRequest\":{\"fields\":{\"channel\":{\"type\":\"string\",\"id\":1}}},\"PresenceStatsResult\":{\"fields\":{\"num_clients\":{\"type\":\"uint32\",\"id\":1},\"num_users\":{\"type\":\"uint32\",\"id\":2}}},\"StreamPosition\":{\"fields\":{\"offset\":{\"type\":\"uint64\",\"id\":1},\"epoch\":{\"type\":\"string\",\"id\":2}}},\"HistoryRequest\":{\"fields\":{\"channel\":{\"type\":\"string\",\"id\":1},\"limit\":{\"type\":\"int32\",\"id\":7},\"since\":{\"type\":\"StreamPosition\",\"id\":8},\"reverse\":{\"type\":\"bool\",\"id\":9}}},\"HistoryResult\":{\"fields\":{\"publications\":{\"rule\":\"repeated\",\"type\":\"Publication\",\"id\":1},\"epoch\":{\"type\":\"string\",\"id\":2},\"offset\":{\"type\":\"uint64\",\"id\":3}}},\"PingRequest\":{\"fields\":{}},\"PingResult\":{\"fields\":{}},\"RPCRequest\":{\"fields\":{\"data\":{\"type\":\"bytes\",\"id\":1},\"method\":{\"type\":\"string\",\"id\":2}}},\"RPCResult\":{\"fields\":{\"data\":{\"type\":\"bytes\",\"id\":1}}},\"SendRequest\":{\"fields\":{\"data\":{\"type\":\"bytes\",\"id\":1}}}}}}}}}}}");
+module.exports = JSON.parse('{"nested":{"centrifugal":{"nested":{"centrifuge":{"nested":{"protocol":{"options":{"go_package":"./;protocol"},"nested":{"Error":{"fields":{"code":{"type":"uint32","id":1},"message":{"type":"string","id":2}}},"Command":{"fields":{"id":{"type":"uint32","id":1},"method":{"type":"MethodType","id":2},"params":{"type":"bytes","id":3}},"nested":{"MethodType":{"values":{"CONNECT":0,"SUBSCRIBE":1,"UNSUBSCRIBE":2,"PUBLISH":3,"PRESENCE":4,"PRESENCE_STATS":5,"HISTORY":6,"PING":7,"SEND":8,"RPC":9,"REFRESH":10,"SUB_REFRESH":11}}}},"Reply":{"fields":{"id":{"type":"uint32","id":1},"error":{"type":"Error","id":2},"result":{"type":"bytes","id":3}}},"Push":{"fields":{"type":{"type":"PushType","id":1},"channel":{"type":"string","id":2},"data":{"type":"bytes","id":3}},"nested":{"PushType":{"values":{"PUBLICATION":0,"JOIN":1,"LEAVE":2,"UNSUBSCRIBE":3,"MESSAGE":4,"SUBSCRIBE":5,"CONNECT":6,"DISCONNECT":7,"REFRESH":8}}}},"ClientInfo":{"fields":{"user":{"type":"string","id":1},"client":{"type":"string","id":2},"conn_info":{"type":"bytes","id":3},"chan_info":{"type":"bytes","id":4}}},"Publication":{"fields":{"data":{"type":"bytes","id":4},"info":{"type":"ClientInfo","id":5},"offset":{"type":"uint64","id":6}}},"Join":{"fields":{"info":{"type":"ClientInfo","id":1}}},"Leave":{"fields":{"info":{"type":"ClientInfo","id":1}}},"Unsubscribe":{"fields":{}},"Subscribe":{"fields":{"recoverable":{"type":"bool","id":1},"epoch":{"type":"string","id":4},"offset":{"type":"uint64","id":5},"positioned":{"type":"bool","id":6},"data":{"type":"bytes","id":7}}},"Message":{"fields":{"data":{"type":"bytes","id":1}}},"Connect":{"fields":{"client":{"type":"string","id":1},"version":{"type":"string","id":2},"data":{"type":"bytes","id":3},"subs":{"keyType":"string","type":"SubscribeResult","id":4},"expires":{"type":"bool","id":5},"ttl":{"type":"uint32","id":6}}},"Disconnect":{"fields":{"code":{"type":"uint32","id":1},"reason":{"type":"string","id":2},"reconnect":{"type":"bool","id":3}}},"Refresh":{"fields":{"expires":{"type":"bool","id":1},"ttl":{"type":"uint32","id":2}}},"ConnectRequest":{"fields":{"token":{"type":"string","id":1},"data":{"type":"bytes","id":2},"subs":{"keyType":"string","type":"SubscribeRequest","id":3},"name":{"type":"string","id":4},"version":{"type":"string","id":5}}},"ConnectResult":{"fields":{"client":{"type":"string","id":1},"version":{"type":"string","id":2},"expires":{"type":"bool","id":3},"ttl":{"type":"uint32","id":4},"data":{"type":"bytes","id":5},"subs":{"keyType":"string","type":"SubscribeResult","id":6}}},"RefreshRequest":{"fields":{"token":{"type":"string","id":1}}},"RefreshResult":{"fields":{"client":{"type":"string","id":1},"version":{"type":"string","id":2},"expires":{"type":"bool","id":3},"ttl":{"type":"uint32","id":4}}},"SubscribeRequest":{"fields":{"channel":{"type":"string","id":1},"token":{"type":"string","id":2},"recover":{"type":"bool","id":3},"epoch":{"type":"string","id":6},"offset":{"type":"uint64","id":7}}},"SubscribeResult":{"fields":{"expires":{"type":"bool","id":1},"ttl":{"type":"uint32","id":2},"recoverable":{"type":"bool","id":3},"epoch":{"type":"string","id":6},"publications":{"rule":"repeated","type":"Publication","id":7},"recovered":{"type":"bool","id":8},"offset":{"type":"uint64","id":9},"positioned":{"type":"bool","id":10},"data":{"type":"bytes","id":11}}},"SubRefreshRequest":{"fields":{"channel":{"type":"string","id":1},"token":{"type":"string","id":2}}},"SubRefreshResult":{"fields":{"expires":{"type":"bool","id":1},"ttl":{"type":"uint32","id":2}}},"UnsubscribeRequest":{"fields":{"channel":{"type":"string","id":1}}},"UnsubscribeResult":{"fields":{}},"PublishRequest":{"fields":{"channel":{"type":"string","id":1},"data":{"type":"bytes","id":2}}},"PublishResult":{"fields":{}},"PresenceRequest":{"fields":{"channel":{"type":"string","id":1}}},"PresenceResult":{"fields":{"presence":{"keyType":"string","type":"ClientInfo","id":1}}},"PresenceStatsRequest":{"fields":{"channel":{"type":"string","id":1}}},"PresenceStatsResult":{"fields":{"num_clients":{"type":"uint32","id":1},"num_users":{"type":"uint32","id":2}}},"StreamPosition":{"fields":{"offset":{"type":"uint64","id":1},"epoch":{"type":"string","id":2}}},"HistoryRequest":{"fields":{"channel":{"type":"string","id":1},"limit":{"type":"int32","id":7},"since":{"type":"StreamPosition","id":8},"reverse":{"type":"bool","id":9}}},"HistoryResult":{"fields":{"publications":{"rule":"repeated","type":"Publication","id":1},"epoch":{"type":"string","id":2},"offset":{"type":"uint64","id":3}}},"PingRequest":{"fields":{}},"PingResult":{"fields":{}},"RPCRequest":{"fields":{"data":{"type":"bytes","id":1},"method":{"type":"string","id":2}}},"RPCResult":{"fields":{"data":{"type":"bytes","id":1}}},"SendRequest":{"fields":{"data":{"type":"bytes","id":1}}}}}}}}}}}');
 
 /***/ })
 
@@ -11309,8 +11330,9 @@ module.exports = JSON.parse("{\"nested\":{\"centrifugal\":{\"nested\":{\"centrif
 /******/ 	// The require function
 /******/ 	function __webpack_require__(moduleId) {
 /******/ 		// Check if module is in cache
-/******/ 		if(__webpack_module_cache__[moduleId]) {
-/******/ 			return __webpack_module_cache__[moduleId].exports;
+/******/ 		var cachedModule = __webpack_module_cache__[moduleId];
+/******/ 		if (cachedModule !== undefined) {
+/******/ 			return cachedModule.exports;
 /******/ 		}
 /******/ 		// Create a new module (and put it into the cache)
 /******/ 		var module = __webpack_module_cache__[moduleId] = {
@@ -11340,10 +11362,13 @@ module.exports = JSON.parse("{\"nested\":{\"centrifugal\":{\"nested\":{\"centrif
 /******/ 	}();
 /******/ 	
 /************************************************************************/
-/******/ 	// module exports must be returned from runtime so entry inlining is disabled
+/******/ 	
 /******/ 	// startup
 /******/ 	// Load entry module and return exports
-/******/ 	return __webpack_require__(714);
+/******/ 	// This entry module is referenced by other modules so it can't be inlined
+/******/ 	var __webpack_exports__ = __webpack_require__(714);
+/******/ 	
+/******/ 	return __webpack_exports__;
 /******/ })()
 ;
 });

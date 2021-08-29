@@ -12,6 +12,9 @@ This client can connect to [Centrifuge](https://github.com/centrifugal/centrifug
 * [Protobuf support](#protobuf-support)
 * [Browser support](#browser-support)
 * [Using with NodeJS](#using-with-nodejs)
+* [Custom XMLHttpRequest](#custom-xmlhttprequest)
+* [Custom WebSocket constructor](#custom-websocket-constructor)
+* [Subscribe since known position](#subscribe-since-known-position)
 * [Feature Matrix](#feature-matrix)
 
 ## Install and quick start

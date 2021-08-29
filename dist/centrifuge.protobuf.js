@@ -1232,9 +1232,11 @@ var Centrifuge = /*#__PURE__*/function (_EventEmitter) {
     _this._xhrID = 0;
     _this._xhrs = {};
     _this._dispatchPromise = Promise.resolve();
+    _this._protocol = '';
     _this._config = {
+      protocol: '',
       debug: false,
-      name: '',
+      name: 'js',
       version: '',
       websocket: null,
       sockjs: null,
@@ -1450,9 +1452,17 @@ var Centrifuge = /*#__PURE__*/function (_EventEmitter) {
         throw new Error('url required');
       }
 
-      if ((0, _utils.startsWith)(this._url, 'ws') && this._url.indexOf('format=protobuf') > -1) {
+      var isProtobufURL = (0, _utils.startsWith)(this._url, 'ws') && this._url.indexOf('format=protobuf') > -1;
+
+      if (isProtobufURL || this._config.protocol === 'protobuf') {
         this._setFormat('protobuf');
+
+        this._protocol = 'protobuf';
       } else {
+        if (this._config.protocol !== '' && this._config.protocol !== 'json') {
+          throw new Error('unsupported protocol ' + this._config.protocol);
+        }
+
         this._setFormat('json');
       }
 
@@ -1644,6 +1654,15 @@ var Centrifuge = /*#__PURE__*/function (_EventEmitter) {
       return true;
     }
   }, {
+    key: "_getSubProtocol",
+    value: function _getSubProtocol() {
+      if (!this._protocol) {
+        return '';
+      }
+
+      return 'centrifuge-' + this._protocol;
+    }
+  }, {
     key: "_setupTransport",
     value: function _setupTransport() {
       var _this3 = this;
@@ -1674,7 +1693,13 @@ var Centrifuge = /*#__PURE__*/function (_EventEmitter) {
           this._websocket = WebSocket;
         }
 
-        this._transport = new this._websocket(this._url);
+        var subProtocol = this._getSubProtocol();
+
+        if (subProtocol !== '') {
+          this._transport = new this._websocket(this._url, subProtocol);
+        } else {
+          this._transport = new this._websocket(this._url);
+        }
 
         if (this._binary === true) {
           this._transport.binaryType = 'arraybuffer';
@@ -1906,22 +1931,23 @@ var Centrifuge = /*#__PURE__*/function (_EventEmitter) {
 
       if (options !== undefined) {
         if (options.since) {
-          params['use_since'] = true;
-
-          if (options.since.offset) {
-            params['offset'] = options.since.offset;
-          }
+          params['since'] = {
+            'offset': options.since.offset
+          };
 
           if (options.since.epoch) {
-            params['epoch'] = options.since.epoch;
+            params['since']['epoch'] = options.since.epoch;
           }
         }
 
         ;
 
         if (options.limit !== undefined) {
-          params['use_limit'] = true;
           params['limit'] = options.limit;
+        }
+
+        if (options.reverse === true) {
+          params['reverse'] = true;
         }
       }
 
@@ -3465,8 +3491,16 @@ var Centrifuge = /*#__PURE__*/function (_EventEmitter) {
       }
     }
   }, {
+    key: "_setSubscribeSince",
+    value: function _setSubscribeSince(sub, since) {
+      this._lastOffset[sub.channel] = since.offset;
+      this._lastEpoch[sub.channel] = since.epoch;
+
+      sub._setNeedRecover(true);
+    }
+  }, {
     key: "subscribe",
-    value: function subscribe(channel, events) {
+    value: function subscribe(channel, events, opts) {
       var currentSub = this._getSub(channel);
 
       if (currentSub !== null) {
@@ -3481,6 +3515,11 @@ var Centrifuge = /*#__PURE__*/function (_EventEmitter) {
 
       var sub = new _subscription["default"](this, channel, events);
       this._subs[channel] = sub;
+
+      if (opts && opts.since) {
+        this._setSubscribeSince(sub, opts.since);
+      }
+
       sub.subscribe();
       return sub;
     }
@@ -3546,9 +3585,9 @@ var JsonPushType = {
   PUBLICATION: 0,
   JOIN: 1,
   LEAVE: 2,
-  UNSUB: 3,
+  UNSUBSCRIBE: 3,
   MESSAGE: 4,
-  SUB: 5
+  SUBSCRIBE: 5
 };
 exports.JsonPushType = JsonPushType;
 
@@ -3679,17 +3718,17 @@ var protobufPushType = {
   PUBLICATION: proto.lookupEnum('PushType').values.PUBLICATION,
   JOIN: proto.lookupEnum('PushType').values.JOIN,
   LEAVE: proto.lookupEnum('PushType').values.LEAVE,
-  UNSUB: proto.lookupEnum('PushType').values.UNSUB,
+  UNSUBSCRIBE: proto.lookupEnum('PushType').values.UNSUBSCRIBE,
   MESSAGE: proto.lookupEnum('PushType').values.MESSAGE,
-  SUB: proto.lookupEnum('PushType').values.SUB
+  SUBSCRIBE: proto.lookupEnum('PushType').values.SUBSCRIBE
 };
 var PushSchema = {
   PUBLICATION: proto.lookupType('protocol.Publication'),
   JOIN: proto.lookupType('protocol.Join'),
   LEAVE: proto.lookupType('protocol.Leave'),
-  UNSUB: proto.lookupType('protocol.Unsub'),
+  UNSUBSCRIBE: proto.lookupType('protocol.Unsubscribe'),
   MESSAGE: proto.lookupType('protocol.Message'),
-  SUB: proto.lookupType('protocol.Sub')
+  SUBSCRIBE: proto.lookupType('protocol.Subscribe')
 };
 var Push = proto.lookupType('protocol.Push');
 var Command = proto.lookupType('protocol.Command');
@@ -3882,12 +3921,12 @@ var ProtobufDecoder = /*#__PURE__*/function () {
           type = PushSchema.LEAVE;
           break;
 
-        case protobufPushType.UNSUB:
-          type = PushSchema.UNSUB;
+        case protobufPushType.UNSUBSCRIBE:
+          type = PushSchema.UNSUBSCRIBE;
           break;
 
-        case protobufPushType.SUB:
-          type = PushSchema.SUB;
+        case protobufPushType.SUBSCRIBE:
+          type = PushSchema.SUBSCRIBE;
           break;
       }
 
@@ -4052,6 +4091,12 @@ var Subscription = /*#__PURE__*/function (_EventEmitter) {
           reject(err);
         };
       }).then(function () {}, function () {});
+    }
+  }, {
+    key: "_setNeedRecover",
+    value: function _setNeedRecover(enabled) {
+      this._recoverable = enabled;
+      this._recover = enabled;
     }
   }, {
     key: "_needRecover",
@@ -4247,12 +4292,16 @@ var Subscription = /*#__PURE__*/function (_EventEmitter) {
     }
   }, {
     key: "subscribe",
-    value: function subscribe() {
+    value: function subscribe(opts) {
       if (this._status === _STATE_SUCCESS) {
         return;
       }
 
       this._noResubscribe = false;
+
+      if (opts && opts.since) {
+        this._centrifuge._setSubscribeSince(this, opts.since);
+      }
 
       this._centrifuge._subscribe(this);
     }
@@ -11248,7 +11297,7 @@ BufferWriter._configure();
 /***/ 261:
 /***/ (function(module) {
 
-module.exports = JSON.parse("{\"nested\":{\"protocol\":{\"nested\":{\"Error\":{\"fields\":{\"code\":{\"type\":\"uint32\",\"id\":1},\"message\":{\"type\":\"string\",\"id\":2}}},\"MethodType\":{\"values\":{\"CONNECT\":0,\"SUBSCRIBE\":1,\"UNSUBSCRIBE\":2,\"PUBLISH\":3,\"PRESENCE\":4,\"PRESENCE_STATS\":5,\"HISTORY\":6,\"PING\":7,\"SEND\":8,\"RPC\":9,\"REFRESH\":10,\"SUB_REFRESH\":11}},\"Command\":{\"fields\":{\"id\":{\"type\":\"uint32\",\"id\":1},\"method\":{\"type\":\"MethodType\",\"id\":2},\"params\":{\"type\":\"bytes\",\"id\":3}}},\"Reply\":{\"fields\":{\"id\":{\"type\":\"uint32\",\"id\":1},\"error\":{\"type\":\"Error\",\"id\":2},\"result\":{\"type\":\"bytes\",\"id\":3}}},\"PushType\":{\"values\":{\"PUBLICATION\":0,\"JOIN\":1,\"LEAVE\":2,\"UNSUB\":3,\"MESSAGE\":4,\"SUB\":5}},\"Push\":{\"fields\":{\"type\":{\"type\":\"PushType\",\"id\":1},\"channel\":{\"type\":\"string\",\"id\":2},\"data\":{\"type\":\"bytes\",\"id\":3}}},\"ClientInfo\":{\"fields\":{\"user\":{\"type\":\"string\",\"id\":1},\"client\":{\"type\":\"string\",\"id\":2},\"conn_info\":{\"type\":\"bytes\",\"id\":3},\"chan_info\":{\"type\":\"bytes\",\"id\":4}}},\"Publication\":{\"fields\":{\"seq\":{\"type\":\"uint32\",\"id\":1},\"gen\":{\"type\":\"uint32\",\"id\":2},\"uid\":{\"type\":\"string\",\"id\":3},\"data\":{\"type\":\"bytes\",\"id\":4},\"info\":{\"type\":\"ClientInfo\",\"id\":5},\"offset\":{\"type\":\"uint64\",\"id\":6}}},\"Join\":{\"fields\":{\"info\":{\"type\":\"ClientInfo\",\"id\":1}}},\"Leave\":{\"fields\":{\"info\":{\"type\":\"ClientInfo\",\"id\":1}}},\"Unsub\":{\"fields\":{\"resubscribe\":{\"type\":\"bool\",\"id\":1}}},\"Sub\":{\"fields\":{\"recoverable\":{\"type\":\"bool\",\"id\":1},\"seq\":{\"type\":\"uint32\",\"id\":2},\"gen\":{\"type\":\"uint32\",\"id\":3},\"epoch\":{\"type\":\"string\",\"id\":4},\"offset\":{\"type\":\"uint64\",\"id\":5},\"positioned\":{\"type\":\"bool\",\"id\":6}}},\"Message\":{\"fields\":{\"data\":{\"type\":\"bytes\",\"id\":1}}},\"ConnectRequest\":{\"fields\":{\"token\":{\"type\":\"string\",\"id\":1},\"data\":{\"type\":\"bytes\",\"id\":2},\"subs\":{\"keyType\":\"string\",\"type\":\"SubscribeRequest\",\"id\":3},\"name\":{\"type\":\"string\",\"id\":4},\"version\":{\"type\":\"string\",\"id\":5}}},\"ConnectResult\":{\"fields\":{\"client\":{\"type\":\"string\",\"id\":1},\"version\":{\"type\":\"string\",\"id\":2},\"expires\":{\"type\":\"bool\",\"id\":3},\"ttl\":{\"type\":\"uint32\",\"id\":4},\"data\":{\"type\":\"bytes\",\"id\":5},\"subs\":{\"keyType\":\"string\",\"type\":\"SubscribeResult\",\"id\":6}}},\"RefreshRequest\":{\"fields\":{\"token\":{\"type\":\"string\",\"id\":1}}},\"RefreshResult\":{\"fields\":{\"client\":{\"type\":\"string\",\"id\":1},\"version\":{\"type\":\"string\",\"id\":2},\"expires\":{\"type\":\"bool\",\"id\":3},\"ttl\":{\"type\":\"uint32\",\"id\":4}}},\"SubscribeRequest\":{\"fields\":{\"channel\":{\"type\":\"string\",\"id\":1},\"token\":{\"type\":\"string\",\"id\":2},\"recover\":{\"type\":\"bool\",\"id\":3},\"seq\":{\"type\":\"uint32\",\"id\":4},\"gen\":{\"type\":\"uint32\",\"id\":5},\"epoch\":{\"type\":\"string\",\"id\":6},\"offset\":{\"type\":\"uint64\",\"id\":7}}},\"SubscribeResult\":{\"fields\":{\"expires\":{\"type\":\"bool\",\"id\":1},\"ttl\":{\"type\":\"uint32\",\"id\":2},\"recoverable\":{\"type\":\"bool\",\"id\":3},\"seq\":{\"type\":\"uint32\",\"id\":4},\"gen\":{\"type\":\"uint32\",\"id\":5},\"epoch\":{\"type\":\"string\",\"id\":6},\"publications\":{\"rule\":\"repeated\",\"type\":\"Publication\",\"id\":7},\"recovered\":{\"type\":\"bool\",\"id\":8},\"offset\":{\"type\":\"uint64\",\"id\":9},\"positioned\":{\"type\":\"bool\",\"id\":10}}},\"SubRefreshRequest\":{\"fields\":{\"channel\":{\"type\":\"string\",\"id\":1},\"token\":{\"type\":\"string\",\"id\":2}}},\"SubRefreshResult\":{\"fields\":{\"expires\":{\"type\":\"bool\",\"id\":1},\"ttl\":{\"type\":\"uint32\",\"id\":2}}},\"UnsubscribeRequest\":{\"fields\":{\"channel\":{\"type\":\"string\",\"id\":1}}},\"UnsubscribeResult\":{\"fields\":{}},\"PublishRequest\":{\"fields\":{\"channel\":{\"type\":\"string\",\"id\":1},\"data\":{\"type\":\"bytes\",\"id\":2}}},\"PublishResult\":{\"fields\":{}},\"PresenceRequest\":{\"fields\":{\"channel\":{\"type\":\"string\",\"id\":1}}},\"PresenceResult\":{\"fields\":{\"presence\":{\"keyType\":\"string\",\"type\":\"ClientInfo\",\"id\":1}}},\"PresenceStatsRequest\":{\"fields\":{\"channel\":{\"type\":\"string\",\"id\":1}}},\"PresenceStatsResult\":{\"fields\":{\"num_clients\":{\"type\":\"uint32\",\"id\":1},\"num_users\":{\"type\":\"uint32\",\"id\":2}}},\"HistoryRequest\":{\"fields\":{\"channel\":{\"type\":\"string\",\"id\":1},\"use_since\":{\"type\":\"bool\",\"id\":2},\"offset\":{\"type\":\"uint64\",\"id\":3},\"epoch\":{\"type\":\"string\",\"id\":4},\"use_limit\":{\"type\":\"bool\",\"id\":5},\"limit\":{\"type\":\"int32\",\"id\":6}}},\"HistoryResult\":{\"fields\":{\"publications\":{\"rule\":\"repeated\",\"type\":\"Publication\",\"id\":1},\"epoch\":{\"type\":\"string\",\"id\":2},\"offset\":{\"type\":\"uint64\",\"id\":3}}},\"PingRequest\":{\"fields\":{}},\"PingResult\":{\"fields\":{}},\"RPCRequest\":{\"fields\":{\"data\":{\"type\":\"bytes\",\"id\":1},\"method\":{\"type\":\"string\",\"id\":2}}},\"RPCResult\":{\"fields\":{\"data\":{\"type\":\"bytes\",\"id\":1}}},\"SendRequest\":{\"fields\":{\"data\":{\"type\":\"bytes\",\"id\":1}}}}}}}");
+module.exports = JSON.parse("{\"nested\":{\"centrifugal\":{\"nested\":{\"centrifuge\":{\"nested\":{\"protocol\":{\"options\":{\"go_package\":\"./;protocol\"},\"nested\":{\"Error\":{\"fields\":{\"code\":{\"type\":\"uint32\",\"id\":1},\"message\":{\"type\":\"string\",\"id\":2}}},\"Command\":{\"fields\":{\"id\":{\"type\":\"uint32\",\"id\":1},\"method\":{\"type\":\"MethodType\",\"id\":2},\"params\":{\"type\":\"bytes\",\"id\":3}},\"nested\":{\"MethodType\":{\"values\":{\"CONNECT\":0,\"SUBSCRIBE\":1,\"UNSUBSCRIBE\":2,\"PUBLISH\":3,\"PRESENCE\":4,\"PRESENCE_STATS\":5,\"HISTORY\":6,\"PING\":7,\"SEND\":8,\"RPC\":9,\"REFRESH\":10,\"SUB_REFRESH\":11}}}},\"Reply\":{\"fields\":{\"id\":{\"type\":\"uint32\",\"id\":1},\"error\":{\"type\":\"Error\",\"id\":2},\"result\":{\"type\":\"bytes\",\"id\":3}}},\"Push\":{\"fields\":{\"type\":{\"type\":\"PushType\",\"id\":1},\"channel\":{\"type\":\"string\",\"id\":2},\"data\":{\"type\":\"bytes\",\"id\":3}},\"nested\":{\"PushType\":{\"values\":{\"PUBLICATION\":0,\"JOIN\":1,\"LEAVE\":2,\"UNSUBSCRIBE\":3,\"MESSAGE\":4,\"SUBSCRIBE\":5,\"CONNECT\":6,\"DISCONNECT\":7,\"REFRESH\":8}}}},\"ClientInfo\":{\"fields\":{\"user\":{\"type\":\"string\",\"id\":1},\"client\":{\"type\":\"string\",\"id\":2},\"conn_info\":{\"type\":\"bytes\",\"id\":3},\"chan_info\":{\"type\":\"bytes\",\"id\":4}}},\"Publication\":{\"fields\":{\"data\":{\"type\":\"bytes\",\"id\":4},\"info\":{\"type\":\"ClientInfo\",\"id\":5},\"offset\":{\"type\":\"uint64\",\"id\":6}}},\"Join\":{\"fields\":{\"info\":{\"type\":\"ClientInfo\",\"id\":1}}},\"Leave\":{\"fields\":{\"info\":{\"type\":\"ClientInfo\",\"id\":1}}},\"Unsubscribe\":{\"fields\":{}},\"Subscribe\":{\"fields\":{\"recoverable\":{\"type\":\"bool\",\"id\":1},\"epoch\":{\"type\":\"string\",\"id\":4},\"offset\":{\"type\":\"uint64\",\"id\":5},\"positioned\":{\"type\":\"bool\",\"id\":6},\"data\":{\"type\":\"bytes\",\"id\":7}}},\"Message\":{\"fields\":{\"data\":{\"type\":\"bytes\",\"id\":1}}},\"Connect\":{\"fields\":{\"client\":{\"type\":\"string\",\"id\":1},\"version\":{\"type\":\"string\",\"id\":2},\"data\":{\"type\":\"bytes\",\"id\":3},\"subs\":{\"keyType\":\"string\",\"type\":\"SubscribeResult\",\"id\":4},\"expires\":{\"type\":\"bool\",\"id\":5},\"ttl\":{\"type\":\"uint32\",\"id\":6}}},\"Disconnect\":{\"fields\":{\"code\":{\"type\":\"uint32\",\"id\":1},\"reason\":{\"type\":\"string\",\"id\":2},\"reconnect\":{\"type\":\"bool\",\"id\":3}}},\"Refresh\":{\"fields\":{\"expires\":{\"type\":\"bool\",\"id\":1},\"ttl\":{\"type\":\"uint32\",\"id\":2}}},\"ConnectRequest\":{\"fields\":{\"token\":{\"type\":\"string\",\"id\":1},\"data\":{\"type\":\"bytes\",\"id\":2},\"subs\":{\"keyType\":\"string\",\"type\":\"SubscribeRequest\",\"id\":3},\"name\":{\"type\":\"string\",\"id\":4},\"version\":{\"type\":\"string\",\"id\":5}}},\"ConnectResult\":{\"fields\":{\"client\":{\"type\":\"string\",\"id\":1},\"version\":{\"type\":\"string\",\"id\":2},\"expires\":{\"type\":\"bool\",\"id\":3},\"ttl\":{\"type\":\"uint32\",\"id\":4},\"data\":{\"type\":\"bytes\",\"id\":5},\"subs\":{\"keyType\":\"string\",\"type\":\"SubscribeResult\",\"id\":6}}},\"RefreshRequest\":{\"fields\":{\"token\":{\"type\":\"string\",\"id\":1}}},\"RefreshResult\":{\"fields\":{\"client\":{\"type\":\"string\",\"id\":1},\"version\":{\"type\":\"string\",\"id\":2},\"expires\":{\"type\":\"bool\",\"id\":3},\"ttl\":{\"type\":\"uint32\",\"id\":4}}},\"SubscribeRequest\":{\"fields\":{\"channel\":{\"type\":\"string\",\"id\":1},\"token\":{\"type\":\"string\",\"id\":2},\"recover\":{\"type\":\"bool\",\"id\":3},\"epoch\":{\"type\":\"string\",\"id\":6},\"offset\":{\"type\":\"uint64\",\"id\":7}}},\"SubscribeResult\":{\"fields\":{\"expires\":{\"type\":\"bool\",\"id\":1},\"ttl\":{\"type\":\"uint32\",\"id\":2},\"recoverable\":{\"type\":\"bool\",\"id\":3},\"epoch\":{\"type\":\"string\",\"id\":6},\"publications\":{\"rule\":\"repeated\",\"type\":\"Publication\",\"id\":7},\"recovered\":{\"type\":\"bool\",\"id\":8},\"offset\":{\"type\":\"uint64\",\"id\":9},\"positioned\":{\"type\":\"bool\",\"id\":10},\"data\":{\"type\":\"bytes\",\"id\":11}}},\"SubRefreshRequest\":{\"fields\":{\"channel\":{\"type\":\"string\",\"id\":1},\"token\":{\"type\":\"string\",\"id\":2}}},\"SubRefreshResult\":{\"fields\":{\"expires\":{\"type\":\"bool\",\"id\":1},\"ttl\":{\"type\":\"uint32\",\"id\":2}}},\"UnsubscribeRequest\":{\"fields\":{\"channel\":{\"type\":\"string\",\"id\":1}}},\"UnsubscribeResult\":{\"fields\":{}},\"PublishRequest\":{\"fields\":{\"channel\":{\"type\":\"string\",\"id\":1},\"data\":{\"type\":\"bytes\",\"id\":2}}},\"PublishResult\":{\"fields\":{}},\"PresenceRequest\":{\"fields\":{\"channel\":{\"type\":\"string\",\"id\":1}}},\"PresenceResult\":{\"fields\":{\"presence\":{\"keyType\":\"string\",\"type\":\"ClientInfo\",\"id\":1}}},\"PresenceStatsRequest\":{\"fields\":{\"channel\":{\"type\":\"string\",\"id\":1}}},\"PresenceStatsResult\":{\"fields\":{\"num_clients\":{\"type\":\"uint32\",\"id\":1},\"num_users\":{\"type\":\"uint32\",\"id\":2}}},\"StreamPosition\":{\"fields\":{\"offset\":{\"type\":\"uint64\",\"id\":1},\"epoch\":{\"type\":\"string\",\"id\":2}}},\"HistoryRequest\":{\"fields\":{\"channel\":{\"type\":\"string\",\"id\":1},\"limit\":{\"type\":\"int32\",\"id\":7},\"since\":{\"type\":\"StreamPosition\",\"id\":8},\"reverse\":{\"type\":\"bool\",\"id\":9}}},\"HistoryResult\":{\"fields\":{\"publications\":{\"rule\":\"repeated\",\"type\":\"Publication\",\"id\":1},\"epoch\":{\"type\":\"string\",\"id\":2},\"offset\":{\"type\":\"uint64\",\"id\":3}}},\"PingRequest\":{\"fields\":{}},\"PingResult\":{\"fields\":{}},\"RPCRequest\":{\"fields\":{\"data\":{\"type\":\"bytes\",\"id\":1},\"method\":{\"type\":\"string\",\"id\":2}}},\"RPCResult\":{\"fields\":{\"data\":{\"type\":\"bytes\",\"id\":1}}},\"SendRequest\":{\"fields\":{\"data\":{\"type\":\"bytes\",\"id\":1}}}}}}}}}}}");
 
 /***/ })
 

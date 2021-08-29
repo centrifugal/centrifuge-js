@@ -111,9 +111,11 @@ var Centrifuge = /*#__PURE__*/function (_EventEmitter) {
     _this._xhrID = 0;
     _this._xhrs = {};
     _this._dispatchPromise = Promise.resolve();
+    _this._protocol = '';
     _this._config = {
+      protocol: '',
       debug: false,
-      name: '',
+      name: 'js',
       version: '',
       websocket: null,
       sockjs: null,
@@ -329,9 +331,17 @@ var Centrifuge = /*#__PURE__*/function (_EventEmitter) {
         throw new Error('url required');
       }
 
-      if ((0, _utils.startsWith)(this._url, 'ws') && this._url.indexOf('format=protobuf') > -1) {
+      var isProtobufURL = (0, _utils.startsWith)(this._url, 'ws') && this._url.indexOf('format=protobuf') > -1;
+
+      if (isProtobufURL || this._config.protocol === 'protobuf') {
         this._setFormat('protobuf');
+
+        this._protocol = 'protobuf';
       } else {
+        if (this._config.protocol !== '' && this._config.protocol !== 'json') {
+          throw new Error('unsupported protocol ' + this._config.protocol);
+        }
+
         this._setFormat('json');
       }
 
@@ -523,6 +533,15 @@ var Centrifuge = /*#__PURE__*/function (_EventEmitter) {
       return true;
     }
   }, {
+    key: "_getSubProtocol",
+    value: function _getSubProtocol() {
+      if (!this._protocol) {
+        return '';
+      }
+
+      return 'centrifuge-' + this._protocol;
+    }
+  }, {
     key: "_setupTransport",
     value: function _setupTransport() {
       var _this3 = this;
@@ -553,7 +572,13 @@ var Centrifuge = /*#__PURE__*/function (_EventEmitter) {
           this._websocket = WebSocket;
         }
 
-        this._transport = new this._websocket(this._url);
+        var subProtocol = this._getSubProtocol();
+
+        if (subProtocol !== '') {
+          this._transport = new this._websocket(this._url, subProtocol);
+        } else {
+          this._transport = new this._websocket(this._url);
+        }
 
         if (this._binary === true) {
           this._transport.binaryType = 'arraybuffer';
@@ -785,22 +810,23 @@ var Centrifuge = /*#__PURE__*/function (_EventEmitter) {
 
       if (options !== undefined) {
         if (options.since) {
-          params['use_since'] = true;
-
-          if (options.since.offset) {
-            params['offset'] = options.since.offset;
-          }
+          params['since'] = {
+            'offset': options.since.offset
+          };
 
           if (options.since.epoch) {
-            params['epoch'] = options.since.epoch;
+            params['since']['epoch'] = options.since.epoch;
           }
         }
 
         ;
 
         if (options.limit !== undefined) {
-          params['use_limit'] = true;
           params['limit'] = options.limit;
+        }
+
+        if (options.reverse === true) {
+          params['reverse'] = true;
         }
       }
 
@@ -2344,8 +2370,16 @@ var Centrifuge = /*#__PURE__*/function (_EventEmitter) {
       }
     }
   }, {
+    key: "_setSubscribeSince",
+    value: function _setSubscribeSince(sub, since) {
+      this._lastOffset[sub.channel] = since.offset;
+      this._lastEpoch[sub.channel] = since.epoch;
+
+      sub._setNeedRecover(true);
+    }
+  }, {
     key: "subscribe",
-    value: function subscribe(channel, events) {
+    value: function subscribe(channel, events, opts) {
       var currentSub = this._getSub(channel);
 
       if (currentSub !== null) {
@@ -2360,6 +2394,11 @@ var Centrifuge = /*#__PURE__*/function (_EventEmitter) {
 
       var sub = new _subscription["default"](this, channel, events);
       this._subs[channel] = sub;
+
+      if (opts && opts.since) {
+        this._setSubscribeSince(sub, opts.since);
+      }
+
       sub.subscribe();
       return sub;
     }
@@ -2425,9 +2464,9 @@ var JsonPushType = {
   PUBLICATION: 0,
   JOIN: 1,
   LEAVE: 2,
-  UNSUB: 3,
+  UNSUBSCRIBE: 3,
   MESSAGE: 4,
-  SUB: 5
+  SUBSCRIBE: 5
 };
 exports.JsonPushType = JsonPushType;
 
@@ -2593,6 +2632,12 @@ var Subscription = /*#__PURE__*/function (_EventEmitter) {
           reject(err);
         };
       }).then(function () {}, function () {});
+    }
+  }, {
+    key: "_setNeedRecover",
+    value: function _setNeedRecover(enabled) {
+      this._recoverable = enabled;
+      this._recover = enabled;
     }
   }, {
     key: "_needRecover",
@@ -2788,12 +2833,16 @@ var Subscription = /*#__PURE__*/function (_EventEmitter) {
     }
   }, {
     key: "subscribe",
-    value: function subscribe() {
+    value: function subscribe(opts) {
       if (this._status === _STATE_SUCCESS) {
         return;
       }
 
       this._noResubscribe = false;
+
+      if (opts && opts.since) {
+        this._centrifuge._setSubscribeSince(this, opts.since);
+      }
 
       this._centrifuge._subscribe(this);
     }

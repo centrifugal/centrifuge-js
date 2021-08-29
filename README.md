@@ -945,6 +945,14 @@ Centrifuge client with Protobuf support also works with JSON. To enable binary w
 var centrifuge = new Centrifuge('ws://centrifuge.example.com/connection/websocket?format=protobuf');
 ```
 
+When using Centrifugo v3 or Centrifuge >= v0.18.0 on server side prefer using client options instead of setting format in URL:
+
+```javascript
+var centrifuge = new Centrifuge('ws://centrifuge.example.com/connection/websocket', {
+    protocol: 'protobuf'
+});
+```
+
 ## Browser support
 
 This client intended to work in all modern browsers with Websocket support: https://caniuse.com/#search=websocket.
@@ -1038,6 +1046,16 @@ It should be now possible to use pass your custom WebSocket constructor to `cent
 var centrifuge = new Centrifuge('ws://localhost:8000/connection/websocket', {
     websocket: myWs({ headers: { Authorization: '<token or key>' } }),
 });
+```
+
+### Subscribe since known position
+
+Subscribe API supports setting known StreamPosition object to use server recovery feature on the connection start (otherwise recovery only used upon client reconnections due to temporary connection problems).
+
+```javascript
+centrifuge.subscribe('channel', function(messageCtx) {
+    console.log('new message', messageCtx);
+}, {'since': {'offset': 0, 'epoch': '<EPOCH>'}});
 ```
 
 ## Feature matrix

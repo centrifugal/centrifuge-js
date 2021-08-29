@@ -1,3 +1,15 @@
+2.8.0
+=====
+
+Update to work with Centrifuge >= v0.18.0 and Centrifugo v3.
+
+**Breaking change:** in server behavior. Client History API behavior changed in Centrifuge >= v0.18.0 and Centrifugo >= v3.0.0. When using history call it won't return all publications in a stream by default. See Centrifuge [v0.18.0 release notes](https://github.com/centrifugal/centrifuge/releases/tag/v0.18.0) or [Centrifugo v3 migration guide](https://centrifugal.dev/docs/getting-started/migration_v3) for more information and workaround on server-side. If you are using `centrifuge-js` with older server versions then everything without using history options like `limit` and `since` then everything should work the same way. Since this is a change in a server behavior we don't release a new major `centrifuge-js` version.
+
+Other changes:
+
+* When working with Centrifugo v3 or Centrifuge >= v0.18.0 it's now possible to avoid using `?format=protobuf` in connection URL when using Protobuf protocol. The intent to use binary Protobuf protocol can now be set explicitly in client options. In this case client will negotiate Protobuf protocol with a server using WebSocket subprotocol mechanism (in request headers). [Pull request](https://github.com/centrifugal/centrifuge-js/pull/145).
+* It's now possible to call subscribe and provide custom subscribe options. One subscribe option available now is `since` – which allows setting known `StreamPosition` and initiate automatic recovery. [Pull request](https://github.com/centrifugal/centrifuge-js/pull/146).
+
 2.7.7
 =====
 

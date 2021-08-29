@@ -945,7 +945,7 @@ Centrifuge client with Protobuf support also works with JSON. To enable binary w
 var centrifuge = new Centrifuge('ws://centrifuge.example.com/connection/websocket?format=protobuf');
 ```
 
-When using Centrifugo v3 or Centrifuge >= v0.18.0 on server side prefer using client options instead of setting format in URL:
+When using Centrifugo v3 or Centrifuge >= v0.18.0 on server side prefer using client options instead of setting format in URL (available in `centrifuge-js` >= v2.8.0):
 
 ```javascript
 var centrifuge = new Centrifuge('ws://centrifuge.example.com/connection/websocket', {
@@ -1049,6 +1049,8 @@ var centrifuge = new Centrifuge('ws://localhost:8000/connection/websocket', {
 ```
 
 ### Subscribe since known position
+
+Available in `centrifuge-js` >= v2.8.0.
 
 Subscribe API supports setting known StreamPosition object to use server recovery feature on the connection start (otherwise recovery only used upon client reconnections due to temporary connection problems).
 

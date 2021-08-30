@@ -678,10 +678,9 @@ var subscription = centrifuge.subscribe("news", function(message) {
 });
 
 subscription.history().then(function(response) {
-        // history messages received
-    }, function(err) {
-        // history call failed with error
-    });
+    // history messages received
+}, function(err) {
+    // history call failed with error
 });
 ```
 

@@ -1,3 +1,8 @@
+2.8.1
+=====
+
+* Support `sockjsTimeout` (number) option which translates to [SockJS.timeout option](https://github.com/sockjs/sockjs-client#sockjs-class) - i.e. a minimum timeout in milliseconds to use for the transport connections. By default SockJS uses timeout determined automatically based on calculating round trip time during info request. 
+
 2.8.0
 =====
 

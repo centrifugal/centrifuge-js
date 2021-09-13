@@ -73,6 +73,7 @@ declare namespace Centrifuge {
         privateChannelPrefix?: string;
         onTransportClose?: (ctx: object) => void;
         sockjsServer?: string;
+        sockjsTimeout?: number;
         sockjsTransports?: string[];
         refreshEndpoint?: string;
         refreshHeaders?: object;

@@ -129,6 +129,7 @@ var Centrifuge = /*#__PURE__*/function (_EventEmitter) {
       privateChannelPrefix: '$',
       onTransportClose: null,
       sockjsServer: null,
+      sockjsTimeout: null,
       sockjsTransports: ['websocket', 'xdr-streaming', 'xhr-streaming', 'eventsource', 'iframe-eventsource', 'iframe-htmlfile', 'xdr-polling', 'xhr-polling', 'iframe-xhr-polling', 'jsonp-polling'],
       refreshEndpoint: '/centrifuge/refresh',
       refreshHeaders: {},
@@ -555,6 +556,10 @@ var Centrifuge = /*#__PURE__*/function (_EventEmitter) {
 
         if (this._config.sockjsServer !== null) {
           sockjsOptions.server = this._config.sockjsServer;
+        }
+
+        if (this._config.sockjsTimeout !== null) {
+          sockjsOptions.timeout = this._config.sockjsTimeout;
         }
 
         this._isSockjs = true;

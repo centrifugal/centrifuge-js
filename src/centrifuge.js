@@ -85,6 +85,7 @@ export class Centrifuge extends EventEmitter {
       privateChannelPrefix: '$',
       onTransportClose: null,
       sockjsServer: null,
+      sockjsTimeout: null,
       sockjsTransports: [
         'websocket',
         'xdr-streaming',
@@ -442,6 +443,9 @@ export class Centrifuge extends EventEmitter {
 
       if (this._config.sockjsServer !== null) {
         sockjsOptions.server = this._config.sockjsServer;
+      }
+      if (this._config.sockjsTimeout !== null) {
+        sockjsOptions.timeout = this._config.sockjsTimeout;
       }
       this._isSockjs = true;
       this._transport = new this._sockjs(this._url, null, sockjsOptions);

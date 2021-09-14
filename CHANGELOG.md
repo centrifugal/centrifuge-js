@@ -1,3 +1,8 @@
+2.8.2
+=====
+
+* Fix TypeScript definitions for subscribe (`A rest parameter must be last in a parameter list.`). 
+
 2.8.1
 =====
 

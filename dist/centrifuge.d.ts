@@ -50,7 +50,7 @@ declare class Centrifuge extends EventEmitter {
     stopBatching(): void;
     startSubscribeBatching(): void;
     stopSubscribeBatching(): void;
-    subscribe(channel: string, events?: (...args: any[], opts?: Centrifuge.SubscribeOptions) => void): Centrifuge.Subscription;
+    subscribe(channel: string, events?: (...args: any[]) => void, opts?: Centrifuge.SubscribeOptions): Centrifuge.Subscription;
     subscribe(channel: string, events?: Centrifuge.SubscriptionEvents, opts?: Centrifuge.SubscribeOptions): Centrifuge.Subscription;
 }
 

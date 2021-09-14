@@ -19,3 +19,5 @@ jobs:
         run: npm install --pure-lockfile
       - name: Test
         run: npm run test
+      - name: Check ts definitions
+        run: npx check-dts dist/centrifuge.d.ts

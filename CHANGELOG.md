@@ -1,3 +1,8 @@
+2.8.3
+=====
+
+* Fix regression of 2.8.0: handle server-side subscribe and unsubscribe pushes.
+
 2.8.2
 =====
 

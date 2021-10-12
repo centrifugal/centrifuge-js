@@ -2013,12 +2013,12 @@ var Centrifuge = /*#__PURE__*/function (_EventEmitter) {
         var leave = this._decoder.decodePushData(this._pushType.LEAVE, push.data);
 
         this._handleLeave(channel, leave);
-      } else if (type === this._pushType.UNSUB) {
-        var unsub = this._decoder.decodePushData(this._pushType.UNSUB, push.data);
+      } else if (type === this._pushType.UNSUBSCRIBE) {
+        var unsub = this._decoder.decodePushData(this._pushType.UNSUBSCRIBE, push.data);
 
         this._handleUnsub(channel, unsub);
-      } else if (type === this._pushType.SUB) {
-        var sub = this._decoder.decodePushData(this._pushType.SUB, push.data);
+      } else if (type === this._pushType.SUBSCRIBE) {
+        var sub = this._decoder.decodePushData(this._pushType.UNSUBSCRIBE, push.data);
 
         this._handleSub(channel, sub);
       }

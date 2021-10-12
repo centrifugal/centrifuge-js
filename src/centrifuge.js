@@ -1599,11 +1599,11 @@ export class Centrifuge extends EventEmitter {
     } else if (type === this._pushType.LEAVE) {
       const leave = this._decoder.decodePushData(this._pushType.LEAVE, push.data);
       this._handleLeave(channel, leave);
-    } else if (type === this._pushType.UNSUB) {
-      const unsub = this._decoder.decodePushData(this._pushType.UNSUB, push.data);
+    } else if (type === this._pushType.UNSUBSCRIBE) {
+      const unsub = this._decoder.decodePushData(this._pushType.UNSUBSCRIBE, push.data);
       this._handleUnsub(channel, unsub);
-    } else if (type === this._pushType.SUB) {
-      const sub = this._decoder.decodePushData(this._pushType.SUB, push.data);
+    } else if (type === this._pushType.SUBSCRIBE) {
+      const sub = this._decoder.decodePushData(this._pushType.UNSUBSCRIBE, push.data);
       this._handleSub(channel, sub);
     }
     next();

@@ -1,4 +1,4 @@
-import {Centrifuge} from './centrifuge.js';
+import { Centrifuge } from './centrifuge.js';
 
 const protobuf = require('protobufjs/light');
 const proto = protobuf.Root.fromJSON(require('./client.proto.json'));

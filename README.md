@@ -346,7 +346,7 @@ centrifuge.rpc({"input": "hello"}).then(function(res) {
 `namedRPC` method allows to send rpc request from client to server and wait for data response. Unlike `rpc` it additionally allows to provide method name string (which can be handy to have on RPC request top level).
 
 ```javascript
-centrifuge.namedRPC({"input": "hello"}).then(function(res) {
+centrifuge.namedRPC("my.method.name", {"input": "hello"}).then(function(res) {
     console.log('rpc result', res);
 }, function(err) {
     console.log('rpc error', err);

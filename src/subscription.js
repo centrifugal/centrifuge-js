@@ -27,6 +27,7 @@ export default class Subscription extends EventEmitter {
     this._initializePromise();
     this._promises = {};
     this._promiseId = 0;
+    this._subscribeData = null;
     this.on('error', function (errContext) {
       this._centrifuge._debug('subscription error', errContext);
     });
@@ -51,7 +52,7 @@ export default class Subscription extends EventEmitter {
         this._ready = true;
         reject(err);
       };
-    }).then(function () {}, function () {});
+    }).then(function () { }, function () { });
   };
 
   _setNeedRecover(enabled) {
@@ -198,6 +199,10 @@ export default class Subscription extends EventEmitter {
     return subscribeErrorContext;
   };
 
+  _setSubscribeData(data) {
+    this._subscribeData = data;
+  }
+
   ready(callback, errback) {
     if (this._ready) {
       if (this._isSuccess()) {
@@ -216,6 +221,9 @@ export default class Subscription extends EventEmitter {
     if (opts && opts.since) {
       this._centrifuge._setSubscribeSince(this, opts.since);
     }
+    if (opts && opts.data) {
+      this._setSubscribeData(opts.data);
+    }
     this._centrifuge._subscribe(this);
   };
 
@@ -232,7 +240,7 @@ export default class Subscription extends EventEmitter {
     }
     let subPromise = new Promise((res, rej) => {
       const timeout = setTimeout(function () {
-        rej({'code': 0, 'message': 'timeout'});
+        rej({ 'code': 0, 'message': 'timeout' });
       }, this._centrifuge._config.timeout);
       this._promises[this._nextPromiseId()] = {
         timeout: timeout,

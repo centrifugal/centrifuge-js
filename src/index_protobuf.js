@@ -1,2 +1,2 @@
-import {CentrifugeProtobuf} from './protobuf.js';
+import { CentrifugeProtobuf } from './protobuf.js';
 export default CentrifugeProtobuf;

@@ -210,6 +210,7 @@ declare namespace Centrifuge {
 
     export interface SubscribeOptions {
         since?: StreamPosition;
+        data?: any;
     }
 
     export interface StreamPosition {

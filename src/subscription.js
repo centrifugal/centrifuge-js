@@ -214,16 +214,16 @@ export default class Subscription extends EventEmitter {
   };
 
   subscribe(opts) {
-    if (this._status === _STATE_SUCCESS) {
-      return;
-    }
-    this._noResubscribe = false;
     if (opts && opts.since) {
       this._centrifuge._setSubscribeSince(this, opts.since);
     }
     if (opts && opts.data) {
       this._setSubscribeData(opts.data);
     }
+    if (this._status === _STATE_SUCCESS) {
+      return;
+    }
+    this._noResubscribe = false;
     this._centrifuge._subscribe(this);
   };
 

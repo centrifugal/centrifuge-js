@@ -1906,19 +1906,13 @@ export class Centrifuge extends EventEmitter {
     if (currentSub !== null) {
       currentSub._setEvents(events);
       if (currentSub._isUnsubscribed()) {
-        currentSub.subscribe();
+        currentSub.subscribe(opts);
       }
       return currentSub;
     }
     const sub = new Subscription(this, channel, events);
     this._subs[channel] = sub;
-    if (opts && opts.since) {
-      this._setSubscribeSince(sub, opts.since);
-    }
-    if (opts && opts.data) {
-      sub._setSubscribeData(opts.data);
-    }
-    sub.subscribe();
+    sub.subscribe(opts);
     return sub;
   };
 }

@@ -1167,11 +1167,11 @@ function _setPrototypeOf(o, p) { _setPrototypeOf = Object.setPrototypeOf || func
 
 function _createSuper(Derived) { var hasNativeReflectConstruct = _isNativeReflectConstruct(); return function _createSuperInternal() { var Super = _getPrototypeOf(Derived), result; if (hasNativeReflectConstruct) { var NewTarget = _getPrototypeOf(this).constructor; result = Reflect.construct(Super, arguments, NewTarget); } else { result = Super.apply(this, arguments); } return _possibleConstructorReturn(this, result); }; }
 
-function _possibleConstructorReturn(self, call) { if (call && (_typeof(call) === "object" || typeof call === "function")) { return call; } return _assertThisInitialized(self); }
+function _possibleConstructorReturn(self, call) { if (call && (_typeof(call) === "object" || typeof call === "function")) { return call; } else if (call !== void 0) { throw new TypeError("Derived constructors may only return object or undefined"); } return _assertThisInitialized(self); }
 
 function _assertThisInitialized(self) { if (self === void 0) { throw new ReferenceError("this hasn't been initialised - super() hasn't been called"); } return self; }
 
-function _isNativeReflectConstruct() { if (typeof Reflect === "undefined" || !Reflect.construct) return false; if (Reflect.construct.sham) return false; if (typeof Proxy === "function") return true; try { Date.prototype.toString.call(Reflect.construct(Date, [], function () {})); return true; } catch (e) { return false; } }
+function _isNativeReflectConstruct() { if (typeof Reflect === "undefined" || !Reflect.construct) return false; if (Reflect.construct.sham) return false; if (typeof Proxy === "function") return true; try { Boolean.prototype.valueOf.call(Reflect.construct(Boolean, [], function () {})); return true; } catch (e) { return false; } }
 
 function _getPrototypeOf(o) { _getPrototypeOf = Object.setPrototypeOf ? Object.getPrototypeOf : function _getPrototypeOf(o) { return o.__proto__ || Object.getPrototypeOf(o); }; return _getPrototypeOf(o); }
 
@@ -2539,10 +2539,15 @@ var Centrifuge = /*#__PURE__*/function (_EventEmitter) {
         params: {
           channel: channel
         }
-      }; // If channel name does not start with privateChannelPrefix - then we
+      };
+
+      if (sub._subscribeData) {
+        msg.params.data = sub._subscribeData;
+      } // If channel name does not start with privateChannelPrefix - then we
       // can just send subscription message to Centrifuge. If channel name
       // starts with privateChannelPrefix - then this is a private channel
       // and we should ask web application backend for permission first.
+
 
       if ((0, _utils.startsWith)(channel, this._config.privateChannelPrefix)) {
         // private channel.
@@ -3512,7 +3517,7 @@ var Centrifuge = /*#__PURE__*/function (_EventEmitter) {
         currentSub._setEvents(events);
 
         if (currentSub._isUnsubscribed()) {
-          currentSub.subscribe();
+          currentSub.subscribe(opts);
         }
 
         return currentSub;
@@ -3520,12 +3525,7 @@ var Centrifuge = /*#__PURE__*/function (_EventEmitter) {
 
       var sub = new _subscription["default"](this, channel, events);
       this._subs[channel] = sub;
-
-      if (opts && opts.since) {
-        this._setSubscribeSince(sub, opts.since);
-      }
-
-      sub.subscribe();
+      sub.subscribe(opts);
       return sub;
     }
   }]);
@@ -3545,12 +3545,12 @@ exports.Centrifuge = Centrifuge;
 Object.defineProperty(exports, "__esModule", ({
   value: true
 }));
-exports.default = void 0;
+exports["default"] = void 0;
 
 var _protobuf = __webpack_require__(885);
 
 var _default = _protobuf.CentrifugeProtobuf;
-exports.default = _default;
+exports["default"] = _default;
 module.exports = exports["default"];
 
 /***/ }),
@@ -3563,7 +3563,7 @@ module.exports = exports["default"];
 Object.defineProperty(exports, "__esModule", ({
   value: true
 }));
-exports.JsonDecoder = exports.JsonEncoder = exports.JsonPushType = exports.JsonMethodType = void 0;
+exports.JsonPushType = exports.JsonMethodType = exports.JsonEncoder = exports.JsonDecoder = void 0;
 
 function _classCallCheck(instance, Constructor) { if (!(instance instanceof Constructor)) { throw new TypeError("Cannot call a class as a function"); } }
 
@@ -3663,7 +3663,7 @@ function _typeof(obj) { "@babel/helpers - typeof"; if (typeof Symbol === "functi
 Object.defineProperty(exports, "__esModule", ({
   value: true
 }));
-exports.CentrifugeProtobuf = exports.ProtobufDecoder = exports.ProtobufEncoder = void 0;
+exports.ProtobufEncoder = exports.ProtobufDecoder = exports.CentrifugeProtobuf = void 0;
 
 var _centrifuge = __webpack_require__(382);
 
@@ -3673,11 +3673,11 @@ function _setPrototypeOf(o, p) { _setPrototypeOf = Object.setPrototypeOf || func
 
 function _createSuper(Derived) { var hasNativeReflectConstruct = _isNativeReflectConstruct(); return function _createSuperInternal() { var Super = _getPrototypeOf(Derived), result; if (hasNativeReflectConstruct) { var NewTarget = _getPrototypeOf(this).constructor; result = Reflect.construct(Super, arguments, NewTarget); } else { result = Super.apply(this, arguments); } return _possibleConstructorReturn(this, result); }; }
 
-function _possibleConstructorReturn(self, call) { if (call && (_typeof(call) === "object" || typeof call === "function")) { return call; } return _assertThisInitialized(self); }
+function _possibleConstructorReturn(self, call) { if (call && (_typeof(call) === "object" || typeof call === "function")) { return call; } else if (call !== void 0) { throw new TypeError("Derived constructors may only return object or undefined"); } return _assertThisInitialized(self); }
 
 function _assertThisInitialized(self) { if (self === void 0) { throw new ReferenceError("this hasn't been initialised - super() hasn't been called"); } return self; }
 
-function _isNativeReflectConstruct() { if (typeof Reflect === "undefined" || !Reflect.construct) return false; if (Reflect.construct.sham) return false; if (typeof Proxy === "function") return true; try { Date.prototype.toString.call(Reflect.construct(Date, [], function () {})); return true; } catch (e) { return false; } }
+function _isNativeReflectConstruct() { if (typeof Reflect === "undefined" || !Reflect.construct) return false; if (Reflect.construct.sham) return false; if (typeof Proxy === "function") return true; try { Boolean.prototype.valueOf.call(Reflect.construct(Boolean, [], function () {})); return true; } catch (e) { return false; } }
 
 function _getPrototypeOf(o) { _getPrototypeOf = Object.setPrototypeOf ? Object.getPrototypeOf : function _getPrototypeOf(o) { return o.__proto__ || Object.getPrototypeOf(o); }; return _getPrototypeOf(o); }
 
@@ -4001,7 +4001,7 @@ function _typeof(obj) { "@babel/helpers - typeof"; if (typeof Symbol === "functi
 Object.defineProperty(exports, "__esModule", ({
   value: true
 }));
-exports.default = void 0;
+exports["default"] = void 0;
 
 var _events = _interopRequireDefault(__webpack_require__(187));
 
@@ -4021,11 +4021,11 @@ function _setPrototypeOf(o, p) { _setPrototypeOf = Object.setPrototypeOf || func
 
 function _createSuper(Derived) { var hasNativeReflectConstruct = _isNativeReflectConstruct(); return function _createSuperInternal() { var Super = _getPrototypeOf(Derived), result; if (hasNativeReflectConstruct) { var NewTarget = _getPrototypeOf(this).constructor; result = Reflect.construct(Super, arguments, NewTarget); } else { result = Super.apply(this, arguments); } return _possibleConstructorReturn(this, result); }; }
 
-function _possibleConstructorReturn(self, call) { if (call && (_typeof(call) === "object" || typeof call === "function")) { return call; } return _assertThisInitialized(self); }
+function _possibleConstructorReturn(self, call) { if (call && (_typeof(call) === "object" || typeof call === "function")) { return call; } else if (call !== void 0) { throw new TypeError("Derived constructors may only return object or undefined"); } return _assertThisInitialized(self); }
 
 function _assertThisInitialized(self) { if (self === void 0) { throw new ReferenceError("this hasn't been initialised - super() hasn't been called"); } return self; }
 
-function _isNativeReflectConstruct() { if (typeof Reflect === "undefined" || !Reflect.construct) return false; if (Reflect.construct.sham) return false; if (typeof Proxy === "function") return true; try { Date.prototype.toString.call(Reflect.construct(Date, [], function () {})); return true; } catch (e) { return false; } }
+function _isNativeReflectConstruct() { if (typeof Reflect === "undefined" || !Reflect.construct) return false; if (Reflect.construct.sham) return false; if (typeof Proxy === "function") return true; try { Boolean.prototype.valueOf.call(Reflect.construct(Boolean, [], function () {})); return true; } catch (e) { return false; } }
 
 function _getPrototypeOf(o) { _getPrototypeOf = Object.setPrototypeOf ? Object.getPrototypeOf : function _getPrototypeOf(o) { return o.__proto__ || Object.getPrototypeOf(o); }; return _getPrototypeOf(o); }
 
@@ -4063,6 +4063,7 @@ var Subscription = /*#__PURE__*/function (_EventEmitter) {
 
     _this._promises = {};
     _this._promiseId = 0;
+    _this._subscribeData = null;
 
     _this.on('error', function (errContext) {
       this._centrifuge._debug('subscription error', errContext);
@@ -4285,6 +4286,11 @@ var Subscription = /*#__PURE__*/function (_EventEmitter) {
       return subscribeErrorContext;
     }
   }, {
+    key: "_setSubscribeData",
+    value: function _setSubscribeData(data) {
+      this._subscribeData = data;
+    }
+  }, {
     key: "ready",
     value: function ready(callback, errback) {
       if (this._ready) {
@@ -4302,11 +4308,15 @@ var Subscription = /*#__PURE__*/function (_EventEmitter) {
         return;
       }
 
-      this._noResubscribe = false;
-
       if (opts && opts.since) {
         this._centrifuge._setSubscribeSince(this, opts.since);
       }
+
+      if (opts && opts.data) {
+        this._setSubscribeData(opts.data);
+      }
+
+      this._noResubscribe = false;
 
       this._centrifuge._subscribe(this);
     }
@@ -4380,7 +4390,7 @@ var Subscription = /*#__PURE__*/function (_EventEmitter) {
   return Subscription;
 }(_events["default"]);
 
-exports.default = Subscription;
+exports["default"] = Subscription;
 module.exports = exports["default"];
 
 /***/ }),
@@ -4393,12 +4403,12 @@ module.exports = exports["default"];
 Object.defineProperty(exports, "__esModule", ({
   value: true
 }));
-exports.startsWith = startsWith;
-exports.isFunction = isFunction;
-exports.log = log;
 exports.backoff = backoff;
 exports.errorExists = errorExists;
 exports.extend = extend;
+exports.isFunction = isFunction;
+exports.log = log;
+exports.startsWith = startsWith;
 
 function startsWith(value, prefix) {
   return value.lastIndexOf(prefix, 0) === 0;
@@ -5783,6 +5793,9 @@ function Field(name, id, type, rule, extend, options, comment) {
     if (extend !== undefined && !util.isString(extend))
         throw TypeError("extend must be a string");
 
+    if (rule === "proto3_optional") {
+        rule = "optional";
+    }
     /**
      * Field rule, if any.
      * @type {string|undefined}
@@ -6688,6 +6701,7 @@ var ReflectionObject = __webpack_require__(243);
 ((Namespace.prototype = Object.create(ReflectionObject.prototype)).constructor = Namespace).className = "Namespace";
 
 var Field    = __webpack_require__(548),
+    OneOf    = __webpack_require__(598),
     util     = __webpack_require__(935);
 
 var Type,    // cyclic
@@ -6899,7 +6913,7 @@ Namespace.prototype.getEnum = function getEnum(name) {
  */
 Namespace.prototype.add = function add(object) {
 
-    if (!(object instanceof Field && object.extend !== undefined || object instanceof Type || object instanceof Enum || object instanceof Service || object instanceof Namespace))
+    if (!(object instanceof Field && object.extend !== undefined || object instanceof Type || object instanceof Enum || object instanceof Service || object instanceof Namespace || object instanceof OneOf))
         throw TypeError("object must be a valid nested object");
 
     if (!this.nested)
@@ -11323,7 +11337,7 @@ BufferWriter._configure();
 /***/ 881:
 /***/ (function(module) {
 
-module.exports = JSON.parse('{"nested":{"centrifugal":{"nested":{"centrifuge":{"nested":{"protocol":{"options":{"go_package":"./;protocol"},"nested":{"Error":{"fields":{"code":{"type":"uint32","id":1},"message":{"type":"string","id":2}}},"Command":{"fields":{"id":{"type":"uint32","id":1},"method":{"type":"MethodType","id":2},"params":{"type":"bytes","id":3}},"nested":{"MethodType":{"values":{"CONNECT":0,"SUBSCRIBE":1,"UNSUBSCRIBE":2,"PUBLISH":3,"PRESENCE":4,"PRESENCE_STATS":5,"HISTORY":6,"PING":7,"SEND":8,"RPC":9,"REFRESH":10,"SUB_REFRESH":11}}}},"Reply":{"fields":{"id":{"type":"uint32","id":1},"error":{"type":"Error","id":2},"result":{"type":"bytes","id":3}}},"Push":{"fields":{"type":{"type":"PushType","id":1},"channel":{"type":"string","id":2},"data":{"type":"bytes","id":3}},"nested":{"PushType":{"values":{"PUBLICATION":0,"JOIN":1,"LEAVE":2,"UNSUBSCRIBE":3,"MESSAGE":4,"SUBSCRIBE":5,"CONNECT":6,"DISCONNECT":7,"REFRESH":8}}}},"ClientInfo":{"fields":{"user":{"type":"string","id":1},"client":{"type":"string","id":2},"conn_info":{"type":"bytes","id":3},"chan_info":{"type":"bytes","id":4}}},"Publication":{"fields":{"data":{"type":"bytes","id":4},"info":{"type":"ClientInfo","id":5},"offset":{"type":"uint64","id":6}}},"Join":{"fields":{"info":{"type":"ClientInfo","id":1}}},"Leave":{"fields":{"info":{"type":"ClientInfo","id":1}}},"Unsubscribe":{"fields":{}},"Subscribe":{"fields":{"recoverable":{"type":"bool","id":1},"epoch":{"type":"string","id":4},"offset":{"type":"uint64","id":5},"positioned":{"type":"bool","id":6},"data":{"type":"bytes","id":7}}},"Message":{"fields":{"data":{"type":"bytes","id":1}}},"Connect":{"fields":{"client":{"type":"string","id":1},"version":{"type":"string","id":2},"data":{"type":"bytes","id":3},"subs":{"keyType":"string","type":"SubscribeResult","id":4},"expires":{"type":"bool","id":5},"ttl":{"type":"uint32","id":6}}},"Disconnect":{"fields":{"code":{"type":"uint32","id":1},"reason":{"type":"string","id":2},"reconnect":{"type":"bool","id":3}}},"Refresh":{"fields":{"expires":{"type":"bool","id":1},"ttl":{"type":"uint32","id":2}}},"ConnectRequest":{"fields":{"token":{"type":"string","id":1},"data":{"type":"bytes","id":2},"subs":{"keyType":"string","type":"SubscribeRequest","id":3},"name":{"type":"string","id":4},"version":{"type":"string","id":5}}},"ConnectResult":{"fields":{"client":{"type":"string","id":1},"version":{"type":"string","id":2},"expires":{"type":"bool","id":3},"ttl":{"type":"uint32","id":4},"data":{"type":"bytes","id":5},"subs":{"keyType":"string","type":"SubscribeResult","id":6}}},"RefreshRequest":{"fields":{"token":{"type":"string","id":1}}},"RefreshResult":{"fields":{"client":{"type":"string","id":1},"version":{"type":"string","id":2},"expires":{"type":"bool","id":3},"ttl":{"type":"uint32","id":4}}},"SubscribeRequest":{"fields":{"channel":{"type":"string","id":1},"token":{"type":"string","id":2},"recover":{"type":"bool","id":3},"epoch":{"type":"string","id":6},"offset":{"type":"uint64","id":7}}},"SubscribeResult":{"fields":{"expires":{"type":"bool","id":1},"ttl":{"type":"uint32","id":2},"recoverable":{"type":"bool","id":3},"epoch":{"type":"string","id":6},"publications":{"rule":"repeated","type":"Publication","id":7},"recovered":{"type":"bool","id":8},"offset":{"type":"uint64","id":9},"positioned":{"type":"bool","id":10},"data":{"type":"bytes","id":11}}},"SubRefreshRequest":{"fields":{"channel":{"type":"string","id":1},"token":{"type":"string","id":2}}},"SubRefreshResult":{"fields":{"expires":{"type":"bool","id":1},"ttl":{"type":"uint32","id":2}}},"UnsubscribeRequest":{"fields":{"channel":{"type":"string","id":1}}},"UnsubscribeResult":{"fields":{}},"PublishRequest":{"fields":{"channel":{"type":"string","id":1},"data":{"type":"bytes","id":2}}},"PublishResult":{"fields":{}},"PresenceRequest":{"fields":{"channel":{"type":"string","id":1}}},"PresenceResult":{"fields":{"presence":{"keyType":"string","type":"ClientInfo","id":1}}},"PresenceStatsRequest":{"fields":{"channel":{"type":"string","id":1}}},"PresenceStatsResult":{"fields":{"num_clients":{"type":"uint32","id":1},"num_users":{"type":"uint32","id":2}}},"StreamPosition":{"fields":{"offset":{"type":"uint64","id":1},"epoch":{"type":"string","id":2}}},"HistoryRequest":{"fields":{"channel":{"type":"string","id":1},"limit":{"type":"int32","id":7},"since":{"type":"StreamPosition","id":8},"reverse":{"type":"bool","id":9}}},"HistoryResult":{"fields":{"publications":{"rule":"repeated","type":"Publication","id":1},"epoch":{"type":"string","id":2},"offset":{"type":"uint64","id":3}}},"PingRequest":{"fields":{}},"PingResult":{"fields":{}},"RPCRequest":{"fields":{"data":{"type":"bytes","id":1},"method":{"type":"string","id":2}}},"RPCResult":{"fields":{"data":{"type":"bytes","id":1}}},"SendRequest":{"fields":{"data":{"type":"bytes","id":1}}}}}}}}}}}');
+module.exports = JSON.parse('{"nested":{"centrifugal":{"nested":{"centrifuge":{"nested":{"protocol":{"options":{"go_package":"./;protocol"},"nested":{"Error":{"fields":{"code":{"type":"uint32","id":1},"message":{"type":"string","id":2}}},"Command":{"fields":{"id":{"type":"uint32","id":1},"method":{"type":"MethodType","id":2},"params":{"type":"bytes","id":3}},"nested":{"MethodType":{"values":{"CONNECT":0,"SUBSCRIBE":1,"UNSUBSCRIBE":2,"PUBLISH":3,"PRESENCE":4,"PRESENCE_STATS":5,"HISTORY":6,"PING":7,"SEND":8,"RPC":9,"REFRESH":10,"SUB_REFRESH":11}}}},"Reply":{"fields":{"id":{"type":"uint32","id":1},"error":{"type":"Error","id":2},"result":{"type":"bytes","id":3}}},"Push":{"fields":{"type":{"type":"PushType","id":1},"channel":{"type":"string","id":2},"data":{"type":"bytes","id":3}},"nested":{"PushType":{"values":{"PUBLICATION":0,"JOIN":1,"LEAVE":2,"UNSUBSCRIBE":3,"MESSAGE":4,"SUBSCRIBE":5,"CONNECT":6,"DISCONNECT":7,"REFRESH":8}}}},"ClientInfo":{"fields":{"user":{"type":"string","id":1},"client":{"type":"string","id":2},"conn_info":{"type":"bytes","id":3},"chan_info":{"type":"bytes","id":4}}},"Publication":{"fields":{"data":{"type":"bytes","id":4},"info":{"type":"ClientInfo","id":5},"offset":{"type":"uint64","id":6}}},"Join":{"fields":{"info":{"type":"ClientInfo","id":1}}},"Leave":{"fields":{"info":{"type":"ClientInfo","id":1}}},"Unsubscribe":{"fields":{}},"Subscribe":{"fields":{"recoverable":{"type":"bool","id":1},"epoch":{"type":"string","id":4},"offset":{"type":"uint64","id":5},"positioned":{"type":"bool","id":6},"data":{"type":"bytes","id":7}}},"Message":{"fields":{"data":{"type":"bytes","id":1}}},"Connect":{"fields":{"client":{"type":"string","id":1},"version":{"type":"string","id":2},"data":{"type":"bytes","id":3},"subs":{"keyType":"string","type":"SubscribeResult","id":4},"expires":{"type":"bool","id":5},"ttl":{"type":"uint32","id":6}}},"Disconnect":{"fields":{"code":{"type":"uint32","id":1},"reason":{"type":"string","id":2},"reconnect":{"type":"bool","id":3}}},"Refresh":{"fields":{"expires":{"type":"bool","id":1},"ttl":{"type":"uint32","id":2}}},"ConnectRequest":{"fields":{"token":{"type":"string","id":1},"data":{"type":"bytes","id":2},"subs":{"keyType":"string","type":"SubscribeRequest","id":3},"name":{"type":"string","id":4},"version":{"type":"string","id":5}}},"ConnectResult":{"fields":{"client":{"type":"string","id":1},"version":{"type":"string","id":2},"expires":{"type":"bool","id":3},"ttl":{"type":"uint32","id":4},"data":{"type":"bytes","id":5},"subs":{"keyType":"string","type":"SubscribeResult","id":6}}},"RefreshRequest":{"fields":{"token":{"type":"string","id":1}}},"RefreshResult":{"fields":{"client":{"type":"string","id":1},"version":{"type":"string","id":2},"expires":{"type":"bool","id":3},"ttl":{"type":"uint32","id":4}}},"SubscribeRequest":{"fields":{"channel":{"type":"string","id":1},"token":{"type":"string","id":2},"recover":{"type":"bool","id":3},"epoch":{"type":"string","id":6},"offset":{"type":"uint64","id":7},"data":{"type":"bytes","id":8}}},"SubscribeResult":{"fields":{"expires":{"type":"bool","id":1},"ttl":{"type":"uint32","id":2},"recoverable":{"type":"bool","id":3},"epoch":{"type":"string","id":6},"publications":{"rule":"repeated","type":"Publication","id":7},"recovered":{"type":"bool","id":8},"offset":{"type":"uint64","id":9},"positioned":{"type":"bool","id":10},"data":{"type":"bytes","id":11}}},"SubRefreshRequest":{"fields":{"channel":{"type":"string","id":1},"token":{"type":"string","id":2}}},"SubRefreshResult":{"fields":{"expires":{"type":"bool","id":1},"ttl":{"type":"uint32","id":2}}},"UnsubscribeRequest":{"fields":{"channel":{"type":"string","id":1}}},"UnsubscribeResult":{"fields":{}},"PublishRequest":{"fields":{"channel":{"type":"string","id":1},"data":{"type":"bytes","id":2}}},"PublishResult":{"fields":{}},"PresenceRequest":{"fields":{"channel":{"type":"string","id":1}}},"PresenceResult":{"fields":{"presence":{"keyType":"string","type":"ClientInfo","id":1}}},"PresenceStatsRequest":{"fields":{"channel":{"type":"string","id":1}}},"PresenceStatsResult":{"fields":{"num_clients":{"type":"uint32","id":1},"num_users":{"type":"uint32","id":2}}},"StreamPosition":{"fields":{"offset":{"type":"uint64","id":1},"epoch":{"type":"string","id":2}}},"HistoryRequest":{"fields":{"channel":{"type":"string","id":1},"limit":{"type":"int32","id":7},"since":{"type":"StreamPosition","id":8},"reverse":{"type":"bool","id":9}}},"HistoryResult":{"fields":{"publications":{"rule":"repeated","type":"Publication","id":1},"epoch":{"type":"string","id":2},"offset":{"type":"uint64","id":3}}},"PingRequest":{"fields":{}},"PingResult":{"fields":{}},"RPCRequest":{"fields":{"data":{"type":"bytes","id":1},"method":{"type":"string","id":2}}},"RPCResult":{"fields":{"data":{"type":"bytes","id":1}}},"SendRequest":{"fields":{"data":{"type":"bytes","id":1}}}}}}}}}}}');
 
 /***/ })
 

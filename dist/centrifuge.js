@@ -46,11 +46,11 @@ function _setPrototypeOf(o, p) { _setPrototypeOf = Object.setPrototypeOf || func
 
 function _createSuper(Derived) { var hasNativeReflectConstruct = _isNativeReflectConstruct(); return function _createSuperInternal() { var Super = _getPrototypeOf(Derived), result; if (hasNativeReflectConstruct) { var NewTarget = _getPrototypeOf(this).constructor; result = Reflect.construct(Super, arguments, NewTarget); } else { result = Super.apply(this, arguments); } return _possibleConstructorReturn(this, result); }; }
 
-function _possibleConstructorReturn(self, call) { if (call && (_typeof(call) === "object" || typeof call === "function")) { return call; } return _assertThisInitialized(self); }
+function _possibleConstructorReturn(self, call) { if (call && (_typeof(call) === "object" || typeof call === "function")) { return call; } else if (call !== void 0) { throw new TypeError("Derived constructors may only return object or undefined"); } return _assertThisInitialized(self); }
 
 function _assertThisInitialized(self) { if (self === void 0) { throw new ReferenceError("this hasn't been initialised - super() hasn't been called"); } return self; }
 
-function _isNativeReflectConstruct() { if (typeof Reflect === "undefined" || !Reflect.construct) return false; if (Reflect.construct.sham) return false; if (typeof Proxy === "function") return true; try { Date.prototype.toString.call(Reflect.construct(Date, [], function () {})); return true; } catch (e) { return false; } }
+function _isNativeReflectConstruct() { if (typeof Reflect === "undefined" || !Reflect.construct) return false; if (Reflect.construct.sham) return false; if (typeof Proxy === "function") return true; try { Boolean.prototype.valueOf.call(Reflect.construct(Boolean, [], function () {})); return true; } catch (e) { return false; } }
 
 function _getPrototypeOf(o) { _getPrototypeOf = Object.setPrototypeOf ? Object.getPrototypeOf : function _getPrototypeOf(o) { return o.__proto__ || Object.getPrototypeOf(o); }; return _getPrototypeOf(o); }
 
@@ -1418,10 +1418,15 @@ var Centrifuge = /*#__PURE__*/function (_EventEmitter) {
         params: {
           channel: channel
         }
-      }; // If channel name does not start with privateChannelPrefix - then we
+      };
+
+      if (sub._subscribeData) {
+        msg.params.data = sub._subscribeData;
+      } // If channel name does not start with privateChannelPrefix - then we
       // can just send subscription message to Centrifuge. If channel name
       // starts with privateChannelPrefix - then this is a private channel
       // and we should ask web application backend for permission first.
+
 
       if ((0, _utils.startsWith)(channel, this._config.privateChannelPrefix)) {
         // private channel.
@@ -2391,7 +2396,7 @@ var Centrifuge = /*#__PURE__*/function (_EventEmitter) {
         currentSub._setEvents(events);
 
         if (currentSub._isUnsubscribed()) {
-          currentSub.subscribe();
+          currentSub.subscribe(opts);
         }
 
         return currentSub;
@@ -2399,12 +2404,7 @@ var Centrifuge = /*#__PURE__*/function (_EventEmitter) {
 
       var sub = new _subscription["default"](this, channel, events);
       this._subs[channel] = sub;
-
-      if (opts && opts.since) {
-        this._setSubscribeSince(sub, opts.since);
-      }
-
-      sub.subscribe();
+      sub.subscribe(opts);
       return sub;
     }
   }]);
@@ -2424,12 +2424,12 @@ exports.Centrifuge = Centrifuge;
 Object.defineProperty(exports, "__esModule", ({
   value: true
 }));
-exports.default = void 0;
+exports["default"] = void 0;
 
 var _centrifuge = __webpack_require__(382);
 
 var _default = _centrifuge.Centrifuge;
-exports.default = _default;
+exports["default"] = _default;
 module.exports = exports["default"];
 
 /***/ }),
@@ -2442,7 +2442,7 @@ module.exports = exports["default"];
 Object.defineProperty(exports, "__esModule", ({
   value: true
 }));
-exports.JsonDecoder = exports.JsonEncoder = exports.JsonPushType = exports.JsonMethodType = void 0;
+exports.JsonPushType = exports.JsonMethodType = exports.JsonEncoder = exports.JsonDecoder = void 0;
 
 function _classCallCheck(instance, Constructor) { if (!(instance instanceof Constructor)) { throw new TypeError("Cannot call a class as a function"); } }
 
@@ -2542,7 +2542,7 @@ function _typeof(obj) { "@babel/helpers - typeof"; if (typeof Symbol === "functi
 Object.defineProperty(exports, "__esModule", ({
   value: true
 }));
-exports.default = void 0;
+exports["default"] = void 0;
 
 var _events = _interopRequireDefault(__webpack_require__(187));
 
@@ -2562,11 +2562,11 @@ function _setPrototypeOf(o, p) { _setPrototypeOf = Object.setPrototypeOf || func
 
 function _createSuper(Derived) { var hasNativeReflectConstruct = _isNativeReflectConstruct(); return function _createSuperInternal() { var Super = _getPrototypeOf(Derived), result; if (hasNativeReflectConstruct) { var NewTarget = _getPrototypeOf(this).constructor; result = Reflect.construct(Super, arguments, NewTarget); } else { result = Super.apply(this, arguments); } return _possibleConstructorReturn(this, result); }; }
 
-function _possibleConstructorReturn(self, call) { if (call && (_typeof(call) === "object" || typeof call === "function")) { return call; } return _assertThisInitialized(self); }
+function _possibleConstructorReturn(self, call) { if (call && (_typeof(call) === "object" || typeof call === "function")) { return call; } else if (call !== void 0) { throw new TypeError("Derived constructors may only return object or undefined"); } return _assertThisInitialized(self); }
 
 function _assertThisInitialized(self) { if (self === void 0) { throw new ReferenceError("this hasn't been initialised - super() hasn't been called"); } return self; }
 
-function _isNativeReflectConstruct() { if (typeof Reflect === "undefined" || !Reflect.construct) return false; if (Reflect.construct.sham) return false; if (typeof Proxy === "function") return true; try { Date.prototype.toString.call(Reflect.construct(Date, [], function () {})); return true; } catch (e) { return false; } }
+function _isNativeReflectConstruct() { if (typeof Reflect === "undefined" || !Reflect.construct) return false; if (Reflect.construct.sham) return false; if (typeof Proxy === "function") return true; try { Boolean.prototype.valueOf.call(Reflect.construct(Boolean, [], function () {})); return true; } catch (e) { return false; } }
 
 function _getPrototypeOf(o) { _getPrototypeOf = Object.setPrototypeOf ? Object.getPrototypeOf : function _getPrototypeOf(o) { return o.__proto__ || Object.getPrototypeOf(o); }; return _getPrototypeOf(o); }
 
@@ -2604,6 +2604,7 @@ var Subscription = /*#__PURE__*/function (_EventEmitter) {
 
     _this._promises = {};
     _this._promiseId = 0;
+    _this._subscribeData = null;
 
     _this.on('error', function (errContext) {
       this._centrifuge._debug('subscription error', errContext);
@@ -2826,6 +2827,11 @@ var Subscription = /*#__PURE__*/function (_EventEmitter) {
       return subscribeErrorContext;
     }
   }, {
+    key: "_setSubscribeData",
+    value: function _setSubscribeData(data) {
+      this._subscribeData = data;
+    }
+  }, {
     key: "ready",
     value: function ready(callback, errback) {
       if (this._ready) {
@@ -2843,11 +2849,15 @@ var Subscription = /*#__PURE__*/function (_EventEmitter) {
         return;
       }
 
-      this._noResubscribe = false;
-
       if (opts && opts.since) {
         this._centrifuge._setSubscribeSince(this, opts.since);
       }
+
+      if (opts && opts.data) {
+        this._setSubscribeData(opts.data);
+      }
+
+      this._noResubscribe = false;
 
       this._centrifuge._subscribe(this);
     }
@@ -2921,7 +2931,7 @@ var Subscription = /*#__PURE__*/function (_EventEmitter) {
   return Subscription;
 }(_events["default"]);
 
-exports.default = Subscription;
+exports["default"] = Subscription;
 module.exports = exports["default"];
 
 /***/ }),
@@ -2934,12 +2944,12 @@ module.exports = exports["default"];
 Object.defineProperty(exports, "__esModule", ({
   value: true
 }));
-exports.startsWith = startsWith;
-exports.isFunction = isFunction;
-exports.log = log;
 exports.backoff = backoff;
 exports.errorExists = errorExists;
 exports.extend = extend;
+exports.isFunction = isFunction;
+exports.log = log;
+exports.startsWith = startsWith;
 
 function startsWith(value, prefix) {
   return value.lastIndexOf(prefix, 0) === 0;

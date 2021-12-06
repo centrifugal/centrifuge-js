@@ -1,7 +1,7 @@
 2.8.4
 =====
 
-* Support setting a custom `data` attached to a subscribe request. This `data` will be then available in `OnSubscribe` callback on the server side (in the case of Centrifugo subscribe proxy will be able to access this data).
+* Support setting a custom `data` attached to a subscribe request. This `data` will be then available in `OnSubscribe` callback on the server side (in the case of Centrifugo subscribe proxy will be able to access this data). [#171](https://github.com/centrifugal/centrifuge-js/pull/171).
 
 2.8.3
 =====

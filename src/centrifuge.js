@@ -1136,6 +1136,10 @@ export class Centrifuge extends EventEmitter {
       }
     };
 
+    if (sub._subscribeData) {
+      msg.params.data = sub._subscribeData;
+    }
+
     // If channel name does not start with privateChannelPrefix - then we
     // can just send subscription message to Centrifuge. If channel name
     // starts with privateChannelPrefix - then this is a private channel
@@ -1902,16 +1906,13 @@ export class Centrifuge extends EventEmitter {
     if (currentSub !== null) {
       currentSub._setEvents(events);
       if (currentSub._isUnsubscribed()) {
-        currentSub.subscribe();
+        currentSub.subscribe(opts);
       }
       return currentSub;
     }
     const sub = new Subscription(this, channel, events);
     this._subs[channel] = sub;
-    if (opts && opts.since) {
-      this._setSubscribeSince(sub, opts.since);
-    }
-    sub.subscribe();
+    sub.subscribe(opts);
     return sub;
   };
 }

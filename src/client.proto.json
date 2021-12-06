@@ -349,6 +349,10 @@
                     "offset": {
                       "type": "uint64",
                       "id": 7
+                    },
+                    "data": {
+                      "type": "bytes",
+                      "id": 8
                     }
                   }
                 },

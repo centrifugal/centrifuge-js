@@ -70,6 +70,7 @@ export class Centrifuge extends EventEmitter {
     this._protocol = '';
     this._config = {
       protocol: '',
+      protocolVersion: 'v1',
       debug: false,
       name: 'js',
       version: '',
@@ -533,8 +534,20 @@ export class Centrifuge extends EventEmitter {
       }
 
       this._latencyStart = new Date();
+
+      if (this._config.protocolVersion === 'v2') {
+        msg.connect = msg.params;
+        delete msg.params;
+      }
+
       this._call(msg).then(resolveCtx => {
-        this._connectResponse(this._decoder.decodeCommandResult(this._methodType.CONNECT, resolveCtx.result), hasSubs);
+        let result;
+        if (this._config.protocolVersion === 'v1') {
+          result = this._decoder.decodeCommandResult(this._methodType.CONNECT, resolveCtx.reply.result);
+        } else {
+          result = resolveCtx.reply.connect;
+        }
+        this._connectResponse(result, hasSubs);
         if (resolveCtx.next) {
           resolveCtx.next();
         }
@@ -626,8 +639,22 @@ export class Centrifuge extends EventEmitter {
       method: this._methodType.RPC,
       params: params
     };
-    return this._methodCall(msg, function (result) {
-      return result;
+    if (this._config.protocolVersion === 'v2') {
+      msg.rpc = msg.params;
+      delete msg.params;
+      delete msg.method;
+    }
+    let self = this;
+    return this._methodCall(msg, function (reply) {
+      let result;
+      if (self._config.protocolVersion === 'v1') {
+        result = self._decoder.decodeCommandResult(self._methodType.RPC, reply.result);
+      } else {
+        result = reply.rpc;
+      }
+      return {
+        'data': result.data
+      };
     });
   }
 
@@ -638,6 +665,12 @@ export class Centrifuge extends EventEmitter {
         data: data
       }
     };
+
+    if (this._config.protocolVersion === 'v2') {
+      msg.send = msg.params;
+      delete msg.params;
+      delete msg.method;
+    }
 
     if (!this.isConnected()) {
       return Promise.reject(this._createErrorObject(_errorConnectionClosed, 0));
@@ -679,7 +712,7 @@ export class Centrifuge extends EventEmitter {
     }
     return new Promise((resolve, reject) => {
       this._call(msg).then(resolveCtx => {
-        resolve(resultCB(this._decoder.decodeCommandResult(msg.method, resolveCtx.result)));
+        resolve(resultCB(resolveCtx.reply));
         if (resolveCtx.next) {
           resolveCtx.next();
         }
@@ -700,6 +733,11 @@ export class Centrifuge extends EventEmitter {
         data: data
       }
     };
+    if (this._config.protocolVersion === 'v2') {
+      msg.publish = msg.params;
+      delete msg.params;
+      delete msg.method;
+    }
     return this._methodCall(msg, function () {
       return {};
     });
@@ -711,7 +749,19 @@ export class Centrifuge extends EventEmitter {
       method: this._methodType.HISTORY,
       params: params
     };
-    return this._methodCall(msg, function (result) {
+    if (this._config.protocolVersion === 'v2') {
+      msg.history = msg.params;
+      delete msg.params;
+      delete msg.method;
+    }
+    let self = this;
+    return this._methodCall(msg, function (reply) {
+      let result;
+      if (self._config.protocolVersion === 'v1') {
+        result = self._decoder.decodeCommandResult(self._methodType.HISTORY, reply.result);
+      } else {
+        result = reply.history;
+      }
       return {
         'publications': result.publications,
         'epoch': result.epoch || '',
@@ -727,7 +777,19 @@ export class Centrifuge extends EventEmitter {
         channel: channel
       }
     };
-    return this._methodCall(msg, function (result) {
+    if (this._config.protocolVersion === 'v2') {
+      msg.presence = msg.params;
+      delete msg.params;
+      delete msg.method;
+    }
+    let self = this;
+    return this._methodCall(msg, function (reply) {
+      let result;
+      if (self._config.protocolVersion === 'v1') {
+        result = self._decoder.decodeCommandResult(self._methodType.PRESENCE, reply.result);
+      } else {
+        result = reply.presence;
+      }
       return {
         'presence': result.presence
       };
@@ -741,7 +803,18 @@ export class Centrifuge extends EventEmitter {
         channel: channel
       }
     };
-    return this._methodCall(msg, function (result) {
+    if (this._config.protocolVersion === 'v2') {
+      msg['presence_stats'] = msg.params;
+      delete msg.params;
+      delete msg.method;
+    }
+    return this._methodCall(msg, function (reply) {
+      let result;
+      if (self._config.protocolVersion === 'v1') {
+        result = self._decoder.decodeCommandResult(self._methodType.PRESENCE_STATS, reply.result);
+      } else {
+        result = reply.presence_stats;
+      }
       return {
         'num_users': result.num_users,
         'num_clients': result.num_clients
@@ -796,7 +869,11 @@ export class Centrifuge extends EventEmitter {
     if (id && id > 0) {
       this._handleReply(reply, next);
     } else {
-      this._handlePush(reply.result, next);
+      if (this._config.protocolVersion === 'v1') {
+        this._handlePush(reply.result, next);
+      } else {
+        this._handlePushV2(reply.push, next);
+      }
     }
 
     return p;
@@ -945,6 +1022,11 @@ export class Centrifuge extends EventEmitter {
             token: this._token
           }
         };
+        if (this._config.protocolVersion === 'v2') {
+          msg.refresh = msg.params;
+          delete msg.params;
+          delete msg.method;
+        }
         this._call(msg).then(resolveCtx => {
           this._refreshResponse(this._decoder.decodeCommandResult(this._methodType.REFRESH, resolveCtx.result));
           if (resolveCtx.next) {
@@ -1045,6 +1127,12 @@ export class Centrifuge extends EventEmitter {
       const sub = this._getSub(channel);
       if (sub === null) {
         return;
+      }
+
+      if (this._config.protocolVersion === 'v2') {
+        msg['sub_refresh'] = msg.params;
+        delete msg.params;
+        delete msg.method;
       }
 
       this._call(msg).then(resolveCtx => {
@@ -1179,11 +1267,23 @@ export class Centrifuge extends EventEmitter {
         }
       }
 
+      if (this._config.protocolVersion === 'v2') {
+        msg.subscribe = msg.params;
+        delete msg.params;
+        delete msg.method;
+      }
+
       this._call(msg).then(resolveCtx => {
+        let result;
+        if (this._config.protocolVersion === 'v1') {
+          result = this._decoder.decodeCommandResult(this._methodType.SUBSCRIBE, resolveCtx.reply.result);
+        } else {
+          result = resolveCtx.reply.subscribe;
+        }
         this._subscribeResponse(
           channel,
           recover,
-          this._decoder.decodeCommandResult(this._methodType.SUBSCRIBE, resolveCtx.result)
+          result
         );
         if (resolveCtx.next) {
           resolveCtx.next();
@@ -1204,12 +1304,18 @@ export class Centrifuge extends EventEmitter {
     delete this._lastGen[sub.channel];
     if (this.isConnected()) {
       // No need to unsubscribe in disconnected state - i.e. client already unsubscribed.
-      this._addMessage({
+      let msg = {
         method: this._methodType.UNSUBSCRIBE,
         params: {
           channel: sub.channel
         }
-      });
+      };
+      if (this._config.protocolVersion === 'v2') {
+        msg.unsubscribe = msg.params;
+        delete msg.params;
+        delete msg.method;
+      }
+      this._addMessage(msg);
     }
   };
 
@@ -1457,7 +1563,6 @@ export class Centrifuge extends EventEmitter {
 
   _handleReply(reply, next) {
     const id = reply.id;
-    const result = reply.result;
 
     if (!(id in this._callbacks)) {
       next();
@@ -1472,7 +1577,7 @@ export class Centrifuge extends EventEmitter {
       if (!callback) {
         return;
       }
-      callback({ result, next });
+      callback({ reply, next });
     } else {
       const errback = callbacks.errback;
       if (!errback) {
@@ -1613,6 +1718,24 @@ export class Centrifuge extends EventEmitter {
     next();
   }
 
+  _handlePushV2(data, next) {
+    const channel = data.channel;
+    if (data.pub) {
+      this._handlePublication(channel, data.pub);
+    } else if (data.message) {
+      this._handleMessage(data.message);
+    } else if (data.join) {
+      this._handleJoin(channel, data.join);
+    } else if (data.leave) {
+      this._handleLeave(channel, data.leave);
+    } else if (data.unsubscribe) {
+      this._handleUnsub(channel, data.unsubscribe);
+    } else if (data.subscribe) {
+      this._handleSub(channel, data.subscribe);
+    }
+    next();
+  }
+
   _flush() {
     const messages = this._messages.slice(0);
     this._messages = [];
@@ -1623,6 +1746,10 @@ export class Centrifuge extends EventEmitter {
     const msg = {
       method: this._methodType.PING
     };
+    if (this._config.protocolVersion === 'v2') {
+      delete msg.params;
+      delete msg.method;
+    }
     this._call(msg).then(resolveCtx => {
       this._pingResponse(this._decoder.decodeCommandResult(this._methodType.PING, resolveCtx.result));
       if (resolveCtx.next) {
@@ -1859,11 +1986,22 @@ export class Centrifuge extends EventEmitter {
                 msg.params.epoch = epoch;
               }
             }
+            if (this._config.protocolVersion === 'v2') {
+              msg.subscribe = msg.params;
+              delete msg.params;
+              delete msg.method;
+            }
             this._call(msg).then(resolveCtx => {
+              let result;
+              if (this._config.protocolVersion === 'v1') {
+                result = this._decoder.decodeCommandResult(this._methodType.SUBSCRIBE, resolveCtx.reply.result);
+              } else {
+                result = resolveCtx.reply.subscribe;
+              }
               this._subscribeResponse(
                 channel,
                 recover,
-                this._decoder.decodeCommandResult(this._methodType.SUBSCRIBE, resolveCtx.result)
+                result
               );
               if (resolveCtx.next) {
                 resolveCtx.next();

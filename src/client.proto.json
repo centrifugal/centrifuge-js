@@ -34,6 +34,54 @@
                     "params": {
                       "type": "bytes",
                       "id": 3
+                    },
+                    "connect": {
+                      "type": "ConnectRequest",
+                      "id": 4
+                    },
+                    "subscribe": {
+                      "type": "SubscribeRequest",
+                      "id": 5
+                    },
+                    "unsubscribe": {
+                      "type": "UnsubscribeRequest",
+                      "id": 6
+                    },
+                    "publish": {
+                      "type": "PublishRequest",
+                      "id": 7
+                    },
+                    "presence": {
+                      "type": "PresenceRequest",
+                      "id": 8
+                    },
+                    "presence_stats": {
+                      "type": "PresenceStatsRequest",
+                      "id": 9
+                    },
+                    "history": {
+                      "type": "HistoryRequest",
+                      "id": 10
+                    },
+                    "ping": {
+                      "type": "PingRequest",
+                      "id": 11
+                    },
+                    "send": {
+                      "type": "SendRequest",
+                      "id": 12
+                    },
+                    "rpc": {
+                      "type": "RPCRequest",
+                      "id": 13
+                    },
+                    "refresh": {
+                      "type": "RefreshRequest",
+                      "id": 14
+                    },
+                    "sub_refresh": {
+                      "type": "SubRefreshRequest",
+                      "id": 15
                     }
                   },
                   "nested": {
@@ -68,6 +116,54 @@
                     "result": {
                       "type": "bytes",
                       "id": 3
+                    },
+                    "push": {
+                      "type": "Push",
+                      "id": 4
+                    },
+                    "connect": {
+                      "type": "ConnectResult",
+                      "id": 5
+                    },
+                    "subscribe": {
+                      "type": "SubscribeResult",
+                      "id": 6
+                    },
+                    "unsubscribe": {
+                      "type": "UnsubscribeResult",
+                      "id": 7
+                    },
+                    "publish": {
+                      "type": "PublishResult",
+                      "id": 8
+                    },
+                    "presence": {
+                      "type": "PresenceResult",
+                      "id": 9
+                    },
+                    "presence_stats": {
+                      "type": "PresenceStatsResult",
+                      "id": 10
+                    },
+                    "history": {
+                      "type": "HistoryResult",
+                      "id": 11
+                    },
+                    "ping": {
+                      "type": "PingResult",
+                      "id": 12
+                    },
+                    "rpc": {
+                      "type": "RPCResult",
+                      "id": 13
+                    },
+                    "refresh": {
+                      "type": "RefreshResult",
+                      "id": 14
+                    },
+                    "sub_refresh": {
+                      "type": "SubRefreshResult",
+                      "id": 15
                     }
                   }
                 },
@@ -84,6 +180,42 @@
                     "data": {
                       "type": "bytes",
                       "id": 3
+                    },
+                    "pub": {
+                      "type": "Publication",
+                      "id": 4
+                    },
+                    "join": {
+                      "type": "Join",
+                      "id": 5
+                    },
+                    "leave": {
+                      "type": "Leave",
+                      "id": 6
+                    },
+                    "unsubscribe": {
+                      "type": "Unsubscribe",
+                      "id": 7
+                    },
+                    "message": {
+                      "type": "Message",
+                      "id": 8
+                    },
+                    "subscribe": {
+                      "type": "Subscribe",
+                      "id": 9
+                    },
+                    "connect": {
+                      "type": "Connect",
+                      "id": 10
+                    },
+                    "disconnect": {
+                      "type": "Disconnect",
+                      "id": 11
+                    },
+                    "refresh": {
+                      "type": "Refresh",
+                      "id": 12
                     }
                   },
                   "nested": {

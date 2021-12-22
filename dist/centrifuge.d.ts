@@ -58,6 +58,7 @@ declare namespace Centrifuge {
 
     export interface Options {
         protocol?: string;
+        protocolVersion?: 'v1' | 'v2';
         debug?: boolean;
         name?: string;
         version?: string;

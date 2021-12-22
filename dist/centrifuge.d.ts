@@ -117,6 +117,7 @@ declare namespace Centrifuge {
         seq?: number;
         gen?: number;
         offset?: number;
+        meta?: Map<string, string>;
     }
 
     export interface ClientInfo {

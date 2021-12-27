@@ -128,9 +128,11 @@ export class Centrifuge extends EventEmitter {
   setRefreshHeaders(headers) {
     this._config.refreshHeaders = headers;
   }
+
   setRefreshParams(params) {
     this._config.refreshParams = params;
   }
+
   setRefreshData(data) {
     this._config.refreshData = data;
   }
@@ -138,6 +140,7 @@ export class Centrifuge extends EventEmitter {
   setSubscribeHeaders(headers) {
     this._config.subscribeHeaders = headers;
   }
+
   setSubscribeParams(params) {
     this._config.subscribeParams = params;
   }
@@ -267,6 +270,10 @@ export class Centrifuge extends EventEmitter {
         throw new Error('unsupported protocol ' + this._config.protocol);
       }
       this._setFormat('json');
+    }
+
+    if (this._config.protocolVersion !== 'v1' && this._config.protocolVersion !== 'v2') {
+      throw new Error('unsupported protocol version ' + this._config.protocolVersion);
     }
 
     if (startsWith(this._url, 'http')) {

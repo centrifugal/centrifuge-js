@@ -4,6 +4,9 @@
   "description": "Centrifuge and Centrifugo client for NodeJS and browser",
   "main": "dist/centrifuge.js",
   "types": "dist/centrifuge.d.ts",
+  "files": [
+    "dist/**"
+  ],
   "scripts": {
     "build": "webpack --mode production && webpack --mode production --env build && npm run test",
     "dev": "webpack --progress --watch --mode development",

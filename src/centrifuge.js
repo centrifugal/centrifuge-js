@@ -611,7 +611,7 @@ export class Centrifuge extends EventEmitter {
           event: closeEvent,
           reason: reason,
           reconnect: needReconnect
-        }
+        };
         if (this._config.protocolVersion === 'v2') {
           ctx['code'] = code;
         }

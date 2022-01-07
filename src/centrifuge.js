@@ -563,7 +563,7 @@ export class Centrifuge extends EventEmitter {
         if (err.code === 109) { // token expired.
           this._refreshRequired = true;
         }
-        this._disconnect('connect error', true);
+        this._disconnect(6, 'connect error', true);
         if (rejectCtx.next) {
           rejectCtx.next();
         }
@@ -578,17 +578,28 @@ export class Centrifuge extends EventEmitter {
       this._transportClosed = true;
       let reason = _errorConnectionClosed;
       let needReconnect = true;
+      let code = 0;
+
+      if (closeEvent && 'code' in closeEvent && closeEvent.code) {
+        code = closeEvent.code;
+      }
 
       if (closeEvent && 'reason' in closeEvent && closeEvent.reason) {
         try {
           const advice = JSON.parse(closeEvent.reason);
-          this._debug('reason is an advice object', advice);
           reason = advice.reason;
           needReconnect = advice.reconnect;
         } catch (e) {
           reason = closeEvent.reason;
-          this._debug('reason is a plain string', reason);
+          if ((code >= 3500 && code < 4000) || (code >= 4500 && code < 5000)) {
+            needReconnect = false;
+          }
         }
+      }
+
+      if (code < 3000) {
+        code = 4;
+        reason = 'connection closed';
       }
 
       // onTransportClose callback should be executed every time transport was closed.
@@ -596,14 +607,18 @@ export class Centrifuge extends EventEmitter {
       // event only called once and every future attempts to connect do not fire disconnect
       // event again).
       if (this._config.onTransportClose !== null) {
-        this._config.onTransportClose({
+        const ctx = {
           event: closeEvent,
           reason: reason,
           reconnect: needReconnect
-        });
+        }
+        if (this._config.protocolVersion === 'v2') {
+          ctx['code'] = code;
+        }
+        this._config.onTransportClose(ctx);
       }
 
-      this._disconnect(reason, needReconnect);
+      this._disconnect(code, reason, needReconnect);
 
       if (this._reconnect === true) {
         this._reconnecting = true;
@@ -909,8 +924,7 @@ export class Centrifuge extends EventEmitter {
     this._setupTransport();
   };
 
-  _disconnect(reason, shouldReconnect) {
-
+  _disconnect(code, reason, shouldReconnect) {
     const reconnect = shouldReconnect || false;
     if (reconnect === false) {
       this._reconnect = false;
@@ -939,10 +953,14 @@ export class Centrifuge extends EventEmitter {
           this.emit('unsubscribe', { channel: channel });
         }
       }
-      this.emit('disconnect', {
+      const ctx = {
         reason: reason,
         reconnect: reconnect
-      });
+      };
+      if (this._config.protocolVersion === 'v2') {
+        ctx['code'] = code;
+      }
+      this.emit('disconnect', ctx);
     }
 
     if (reconnect === false) {
@@ -958,7 +976,7 @@ export class Centrifuge extends EventEmitter {
   _refreshFailed() {
     this._numRefreshFailed = 0;
     if (!this._isDisconnected()) {
-      this._disconnect('refresh failed', false);
+      this._disconnect(7, 'refresh failed', false);
     }
     if (this._config.onRefreshFailed !== null) {
       this._config.onRefreshFailed();
@@ -1471,7 +1489,7 @@ export class Centrifuge extends EventEmitter {
       }
       this.ping();
       this._pongTimeout = setTimeout(() => {
-        this._disconnect('no ping', true);
+        this._disconnect(11, 'no ping', true);
       }, this._config.pongWaitTimeout);
     }, this._config.pingInterval);
   };
@@ -1490,7 +1508,7 @@ export class Centrifuge extends EventEmitter {
       return;
     }
     if (error.code === 0 && error.message === _errorTimeout) { // client side timeout.
-      this._disconnect('timeout', true);
+      this._disconnect(10, 'subscribe timeout', true);
       return;
     }
     sub._setSubscribeError(error);
@@ -1856,7 +1874,7 @@ export class Centrifuge extends EventEmitter {
   };
 
   disconnect() {
-    this._disconnect('client', false);
+    this._disconnect(0, 'client', false);
   };
 
   ping() {

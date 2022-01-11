@@ -28,6 +28,12 @@ export default class Subscription extends EventEmitter {
     this._promises = {};
     this._promiseId = 0;
     this._subscribeData = null;
+    this._autoResubscribeErrorCodes = [];
+    this._autoResubscribeMinDelay = 500;
+    this._autoResubscribeMaxDelay = 20000;
+    this._resubscribeTimeout = null;
+    this._resubscribeAttempts = 0;
+
     this.on('error', function (errContext) {
       this._centrifuge._debug('subscription error', errContext);
     });
@@ -124,6 +130,7 @@ export default class Subscription extends EventEmitter {
       return;
     }
     this._status = _STATE_SUCCESS;
+    this._resubscribeAttempts = 0;
     const successContext = this._getSubscribeSuccessContext(subscribeResult);
     this._recover = false;
     this.emit('subscribe', successContext);
@@ -149,6 +156,18 @@ export default class Subscription extends EventEmitter {
       this._promises[id].reject(err);
       delete this._promises[id];
     }
+
+    if (this._autoResubscribeErrorCodes.indexOf(err.code) > -1) {
+      this._resubscribeAttempts++;
+      const self = this;
+      const jitter = Math.round(Math.random() * this._autoResubscribeMinDelay);
+      this._resubscribeTimeout = setTimeout(function () {
+        self.subscribe();
+      }, Math.min(
+        this._autoResubscribeMaxDelay,
+        Math.pow(this._resubscribeAttempts, 2) * this._autoResubscribeMinDelay + jitter)
+      );
+    }
   };
 
   _triggerUnsubscribe() {
@@ -158,6 +177,8 @@ export default class Subscription extends EventEmitter {
   };
 
   _setUnsubscribed(noResubscribe) {
+    this._resubscribeAttempts = 0;
+    clearTimeout(this._resubscribeTimeout);
     this._centrifuge._clearSubRefreshTimeout(this.channel);
     if (this._status === _STATE_UNSUBSCRIBED) {
       return;
@@ -203,6 +224,16 @@ export default class Subscription extends EventEmitter {
     this._subscribeData = data;
   }
 
+  _setAutoResubscribe(opts) {
+    this._autoResubscribeErrorCodes = opts.autoResubscribeErrorCodes;
+    if (opts.autoResubscribeMinDelay) {
+      this._autoResubscribeMinDelay = opts.autoResubscribeMinDelay;
+    }
+    if (opts.autoResubscribeMaxDelay) {
+      this._autoResubscribeMaxDelay = opts.autoResubscribeMaxDelay;
+    }
+  }
+
   ready(callback, errback) {
     if (this._ready) {
       if (this._isSuccess()) {
@@ -222,6 +253,9 @@ export default class Subscription extends EventEmitter {
     }
     if (opts && opts.data) {
       this._setSubscribeData(opts.data);
+    }
+    if (opts && opts.autoResubscribeErrorCodes.length > 0) {
+      this._setAutoResubscribe(opts);
     }
     this._noResubscribe = false;
     this._centrifuge._subscribe(this);

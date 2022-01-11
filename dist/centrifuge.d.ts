@@ -213,6 +213,9 @@ declare namespace Centrifuge {
     export interface SubscribeOptions {
         since?: StreamPosition;
         data?: any;
+        autoResubscribeErrorCodes?: number[];
+        autoResubscribeMinDelay?: number;
+        autoResubscribeMaxDelay?: number;
     }
 
     export interface StreamPosition {

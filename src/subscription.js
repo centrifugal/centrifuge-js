@@ -254,7 +254,7 @@ export default class Subscription extends EventEmitter {
     if (opts && opts.data) {
       this._setSubscribeData(opts.data);
     }
-    if (opts && opts.autoResubscribeErrorCodes.length > 0) {
+    if (opts && opts.autoResubscribeErrorCodes && opts.autoResubscribeErrorCodes.length > 0) {
       this._setAutoResubscribe(opts);
     }
     this._noResubscribe = false;

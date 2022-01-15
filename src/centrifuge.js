@@ -1052,8 +1052,17 @@ export class Centrifuge extends EventEmitter {
           delete msg.params;
           delete msg.method;
         }
+
+        const self = this;
+
         this._call(msg).then(resolveCtx => {
-          this._refreshResponse(this._decoder.decodeCommandResult(this._methodType.REFRESH, resolveCtx.result));
+          let result;
+          if (self._config.protocolVersion === 'v1') {
+            result = self._decoder.decodeCommandResult(self._methodType.REFRESH, resolveCtx.reply.result);
+          } else {
+            result = resolveCtx.reply.refresh;
+          }
+          this._refreshResponse(result);
           if (resolveCtx.next) {
             resolveCtx.next();
           }
@@ -1160,11 +1169,16 @@ export class Centrifuge extends EventEmitter {
         delete msg.method;
       }
 
+      const self = this;
+
       this._call(msg).then(resolveCtx => {
-        this._subRefreshResponse(
-          channel,
-          this._decoder.decodeCommandResult(this._methodType.SUB_REFRESH, resolveCtx.result)
-        );
+        let result;
+        if (self._config.protocolVersion === 'v1') {
+          result = self._decoder.decodeCommandResult(self._methodType.SUB_REFRESH, resolveCtx.reply.result);
+        } else {
+          result = resolveCtx.reply.sub_refresh;
+        }
+        this._subRefreshResponse(channel, result);
         if (resolveCtx.next) {
           resolveCtx.next();
         }

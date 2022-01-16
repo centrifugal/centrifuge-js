@@ -488,25 +488,19 @@ export class Centrifuge extends EventEmitter {
         this._transportName = 'websocket';
       }
 
-      // Can omit method here due to zero value.
-      const msg = {
-        // method: this._methodType.CONNECT
-      };
+      const req = {};
 
-      if (this._token || this._connectData || this._config.name || this._config.version) {
-        msg.params = {};
-      }
       if (this._token) {
-        msg.params.token = this._token;
+        req.token = this._token;
       }
       if (this._connectData) {
-        msg.params.data = this._connectData;
+        req.data = this._connectData;
       }
       if (this._config.name) {
-        msg.params.name = this._config.name;
+        req.name = this._config.name;
       }
       if (this._config.version) {
-        msg.params.version = this._config.version;
+        req.version = this._config.version;
       }
 
       let subs = {};
@@ -536,15 +530,17 @@ export class Centrifuge extends EventEmitter {
         }
       }
       if (hasSubs) {
-        if (!msg.params) { msg.params = {}; }
-        msg.params.subs = subs;
+        req.subs = subs;
       }
 
       this._latencyStart = new Date();
 
+      const msg = {};
       if (this._config.protocolVersion === 'v2') {
-        msg.connect = msg.params;
-        delete msg.params;
+        msg.connect = req;
+      } else {
+        // Can omit CONNECT method here due to zero value.
+        msg.params = req;
       }
 
       this._call(msg).then(resolveCtx => {
@@ -651,20 +647,18 @@ export class Centrifuge extends EventEmitter {
   }
 
   _rpc(method, data) {
-    let params = {
+    const req = {
       data: data
     };
     if (method !== '') {
-      params.method = method;
+      req.method = method;
     };
-    const msg = {
-      method: this._methodType.RPC,
-      params: params
-    };
+    const msg = {};
     if (this._config.protocolVersion === 'v2') {
-      msg.rpc = msg.params;
-      delete msg.params;
-      delete msg.method;
+      msg.rpc = req;
+    } else {
+      msg.method = this._methodType.RPC;
+      msg.params = req;
     }
     let self = this;
     return this._methodCall(msg, function (reply) {
@@ -681,17 +675,15 @@ export class Centrifuge extends EventEmitter {
   }
 
   send(data) {
-    const msg = {
-      method: this._methodType.SEND,
-      params: {
-        data: data
-      }
+    const req = {
+      data: data
     };
-
+    const msg = {};
     if (this._config.protocolVersion === 'v2') {
-      msg.send = msg.params;
-      delete msg.params;
-      delete msg.method;
+      msg.send = req;
+    } else {
+      msg.method = this._methodType.SEND;
+      msg.params = req;
     }
 
     if (!this.isConnected()) {
@@ -705,7 +697,7 @@ export class Centrifuge extends EventEmitter {
     return Promise.resolve({});
   }
 
-  _getHistoryParams(channel, options) {
+  _getHistoryRequest(channel, options) {
     let params = {
       channel: channel
     };
@@ -748,17 +740,16 @@ export class Centrifuge extends EventEmitter {
   }
 
   publish(channel, data) {
-    const msg = {
-      method: this._methodType.PUBLISH,
-      params: {
-        channel: channel,
-        data: data
-      }
+    const req = {
+      channel: channel,
+      data: data
     };
+    const msg = {};
     if (this._config.protocolVersion === 'v2') {
-      msg.publish = msg.params;
-      delete msg.params;
-      delete msg.method;
+      msg.publish = req;
+    } else {
+      msg.method = this._methodType.PUBLISH;
+      msg.params = req;
     }
     return this._methodCall(msg, function () {
       return {};
@@ -766,15 +757,13 @@ export class Centrifuge extends EventEmitter {
   }
 
   history(channel, options) {
-    const params = this._getHistoryParams(channel, options);
-    const msg = {
-      method: this._methodType.HISTORY,
-      params: params
-    };
+    const req = this._getHistoryRequest(channel, options);
+    const msg = {};
     if (this._config.protocolVersion === 'v2') {
-      msg.history = msg.params;
-      delete msg.params;
-      delete msg.method;
+      msg.history = req;
+    } else {
+      msg.method = this._methodType.HISTORY;
+      msg.params = req;
     }
     let self = this;
     return this._methodCall(msg, function (reply) {
@@ -793,16 +782,15 @@ export class Centrifuge extends EventEmitter {
   }
 
   presence(channel) {
-    const msg = {
-      method: this._methodType.PRESENCE,
-      params: {
-        channel: channel
-      }
+    const req = {
+      channel: channel
     };
+    const msg = {};
     if (this._config.protocolVersion === 'v2') {
-      msg.presence = msg.params;
-      delete msg.params;
-      delete msg.method;
+      msg.presence = req;
+    } else {
+      msg.method = this._methodType.PRESENCE;
+      msg.params = req;
     }
     let self = this;
     return this._methodCall(msg, function (reply) {
@@ -819,16 +807,15 @@ export class Centrifuge extends EventEmitter {
   }
 
   presenceStats(channel) {
-    const msg = {
-      method: this._methodType.PRESENCE_STATS,
-      params: {
-        channel: channel
-      }
+    const req = {
+      channel: channel
     };
+    const msg = {};
     if (this._config.protocolVersion === 'v2') {
-      msg['presence_stats'] = msg.params;
-      delete msg.params;
-      delete msg.method;
+      msg['presence_stats'] = req;
+    } else {
+      msg.method = this._methodType.PRESENCE_STATS;
+      msg.params = req;
     }
     return this._methodCall(msg, function (reply) {
       let result;
@@ -1041,16 +1028,13 @@ export class Centrifuge extends EventEmitter {
         this._connect();
       } else {
         this._debug('send refreshed token');
-        const msg = {
-          method: this._methodType.REFRESH,
-          params: {
-            token: this._token
-          }
-        };
+        const req = { token: this._token };
+        const msg = {};
         if (this._config.protocolVersion === 'v2') {
-          msg.refresh = msg.params;
-          delete msg.params;
-          delete msg.method;
+          msg.refresh = req;
+        } else {
+          msg.method = this._methodType.REFRESH;
+          msg.params = req;
         }
 
         const self = this;
@@ -1150,23 +1134,23 @@ export class Centrifuge extends EventEmitter {
       if (!token) {
         return;
       }
-      const msg = {
-        method: this._methodType.SUB_REFRESH,
-        params: {
-          channel: channel,
-          token: token
-        }
-      };
 
       const sub = this._getSub(channel);
       if (sub === null) {
         return;
       }
 
+      const req = {
+        channel: channel,
+        token: token
+      };
+      const msg = {};
+
       if (this._config.protocolVersion === 'v2') {
-        msg['sub_refresh'] = msg.params;
-        delete msg.params;
-        delete msg.method;
+        msg['sub_refresh'] = req;
+      } else {
+        msg.method = this._methodType.SUB_REFRESH;
+        msg.params = req;
       }
 
       const self = this;
@@ -1256,15 +1240,12 @@ export class Centrifuge extends EventEmitter {
 
     sub._setSubscribing(isResubscribe);
 
-    const msg = {
-      method: this._methodType.SUBSCRIBE,
-      params: {
-        channel: channel
-      }
+    const req = {
+      channel: channel
     };
 
     if (sub._subscribeData) {
-      msg.params.data = sub._subscribeData;
+      req.data = sub._subscribeData;
     }
 
     // If channel name does not start with privateChannelPrefix - then we
@@ -1284,32 +1265,34 @@ export class Centrifuge extends EventEmitter {
       const recover = sub._needRecover();
 
       if (recover === true) {
-        msg.params.recover = true;
+        req.recover = true;
         const seq = this._getLastSeq(channel);
         const gen = this._getLastGen(channel);
         if (seq || gen) {
           if (seq) {
-            msg.params.seq = seq;
+            req.seq = seq;
           }
           if (gen) {
-            msg.params.gen = gen;
+            req.gen = gen;
           }
         } else {
           const offset = this._getLastOffset(channel);
           if (offset) {
-            msg.params.offset = offset;
+            req.offset = offset;
           }
         }
         const epoch = this._getLastEpoch(channel);
         if (epoch) {
-          msg.params.epoch = epoch;
+          req.epoch = epoch;
         }
       }
 
+      const msg = {};
       if (this._config.protocolVersion === 'v2') {
-        msg.subscribe = msg.params;
-        delete msg.params;
-        delete msg.method;
+        msg.subscribe = req;
+      } else {
+        msg.method = this._methodType.SUBSCRIBE;
+        msg.params = req;
       }
 
       this._call(msg).then(resolveCtx => {
@@ -1343,16 +1326,15 @@ export class Centrifuge extends EventEmitter {
     delete this._lastGen[sub.channel];
     if (this.isConnected()) {
       // No need to unsubscribe in disconnected state - i.e. client already unsubscribed.
-      let msg = {
-        method: this._methodType.UNSUBSCRIBE,
-        params: {
-          channel: sub.channel
-        }
+      const req = {
+        channel: sub.channel
       };
+      const msg = {};
       if (this._config.protocolVersion === 'v2') {
-        msg.unsubscribe = msg.params;
-        delete msg.params;
-        delete msg.method;
+        msg.unsubscribe = req;
+      } else {
+        msg.method = this._methodType.UNSUBSCRIBE;
+        msg.params = req;
       }
       this._addMessage(msg);
     }
@@ -1785,12 +1767,11 @@ export class Centrifuge extends EventEmitter {
   };
 
   _ping() {
-    const msg = {
-      method: this._methodType.PING
-    };
+    const msg = {};
     if (this._config.protocolVersion === 'v2') {
-      delete msg.params;
-      delete msg.method;
+      // v2 does not require any additional data for pings;
+    } else {
+      msg.method = this._methodType.PING;
     }
     this._call(msg).then(resolveCtx => {
       this._pingResponse(this._decoder.decodeCommandResult(this._methodType.PING, resolveCtx.result));
@@ -1991,47 +1972,46 @@ export class Centrifuge extends EventEmitter {
             this._subscribeError(channel, this._createErrorObject('permission denied', 103));
             continue;
           } else {
-            const msg = {
-              method: this._methodType.SUBSCRIBE,
-              params: {
-                channel: channel,
-                token: token
-              }
-            };
-
             const sub = this._getSub(channel);
             if (sub === null) {
               continue;
             }
 
+            const req = {
+              channel: channel,
+              token: token
+            };
+
             const recover = sub._needRecover();
 
             if (recover === true) {
-              msg.params.recover = true;
+              req.recover = true;
               const seq = this._getLastSeq(channel);
               const gen = this._getLastGen(channel);
               if (seq || gen) {
                 if (seq) {
-                  msg.params.seq = seq;
+                  req.seq = seq;
                 }
                 if (gen) {
-                  msg.params.gen = gen;
+                  req.gen = gen;
                 }
               } else {
                 const offset = this._getLastOffset(channel);
                 if (offset) {
-                  msg.params.offset = offset;
+                  req.offset = offset;
                 }
               }
               const epoch = this._getLastEpoch(channel);
               if (epoch) {
-                msg.params.epoch = epoch;
+                req.epoch = epoch;
               }
             }
+            const msg = {};
             if (this._config.protocolVersion === 'v2') {
-              msg.subscribe = msg.params;
-              delete msg.params;
-              delete msg.method;
+              msg.subscribe = req;
+            } else {
+              msg.method = this._methodType.SUBSCRIBE;
+              msg.params = req;
             }
             this._call(msg).then(resolveCtx => {
               let result;

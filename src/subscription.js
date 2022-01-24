@@ -130,6 +130,7 @@ export default class Subscription extends EventEmitter {
       return;
     }
     this._status = _STATE_SUCCESS;
+    clearTimeout(this._resubscribeTimeout);
     this._resubscribeAttempts = 0;
     const successContext = this._getSubscribeSuccessContext(subscribeResult);
     this._recover = false;

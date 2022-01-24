@@ -267,6 +267,11 @@
                     "offset": {
                       "type": "uint64",
                       "id": 6
+                    },
+                    "tags": {
+                      "keyType": "string",
+                      "type": "string",
+                      "id": 7
                     }
                   }
                 },

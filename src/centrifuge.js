@@ -1677,8 +1677,8 @@ export class Centrifuge extends EventEmitter {
     if (pub.info) {
       ctx.info = pub.info;
     }
-    if (pub.meta) {
-      ctx.meta = pub.meta;
+    if (pub.tags) {
+      ctx.tags = pub.tags;
     }
     if (!sub) {
       if (this._isServerSub(channel)) {

@@ -6,6 +6,7 @@ We start making some preparations for the new iteration of Centrifuge/Centrifugo
 * Support for client protocol v2. It can be enabled by providing an option `protocolVersion: 'v2'` to Centrifuge constructor. By default, centrifuge-js still uses client protocol v1 but the current plan is to make client protocol v2 default in the future. The initial motivation described in [centrifugal/centrifuge#217](https://github.com/centrifugal/centrifuge/issues/217) and implementation is in [centrifugal/centrifuge#218](https://github.com/centrifugal/centrifuge/pull/218). The minimum version of Centrifuge server library which supports client protocol v2 is v0.20.0. And for Centrifugo it's planned to be v3.2.0.
 * If client uses client protocol v2 then we expose disconnect code in disconnect event context. In this case we inherit new disconnect semantics from client protocol v2. It's described [here](https://github.com/centrifugal/centrifuge/pull/221).
 * New Subscription option `autoResubscribeErrorCodes?: number[]`. If set to an array of error codes centrifuge-js will automatically resubscribe to a channel upon receiving code from the array. It will do this with increasing intervals. Unsubscribing from subscription stops automatic reconnects.  
+* Expose `tags` field of Publication in `PublicationContext`.
 
 2.8.4
 =====

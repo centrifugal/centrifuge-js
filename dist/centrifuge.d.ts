@@ -71,6 +71,7 @@ declare namespace Centrifuge {
         ping?: boolean;
         pingInterval?: number;
         pongWaitTimeout?: number;
+        maxServerPingDelay?: number;
         privateChannelPrefix?: string;
         onTransportClose?: (ctx: object) => void;
         sockjsServer?: string;

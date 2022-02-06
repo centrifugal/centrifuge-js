@@ -68,6 +68,8 @@ export class Centrifuge extends EventEmitter {
     this._xhrs = {};
     this._dispatchPromise = Promise.resolve();
     this._protocol = '';
+    this._serverPing = 0;
+    this._serverPingTimeout = null;
     this._config = {
       protocol: '',
       protocolVersion: 'v1',
@@ -83,6 +85,7 @@ export class Centrifuge extends EventEmitter {
       ping: true,
       pingInterval: 25000,
       pongWaitTimeout: 5000,
+      maxServerPingDelay: 10000,
       privateChannelPrefix: '$',
       onTransportClose: null,
       sockjsServer: null,
@@ -832,6 +835,11 @@ export class Centrifuge extends EventEmitter {
   }
 
   _dataReceived(data) {
+    if (this._serverPing > 0) {
+      this._waitServerPing();
+    } else {
+      this._restartPing();
+    }
     const replies = this._decoder.decodeReplies(data);
     // we have to guarantee order of events in replies processing - i.e. start processing
     // next reply only when we finished processing of current one. Without syncing things in
@@ -844,7 +852,6 @@ export class Centrifuge extends EventEmitter {
       });
       this._dispatchSynchronized(replies, finishDispatch);
     });
-    this._restartPing();
   }
 
   _dispatchSynchronized(replies, finishDispatch) {
@@ -881,7 +888,11 @@ export class Centrifuge extends EventEmitter {
       if (this._config.protocolVersion === 'v1') {
         this._handlePush(reply.result, next);
       } else {
-        this._handlePushV2(reply.push, next);
+        if (!reply.push) {
+          this._handleServerPing(next);
+        } else {
+          this._handlePushV2(reply.push, next);
+        }
       }
     }
 
@@ -1400,8 +1411,6 @@ export class Centrifuge extends EventEmitter {
     this.stopSubscribeBatching();
     this.stopBatching();
 
-    this._startPing();
-
     const ctx = {
       client: result.client,
       transport: this._transportName,
@@ -1415,6 +1424,14 @@ export class Centrifuge extends EventEmitter {
 
     if (result.subs) {
       this._processServerSubs(result.subs);
+    }
+
+    if (result.ping && result.ping > 0) {
+      this._serverPing = result.ping * 1000;
+      this._waitServerPing();
+    } else {
+      this._serverPing = 0;
+      this._startClientPing();
     }
   };
 
@@ -1460,6 +1477,10 @@ export class Centrifuge extends EventEmitter {
   };
 
   _stopPing() {
+    if (this._serverPingTimeout !== null) {
+      clearTimeout(this._serverPingTimeout);
+      this._serverPingTimeout = null;
+    }
     if (this._pongTimeout !== null) {
       clearTimeout(this._pongTimeout);
       this._pongTimeout = null;
@@ -1470,7 +1491,26 @@ export class Centrifuge extends EventEmitter {
     }
   };
 
-  _startPing() {
+  _waitServerPing() {
+    if (this._config.maxServerPingDelay === 0) {
+      return;
+    }
+    if (!this.isConnected()) {
+      return;
+    }
+    if (this._serverPingTimeout) {
+      clearTimeout(this._serverPingTimeout);
+    }
+    this._serverPingTimeout = setTimeout(() => {
+      if (!this.isConnected()) {
+        this._stopPing();
+        return;
+      }
+      this._disconnect(11, 'no ping', true);
+    }, this._serverPing + this._config.maxServerPingDelay);
+  };
+
+  _startClientPing() {
     if (this._config.ping !== true || this._config.pingInterval <= 0) {
       return;
     }
@@ -1492,7 +1532,7 @@ export class Centrifuge extends EventEmitter {
 
   _restartPing() {
     this._stopPing();
-    this._startPing();
+    this._startClientPing();
   };
 
   _subscribeError(channel, error) {
@@ -1742,6 +1782,12 @@ export class Centrifuge extends EventEmitter {
     next();
   }
 
+  _handleServerPing(next) {
+    const msg = {};
+    this._transportSend([msg]);
+    next();
+  }
+
   _handlePushV2(data, next) {
     const channel = data.channel;
     if (data.pub) {
@@ -1791,7 +1837,7 @@ export class Centrifuge extends EventEmitter {
       return;
     }
     this._stopPing();
-    this._startPing();
+    this._startClientPing();
   }
 
   _getLastSeq(channel) {

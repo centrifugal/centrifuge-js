@@ -69,6 +69,7 @@ export class Centrifuge extends EventEmitter {
     this._dispatchPromise = Promise.resolve();
     this._protocol = '';
     this._serverPing = 0;
+    this._sendPong = false;
     this._serverPingTimeout = null;
     this._config = {
       protocol: '',
@@ -1428,6 +1429,7 @@ export class Centrifuge extends EventEmitter {
 
     if (result.ping && result.ping > 0) {
       this._serverPing = result.ping * 1000;
+      this._sendPong = result.pong === true;
       this._waitServerPing();
     } else {
       this._serverPing = 0;
@@ -1783,8 +1785,10 @@ export class Centrifuge extends EventEmitter {
   }
 
   _handleServerPing(next) {
-    const msg = {};
-    this._transportSend([msg]);
+    if (this._sendPong) {
+      const msg = {};
+      this._transportSend([msg]);
+    }
     next();
   }
 

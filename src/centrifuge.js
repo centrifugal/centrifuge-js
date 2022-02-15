@@ -1,6 +1,10 @@
 import EventEmitter from 'events';
 import Subscription from './subscription';
 
+import { SockjsTransport } from './transport_sockjs';
+import { WebsocketTransport } from './transport_websocket';
+import { HttpStreamingTransport } from './transport_http_streaming';
+
 import {
   JsonEncoder,
   JsonDecoder,
@@ -25,11 +29,9 @@ export class Centrifuge extends EventEmitter {
   constructor(url, options) {
     super();
     this._url = url;
-    this._websocket = null;
-    this._sockjs = null;
-    this._isSockjs = false;
+    this._transport = null;
+    this._transportClosed = true;
     this._xmlhttprequest = null;
-    this._binary = false;
     this._methodType = null;
     this._pushType = null;
     this._encoder = null;
@@ -37,11 +39,10 @@ export class Centrifuge extends EventEmitter {
     this._status = 'disconnected';
     this._reconnect = true;
     this._reconnecting = false;
-    this._transport = null;
-    this._transportName = null;
-    this._transportClosed = true;
     this._messageId = 0;
     this._clientID = null;
+    this._session = '';
+    this._node = '';
     this._refreshRequired = false;
     this._subs = {};
     this._serverSubs = {};
@@ -79,16 +80,6 @@ export class Centrifuge extends EventEmitter {
       version: '',
       websocket: null,
       sockjs: null,
-      xmlhttprequest: null,
-      minRetry: 1000,
-      maxRetry: 20000,
-      timeout: 5000,
-      ping: true,
-      pingInterval: 25000,
-      pongWaitTimeout: 5000,
-      maxServerPingDelay: 10000,
-      privateChannelPrefix: '$',
-      onTransportClose: null,
       sockjsServer: null,
       sockjsTimeout: null,
       sockjsTransports: [
@@ -103,6 +94,16 @@ export class Centrifuge extends EventEmitter {
         'iframe-xhr-polling',
         'jsonp-polling'
       ],
+      xmlhttprequest: null,
+      minRetry: 1000,
+      maxRetry: 20000,
+      timeout: 5000,
+      ping: true,
+      pingInterval: 25000,
+      pongWaitTimeout: 5000,
+      maxServerPingDelay: 10000,
+      privateChannelPrefix: '$',
+      onTransportClose: null,
       refreshEndpoint: '/centrifuge/refresh',
       refreshHeaders: {},
       refreshParams: {},
@@ -116,7 +117,10 @@ export class Centrifuge extends EventEmitter {
       subscribeParams: {},
       subRefreshInterval: 1000,
       onPrivateSubscribe: null,
-      disableWithCredentials: false
+      disableWithCredentials: false,
+      httpStreamingRequestMode: 'cors',
+      emulationEndpoint: '/emulation',
+      emulationRequestMode: 'cors'
     };
     this._configure(options);
   }
@@ -228,13 +232,6 @@ export class Centrifuge extends EventEmitter {
     }
   };
 
-  _websocketSupported() {
-    if (this._config.websocket !== null) {
-      return true;
-    }
-    return !(typeof WebSocket !== 'function' && typeof WebSocket !== 'object');
-  };
-
   _setFormat(format) {
     if (this._formatOverride(format)) {
       return;
@@ -242,7 +239,6 @@ export class Centrifuge extends EventEmitter {
     if (format === 'protobuf') {
       throw new Error('not implemented by JSON only Centrifuge client – use client with Protobuf');
     }
-    this._binary = false;
     this._methodType = JsonMethodType;
     this._pushType = JsonPushType;
     this._encoder = new JsonEncoder();
@@ -278,22 +274,6 @@ export class Centrifuge extends EventEmitter {
 
     if (this._config.protocolVersion !== 'v1' && this._config.protocolVersion !== 'v2') {
       throw new Error('unsupported protocol version ' + this._config.protocolVersion);
-    }
-
-    if (startsWith(this._url, 'http')) {
-      this._debug('client will try to connect to SockJS endpoint');
-      if (this._config.sockjs !== null) {
-        this._debug('SockJS explicitly provided in options');
-        this._sockjs = this._config.sockjs;
-      } else {
-        if (typeof global.SockJS === 'undefined') {
-          throw new Error('SockJS not found, use ws:// in url or include SockJS');
-        }
-        this._debug('use globally defined SockJS');
-        this._sockjs = global.SockJS;
-      }
-    } else {
-      this._debug('client will connect to websocket endpoint');
     }
 
     this._xmlhttprequest = this._config.xmlhttprequest;
@@ -404,21 +384,12 @@ export class Centrifuge extends EventEmitter {
     }
   };
 
-  _isTransportOpen() {
-    if (this._isSockjs) {
-      return this._transport &&
-        this._transport.transport &&
-        this._transport.transport.readyState === this._transport.transport.OPEN;
-    }
-    return this._transport && this._transport.readyState === this._transport.OPEN;
-  };
-
   _transportSend(commands) {
     if (!commands.length) {
       return true;
     }
 
-    if (!this._isTransportOpen()) {
+    if (!this._transport || !this._transport.isOpen()) {
       // resolve pending commands with error if transport is not open
       for (let command in commands) {
         let id = command.id;
@@ -433,7 +404,7 @@ export class Centrifuge extends EventEmitter {
       }
       return false;
     }
-    this._transport.send(this._encoder.encodeCommands(commands));
+    this._transport.send(this._encoder.encodeCommands(commands), this._session, this._node);
     return true;
   }
 
@@ -445,116 +416,85 @@ export class Centrifuge extends EventEmitter {
   }
 
   _setupTransport() {
-    this._isSockjs = false;
+    //   eventTarget.addEventListener('close', (e) => {
+    //     closeTransport();
+    //     this._transportClosed = true;
+    //     let code = 4;
+    //     let reason = _errorConnectionClosed;
+    //     let needReconnect = true;
+    //     this._disconnect(code, reason, needReconnect);
+    //     if (this._reconnect === true) {
+    //       this._reconnecting = true;
+    //       const interval = this._getRetryInterval();
 
-    // detect transport to use - SockJS or Websocket
-    if (this._sockjs !== null) {
-      const sockjsOptions = {
-        transports: this._config.sockjsTransports
-      };
+    //       this._debug('reconnect after ' + interval + ' milliseconds');
+    //       setTimeout(() => {
+    //         if (this._reconnect === true) {
+    //           if (this._refreshRequired) {
+    //             this._refresh();
+    //           } else {
+    //             this._connect();
+    //           }
+    //         }
+    //       }, interval);
+    //     }
+    //   });
 
-      if (this._config.sockjsServer !== null) {
-        sockjsOptions.server = this._config.sockjsServer;
+    //   return;
+    // }
+
+    if (startsWith(this._url, 'http')) {
+      let sockjs = null;
+      this._debug('client will use SockJS');
+      if (this._config.sockjs !== null) {
+        this._debug('SockJS explicitly provided in options');
+        sockjs = this._config.sockjs;
+      } else {
+        if (typeof global.SockJS === 'undefined') {
+          // throw new Error('SockJS not available, use ws(s):// in url or include SockJS');
+        } else {
+          this._debug('use globally defined SockJS');
+          sockjs = global.SockJS;
+        }
       }
-      if (this._config.sockjsTimeout !== null) {
-        sockjsOptions.timeout = this._config.sockjsTimeout;
+      if (sockjs !== null) {
+        this._transport = new SockjsTransport(this._url, {
+          sockjs: sockjs,
+          transports: this._config.sockjsTransports,
+          server: this._config.sockjsServer,
+          timeout: this._config.sockjsTimeout
+        });
+      } else {
+        this._transport = new HttpStreamingTransport(this._url, {
+          requestMode: this._config.httpStreamingRequestMode,
+          emulationEndpoint: this._config.emulationEndpoint,
+          emulationRequestMode: this._config.emulationRequestMode
+        });
       }
-      this._isSockjs = true;
-      this._transport = new this._sockjs(this._url, null, sockjsOptions);
     } else {
-      if (!this._websocketSupported()) {
-        this._debug('No Websocket support and no SockJS configured, can not connect');
-        return;
-      }
+      this._debug('client will connect to WebSocket endpoint');
+      let websocket;
       if (this._config.websocket !== null) {
-        this._websocket = this._config.websocket;
+        websocket = this._config.websocket;
       } else {
-        this._websocket = WebSocket;
+        if (!(typeof WebSocket !== 'function' && typeof WebSocket !== 'object')) {
+          websocket = WebSocket;
+        } else {
+          throw new Error('WebSocket not available');
+        };
       }
-      const subProtocol = this._getSubProtocol();
-      if (subProtocol !== '') {
-        this._transport = new this._websocket(this._url, subProtocol);
-      } else {
-        this._transport = new this._websocket(this._url);
-      }
-      if (this._binary === true) {
-        this._transport.binaryType = 'arraybuffer';
-      }
+      this._transport = new WebsocketTransport(this._url, {
+        websocket: websocket
+      });
     }
 
-    this._transport.onopen = () => {
-      this._transportClosed = false;
+    const connectCommand = this._constructConnectCommand();
 
-      if (this._isSockjs) {
-        this._transportName = 'sockjs-' + this._transport.transport;
-        this._transport.onheartbeat = () => this._restartPing();
-      } else {
-        this._transportName = 'websocket';
-      }
-
-      const req = {};
-
-      if (this._token) {
-        req.token = this._token;
-      }
-      if (this._connectData) {
-        req.data = this._connectData;
-      }
-      if (this._config.name) {
-        req.name = this._config.name;
-      }
-      if (this._config.version) {
-        req.version = this._config.version;
-      }
-
-      let subs = {};
-      let hasSubs = false;
-      for (const channel in this._serverSubs) {
-        if (this._serverSubs.hasOwnProperty(channel) && this._serverSubs[channel].recoverable) {
-          hasSubs = true;
-          let sub = {
-            'recover': true
-          };
-          if (this._serverSubs[channel].seq || this._serverSubs[channel].gen) {
-            if (this._serverSubs[channel].seq) {
-              sub['seq'] = this._serverSubs[channel].seq;
-            }
-            if (this._serverSubs[channel].gen) {
-              sub['gen'] = this._serverSubs[channel].gen;
-            }
-          } else {
-            if (this._serverSubs[channel].offset) {
-              sub['offset'] = this._serverSubs[channel].offset;
-            }
-          }
-          if (this._serverSubs[channel].epoch) {
-            sub['epoch'] = this._serverSubs[channel].epoch;
-          }
-          subs[channel] = sub;
-        }
-      }
-      if (hasSubs) {
-        req.subs = subs;
-      }
-
-      this._latencyStart = new Date();
-
-      const msg = {};
-      if (this._config.protocolVersion === 'v2') {
-        msg.connect = req;
-      } else {
-        // Can omit CONNECT method here due to zero value.
-        msg.params = req;
-      }
-
-      this._call(msg).then(resolveCtx => {
-        let result;
-        if (this._config.protocolVersion === 'v1') {
-          result = this._decoder.decodeCommandResult(this._methodType.CONNECT, resolveCtx.reply.result);
-        } else {
-          result = resolveCtx.reply.connect;
-        }
-        this._connectResponse(result, hasSubs);
+    if (this._transport.emulation()) {
+      connectCommand.id = this._nextMessageId();
+      this._callConnectFake(connectCommand.id).then(resolveCtx => {
+        const result = resolveCtx.reply.connect;
+        this._connectResponse(result);
         if (resolveCtx.next) {
           resolveCtx.next();
         }
@@ -568,79 +508,171 @@ export class Centrifuge extends EventEmitter {
           rejectCtx.next();
         }
       });
-    };
+    }
 
-    this._transport.onerror = error => {
-      this._debug('transport level error', error);
-    };
+    const self = this;
 
-    this._transport.onclose = closeEvent => {
-      this._transportClosed = true;
-      let reason = _errorConnectionClosed;
-      let needReconnect = true;
-      let code = 0;
+    this._transport.initialize(this._protocol, {
+      onOpen: function () {
+        self._transportClosed = false;
 
-      if (closeEvent && 'code' in closeEvent && closeEvent.code) {
-        code = closeEvent.code;
-      }
+        if (self._transport.emulation()) {
+          return;
+        }
 
-      if (closeEvent && 'reason' in closeEvent && closeEvent.reason) {
-        try {
-          const advice = JSON.parse(closeEvent.reason);
-          reason = advice.reason;
-          needReconnect = advice.reconnect;
-        } catch (e) {
-          reason = closeEvent.reason;
-          if ((code >= 3500 && code < 4000) || (code >= 4500 && code < 5000)) {
-            needReconnect = false;
+        self._latencyStart = new Date();
+
+        self._call(connectCommand).then(resolveCtx => {
+          let result;
+          if (self._config.protocolVersion === 'v1') {
+            result = self._decoder.decodeCommandResult(self._methodType.CONNECT, resolveCtx.reply.result);
+          } else {
+            result = resolveCtx.reply.connect;
           }
-        }
-      }
+          self._connectResponse(result);
+          if (resolveCtx.next) {
+            resolveCtx.next();
+          }
+        }, rejectCtx => {
+          const err = rejectCtx.error;
+          if (err.code === 109) { // token expired.
+            self._refreshRequired = true;
+          }
+          self._disconnect(6, 'connect error', true);
+          if (rejectCtx.next) {
+            rejectCtx.next();
+          }
+        });
+      },
+      onError: function (e) {
+        self._debug('transport level error', e);
+      },
+      onClose: function (code, reason, needReconnect) {
+        self._transportClosed = true;
+        // let reason = _errorConnectionClosed;
+        // let needReconnect = true;
+        // let code = 0;
 
-      if (code < 3000) {
-        code = 4;
-        reason = 'connection closed';
-      }
+        // if (closeEvent && 'code' in closeEvent && closeEvent.code) {
+        //   code = closeEvent.code;
+        // }
 
-      // onTransportClose callback should be executed every time transport was closed.
-      // This can be helpful to catch failed connection events (because our disconnect
-      // event only called once and every future attempts to connect do not fire disconnect
-      // event again).
-      if (this._config.onTransportClose !== null) {
-        const ctx = {
-          event: closeEvent,
-          reason: reason,
-          reconnect: needReconnect
-        };
-        if (this._config.protocolVersion === 'v2') {
-          ctx['code'] = code;
-        }
-        this._config.onTransportClose(ctx);
-      }
+        // if (closeEvent && 'reason' in closeEvent && closeEvent.reason) {
+        //   try {
+        //     const advice = JSON.parse(closeEvent.reason);
+        //     reason = advice.reason;
+        //     needReconnect = advice.reconnect;
+        //   } catch (e) {
+        //     reason = closeEvent.reason;
+        //     if ((code >= 3500 && code < 4000) || (code >= 4500 && code < 5000)) {
+        //       needReconnect = false;
+        //     }
+        //   }
+        // }
 
-      this._disconnect(code, reason, needReconnect);
+        // if (code < 3000) {
+        //   code = 4;
+        //   reason = 'connection closed';
+        // }
 
-      if (this._reconnect === true) {
-        this._reconnecting = true;
-        const interval = this._getRetryInterval();
+        // onTransportClose callback should be executed every time transport was closed.
+        // This can be helpful to catch failed connection events (because our disconnect
+        // event only called once and every future attempts to connect do not fire disconnect
+        // event again).
+        // if (this._config.onTransportClose !== null) {
+        //   const ctx = {
+        //     event: closeEvent,
+        //     reason: reason,
+        //     reconnect: needReconnect
+        //   };
+        //   if (this._config.protocolVersion === 'v2') {
+        //     ctx['code'] = code;
+        //   }
+        //   this._config.onTransportClose(ctx);
+        // }
 
-        this._debug('reconnect after ' + interval + ' milliseconds');
-        setTimeout(() => {
-          if (this._reconnect === true) {
-            if (this._refreshRequired) {
-              this._refresh();
-            } else {
-              this._connect();
+        self._disconnect(code, reason, needReconnect);
+
+        if (self._reconnect === true) {
+          self._reconnecting = true;
+          const interval = self._getRetryInterval();
+
+          self._debug('reconnect after ' + interval + ' milliseconds');
+          setTimeout(() => {
+            if (self._reconnect === true) {
+              if (self._refreshRequired) {
+                self._refresh();
+              } else {
+                self._connect();
+              }
             }
-          }
-        }, interval);
+          }, interval);
+        }
+      },
+      onMessage: function (data) {
+        self._dataReceived(data);
+      },
+      restartPing: function () {
+        self._restartPing();
       }
-    };
-
-    this._transport.onmessage = event => {
-      this._dataReceived(event.data);
-    };
+    }, connectCommand);
   };
+
+  _constructConnectCommand() {
+    const req = {};
+
+    if (this._token) {
+      req.token = this._token;
+    }
+    if (this._connectData) {
+      req.data = this._connectData;
+    }
+    if (this._config.name) {
+      req.name = this._config.name;
+    }
+    if (this._config.version) {
+      req.version = this._config.version;
+    }
+
+    let subs = {};
+    let hasSubs = false;
+    for (const channel in this._serverSubs) {
+      if (this._serverSubs.hasOwnProperty(channel) && this._serverSubs[channel].recoverable) {
+        hasSubs = true;
+        let sub = {
+          'recover': true
+        };
+        if (this._serverSubs[channel].seq || this._serverSubs[channel].gen) {
+          if (this._serverSubs[channel].seq) {
+            sub['seq'] = this._serverSubs[channel].seq;
+          }
+          if (this._serverSubs[channel].gen) {
+            sub['gen'] = this._serverSubs[channel].gen;
+          }
+        } else {
+          if (this._serverSubs[channel].offset) {
+            sub['offset'] = this._serverSubs[channel].offset;
+          }
+        }
+        if (this._serverSubs[channel].epoch) {
+          sub['epoch'] = this._serverSubs[channel].epoch;
+        }
+        subs[channel] = sub;
+      }
+    }
+    if (hasSubs) {
+      req.subs = subs;
+    }
+
+    const cmd = {};
+    if (this._config.protocolVersion === 'v2') {
+      cmd.connect = req;
+    } else {
+      // Can omit CONNECT method here due to zero value.
+      cmd.params = req;
+    }
+    return cmd;
+  }
 
   rpc(data) {
     return this._rpc('', data);
@@ -907,6 +939,12 @@ export class Centrifuge extends EventEmitter {
     });
   }
 
+  _callConnectFake(id) {
+    return new Promise((resolve, reject) => {
+      this._registerCall(id, resolve, reject);
+    });
+  }
+
   _connect() {
     if (this.isConnected()) {
       this._debug('connect called when already connected');
@@ -967,7 +1005,7 @@ export class Centrifuge extends EventEmitter {
       this._serverSubs = {};
     }
 
-    if (!this._transportClosed) {
+    if (this._transport && !this._transportClosed) {
       this._transport.close();
     }
   };
@@ -1373,7 +1411,7 @@ export class Centrifuge extends EventEmitter {
     return this._serverSubs[channel] !== undefined;
   };
 
-  _connectResponse(result, isRecover) {
+  _connectResponse(result) {
     const wasReconnecting = this._reconnecting;
     this._reconnecting = false;
     this._resetRetry();
@@ -1399,6 +1437,9 @@ export class Centrifuge extends EventEmitter {
       this._refreshTimeout = setTimeout(() => this._refresh(), this._getTTLMilliseconds(result.ttl));
     }
 
+    this._session = result.session;
+    this._node = result.node;
+
     this.startBatching();
     this.startSubscribeBatching();
     for (const channel in this._subs) {
@@ -1414,7 +1455,7 @@ export class Centrifuge extends EventEmitter {
 
     const ctx = {
       client: result.client,
-      transport: this._transportName,
+      transport: this._transport.subName(),
       latency: this._latency
     };
     if (result.data) {
@@ -1708,6 +1749,15 @@ export class Centrifuge extends EventEmitter {
     this.emit('subscribe', ctx);
   };
 
+  _handleDisconnect(disconnect) {
+    const code = disconnect.code;
+    let needReconnect = true;
+    if ((code >= 3500 && code < 4000) || (code >= 4500 && code < 5000)) {
+      needReconnect = false;
+    }
+    this._disconnect(code, disconnect.reason, needReconnect);
+  };
+
   _handlePublication(channel, pub) {
     const sub = this._getSub(channel);
     const ctx = {
@@ -1806,6 +1856,8 @@ export class Centrifuge extends EventEmitter {
       this._handleUnsub(channel, data.unsubscribe);
     } else if (data.subscribe) {
       this._handleSub(channel, data.subscribe);
+    } else if (data.disconnect) {
+      this._handleDisconnect(data.disconnect);
     }
     next();
   }

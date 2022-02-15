@@ -21,6 +21,22 @@
                     }
                   }
                 },
+                "EmulationRequest": {
+                  "fields": {
+                    "node": {
+                      "type": "string",
+                      "id": 1
+                    },
+                    "session": {
+                      "type": "string",
+                      "id": 2
+                    },
+                    "data": {
+                      "type": "bytes",
+                      "id": 3
+                    }
+                  }
+                },
                 "Command": {
                   "fields": {
                     "id": {
@@ -352,6 +368,22 @@
                     "ttl": {
                       "type": "uint32",
                       "id": 6
+                    },
+                    "ping": {
+                      "type": "uint32",
+                      "id": 7
+                    },
+                    "pong": {
+                      "type": "bool",
+                      "id": 8
+                    },
+                    "session": {
+                      "type": "string",
+                      "id": 9
+                    },
+                    "node": {
+                      "type": "string",
+                      "id": 10
                     }
                   }
                 },
@@ -434,6 +466,22 @@
                       "keyType": "string",
                       "type": "SubscribeResult",
                       "id": 6
+                    },
+                    "ping": {
+                      "type": "uint32",
+                      "id": 7
+                    },
+                    "pong": {
+                      "type": "bool",
+                      "id": 8
+                    },
+                    "session": {
+                      "type": "string",
+                      "id": 9
+                    },
+                    "node": {
+                      "type": "string",
+                      "id": 10
                     }
                   }
                 },

@@ -44,7 +44,7 @@ export class WebsocketTransport {
     };
 
     this._transport.onclose = closeEvent => {
-      callbacks.onClose(closeEvent.code, closeEvent.reason, true);
+      callbacks.onClose(closeEvent);
     };
 
     this._transport.onmessage = event => {

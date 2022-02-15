@@ -108,6 +108,7 @@ export class HttpStreamingTransport {
       })
       .catch(error => {
         eventTarget.dispatchEvent(new CustomEvent('error', { detail: error }));
+        eventTarget.dispatchEvent(new CloseEvent('close'));
       });
     return eventTarget;
   }
@@ -158,9 +159,10 @@ export class HttpStreamingTransport {
     eventTarget.addEventListener('close', (e) => {
       this._open = false;
       this._abortController.abort();
-      let code = 4;
-      let reason = 'connection closed';
-      callbacks.onClose(code, reason, true);
+      callbacks.onClose({
+        code: 4,
+        reason: 'connection closed'
+      });
     });
 
     eventTarget.addEventListener('message', (e) => {

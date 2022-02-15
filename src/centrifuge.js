@@ -416,33 +416,6 @@ export class Centrifuge extends EventEmitter {
   }
 
   _setupTransport() {
-    //   eventTarget.addEventListener('close', (e) => {
-    //     closeTransport();
-    //     this._transportClosed = true;
-    //     let code = 4;
-    //     let reason = _errorConnectionClosed;
-    //     let needReconnect = true;
-    //     this._disconnect(code, reason, needReconnect);
-    //     if (this._reconnect === true) {
-    //       this._reconnecting = true;
-    //       const interval = this._getRetryInterval();
-
-    //       this._debug('reconnect after ' + interval + ' milliseconds');
-    //       setTimeout(() => {
-    //         if (this._reconnect === true) {
-    //           if (this._refreshRequired) {
-    //             this._refresh();
-    //           } else {
-    //             this._connect();
-    //           }
-    //         }
-    //       }, interval);
-    //     }
-    //   });
-
-    //   return;
-    // }
-
     if (startsWith(this._url, 'http')) {
       let sockjs = null;
       this._debug('client will use SockJS');
@@ -549,49 +522,50 @@ export class Centrifuge extends EventEmitter {
       onError: function (e) {
         self._debug('transport level error', e);
       },
-      onClose: function (code, reason, needReconnect) {
+      onClose: function (closeEvent) {
         self._transportClosed = true;
-        // let reason = _errorConnectionClosed;
-        // let needReconnect = true;
-        // let code = 0;
 
-        // if (closeEvent && 'code' in closeEvent && closeEvent.code) {
-        //   code = closeEvent.code;
-        // }
+        let reason = _errorConnectionClosed;
+        let needReconnect = true;
+        let code = 0;
 
-        // if (closeEvent && 'reason' in closeEvent && closeEvent.reason) {
-        //   try {
-        //     const advice = JSON.parse(closeEvent.reason);
-        //     reason = advice.reason;
-        //     needReconnect = advice.reconnect;
-        //   } catch (e) {
-        //     reason = closeEvent.reason;
-        //     if ((code >= 3500 && code < 4000) || (code >= 4500 && code < 5000)) {
-        //       needReconnect = false;
-        //     }
-        //   }
-        // }
+        if (closeEvent && 'code' in closeEvent && closeEvent.code) {
+          code = closeEvent.code;
+        }
 
-        // if (code < 3000) {
-        //   code = 4;
-        //   reason = 'connection closed';
-        // }
+        if (closeEvent && closeEvent.reason) {
+          try {
+            const advice = JSON.parse(closeEvent.reason);
+            reason = advice.reason;
+            needReconnect = advice.reconnect;
+          } catch (e) {
+            reason = closeEvent.reason;
+            if ((code >= 3500 && code < 4000) || (code >= 4500 && code < 5000)) {
+              needReconnect = false;
+            }
+          }
+        }
+
+        if (code < 3000) {
+          code = 4;
+          reason = 'connection closed';
+        }
 
         // onTransportClose callback should be executed every time transport was closed.
         // This can be helpful to catch failed connection events (because our disconnect
         // event only called once and every future attempts to connect do not fire disconnect
         // event again).
-        // if (this._config.onTransportClose !== null) {
-        //   const ctx = {
-        //     event: closeEvent,
-        //     reason: reason,
-        //     reconnect: needReconnect
-        //   };
-        //   if (this._config.protocolVersion === 'v2') {
-        //     ctx['code'] = code;
-        //   }
-        //   this._config.onTransportClose(ctx);
-        // }
+        if (self._config.onTransportClose !== null) {
+          const ctx = {
+            event: closeEvent,
+            reason: reason,
+            reconnect: needReconnect
+          };
+          if (this._config.protocolVersion === 'v2') {
+            ctx['code'] = code;
+          }
+          self._config.onTransportClose(ctx);
+        }
 
         self._disconnect(code, reason, needReconnect);
 

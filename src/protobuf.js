@@ -92,8 +92,15 @@ const PushSchema = {
 const Push = proto.lookupType('protocol.Push');
 const Command = proto.lookupType('protocol.Command');
 const Reply = proto.lookupType('protocol.Reply');
+const EmulationRequest = proto.lookupType('protocol.EmulationRequest');
 
 export class ProtobufEncoder {
+  encodeEmulationRequest(req) {
+    const writer = protobuf.Writer.create();
+    EmulationRequest.encode(req, writer);
+    return writer.finish();
+  }
+
   encodeCommands(commands) {
     const writer = protobuf.Writer.create();
     for (const i in commands) {
@@ -160,6 +167,20 @@ export class ProtobufDecoder {
       replies.push(reply);
     }
     return replies;
+  }
+
+  decodeReply(data) {
+    const reader = protobuf.Reader.create(new Uint8Array(data));
+    while (reader.pos < reader.len) {
+      Reply.decodeDelimited(reader);
+      return {
+        ok: true,
+        pos: reader.pos
+      };
+    }
+    return {
+      ok: false
+    };
   }
 
   decodeCommandResult(methodType, data) {

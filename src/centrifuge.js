@@ -68,7 +68,7 @@ export class Centrifuge extends EventEmitter {
     this._xhrID = 0;
     this._xhrs = {};
     this._dispatchPromise = Promise.resolve();
-    this._protocol = '';
+    this._protocol = 'json';
     this._serverPing = 0;
     this._sendPong = false;
     this._serverPingTimeout = null;
@@ -409,7 +409,7 @@ export class Centrifuge extends EventEmitter {
   }
 
   _getSubProtocol() {
-    if (!this._protocol) {
+    if (this._protocol === 'json') {
       return '';
     }
     return 'centrifuge-' + this._protocol;
@@ -468,7 +468,9 @@ export class Centrifuge extends EventEmitter {
         this._transport = new HttpStreamingTransport(this._url, {
           requestMode: this._config.httpStreamingRequestMode,
           emulationEndpoint: this._config.emulationEndpoint,
-          emulationRequestMode: this._config.emulationRequestMode
+          emulationRequestMode: this._config.emulationRequestMode,
+          decoder: this._decoder,
+          encoder: this._encoder
         });
       }
     } else {
@@ -615,7 +617,7 @@ export class Centrifuge extends EventEmitter {
       restartPing: function () {
         self._restartPing();
       }
-    }, connectCommand);
+    }, this._encoder.encodeCommands([connectCommand]));
   };
 
   _constructConnectCommand() {

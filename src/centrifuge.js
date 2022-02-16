@@ -4,6 +4,7 @@ import Subscription from './subscription';
 import { SockjsTransport } from './transport_sockjs';
 import { WebsocketTransport } from './transport_websocket';
 import { HttpStreamingTransport } from './transport_http_streaming';
+import { SseTransport } from './transport_sse';
 
 import {
   JsonEncoder,
@@ -438,13 +439,20 @@ export class Centrifuge extends EventEmitter {
           timeout: this._config.sockjsTimeout
         });
       } else {
-        this._transport = new HttpStreamingTransport(this._url, {
-          requestMode: this._config.httpStreamingRequestMode,
-          emulationEndpoint: this._config.emulationEndpoint,
-          emulationRequestMode: this._config.emulationRequestMode,
-          decoder: this._decoder,
-          encoder: this._encoder
-        });
+        if (this._url.indexOf('sse') > 0) {
+          this._transport = new SseTransport(this._url, {
+            emulationEndpoint: this._config.emulationEndpoint,
+            emulationRequestMode: this._config.emulationRequestMode
+          });
+        } else {
+          this._transport = new HttpStreamingTransport(this._url, {
+            requestMode: this._config.httpStreamingRequestMode,
+            emulationEndpoint: this._config.emulationEndpoint,
+            emulationRequestMode: this._config.emulationRequestMode,
+            decoder: this._decoder,
+            encoder: this._encoder
+          });
+        }
       }
     } else {
       this._debug('client will connect to WebSocket endpoint');

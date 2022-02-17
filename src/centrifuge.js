@@ -3,8 +3,8 @@ import Subscription from './subscription';
 
 import { SockjsTransport } from './transport_sockjs';
 import { WebsocketTransport } from './transport_websocket';
-import { HttpStreamingTransport } from './transport_http_streaming';
-import { SseTransport } from './transport_sse';
+import { HttpStreamTransportSupported, HttpStreamTransport } from './transport_http_stream';
+import { SseTransportSupported, SseTransport } from './transport_sse';
 
 import {
   JsonEncoder,
@@ -27,12 +27,15 @@ const _errorConnectionClosed = 'connection closed';
 
 export class Centrifuge extends EventEmitter {
 
-  constructor(url, options) {
+  constructor(endpoint, options) {
     super();
-    this._url = url;
+    this._endpoint = endpoint;
+    this._transports = [];
+    this._emulation = false;
+    this._currentTransportIndex = 0;
+    this._transportWasOpen = false;
     this._transport = null;
     this._transportClosed = true;
-    this._xmlhttprequest = null;
     this._methodType = null;
     this._pushType = null;
     this._encoder = null;
@@ -74,7 +77,7 @@ export class Centrifuge extends EventEmitter {
     this._sendPong = false;
     this._serverPingTimeout = null;
     this._config = {
-      protocol: '',
+      protocol: 'json',
       protocolVersion: 'v1',
       debug: false,
       name: 'js',
@@ -119,7 +122,7 @@ export class Centrifuge extends EventEmitter {
       subRefreshInterval: 1000,
       onPrivateSubscribe: null,
       disableWithCredentials: false,
-      httpStreamingRequestMode: 'cors',
+      httpStreamRequestMode: 'cors',
       emulationEndpoint: '/emulation',
       emulationRequestMode: 'cors'
     };
@@ -159,9 +162,9 @@ export class Centrifuge extends EventEmitter {
     this._debug('sending AJAX request to', url, 'with data', JSON.stringify(data));
 
     let xhr;
-    if (this._xmlhttprequest !== null) {
+    if (this._config.xmlhttprequest !== null) {
       // use explicitly passed XMLHttpRequest object.
-      xhr = new this._xmlhttprequest();
+      xhr = new this._config.xmlhttprequest();
     } else {
       xhr = (global.XMLHttpRequest ? new global.XMLHttpRequest() : new global.ActiveXObject('Microsoft.XMLHTTP'));
     }
@@ -258,26 +261,53 @@ export class Centrifuge extends EventEmitter {
     extend(this._config, configuration || {});
     this._debug('centrifuge config', this._config);
 
-    if (!this._url) {
-      throw new Error('url required');
+    if (!this._endpoint) {
+      throw new Error('endpoint configuration required');
     }
 
-    const isProtobufURL = startsWith(this._url, 'ws') && this._url.indexOf('format=protobuf') > -1;
-    if (isProtobufURL || this._config.protocol === 'protobuf') {
+    if (this._config.protocol !== 'json' && this._config.protocol !== 'protobuf') {
+      throw new Error('unsupported protocol ' + this._config.protocol);
+    }
+
+    this._setFormat('json');
+    if (this._config.protocol === 'protobuf') {
       this._setFormat('protobuf');
       this._protocol = 'protobuf';
-    } else {
-      if (this._config.protocol !== '' && this._config.protocol !== 'json') {
-        throw new Error('unsupported protocol ' + this._config.protocol);
+    }
+
+    if (typeof this._endpoint === 'string') {
+      const isProtobufURL = startsWith(this._endpoint, 'ws') && this._endpoint.indexOf('format=protobuf') > -1;
+      if (isProtobufURL) {
+        // Using a URL is a legacy way to define a protocol type. At the moment explicit
+        // configuration option is a prefferred way.
+        this._setFormat('protobuf');
+        this._protocol = 'protobuf';
+      } else {
+        if (this._config.protocol !== '' && this._config.protocol !== 'json') {
+          throw new Error('unsupported protocol ' + this._config.protocol);
+        }
+        this._setFormat('json');
       }
-      this._setFormat('json');
+    } else if (typeof this._endpoint === 'object' && this._endpoint instanceof Array) {
+      this._transports = this._endpoint;
+      this._emulation = true;
+      for (const i in this._transports) {
+        const transportConfig = this._transports[i];
+        if (!transportConfig.endpoint || !transportConfig.transport) {
+          throw new Error('malformed transport configuration');
+        }
+        const transportName = transportConfig.transport;
+        if (transportName !== 'websocket' && transportName !== 'http_stream' && transportName !== 'sse') {
+          throw new Error('unsupported transport name: ' + transportName);
+        }
+      }
+    } else {
+      throw new Error('unsupported url configuration type: only string or array of objects are supported');
     }
 
     if (this._config.protocolVersion !== 'v1' && this._config.protocolVersion !== 'v2') {
       throw new Error('unsupported protocol version ' + this._config.protocolVersion);
     }
-
-    this._xmlhttprequest = this._config.xmlhttprequest;
   };
 
   _setStatus(newStatus) {
@@ -417,58 +447,92 @@ export class Centrifuge extends EventEmitter {
   }
 
   _setupTransport() {
-    if (startsWith(this._url, 'http')) {
-      let sockjs = null;
-      this._debug('client will use SockJS');
-      if (this._config.sockjs !== null) {
-        this._debug('SockJS explicitly provided in options');
-        sockjs = this._config.sockjs;
-      } else {
-        if (typeof global.SockJS === 'undefined') {
-          // throw new Error('SockJS not available, use ws(s):// in url or include SockJS');
-        } else {
-          this._debug('use globally defined SockJS');
-          sockjs = global.SockJS;
-        }
+    let websocket;
+    if (this._config.websocket !== null) {
+      websocket = this._config.websocket;
+    } else {
+      if (!(typeof WebSocket !== 'function' && typeof WebSocket !== 'object')) {
+        websocket = WebSocket;
       }
-      if (sockjs !== null) {
-        this._transport = new SockjsTransport(this._url, {
+    }
+
+    let sockjs = null;
+    if (this._config.sockjs !== null) {
+      sockjs = this._config.sockjs;
+    } else {
+      if (typeof global.SockJS !== 'undefined') {
+        sockjs = global.SockJS;
+      }
+    }
+
+    if (!this._emulation) {
+      if (startsWith(this._endpoint, 'http')) {
+        this._debug('client will use SockJS');
+        if (sockjs === null) {
+          throw new Error('SockJS not available, use ws(s):// in url or include SockJS');
+        }
+        this._transport = new SockjsTransport(this._endpoint, {
           sockjs: sockjs,
           transports: this._config.sockjsTransports,
           server: this._config.sockjsServer,
           timeout: this._config.sockjsTimeout
         });
       } else {
-        if (this._url.indexOf('sse') > 0) {
-          this._transport = new SseTransport(this._url, {
-            emulationEndpoint: this._config.emulationEndpoint,
-            emulationRequestMode: this._config.emulationRequestMode
+        this._debug('client will use WebSocket');
+        if (websocket === null) {
+          throw new Error('WebSocket not available');
+        }
+        this._transport = new WebsocketTransport(this._endpoint, {
+          websocket: websocket
+        });
+      }
+    } else {
+      if (this._currentTransportIndex >= this._transports.length) {
+        this._currentTransportIndex = 0;
+      }
+      while (true) {
+        if (this._currentTransportIndex >= this._transports.length) {
+          this._currentTransportIndex = 0;
+          throw new Error('no supported transport found');
+        }
+        const transportConfig = this._transports[this._currentTransportIndex];
+        const transportName = transportConfig.transport;
+        const transportEndpoint = transportConfig.endpoint;
+        if (transportName === 'websocket') {
+          if (websocket === null) {
+            this._debug('WebSocket not available');
+            this._currentTransportIndex++;
+            continue;
+          }
+          this._transport = new WebsocketTransport(transportEndpoint, {
+            websocket: websocket
           });
-        } else {
-          this._transport = new HttpStreamingTransport(this._url, {
-            requestMode: this._config.httpStreamingRequestMode,
+        } else if (transportName === 'http_stream') {
+          if (!HttpStreamTransportSupported) {
+            this._debug('HTTP stream not available');
+            this._currentTransportIndex++;
+            continue;
+          }
+          this._transport = new HttpStreamTransport(transportEndpoint, {
+            requestMode: this._config.httpStreamRequestMode,
             emulationEndpoint: this._config.emulationEndpoint,
             emulationRequestMode: this._config.emulationRequestMode,
             decoder: this._decoder,
             encoder: this._encoder
           });
+        } else if (transportName === 'sse') {
+          if (!SseTransportSupported) {
+            this._debug('SSE not available');
+            this._currentTransportIndex++;
+            continue;
+          }
+          this._transport = new SseTransport(transportEndpoint, {
+            emulationEndpoint: this._config.emulationEndpoint,
+            emulationRequestMode: this._config.emulationRequestMode
+          });
         }
+        break;
       }
-    } else {
-      this._debug('client will connect to WebSocket endpoint');
-      let websocket;
-      if (this._config.websocket !== null) {
-        websocket = this._config.websocket;
-      } else {
-        if (!(typeof WebSocket !== 'function' && typeof WebSocket !== 'object')) {
-          websocket = WebSocket;
-        } else {
-          throw new Error('WebSocket not available');
-        };
-      }
-      this._transport = new WebsocketTransport(this._url, {
-        websocket: websocket
-      });
     }
 
     const connectCommand = this._constructConnectCommand();
@@ -497,6 +561,7 @@ export class Centrifuge extends EventEmitter {
 
     this._transport.initialize(this._protocol, {
       onOpen: function () {
+        self._transportWasOpen = true;
         self._transportClosed = false;
 
         if (self._transport.emulation()) {
@@ -557,6 +622,12 @@ export class Centrifuge extends EventEmitter {
         if (code < 3000) {
           code = 4;
           reason = 'connection closed';
+          if (self._emulation && !self._transportWasOpen) {
+            self._currentTransportIndex++;
+          }
+        } else {
+          // Codes >= 3000 come from a server application level.
+          self._transportWasOpen = true;
         }
 
         // onTransportClose callback should be executed every time transport was closed.
@@ -575,11 +646,20 @@ export class Centrifuge extends EventEmitter {
           self._config.onTransportClose(ctx);
         }
 
-        self._disconnect(code, reason, needReconnect);
+        let isInitialHandshake = false;
+        if (self._emulation && !self._transportWasOpen && self._currentTransportIndex < self._transports.length) {
+          isInitialHandshake = true;
+        }
+
+        self._disconnect(code, reason, needReconnect, isInitialHandshake);
 
         if (self._reconnect === true) {
           self._reconnecting = true;
-          const interval = self._getRetryInterval();
+          let interval = self._getRetryInterval();
+
+          if (isInitialHandshake) {
+            interval = 0;
+          }
 
           self._debug('reconnect after ' + interval + ' milliseconds');
           setTimeout(() => {
@@ -945,7 +1025,7 @@ export class Centrifuge extends EventEmitter {
     this._setupTransport();
   };
 
-  _disconnect(code, reason, shouldReconnect) {
+  _disconnect(code, reason, shouldReconnect, isInitialHandshake) {
     const reconnect = shouldReconnect || false;
     if (reconnect === false) {
       this._reconnect = false;
@@ -981,7 +1061,9 @@ export class Centrifuge extends EventEmitter {
       if (this._config.protocolVersion === 'v2') {
         ctx['code'] = code;
       }
-      this.emit('disconnect', ctx);
+      if (!isInitialHandshake) {
+        this.emit('disconnect', ctx);
+      }
     }
 
     if (reconnect === false) {
@@ -1397,6 +1479,7 @@ export class Centrifuge extends EventEmitter {
 
   _connectResponse(result) {
     const wasReconnecting = this._reconnecting;
+    this._transportWasOpen = true;
     this._reconnecting = false;
     this._resetRetry();
     this._refreshRequired = false;

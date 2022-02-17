@@ -1,6 +1,6 @@
 export class SockjsTransport {
-  constructor(url, options) {
-    this.url = url;
+  constructor(endpoint, options) {
+    this.endpoint = endpoint;
     this.options = options;
     this._transport = null;
   }
@@ -39,7 +39,7 @@ export class SockjsTransport {
       sockjsOptions.timeout = this.options.timeout;
     }
 
-    this._transport = new this.options.sockjs(this.url, null, sockjsOptions);
+    this._transport = new this.options.sockjs(this.endpoint, null, sockjsOptions);
 
     this._transport.onopen = () => {
       this._transport.onheartbeat = () => callbacks.restartPing();

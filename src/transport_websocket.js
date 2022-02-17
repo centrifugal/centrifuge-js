@@ -1,6 +1,6 @@
 export class WebsocketTransport {
-  constructor(url, options) {
-    this.url = url;
+  constructor(endpoint, options) {
+    this.endpoint = endpoint;
     this.options = options;
     this._transport = null;
   }
@@ -27,9 +27,9 @@ export class WebsocketTransport {
       subProtocol = 'centrifuge-protobuf';
     }
     if (subProtocol !== '') {
-      this._transport = new this.options.websocket(this.url, subProtocol);
+      this._transport = new this.options.websocket(this.endpoint, subProtocol);
     } else {
-      this._transport = new this.options.websocket(this.url);
+      this._transport = new this.options.websocket(this.endpoint);
     }
     if (protocol === 'protobuf') {
       this._transport.binaryType = 'arraybuffer';

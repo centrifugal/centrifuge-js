@@ -3,8 +3,8 @@ export function SseTransportSupported() {
 }
 
 export class SseTransport {
-  constructor(url, options) {
-    this.url = url;
+  constructor(endpoint, options) {
+    this.endpoint = endpoint;
     this.options = options;
     this._open = false;
     this._protocol = 'json';
@@ -29,7 +29,7 @@ export class SseTransport {
   }
 
   initialize(_protocol, callbacks, encodedConnectCommand) {
-    let url = new URL(this.url);
+    let url = new URL(this.endpoint);
     url.searchParams.append('cf_connect', encodedConnectCommand);
 
     const eventSource = new EventSource(url);

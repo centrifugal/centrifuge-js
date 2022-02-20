@@ -150,8 +150,15 @@ export default class Subscription extends EventEmitter {
     this._status = _STATE_ERROR;
     this._error = err;
     const errContext = this._getSubscribeErrorContext();
+
+    if (err.code === 112) { // Unrecoverable position error.
+      // In this case we assume that application should load initial state and subscribe from scratch.
+      this._clearSubscribedState();
+    }
+
     this.emit('error', errContext);
     this._reject(errContext);
+
     for (const id in this._promises) {
       clearTimeout(this._promises[id].timeout);
       this._promises[id].reject(err);
@@ -177,7 +184,15 @@ export default class Subscription extends EventEmitter {
     });
   };
 
-  _setUnsubscribed(noResubscribe) {
+  _clearSubscribedState() {
+    this._recover = false;
+    this._noResubscribe = true;
+    delete this._centrifuge._lastSeq[this.channel];
+    delete this._centrifuge._lastGen[this.channel];
+    delete this._centrifuge._lastEpoch[this.channel];
+  }
+
+  _setUnsubscribed(clearState) {
     this._resubscribeAttempts = 0;
     clearTimeout(this._resubscribeTimeout);
     this._centrifuge._clearSubRefreshTimeout(this.channel);
@@ -186,12 +201,8 @@ export default class Subscription extends EventEmitter {
     }
     const needTrigger = this._status === _STATE_SUCCESS;
     this._status = _STATE_UNSUBSCRIBED;
-    if (noResubscribe === true) {
-      this._recover = false;
-      this._noResubscribe = true;
-      delete this._centrifuge._lastSeq[this.channel];
-      delete this._centrifuge._lastGen[this.channel];
-      delete this._centrifuge._lastEpoch[this.channel];
+    if (clearState === true) {
+      this._clearSubscribedState();
     }
     if (needTrigger) {
       this._triggerUnsubscribe();

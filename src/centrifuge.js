@@ -1435,8 +1435,12 @@ export class Centrifuge extends EventEmitter {
     }
   };
 
-  _unsubscribe(sub) {
+  _removeSubscription(sub) {
     delete this._subs[sub.channel];
+  }
+
+  _unsubscribe(sub) {
+    this._removeSubscription(sub);
     delete this._lastOffset[sub.channel];
     delete this._lastSeq[sub.channel];
     delete this._lastGen[sub.channel];
@@ -1797,8 +1801,15 @@ export class Centrifuge extends EventEmitter {
       }
       return;
     }
-    sub.unsubscribe();
-    if (unsub.resubscribe === true) {
+    let clearSubscribedState;
+    if (this._config.protocolVersion === 'v1') {
+      clearSubscribedState = true;
+    } else {
+      clearSubscribedState = unsub.type !== 1;
+    }
+    sub._setUnsubscribed(clearSubscribedState);
+    if (this._config.protocolVersion === 'v2' && unsub.type === 1) {
+      sub._recover = true;
       sub.subscribe();
     }
   };

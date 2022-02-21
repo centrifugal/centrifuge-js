@@ -25,6 +25,13 @@ import {
 const _errorTimeout = 'timeout';
 const _errorConnectionClosed = 'connection closed';
 
+const states = {
+  DISCONNECTED: 'disconnected',
+  CONNECTING: 'connecting',
+  CONNECTED: 'connected',
+  CLOSED: 'closed'
+};
+
 export class Centrifuge extends EventEmitter {
 
   constructor(endpoint, options) {
@@ -40,7 +47,7 @@ export class Centrifuge extends EventEmitter {
     this._pushType = null;
     this._encoder = null;
     this._decoder = null;
-    this._status = 'disconnected';
+    this._state = states.DISCONNECTED;
     this._reconnect = true;
     this._reconnecting = false;
     this._messageId = 0;
@@ -310,23 +317,23 @@ export class Centrifuge extends EventEmitter {
     }
   };
 
-  _setStatus(newStatus) {
-    if (this._status !== newStatus) {
-      this._debug('Status', this._status, '->', newStatus);
-      this._status = newStatus;
+  _setStatus(newState) {
+    if (this._state !== newState) {
+      this._debug('State', this._state, '->', newState);
+      this._state = newState;
     }
   };
 
   _isDisconnected() {
-    return this._status === 'disconnected';
+    return this._state === states.DISCONNECTED;
   };
 
   _isConnecting() {
-    return this._status === 'connecting';
+    return this._state === states.CONNECTING;
   };
 
   _isConnected() {
-    return this._status === 'connected';
+    return this._state === states.CONNECTED;
   };
 
   _nextMessageId() {
@@ -1014,7 +1021,7 @@ export class Centrifuge extends EventEmitter {
       this._debug('connect called when already connected');
       return;
     }
-    if (this._status === 'connecting') {
+    if (this._isConnecting()) {
       return;
     }
 

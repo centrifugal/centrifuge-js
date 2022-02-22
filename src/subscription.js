@@ -154,9 +154,12 @@ export default class Subscription extends EventEmitter {
     if (err.code === 112) { // Unrecoverable position error.
       // In this case we assume that application should load initial state and subscribe from scratch.
       this._clearSubscribedState();
+      this.emit('error', errContext);
+      this.emit('close', { channel: this.channel, reason: 'unrecoverable position' });
+    } else {
+      this.emit('error', errContext);
     }
 
-    this.emit('error', errContext);
     this._reject(errContext);
 
     for (const id in this._promises) {

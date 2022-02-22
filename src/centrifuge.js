@@ -50,6 +50,7 @@ export class Centrifuge extends EventEmitter {
     this._state = states.DISCONNECTED;
     this._reconnect = true;
     this._reconnecting = false;
+    this._reconnectTimeout = null;
     this._messageId = 0;
     this._clientID = null;
     this._session = '';
@@ -322,8 +323,10 @@ export class Centrifuge extends EventEmitter {
 
   _setState(newState) {
     if (this._state !== newState) {
+      const prevState = this._state;
       this._debug('State', this._state, '->', newState);
       this._state = newState;
+      this.emit('state', { 'state': newState, 'prevState': prevState });
     }
   };
 
@@ -373,6 +376,10 @@ export class Centrifuge extends EventEmitter {
     if (this._refreshTimeout) {
       clearTimeout(this._refreshTimeout);
       this._refreshTimeout = null;
+    }
+
+    if (!reconnect && this._reconnectTimeout !== null) {
+      clearTimeout(this._reconnectTimeout);
     }
 
     // fire errbacks of registered outgoing calls.
@@ -704,7 +711,7 @@ export class Centrifuge extends EventEmitter {
           }
 
           self._debug('reconnect after ' + interval + ' milliseconds');
-          setTimeout(() => {
+          self._reconnectTimeout = setTimeout(() => {
             if (self._reconnect === true) {
               if (self._refreshRequired) {
                 self._refresh();
@@ -726,7 +733,7 @@ export class Centrifuge extends EventEmitter {
 
   _connectError(err) {
     if (err.code === 112) { // unrecoverable position.
-      this._handleClose();
+      this._handleClose('unrecoverable position');
       return;
     }
     if (err.code === 109) { // token expired.
@@ -1068,7 +1075,10 @@ export class Centrifuge extends EventEmitter {
       return;
     }
     if (this._isConnecting()) {
-      return;
+      this._debug('connect called when already connecting');
+      if (this._reconnectTimeout !== null) {
+        clearTimeout(this._reconnectTimeout);
+      }
     }
 
     this._debug('start connecting');
@@ -1078,14 +1088,14 @@ export class Centrifuge extends EventEmitter {
     this._setupTransport();
   };
 
-  _handleClose() {
+  _handleClose(reason) {
     this._serverSubs = {};
     this._clearConnectedState(true);
     this._setState(states.CLOSED);
     if (this._transport && !this._transportClosed) {
       this._transport.close();
     }
-    this.emit('close');
+    this.emit('close', { reason: reason });
   };
 
   _disconnect(code, reason, shouldReconnect, isInitialHandshake) {
@@ -1104,7 +1114,11 @@ export class Centrifuge extends EventEmitter {
     this._clearConnectedState(reconnect);
 
     this._debug('disconnected:', reason, shouldReconnect);
-    this._setState(states.DISCONNECTED);
+    if (shouldReconnect) {
+      this._setState(states.CONNECTING);
+    } else {
+      this._setState(states.DISCONNECTED);
+    }
 
     if (this._reconnecting === false) {
       // fire unsubscribe events for server side subs.

@@ -1081,7 +1081,7 @@ export class Centrifuge extends EventEmitter {
   _handleClose() {
     this._serverSubs = {};
     this._clearConnectedState(true);
-    this._setStatus('closed');
+    this._setState(states.CLOSED);
     if (this._transport && !this._transportClosed) {
       this._transport.close();
     }

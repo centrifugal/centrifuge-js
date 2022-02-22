@@ -320,7 +320,7 @@ export class Centrifuge extends EventEmitter {
     }
   };
 
-  _setStatus(newState) {
+  _setState(newState) {
     if (this._state !== newState) {
       this._debug('State', this._state, '->', newState);
       this._state = newState;
@@ -1062,7 +1062,7 @@ export class Centrifuge extends EventEmitter {
     }
 
     this._debug('start connecting');
-    this._setStatus('connecting');
+    this._setState(states.CONNECTING);
     this._clientID = null;
     this._reconnect = true;
     this._setupTransport();
@@ -1084,7 +1084,7 @@ export class Centrifuge extends EventEmitter {
     this._clearConnectedState(reconnect);
 
     this._debug('disconnected:', reason, shouldReconnect);
-    this._setStatus('disconnected');
+    this._setState(states.DISCONNECTED);
 
     if (this._refreshTimeout) {
       clearTimeout(this._refreshTimeout);
@@ -1537,7 +1537,7 @@ export class Centrifuge extends EventEmitter {
     }
 
     this._clientID = result.client;
-    this._setStatus('connected');
+    this._setState(states.CONNECTED);
 
     if (this._refreshTimeout) {
       clearTimeout(this._refreshTimeout);

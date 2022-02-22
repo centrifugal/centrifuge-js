@@ -370,6 +370,11 @@ export class Centrifuge extends EventEmitter {
     this._clientID = null;
     this._stopPing();
 
+    if (this._refreshTimeout) {
+      clearTimeout(this._refreshTimeout);
+      this._refreshTimeout = null;
+    }
+
     // fire errbacks of registered outgoing calls.
     for (const id in this._callbacks) {
       if (this._callbacks.hasOwnProperty(id)) {
@@ -589,11 +594,7 @@ export class Centrifuge extends EventEmitter {
           resolveCtx.next();
         }
       }, rejectCtx => {
-        const err = rejectCtx.error;
-        if (err.code === 109) { // token expired.
-          this._refreshRequired = true;
-        }
-        this._disconnect(6, 'connect error', true);
+        this._connectError(rejectCtx.error);
         if (rejectCtx.next) {
           rejectCtx.next();
         }
@@ -613,7 +614,9 @@ export class Centrifuge extends EventEmitter {
 
         self._latencyStart = new Date();
 
+        console.log(connectCommand);
         self._call(connectCommand).then(resolveCtx => {
+          console.log(resolveCtx);
           let result;
           if (self._config.protocolVersion === 'v1') {
             result = self._decoder.decodeCommandResult(self._methodType.CONNECT, resolveCtx.reply.result);
@@ -625,11 +628,7 @@ export class Centrifuge extends EventEmitter {
             resolveCtx.next();
           }
         }, rejectCtx => {
-          const err = rejectCtx.error;
-          if (err.code === 109) { // token expired.
-            self._refreshRequired = true;
-          }
-          self._disconnect(6, 'connect error', true);
+          self._connectError(rejectCtx.error);
           if (rejectCtx.next) {
             rejectCtx.next();
           }
@@ -724,6 +723,17 @@ export class Centrifuge extends EventEmitter {
       }
     }, this._encoder.encodeCommands([connectCommand]));
   };
+
+  _connectError(err) {
+    if (err.code === 112) { // unrecoverable position.
+      this._handleClose();
+      return;
+    }
+    if (err.code === 109) { // token expired.
+      this._refreshRequired = true;
+    }
+    this._disconnect(6, 'connect error', true);
+  }
 
   _constructConnectCommand() {
     const req = {};
@@ -1068,6 +1078,16 @@ export class Centrifuge extends EventEmitter {
     this._setupTransport();
   };
 
+  _handleClose() {
+    this._serverSubs = {};
+    this._clearConnectedState(true);
+    this._setStatus('closed');
+    if (this._transport && !this._transportClosed) {
+      this._transport.close();
+    }
+    this.emit('close');
+  };
+
   _disconnect(code, reason, shouldReconnect, isInitialHandshake) {
     const reconnect = shouldReconnect || false;
     if (reconnect === false) {
@@ -1086,10 +1106,6 @@ export class Centrifuge extends EventEmitter {
     this._debug('disconnected:', reason, shouldReconnect);
     this._setStatus('disconnected');
 
-    if (this._refreshTimeout) {
-      clearTimeout(this._refreshTimeout);
-      this._refreshTimeout = null;
-    }
     if (this._reconnecting === false) {
       // fire unsubscribe events for server side subs.
       for (const channel in this._serverSubs) {
@@ -1782,6 +1798,9 @@ export class Centrifuge extends EventEmitter {
   _handleReply(reply, next) {
     const id = reply.id;
 
+    console.log(id);
+    console.log(this._callbacks);
+
     if (!(id in this._callbacks)) {
       next();
       return;
@@ -2064,6 +2083,7 @@ export class Centrifuge extends EventEmitter {
       errback: errback,
       timeout: null
     };
+    console.log(this._callbacks[id]);
     this._callbacks[id].timeout = setTimeout(() => {
       delete this._callbacks[id];
       if (isFunction(errback)) {

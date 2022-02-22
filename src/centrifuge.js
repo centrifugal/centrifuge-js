@@ -404,12 +404,13 @@ export class Centrifuge extends EventEmitter {
         const sub = this._subs[channel];
 
         if (reconnect) {
-          if (sub._isSuccess()) {
-            sub._triggerUnsubscribe();
-            sub._recover = true;
-          }
+          const needUnsubscribe = sub._isSuccess();
           if (sub._shouldResubscribe()) {
             sub._setSubscribing();
+          }
+          if (needUnsubscribe) {
+            sub._triggerUnsubscribe();
+            sub._recover = true;
           }
         } else {
           sub._setUnsubscribed();

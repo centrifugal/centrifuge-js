@@ -3,8 +3,8 @@ import Subscription from './subscription';
 
 import { SockjsTransport } from './transport_sockjs';
 import { WebsocketTransport } from './transport_websocket';
-import { HttpStreamTransportSupported, HttpStreamTransport } from './transport_http_stream';
-import { SseTransportSupported, SseTransport } from './transport_sse';
+import { HttpStreamTransport } from './transport_http_stream';
+import { SseTransport } from './transport_sse';
 
 import {
   JsonEncoder,
@@ -89,8 +89,11 @@ export class Centrifuge extends EventEmitter {
       debug: false,
       name: 'js',
       version: '',
+      fetch: null,
+      readableStream: null,
       websocket: null,
       sockjs: null,
+      eventsource: null,
       sockjsServer: null,
       sockjsTimeout: null,
       sockjsTransports: [
@@ -472,26 +475,53 @@ export class Centrifuge extends EventEmitter {
       }
     }
 
+    let eventsource = null;
+    if (this._config.eventsource !== null) {
+      eventsource = this._config.eventsource;
+    } else {
+      if (typeof global.EventSource !== 'undefined') {
+        eventsource = global.EventSource;
+      }
+    }
+
+    let fetchFunc = null;
+    if (this._config.fetch !== null) {
+      fetchFunc = this._config.fetch;
+    } else {
+      if (typeof global.fetch !== 'undefined') {
+        fetchFunc = global.fetch;
+      }
+    }
+
+    let readableStream = null;
+    if (this._config.readableStream !== null) {
+      readableStream = this._config.readableStream;
+    } else {
+      if (typeof global.ReadableStream !== 'undefined') {
+        readableStream = global.ReadableStream;
+      }
+    }
+
     if (!this._emulation) {
       if (startsWith(this._endpoint, 'http')) {
         this._debug('client will use SockJS');
-        if (sockjs === null) {
-          throw new Error('SockJS not available, use ws(s):// in url or include SockJS');
-        }
         this._transport = new SockjsTransport(this._endpoint, {
           sockjs: sockjs,
           transports: this._config.sockjsTransports,
           server: this._config.sockjsServer,
           timeout: this._config.sockjsTimeout
         });
+        if (!this._transport.supported()) {
+          throw new Error('SockJS not available, use ws(s):// in url or include SockJS');
+        }
       } else {
         this._debug('client will use WebSocket');
-        if (websocket === null) {
-          throw new Error('WebSocket not available');
-        }
         this._transport = new WebsocketTransport(this._endpoint, {
           websocket: websocket
         });
+        if (!this._transport.supported()) {
+          throw new Error('WebSocket not available');
+        }
       }
     } else {
       if (this._currentTransportIndex >= this._transports.length) {
@@ -505,38 +535,43 @@ export class Centrifuge extends EventEmitter {
         const transportConfig = this._transports[this._currentTransportIndex];
         const transportName = transportConfig.transport;
         const transportEndpoint = transportConfig.endpoint;
+
         if (transportName === 'websocket') {
-          if (websocket === null) {
+          this._transport = new WebsocketTransport(transportEndpoint, {
+            websocket: websocket
+          });
+          if (!this._transport.supported()) {
             this._debug('WebSocket not available');
             this._currentTransportIndex++;
             continue;
           }
-          this._transport = new WebsocketTransport(transportEndpoint, {
-            websocket: websocket
-          });
         } else if (transportName === 'http_stream') {
-          if (!HttpStreamTransportSupported) {
-            this._debug('HTTP stream not available');
-            this._currentTransportIndex++;
-            continue;
-          }
           this._transport = new HttpStreamTransport(transportEndpoint, {
+            fetch: fetchFunc,
+            readableStream: readableStream,
             requestMode: this._config.httpStreamRequestMode,
             emulationEndpoint: this._config.emulationEndpoint,
             emulationRequestMode: this._config.emulationRequestMode,
             decoder: this._decoder,
             encoder: this._encoder
           });
+          if (!this._transport.supported()) {
+            this._debug('HTTP stream not available');
+            this._currentTransportIndex++;
+            continue;
+          }
         } else if (transportName === 'sse') {
-          if (!SseTransportSupported) {
+          this._transport = new SseTransport(transportEndpoint, {
+            eventsource: eventsource,
+            fetch: fetchFunc,
+            emulationEndpoint: this._config.emulationEndpoint,
+            emulationRequestMode: this._config.emulationRequestMode
+          });
+          if (!this._transport.supported()) {
             this._debug('SSE not available');
             this._currentTransportIndex++;
             continue;
           }
-          this._transport = new SseTransport(transportEndpoint, {
-            emulationEndpoint: this._config.emulationEndpoint,
-            emulationRequestMode: this._config.emulationRequestMode
-          });
         }
         break;
       }
@@ -545,6 +580,7 @@ export class Centrifuge extends EventEmitter {
     const connectCommand = this._constructConnectCommand();
 
     if (this._transport.emulation()) {
+      this._latencyStart = new Date();
       connectCommand.id = this._nextMessageId();
       this._callConnectFake(connectCommand.id).then(resolveCtx => {
         const result = resolveCtx.reply.connect;

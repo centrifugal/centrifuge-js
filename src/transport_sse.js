@@ -1,7 +1,3 @@
-export function SseTransportSupported() {
-  return typeof EventSource !== 'undefined';
-}
-
 export class SseTransport {
   constructor(endpoint, options) {
     this.endpoint = endpoint;
@@ -28,11 +24,15 @@ export class SseTransport {
     return true;
   }
 
+  supported() {
+    return this.options.eventsource !== null && this.options.fetch !== null;
+  }
+
   initialize(_protocol, callbacks, encodedConnectCommand) {
     let url = new URL(this.endpoint);
     url.searchParams.append('cf_connect', encodedConnectCommand);
 
-    const eventSource = new EventSource(url);
+    const eventSource = new this.options.eventsource(url.toString());
     this._transport = eventSource;
 
     const self = this;
@@ -78,12 +78,12 @@ export class SseTransport {
       node: node,
       data: data
     };
-    const headers = new Headers({
-      'content-type': 'application/json'
-    });
+    const headers = {
+      'Content-Type': 'application/json'
+    };
     const body = JSON.stringify(req);
-
-    fetch(this.options.emulationEndpoint, {
+    const fetchFunc = this.options.fetch;
+    fetchFunc(this.options.emulationEndpoint, {
       method: 'POST',
       headers: headers,
       mode: this.options.emulationRequestMode,

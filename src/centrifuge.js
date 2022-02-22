@@ -92,8 +92,8 @@ export class Centrifuge extends EventEmitter {
       fetch: null,
       readableStream: null,
       websocket: null,
-      sockjs: null,
       eventsource: null,
+      sockjs: null,
       sockjsServer: null,
       sockjsTimeout: null,
       sockjsTransports: [

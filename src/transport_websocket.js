@@ -21,6 +21,10 @@ export class WebsocketTransport {
     return false;
   }
 
+  supported() {
+    return this.options.websocket !== null;
+  }
+
   initialize(protocol, callbacks, _connectCommand) {
     const subProtocol = '';
     if (protocol === 'protobuf') {

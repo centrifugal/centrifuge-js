@@ -23,6 +23,10 @@ export class SockjsTransport {
     return false;
   }
 
+  supported() {
+    return this.options.sockjs !== null;
+  }
+
   initialize(_protocol, callbacks, _connectCommand) {
     if (this.options.sockjs !== null) {
       this._transport = this.options.sockjs;

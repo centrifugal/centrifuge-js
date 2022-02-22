@@ -1,11 +1,3 @@
-export function HttpStreamTransportSupported() {
-  return typeof TextDecoder !== 'undefined' &&
-    typeof AbortController !== 'undefined' &&
-    typeof EventTarget !== 'undefined' &&
-    typeof ReadableStream !== 'undefined' &&
-    typeof Error !== 'undefined';
-}
-
 export class HttpStreamTransport {
   constructor(endpoint, options) {
     this.endpoint = endpoint;
@@ -40,7 +32,8 @@ export class HttpStreamTransport {
   _fetchEventTarget(self, endpoint, options) {
     const eventTarget = new EventTarget();
     // fetch with connection timeout maybe? https://github.com/github/fetch/issues/175
-    fetch(endpoint, options)
+    const fetchFunc = self.options.fetch;
+    fetchFunc(endpoint, options)
       .then(self._handleErrors)
       .then(response => {
         eventTarget.dispatchEvent(new Event('open'));
@@ -48,13 +41,13 @@ export class HttpStreamTransport {
         let jsonStreamPos = 0;
         let protoStreamBuf = new Uint8Array();
         const reader = response.body.getReader();
-        return new ReadableStream({
+        return new self.options.readableStream({
           start(controller) {
             function pump() {
               return reader.read().then(({ done, value }) => {
                 // When no more data needs to be consumed, close the stream
                 if (done) {
-                  eventTarget.dispatchEvent(new CloseEvent('close'));
+                  eventTarget.dispatchEvent(new Event('close'));
                   controller.close();
                   return;
                 }
@@ -89,15 +82,15 @@ export class HttpStreamTransport {
                     }
                   }
                 } catch (error) {
-                  eventTarget.dispatchEvent(new CustomEvent('error', { detail: error }));
-                  eventTarget.dispatchEvent(new CloseEvent('close'));
+                  eventTarget.dispatchEvent(new Event('error', { detail: error }));
+                  eventTarget.dispatchEvent(new Event('close'));
                   controller.close();
                   return;
                 }
                 pump();
               }).catch(function (e) {
-                eventTarget.dispatchEvent(new CustomEvent('error', { detail: e }));
-                eventTarget.dispatchEvent(new CloseEvent('close'));
+                eventTarget.dispatchEvent(new Event('error', { detail: e }));
+                eventTarget.dispatchEvent(new Event('close'));
                 controller.close();
                 return;
               });
@@ -107,10 +100,21 @@ export class HttpStreamTransport {
         });
       })
       .catch(error => {
-        eventTarget.dispatchEvent(new CustomEvent('error', { detail: error }));
-        eventTarget.dispatchEvent(new CloseEvent('close'));
+        eventTarget.dispatchEvent(new Event('error', { detail: error }));
+        eventTarget.dispatchEvent(new Event('close'));
       });
     return eventTarget;
+  }
+
+  supported() {
+    return this.options.fetch !== null &&
+      this.options.readableStream !== null &&
+      typeof TextDecoder !== 'undefined' &&
+      typeof AbortController !== 'undefined' &&
+      typeof EventTarget !== 'undefined' &&
+      typeof Event !== 'undefined' &&
+      typeof MessageEvent !== 'undefined' &&
+      typeof Error !== 'undefined';
   }
 
   initialize(protocol, callbacks, encodedConnectCommand) {
@@ -120,16 +124,16 @@ export class HttpStreamTransport {
     let headers;
     let body;
     if (protocol === 'json') {
-      headers = new Headers({
-        'accept': 'application/json',
-        'content-type': 'application/json'
-      });
+      headers = {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json'
+      };
       body = encodedConnectCommand;
     } else {
-      headers = new Headers({
-        'accept': 'application/octet-stream',
-        'content-type': 'application/octet-stream'
-      });
+      headers = {
+        'Accept': 'application/octet-stream',
+        'Content-Type': 'application/octet-stream'
+      };
       body = encodedConnectCommand;
     }
 
@@ -184,18 +188,19 @@ export class HttpStreamTransport {
       data: data
     };
     if (this._protocol === 'json') {
-      headers = new Headers({
-        'content-type': 'application/json'
-      });
+      headers = {
+        'Content-Type': 'application/json'
+      };
       body = JSON.stringify(req);
     } else {
-      headers = new Headers({
-        'content-type': 'application/octet-stream'
-      });
+      headers = {
+        'Content-Type': 'application/octet-stream'
+      };
       body = this.options.encoder.encodeEmulationRequest(req);
     }
 
-    fetch(this.options.emulationEndpoint, {
+    const fetchFunc = this.options.fetch;
+    fetchFunc(this.options.emulationEndpoint, {
       method: 'POST',
       headers: headers,
       mode: this.options.emulationRequestMode,

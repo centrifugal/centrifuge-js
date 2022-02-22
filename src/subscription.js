@@ -4,18 +4,20 @@ import {
   isFunction
 } from './utils';
 
-const _STATE_NEW = 0;
-const _STATE_SUBSCRIBING = 1;
-const _STATE_SUCCESS = 2;
-const _STATE_ERROR = 3;
-const _STATE_UNSUBSCRIBED = 4;
+const states = {
+  NEW: 'new',
+  SUBSCRIBING: 'subscribing',
+  SUCCESS: 'success',
+  ERROR: 'error',
+  UNSUBSCRIBED: 'unsubscribed'
+};
 
 export default class Subscription extends EventEmitter {
   constructor(centrifuge, channel, events) {
     super();
     this.channel = channel;
     this._centrifuge = centrifuge;
-    this._status = _STATE_NEW;
+    this._state = states.NEW;
     this._error = null;
     this._isResubscribe = false;
     this._ready = false;
@@ -89,31 +91,44 @@ export default class Subscription extends EventEmitter {
   };
 
   _isNew() {
-    return this._status === _STATE_NEW;
-  };
-
-  _isUnsubscribed() {
-    return this._status === _STATE_UNSUBSCRIBED;
-  };
+    return this._isInState(states.NEW);
+  }
 
   _isSubscribing() {
-    return this._status === _STATE_SUBSCRIBING;
-  };
-
-  _isReady() {
-    return this._status === _STATE_SUCCESS || this._status === _STATE_ERROR;
-  };
+    return this._isInState(states.SUBSCRIBING);
+  }
 
   _isSuccess() {
-    return this._status === _STATE_SUCCESS;
-  };
+    return this._isInState(states.SUCCESS);
+  }
 
   _isError() {
-    return this._status === _STATE_ERROR;
+    return this._isInState(states.ERROR);
+  }
+
+  _isUnsubscribed() {
+    return this._isInState(states.UNSUBSCRIBED);
+  }
+
+  _isReady() {
+    return this._isInState(states.SUCCESS) || this._isInState(states.ERROR);
+  };
+
+  _isInState(state) {
+    return this._state === state;
+  }
+
+  _setState(newState) {
+    if (this._state !== newState) {
+      this._centrifuge._debug('Subscription ', this.channel, ':', this._state, '->', newState);
+      this._state = newState;
+      return true;
+    }
+    return false;
   };
 
   _setNew() {
-    this._status = _STATE_NEW;
+    this._setState(states.NEW);
   };
 
   _setSubscribing(isResubscribe) {
@@ -122,14 +137,15 @@ export default class Subscription extends EventEmitter {
       // new promise for this subscription
       this._initializePromise();
     }
-    this._status = _STATE_SUBSCRIBING;
+    this._setState(states.SUBSCRIBING);
   };
 
   _setSubscribeSuccess(subscribeResult) {
-    if (this._status === _STATE_SUCCESS) {
+    if (this._isSuccess()) {
       return;
     }
-    this._status = _STATE_SUCCESS;
+    this._setState(states.SUCCESS);
+
     clearTimeout(this._resubscribeTimeout);
     this._resubscribeAttempts = 0;
     const successContext = this._getSubscribeSuccessContext(subscribeResult);
@@ -144,10 +160,11 @@ export default class Subscription extends EventEmitter {
   };
 
   _setSubscribeError(err) {
-    if (this._status === _STATE_ERROR) {
+    if (this._isError()) {
       return;
     }
-    this._status = _STATE_ERROR;
+    this._setState(states.ERROR);
+
     this._error = err;
     const errContext = this._getSubscribeErrorContext();
     this.emit('error', errContext);
@@ -181,11 +198,11 @@ export default class Subscription extends EventEmitter {
     this._resubscribeAttempts = 0;
     clearTimeout(this._resubscribeTimeout);
     this._centrifuge._clearSubRefreshTimeout(this.channel);
-    if (this._status === _STATE_UNSUBSCRIBED) {
+    if (this._isUnsubscribed()) {
       return;
     }
-    const needTrigger = this._status === _STATE_SUCCESS;
-    this._status = _STATE_UNSUBSCRIBED;
+    const needTrigger = this._isSuccess();
+    this._setState(states.UNSUBSCRIBED);
     if (noResubscribe === true) {
       this._recover = false;
       this._noResubscribe = true;
@@ -246,7 +263,7 @@ export default class Subscription extends EventEmitter {
   };
 
   subscribe(opts) {
-    if (this._status === _STATE_SUCCESS) {
+    if (this._isSuccess()) {
       return;
     }
     if (opts && opts.since) {

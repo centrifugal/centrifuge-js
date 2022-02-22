@@ -324,7 +324,9 @@ export class Centrifuge extends EventEmitter {
     if (this._state !== newState) {
       this._debug('State', this._state, '->', newState);
       this._state = newState;
+      return true;
     }
+    return false;
   };
 
   _isDisconnected() {

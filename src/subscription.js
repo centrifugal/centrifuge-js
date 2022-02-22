@@ -121,7 +121,7 @@ export default class Subscription extends EventEmitter {
   _setState(newState) {
     if (this._state !== newState) {
       const prevState = this._state;
-      this._centrifuge._debug('Subscription ', this.channel, ':', this._state, '->', newState);
+      this._centrifuge._debug('Subscription', this.channel, ':', this._state, '->', newState);
       this._state = newState;
       this.emit('state', { 'state': newState, 'prevState': prevState });
       return true;

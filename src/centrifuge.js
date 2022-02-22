@@ -624,9 +624,7 @@ export class Centrifuge extends EventEmitter {
 
         self._latencyStart = new Date();
 
-        console.log(connectCommand);
         self._call(connectCommand).then(resolveCtx => {
-          console.log(resolveCtx);
           let result;
           if (self._config.protocolVersion === 'v1') {
             result = self._decoder.decodeCommandResult(self._methodType.CONNECT, resolveCtx.reply.result);
@@ -1814,10 +1812,6 @@ export class Centrifuge extends EventEmitter {
 
   _handleReply(reply, next) {
     const id = reply.id;
-
-    console.log(id);
-    console.log(this._callbacks);
-
     if (!(id in this._callbacks)) {
       next();
       return;
@@ -2100,7 +2094,6 @@ export class Centrifuge extends EventEmitter {
       errback: errback,
       timeout: null
     };
-    console.log(this._callbacks[id]);
     this._callbacks[id].timeout = setTimeout(() => {
       delete this._callbacks[id];
       if (isFunction(errback)) {
@@ -2173,7 +2166,7 @@ export class Centrifuge extends EventEmitter {
     }
 
     if (channels.length === 0) {
-      this._debug('no private channels found, no need to make request');
+      this._debug('no private channels found, no need to make token request');
       return;
     }
 

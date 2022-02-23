@@ -5,11 +5,11 @@ import {
 } from './utils';
 
 const states = {
-  NEW: 'new',
+  UNSUBSCRIBED: 'unsubscribed',
   SUBSCRIBING: 'subscribing',
   SUCCESS: 'success',
   ERROR: 'error',
-  UNSUBSCRIBED: 'unsubscribed'
+  CLOSED: 'closed'
 };
 
 export default class Subscription extends EventEmitter {
@@ -17,7 +17,7 @@ export default class Subscription extends EventEmitter {
     super();
     this.channel = channel;
     this._centrifuge = centrifuge;
-    this._state = states.NEW;
+    this._state = states.UNSUBSCRIBED;
     this._error = null;
     this._isResubscribe = false;
     this._ready = false;
@@ -90,8 +90,8 @@ export default class Subscription extends EventEmitter {
     }
   };
 
-  _isNew() {
-    return this._isInState(states.NEW);
+  _isUnsubscribed() {
+    return this._isInState(states.UNSUBSCRIBED);
   }
 
   _isSubscribing() {
@@ -106,8 +106,8 @@ export default class Subscription extends EventEmitter {
     return this._isInState(states.ERROR);
   }
 
-  _isUnsubscribed() {
-    return this._isInState(states.UNSUBSCRIBED);
+  _isClosed() {
+    return this._isInState(states.CLOSED);
   }
 
   _isReady() {
@@ -127,10 +127,6 @@ export default class Subscription extends EventEmitter {
       return true;
     }
     return false;
-  };
-
-  _setNew() {
-    this._setState(states.NEW);
   };
 
   _setSubscribing(isResubscribe) {
@@ -165,7 +161,6 @@ export default class Subscription extends EventEmitter {
     if (this._isError()) {
       return;
     }
-    this._setState(states.ERROR);
 
     this._error = err;
     const errContext = this._getSubscribeErrorContext();
@@ -173,9 +168,12 @@ export default class Subscription extends EventEmitter {
     if (err.code === 112) { // Unrecoverable position error.
       // In this case we assume that application should load initial state and subscribe from scratch.
       this._clearSubscribedState();
+      this._setState(states.ERROR);
       this.emit('error', errContext);
+      this._setState(states.CLOSED);
       this.emit('close', { channel: this.channel, reason: 'unrecoverable position' });
     } else {
+      this._setState(states.ERROR);
       this.emit('error', errContext);
     }
 
@@ -201,9 +199,7 @@ export default class Subscription extends EventEmitter {
   };
 
   _triggerUnsubscribe() {
-    this.emit('unsubscribe', {
-      channel: this.channel
-    });
+    this.emit('unsubscribe', { channel: this.channel });
   };
 
   _clearSubscribedState() {
@@ -211,8 +207,18 @@ export default class Subscription extends EventEmitter {
     this._noResubscribe = true;
     delete this._centrifuge._lastSeq[this.channel];
     delete this._centrifuge._lastGen[this.channel];
+    delete this._centrifuge._lastOffset[this.channel];
     delete this._centrifuge._lastEpoch[this.channel];
   }
+
+  _setClosed() {
+    if (this._isClosed()) {
+      return;
+    }
+    this._setUnsubscribed(true);
+    this._setState(states.CLOSED);
+    this.emit('close', { channel: this.channel, reason: 'client' });
+  };
 
   _setUnsubscribed(clearState) {
     this._resubscribeAttempts = 0;
@@ -296,7 +302,12 @@ export default class Subscription extends EventEmitter {
   };
 
   unsubscribe() {
-    this._setUnsubscribed(true);
+    this._setUnsubscribed(false);
+    this._centrifuge._unsubscribe(this);
+  };
+
+  close() {
+    this._setClosed();
     this._centrifuge._unsubscribe(this);
   };
 

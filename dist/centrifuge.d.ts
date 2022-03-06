@@ -1,7 +1,4 @@
-// Type definitions for centrifuge 2.*.*
-// Project: https://github.com/centrifugal/centrifuge-js
-// Definitions by: Jekaspekas <https://github.com/jekaspekas>
-// TypeScript Version: 3.4.5
+// Type definitions for centrifuge 3.*.*
 
 export = Centrifuge;
 
@@ -19,184 +16,175 @@ declare class EventEmitter {
     rawListeners(event: string | symbol): Function[];
     emit(event: string | symbol, ...args: any[]): boolean;
     listenerCount(type: string | symbol): number;
-    // Added in Node 6...
     prependListener(event: string | symbol, listener: (...args: any[]) => void): this;
     prependOnceListener(event: string | symbol, listener: (...args: any[]) => void): this;
     eventNames(): Array<string | symbol>;
 }
 
 declare class Centrifuge extends EventEmitter {
-    constructor(url: string, options?: Centrifuge.Options);
-    setToken(token: string): void;
-    setConnectData(data: any): void;
-    setRefreshHeaders(data: any): void;
-    setRefreshParams(data: any): void;
-    setRefreshData(data: any): void;
-    setSubscribeHeaders(data: any): void;
-    setSubscribeParams(data: any): void;
-    rpc(data: any): Promise<any>;
-    namedRPC(method: string, data: any): Promise<any>;
+    constructor(endpoint: string | Array<Centrifuge.TransportEndpoint>, options?: Centrifuge.Options);
+    newSubscription(channel: string, options?: Centrifuge.SubscribeOptions): Centrifuge.Subscription;
+    getSubscription(channel: string): Centrifuge.Subscription;
+    state(): string;
+    connect(): void;
+    disconnect(): void;
+    close(): void;
     send(data: any): Promise<any>;
+    rpc(method: string, data: any): Promise<any>;
     publish(channel: string, data: any): Promise<Centrifuge.PublishResult>;
     history(channel: string, options?: Centrifuge.HistoryOptions): Promise<Centrifuge.HistoryResult>;
     presence(channel: string): Promise<Centrifuge.PresenceResult>;
     presenceStats(channel: string): Promise<Centrifuge.PresenceStatsResult>;
-    getSub(channel: string): Centrifuge.Subscription;
-    isConnected(): boolean;
-    connect(): void;
-    disconnect(): void;
-    ping(): void;
     startBatching(): void;
     stopBatching(): void;
-    startSubscribeBatching(): void;
-    stopSubscribeBatching(): void;
-    subscribe(channel: string, events?: (...args: any[]) => void, opts?: Centrifuge.SubscribeOptions): Centrifuge.Subscription;
-    subscribe(channel: string, events?: Centrifuge.SubscriptionEvents, opts?: Centrifuge.SubscribeOptions): Centrifuge.Subscription;
 }
 
 declare namespace Centrifuge {
 
+    export interface TransportEndpoint {
+        transport: string;
+        endpoint: string;
+    }
+
     export interface Options {
         protocol?: string;
-        protocolVersion?: 'v1' | 'v2';
         debug?: boolean;
+        token?: string;
+        data?: any;
         name?: string;
         version?: string;
-        websocket?: any;
-        sockjs?: any;
-        xmlhttprequest?: any;
-        minRetry?: number;
-        maxRetry?: number;
+        minReconnectDelay?: number;
+        maxReconnectDelay?: number;
         timeout?: number;
-        ping?: boolean;
-        pingInterval?: number;
-        pongWaitTimeout?: number;
         maxServerPingDelay?: number;
         privateChannelPrefix?: string;
-        onTransportClose?: (ctx: object) => void;
+        websocket?: any;
+        fetch?: any,
+        readableStream?: any,
+        eventsource?: any,
+        sockjs?: any;
         sockjsServer?: string;
         sockjsTimeout?: number;
         sockjsTransports?: string[];
-        refreshEndpoint?: string;
-        refreshHeaders?: object;
-        refreshParams?: object;
-        refreshData?: object;
-        refreshAttempts?: number;
-        refreshInterval?: number;
-        onRefreshFailed?: () => void;
-        onRefresh?: (ctx: object, cb: (resp: RefreshResponse) => void) => void;
-        subscribeEndpoint?: string;
-        subscribeHeaders?: object;
-        subscribeParams?: object;
-        subRefreshInterval?: number;
-        onPrivateSubscribe?: (ctx: SubscribePrivateContext, cb: (resp: SubscribePrivateResponse) => void) => void;
-        disableWithCredentials?: boolean;
+        getConnectionToken?: (ctx: ConnectionTokenContext) => Promise<string>
+        getSubscriptionToken?: (ctx: SubscriptionTokenContext) => Promise<string>
+
+        // TODO: remove?
+        pingInterval?: number;
+        pongWaitTimeout?: number;
+    }
+
+    export interface Events {
+        connect?: (ctx: ConnectContext) => void;
+        disconnect?: (ctx: DisconnectContext) => void;
+        close?: (ctx: CloseContext) => void;
+        publication?: (ctx: PublicationContext) => void;
+        join?: (ctx: JoinLeaveContext) => void;
+        leave?: (ctx: JoinLeaveContext) => void;
+        subscribe?: (ctx: SubscribeSuccessContext) => void;
+        unsubscribe?: (ctx: UnsubscribeContext) => void;
+    }
+
+    export interface ConnectContext {
+        client: string;
+        transport: string;
+        data?: any;
+    }
+
+    export interface DisconnectContext {
+        code: number;
+        reason: string;
+        reconnect: boolean; 
+    }
+
+    export interface CloseContext {
+        reason: string;
     }
 
     export class Subscription extends EventEmitter {
         channel: string;
-        ready(callback: (ctx: SubscribeSuccessContext) => void, errback: (ctx: SubscribeErrorContext) => void): void;
         subscribe(opts?: SubscribeOptions): void;
         unsubscribe(): void;
+        close(): void;
+        cancel(): void;
         publish(data: any): Promise<PublishResult>;
+        history(options?: HistoryOptions): Promise<HistoryResult>;
         presence(): Promise<PresenceResult>;
         presenceStats(): Promise<PresenceStatsResult>;
-        history(options?: HistoryOptions): Promise<HistoryResult>;
     }
 
     export interface SubscriptionEvents {
-        publish?: (ctx: PublicationContext) => void;
+        publication?: (ctx: PublicationContext) => void;
         join?: (ctx: JoinLeaveContext) => void;
         leave?: (ctx: JoinLeaveContext) => void;
         subscribe?: (ctx: SubscribeSuccessContext) => void;
         error?: (ctx: SubscribeErrorContext) => void;
         unsubscribe?: (ctx: UnsubscribeContext) => void;
+        close?: (ctx: SubscriptionCloseContext) => void;
+    }
+
+    export interface SubscriptionCloseContext {
+        channel: string;
+        reason: string;
     }
 
     export interface PublicationContext {
+        channel: string;
         data: any;
         info?: ClientInfo;
-        seq?: number;
-        gen?: number;
         offset?: number;
         tags?: Map<string, string>;
     }
 
     export interface ClientInfo {
-        user? : string;
-        client? : string;
-        conn_info?: any;
-        chan_info?: any;
+        client: string;
+        user?: string;
+        connInfo?: any;
+        chanInfo?: any;
     }
 
     export interface JoinLeaveContext {
+        channel: string;
         info: ClientInfo;
     }
 
     export interface SubscribeSuccessContext {
         channel: string;
-        isResubscribe: boolean;
-        recovered: boolean;
         streamPosition?: StreamPosition;
         data?: any;
     }
 
     export interface SubscribeErrorContext {
-        error: string;
         channel: string;
-        isResubscribe: boolean;
+        error: string;
     }
 
     export interface UnsubscribeContext {
         channel: string;
     }
 
-    export interface SubscribePrivateContext {
-        data: SubscribePrivateData;
+    export interface ConnectionTokenContext {
     }
 
-    export interface SubscribePrivateData {
+    export interface SubscriptionTokenContext {
         client: string;
-        channels: string[];
-    }
-
-    export interface RefreshResponse {
-        status: number;
-        data: RefreshTokenData;
-    }
-
-    export interface RefreshTokenData {
-        token: string;
-    }
-
-    export interface SubscribePrivateResponse {
-        status: number;
-        data: SubscribePrivateResponseData;
-    }
-
-    export interface SubscribePrivateResponseData {
-        channels: PrivateChannelData[];
-    }
-
-    export interface PrivateChannelData {
         channel: string;
-        token: string;
     }
 
     export interface PublishResult {
     }
 
     export interface PresenceResult {
-        presence: PresenceMap;
+        clients: ClientsMap;
     }
 
-    export interface PresenceMap {
+    export interface ClientsMap {
         [key: string]: ClientInfo;
     }
 
     export interface PresenceStatsResult {
-        num_clients: number;
-        num_users: number;
+        numClients: number;
+        numUsers: number;
     }
 
     export interface HistoryResult {
@@ -212,12 +200,16 @@ declare namespace Centrifuge {
     }
 
     export interface SubscribeOptions {
-        since?: StreamPosition;
+        token?: string;
+        tokenUniquePerConnection?: boolean;
+        getSubscriptionToken?: (ctx: SubscriptionTokenContext) => Promise<string>
         data?: any;
-        autoResubscribeErrorCodes?: number[];
-        autoResubscribeMinDelay?: number;
-        autoResubscribeMaxDelay?: number;
+        since?: StreamPosition;
+        minResubscribeDelay?: number;
+        maxResubscribeDelay?: number;
     }
+
+    export interface SubscriptionOptions extends SubscribeOptions {}
 
     export interface StreamPosition {
         offset: number;

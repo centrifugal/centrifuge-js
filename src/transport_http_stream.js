@@ -2,7 +2,6 @@ export class HttpStreamTransport {
   constructor(endpoint, options) {
     this.endpoint = endpoint;
     this.options = options;
-    this._open = false;
     this._abortController = null;
     this._utf8decoder = new TextDecoder();
     this._protocol = 'json';
@@ -14,10 +13,6 @@ export class HttpStreamTransport {
 
   subName() {
     return 'http_stream';
-  }
-
-  isOpen() {
-    return this._open;
   }
 
   emulation() {
@@ -150,18 +145,15 @@ export class HttpStreamTransport {
     );
 
     eventTarget.addEventListener('open', (e) => {
-      this._open = true;
       callbacks.onOpen();
     });
 
     eventTarget.addEventListener('error', (e) => {
-      this._open = false;
       this._abortController.abort();
       callbacks.onError(e);
     });
 
     eventTarget.addEventListener('close', (e) => {
-      this._open = false;
       this._abortController.abort();
       callbacks.onClose({
         code: 4,
@@ -175,7 +167,6 @@ export class HttpStreamTransport {
   }
 
   close() {
-    this._open = false;
     this._abortController.abort();
   }
 

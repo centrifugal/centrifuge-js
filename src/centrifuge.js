@@ -6,11 +6,16 @@ import { WebsocketTransport } from './transport_websocket';
 import { HttpStreamTransport } from './transport_http_stream';
 import { SseTransport } from './transport_sse';
 
+// Rework error objects.
+// Think more about disconnect/close reasons and contexts.
+// Rename presence->presence to presence->clients?
+// Typed EventEmitter? https://github.com/andywer/typed-emitter
+// Disconnect on unsubscribe command failure.
+// Decide on disconnect fire on first transport error. Maybe 'error' event + connected() promise?
+
 import {
   JsonEncoder,
-  JsonDecoder,
-  JsonMethodType,
-  JsonPushType
+  JsonDecoder
 } from './json';
 
 import {
@@ -19,17 +24,40 @@ import {
   startsWith,
   errorExists,
   backoff,
-  extend
+  extend,
+  ttlMilliseconds
 } from './utils';
 
-const errorTimeout = 'timeout';
-const errorConnectionClosed = 'connection closed';
-
 const states = {
+  // Initial state, state when connection explicitly disconnected.
   DISCONNECTED: 'disconnected',
+  // State after connect, state after connection lost, after disconnect with reconnect code.
   CONNECTING: 'connecting',
+  // State when connected and authentication passed (connect result received).
   CONNECTED: 'connected',
+  // State when client closed. Close can be clean or caused by one of the close reasons.
   CLOSED: 'closed'
+};
+
+const closeReasons = {
+  // Connection closed by client, server-side subscription position state cleared.
+  // Client-side subscriptions registry is untouched and client-side subscriptions
+  // position state is not affected.
+  CLIENT: 'client',
+  // Connection closed by server, all subscription position state kept.
+  SERVER: 'server',
+  // Fatal error during connect or reconnect, all subscription position state kept.
+  CONNECT_FAILED: 'connect failed',
+  // Fatal error during token refresh, all subscription position state kept.
+  REFRESH_FAILED: 'refresh failed',
+  // Access denied, all subscription position state kept.
+  UNAUTHORIZED: 'unauthorized',
+  // Client was not able to recover server-side subscriptions state. Only server-side
+  // subscriptions position state cleared at this point – client-side subscriptions
+  // still keep their position state. If client closed due to this reason application
+  // must decide what to do: connect from scratch (possibly load initial state from the
+  // backend), or do nothing.
+  UNRECOVERABLE_POSITION: 'unrecoverable position'
 };
 
 export class Centrifuge extends EventEmitter {
@@ -41,52 +69,41 @@ export class Centrifuge extends EventEmitter {
     this._emulation = false;
     this._currentTransportIndex = 0;
     this._transportWasOpen = false;
+    this._lastDisconnectCode = -1;
     this._transport = null;
     this._transportClosed = true;
-    this._methodType = null;
-    this._pushType = null;
     this._encoder = null;
     this._decoder = null;
     this._state = states.DISCONNECTED;
-    this._reconnect = true;
-    this._reconnecting = false;
     this._reconnectTimeout = null;
-    this._messageId = 0;
-    this._clientID = null;
+    this._commandId = 0;
+    this._client = null;
     this._session = '';
     this._node = '';
     this._refreshRequired = false;
     this._subs = {};
     this._serverSubs = {};
-    this._lastSeq = {};
-    this._lastGen = {};
-    this._lastOffset = {};
-    this._lastEpoch = {};
-    this._messages = [];
+    this._commands = [];
     this._isBatching = false;
-    this._isSubscribeBatching = false;
-    this._privateChannels = {};
-    this._numRefreshFailed = 0;
     this._refreshTimeout = null;
     this._pingTimeout = null;
     this._pongTimeout = null;
-    this._subRefreshTimeouts = {};
-    this._retries = 0;
+    this._reconnectAttempts = 0;
     this._callbacks = {};
     this._latency = null;
     this._latencyStart = null;
-    this._connectData = null;
     this._token = null;
-    this._xhrID = 0;
-    this._xhrs = {};
     this._dispatchPromise = Promise.resolve();
     this._protocol = 'json';
     this._serverPing = 0;
     this._sendPong = false;
     this._serverPingTimeout = null;
+    this._promises = {};
+    this._promiseId = 0;
     this._config = {
+      token: null,
+      data: null,
       protocol: 'json',
-      protocolVersion: 'v1',
       debug: false,
       name: 'js',
       version: '',
@@ -109,132 +126,207 @@ export class Centrifuge extends EventEmitter {
         'iframe-xhr-polling',
         'jsonp-polling'
       ],
-      xmlhttprequest: null,
-      minRetry: 1000,
-      maxRetry: 20000,
-      timeout: 5000,
-      ping: true,
-      pingInterval: 25000,
-      pongWaitTimeout: 5000,
-      maxServerPingDelay: 10000,
-      privateChannelPrefix: '$',
-      onTransportClose: null,
-      refreshEndpoint: '/centrifuge/refresh',
-      refreshHeaders: {},
-      refreshParams: {},
-      refreshData: {},
-      refreshAttempts: null,
-      refreshInterval: 1000,
-      onRefreshFailed: null,
-      onRefresh: null,
-      subscribeEndpoint: '/centrifuge/subscribe',
-      subscribeHeaders: {},
-      subscribeParams: {},
-      subRefreshInterval: 1000,
-      onPrivateSubscribe: null,
-      disableWithCredentials: false,
       httpStreamRequestMode: 'cors',
       emulationEndpoint: '/emulation',
-      emulationRequestMode: 'cors'
+      emulationRequestMode: 'cors',
+      minReconnectDelay: 500,
+      maxReconnectDelay: 20000,
+      timeout: 5000,
+      maxServerPingDelay: 10000,
+      pingInterval: 25000,
+      pongWaitTimeout: 10000,
+      privateChannelPrefix: '$',
+      getConnectionToken: null,
+      getSubscriptionToken: null
     };
     this._configure(options);
   }
 
-  setToken(token) {
-    this._token = token;
+  state() {
+    return this._state;
   }
 
-  setConnectData(data) {
-    this._connectData = data;
-  }
-
-  setRefreshHeaders(headers) {
-    this._config.refreshHeaders = headers;
-  }
-
-  setRefreshParams(params) {
-    this._config.refreshParams = params;
-  }
-
-  setRefreshData(data) {
-    this._config.refreshData = data;
-  }
-
-  setSubscribeHeaders(headers) {
-    this._config.subscribeHeaders = headers;
-  }
-
-  setSubscribeParams(params) {
-    this._config.subscribeParams = params;
-  }
-
-  _ajax(url, params, headers, data, callback) {
-    let query = '';
-    this._debug('sending AJAX request to', url, 'with data', JSON.stringify(data));
-
-    let xhr;
-    if (this._config.xmlhttprequest !== null) {
-      // use explicitly passed XMLHttpRequest object.
-      xhr = new this._config.xmlhttprequest();
-    } else {
-      xhr = (global.XMLHttpRequest ? new global.XMLHttpRequest() : new global.ActiveXObject('Microsoft.XMLHTTP'));
+  // newSubscription allocates new Subscription to a channel. It throws
+  // if client already has channel subscription internally.
+  newSubscription(channel, opts) {
+    if (this.getSubscription(channel) !== null) {
+      throw new Error('Subscription to a channel already exists');
     }
+    const sub = new Subscription(this, channel, opts);
+    this._subs[channel] = sub;
+    return sub;
+  }
 
-    for (const i in params) {
-      if (params.hasOwnProperty(i)) {
-        if (query.length > 0) {
-          query += '&';
-        }
-        query += encodeURIComponent(i) + '=' + encodeURIComponent(params[i]);
-      }
-    }
-    if (query.length > 0) {
-      query = '?' + query;
-    }
-    xhr.open('POST', url + query, true);
-    if ('withCredentials' in xhr) {
-      xhr.withCredentials = !this._config.disableWithCredentials;
-    }
+  // getSubscription returns Subscription if it's registered in internal
+  // registry or null.
+  getSubscription(channel) {
+    return this._getSub(channel);
+  }
 
-    xhr.setRequestHeader('X-Requested-With', 'XMLHttpRequest');
-    xhr.setRequestHeader('Content-Type', 'application/json');
-    for (const headerName in headers) {
-      if (headers.hasOwnProperty(headerName)) {
-        xhr.setRequestHeader(headerName, headers[headerName]);
-      }
-    }
+  // connected returns a Promise which resolves upon client goes to CONNECTED
+  // state and rejects in case of client goes to DISCONNECTED or CLOSED state.
+  _connected() {
+    if (this._state === states.DISCONNECTED || this._state === states.CLOSED) {
+      return Promise.reject({ state: this._state });
+    };
+    if (this._state === states.CONNECTED) {
+      return Promise.resolve();
+    };
+    return new Promise((res, rej) => {
+      let ctx = {
+        resolve: res,
+        reject: rej
+      };
+      this._promises[this._nextPromiseId()] = ctx;
+    });
+  }
 
-    xhr.onreadystatechange = () => {
-      if (xhr.readyState === 4) {
-        if (xhr.status === 200) {
-          let data, parsed = false;
-          try {
-            data = JSON.parse(xhr.responseText);
-            parsed = true;
-          } catch (e) {
-            callback({
-              error: 'Invalid JSON. Data was: ' + xhr.responseText,
-              status: 200,
-              data: null
-            });
-          }
-          if (parsed) { // prevents double execution.
-            callback({
-              data: data,
-              status: 200
-            });
-          }
-        } else {
-          this._log('wrong status code in AJAX response', xhr.status);
-          callback({
-            status: xhr.status,
-            data: null
-          });
-        }
+  connect() {
+    if (this._isConnected()) {
+      this._debug('connect called when already connected');
+      return;
+    }
+    if (this._isConnecting()) {
+      this._debug('connect called when already connecting');
+      return;
+    }
+    this._startConnecting();
+  };
+
+  disconnect() {
+    this._disconnect(0, 'client disconnect', false, false, false);
+  };
+
+  close() {
+    this._close(closeReasons.CLIENT, true, false);
+  };
+
+  send(data) {
+    const cmd = {
+      send: {
+        data: data
       }
     };
-    setTimeout(() => xhr.send(JSON.stringify(data)), 20);
-    return xhr;
+
+    const self = this;
+
+    return this._methodCall().then(function () {
+      const sent = self._transportSendCommands([cmd]); // can send async message to server without id set
+      if (!sent) {
+        return Promise.reject(self._createErrorObject(2, 'transport write error'));
+      };
+      return Promise.resolve();
+    });
+  }
+
+  rpc(method, data) {
+    const cmd = {
+      rpc: {
+        method: method,
+        data: data
+      }
+    };
+
+    const self = this;
+
+    return this._methodCall().then(function () {
+      return self._callPromise(cmd, function (reply) {
+        return {
+          'data': reply.rpc.data
+        };
+      });
+    });
+  }
+
+  publish(channel, data) {
+    const cmd = {
+      publish: {
+        channel: channel,
+        data: data
+      }
+    };
+
+    const self = this;
+
+    return this._methodCall().then(function () {
+      return self._callPromise(cmd, function () {
+        return {};
+      });
+    });
+  }
+
+  history(channel, options) {
+    const cmd = {
+      history: this._getHistoryRequest(channel, options)
+    };
+
+    const self = this;
+
+    return this._methodCall().then(function () {
+      return self._callPromise(cmd, function (reply) {
+        const result = reply.history;
+        const publications = [];
+        if (result.publications) {
+          for (let i = 0; i < result.publications.length; i++) {
+            publications.push(self._getPublicationContext(channel, result.publications[i]));
+          }
+        }
+        return {
+          'publications': publications,
+          'epoch': result.epoch || '',
+          'offset': result.offset || 0
+        };
+      });
+    });
+  }
+
+  presence(channel) {
+    const cmd = {
+      presence: {
+        channel: channel
+      }
+    };
+
+    const self = this;
+
+    return this._methodCall().then(function () {
+      return self._callPromise(cmd, function (reply) {
+        return {
+          'clients': reply.presence.presence
+        };
+      });
+    });
+  }
+
+  presenceStats(channel) {
+    const cmd = {
+      'presence_stats': {
+        channel: channel
+      }
+    };
+
+    const self = this;
+
+    return this._methodCall().then(function () {
+      return self._callPromise(cmd, function (reply) {
+        const result = reply.presence_stats;
+        return {
+          'numUsers': result.num_users,
+          'numClients': result.num_clients
+        };
+      });
+    });
+  }
+
+  startBatching() {
+    // start collecting messages without sending them to Centrifuge until flush
+    // method called
+    this._isBatching = true;
+  };
+
+  stopBatching() {
+    this._isBatching = false;
+    this._flush();
   };
 
   _log() { log('info', arguments); };
@@ -250,8 +342,6 @@ export class Centrifuge extends EventEmitter {
     if (format === 'protobuf') {
       throw new Error('not implemented by JSON only Centrifuge client – use client with Protobuf');
     }
-    this._methodType = JsonMethodType;
-    this._pushType = JsonPushType;
     this._encoder = new JsonEncoder();
     this._decoder = new JsonDecoder();
   }
@@ -260,12 +350,12 @@ export class Centrifuge extends EventEmitter {
     return false;
   }
 
-  _configure(configuration) {
+  _configure(options) {
     if (!('Promise' in global)) {
       throw new Error('Promise polyfill required');
     }
 
-    extend(this._config, configuration || {});
+    extend(this._config, options || {});
     this._debug('centrifuge config', this._config);
 
     if (!this._endpoint) {
@@ -274,6 +364,10 @@ export class Centrifuge extends EventEmitter {
 
     if (this._config.protocol !== 'json' && this._config.protocol !== 'protobuf') {
       throw new Error('unsupported protocol ' + this._config.protocol);
+    }
+
+    if (this._config.token !== null) {
+      this._token = this._config.token;
     }
 
     this._setFormat('json');
@@ -304,23 +398,19 @@ export class Centrifuge extends EventEmitter {
           throw new Error('malformed transport configuration');
         }
         const transportName = transportConfig.transport;
-        if (transportName !== 'websocket' && transportName !== 'http_stream' && transportName !== 'sse') {
+        if (['websocket', 'http_stream', 'sse', 'sockjs'].indexOf(transportName) < 0) {
           throw new Error('unsupported transport name: ' + transportName);
         }
       }
     } else {
       throw new Error('unsupported url configuration type: only string or array of objects are supported');
     }
-
-    if (this._config.protocolVersion !== 'v1' && this._config.protocolVersion !== 'v2') {
-      throw new Error('unsupported protocol version ' + this._config.protocolVersion);
-    }
   };
 
   _setState(newState) {
     if (this._state !== newState) {
       const prevState = this._state;
-      this._debug('State', this._state, '->', newState);
+      this._debug('state', this._state, '->', newState);
       this._state = newState;
       this.emit('state', { 'state': newState, 'prevState': prevState });
       return true;
@@ -340,48 +430,28 @@ export class Centrifuge extends EventEmitter {
     return this._state === states.CONNECTED;
   };
 
-  _nextMessageId() {
-    return ++this._messageId;
+  _isClosed() {
+    return this._state === states.CLOSED;
   };
 
-  _resetRetry() {
-    this._debug('reset retries count to 0');
-    this._retries = 0;
+  _nextCommandId() {
+    return ++this._commandId;
   };
 
   _getRetryInterval() {
-    const interval = backoff(this._retries, this._config.minRetry, this._config.maxRetry);
-    this._retries += 1;
+    const interval = backoff(this._reconnectAttempts, this._config.minReconnectDelay, this._config.maxReconnectDelay);
+    this._reconnectAttempts += 1;
     return interval;
   };
 
-  _abortInflightXHRs() {
-    for (const xhrID in this._xhrs) {
-      try {
-        this._xhrs[xhrID].abort();
-      } catch (e) {
-        this._debug('error aborting xhr', e);
-      }
-      delete this._xhrs[xhrID];
-    }
-  };
-
-  _clearConnectedState(reconnect) {
-    this._clientID = null;
+  _clearConnectedState(reconnect, clearServerSubs, clearClientSubs) {
+    this._client = null;
     this._stopPing();
 
     if (this._refreshTimeout) {
       clearTimeout(this._refreshTimeout);
       this._refreshTimeout = null;
     }
-
-    // clear sub refresh timers
-    for (const channel in this._subRefreshTimeouts) {
-      if (this._subRefreshTimeouts.hasOwnProperty(channel) && this._subRefreshTimeouts[channel]) {
-        this._clearSubRefreshTimeout(channel);
-      }
-    }
-    this._subRefreshTimeouts = {};
 
     if (!reconnect && this._reconnectTimeout) {
       clearTimeout(this._reconnectTimeout);
@@ -397,65 +467,76 @@ export class Centrifuge extends EventEmitter {
         if (!errback) {
           continue;
         }
-        errback({ error: this._createErrorObject('disconnected') });
+        errback({ error: this._createErrorObject(0, 'disconnected') });
       }
     }
     this._callbacks = {};
 
-    // fire unsubscribe events
+    // fire unsubscribe events.
     for (const channel in this._subs) {
       if (!this._subs.hasOwnProperty(channel)) {
         continue;
       }
       const sub = this._subs[channel];
-      if (reconnect) {
-        const needUnsubscribe = sub._isSuccess();
-        if (sub._shouldResubscribe()) {
+      const needUnsubscribe = sub._isSubscribed();
+      if (sub._isSubscribed()) {
+        if (clearClientSubs) {
+          sub._setUnsubscribed();
+        } else {
           sub._setSubscribing();
         }
-        if (needUnsubscribe) {
-          sub._triggerUnsubscribe();
-          sub._recover = true;
-        }
-      } else {
-        sub._setUnsubscribed();
+      }
+      if (needUnsubscribe) {
+        sub._triggerUnsubscribe();
       }
     }
 
-    this._abortInflightXHRs();
+    // fire unsubscribe events for server side subs.
+    if (this._isConnected()) {
+      for (const channel in this._serverSubs) {
+        if (this._serverSubs.hasOwnProperty(channel)) {
+          this.emit('unsubscribe', { channel: channel });
+        }
+      }
+    }
 
-    if (!this._reconnect) {
-      // completely clear subscriptions
+    if (clearClientSubs) {
       this._subs = {};
+    }
+    if (clearServerSubs) {
       this._serverSubs = {};
     }
   };
 
-  _transportSend(commands) {
+  _handleWriteError(commands) {
+    for (let command in commands) {
+      let id = command.id;
+      if (!(id in this._callbacks)) {
+        continue;
+      }
+      const callbacks = this._callbacks[id];
+      clearTimeout(this._callbacks[id].timeout);
+      delete this._callbacks[id];
+      const errback = callbacks.errback;
+      errback({ error: this._createErrorObject(2, 'transport write error') });
+    }
+  }
+
+  _transportSendCommands(commands) {
     if (!commands.length) {
       return true;
     }
-
-    if (!this._transport || !this._transport.isOpen()) {
-      // resolve pending commands with error if transport is not open
-      for (let command in commands) {
-        let id = command.id;
-        if (!(id in this._callbacks)) {
-          continue;
-        }
-        const callbacks = this._callbacks[id];
-        clearTimeout(this._callbacks[id].timeout);
-        delete this._callbacks[id];
-        const errback = callbacks.errback;
-        errback({ error: this._createErrorObject(errorConnectionClosed, 0) });
-      }
+    try {
+      this._transport.send(this._encoder.encodeCommands(commands), this._session, this._node);
+    } catch (e) {
+      this._debug('error writing commands', e);
+      this._handleWriteError(commands);
       return false;
     }
-    this._transport.send(this._encoder.encodeCommands(commands), this._session, this._node);
     return true;
   }
 
-  _setupTransport() {
+  _initializeTransport() {
     let websocket;
     if (this._config.websocket !== null) {
       websocket = this._config.websocket;
@@ -503,7 +584,7 @@ export class Centrifuge extends EventEmitter {
 
     if (!this._emulation) {
       if (startsWith(this._endpoint, 'http')) {
-        this._debug('client will use SockJS');
+        this._debug('client will use sockjs');
         this._transport = new SockjsTransport(this._endpoint, {
           sockjs: sockjs,
           transports: this._config.sockjsTransports,
@@ -514,7 +595,7 @@ export class Centrifuge extends EventEmitter {
           throw new Error('SockJS not available, use ws(s):// in url or include SockJS');
         }
       } else {
-        this._debug('client will use WebSocket');
+        this._debug('client will use websocket');
         this._transport = new WebsocketTransport(this._endpoint, {
           websocket: websocket
         });
@@ -536,15 +617,17 @@ export class Centrifuge extends EventEmitter {
         const transportEndpoint = transportConfig.endpoint;
 
         if (transportName === 'websocket') {
+          this._debug('trying websocket transport');
           this._transport = new WebsocketTransport(transportEndpoint, {
             websocket: websocket
           });
           if (!this._transport.supported()) {
-            this._debug('WebSocket not available');
+            this._debug('websocket transport not available');
             this._currentTransportIndex++;
             continue;
           }
         } else if (transportName === 'http_stream') {
+          this._debug('trying http_stream transport');
           this._transport = new HttpStreamTransport(transportEndpoint, {
             fetch: fetchFunc,
             readableStream: readableStream,
@@ -555,11 +638,12 @@ export class Centrifuge extends EventEmitter {
             encoder: this._encoder
           });
           if (!this._transport.supported()) {
-            this._debug('HTTP stream not available');
+            this._debug('http_stream transport not available');
             this._currentTransportIndex++;
             continue;
           }
         } else if (transportName === 'sse') {
+          this._debug('trying sse transport');
           this._transport = new SseTransport(transportEndpoint, {
             eventsource: eventsource,
             fetch: fetchFunc,
@@ -567,10 +651,25 @@ export class Centrifuge extends EventEmitter {
             emulationRequestMode: this._config.emulationRequestMode
           });
           if (!this._transport.supported()) {
-            this._debug('SSE not available');
+            this._debug('sse transport not available');
             this._currentTransportIndex++;
             continue;
           }
+        } else if (transportName === 'sockjs') {
+          this._debug('trying sockjs');
+          this._transport = new SockjsTransport(transportEndpoint, {
+            sockjs: sockjs,
+            transports: this._config.sockjsTransports,
+            server: this._config.sockjsServer,
+            timeout: this._config.sockjsTimeout
+          });
+          if (!this._transport.supported()) {
+            this._debug('sockjs transport not available');
+            this._currentTransportIndex++;
+            continue;
+          }
+        } else {
+          throw new Error('unknown transport ' + transportName);
         }
         break;
       }
@@ -580,7 +679,7 @@ export class Centrifuge extends EventEmitter {
 
     if (this._transport.emulation()) {
       this._latencyStart = new Date();
-      connectCommand.id = this._nextMessageId();
+      connectCommand.id = this._nextCommandId();
       this._callConnectFake(connectCommand.id).then(resolveCtx => {
         const result = resolveCtx.reply.connect;
         this._connectResponse(result);
@@ -597,8 +696,12 @@ export class Centrifuge extends EventEmitter {
 
     const self = this;
 
+    let transportName;
+
     this._transport.initialize(this._protocol, {
       onOpen: function () {
+        transportName = self._transport.subName();
+        self._debug(transportName, 'transport open');
         self._transportWasOpen = true;
         self._transportClosed = false;
 
@@ -609,12 +712,7 @@ export class Centrifuge extends EventEmitter {
         self._latencyStart = new Date();
 
         self._call(connectCommand).then(resolveCtx => {
-          let result;
-          if (self._config.protocolVersion === 'v1') {
-            result = self._decoder.decodeCommandResult(self._methodType.CONNECT, resolveCtx.reply.result);
-          } else {
-            result = resolveCtx.reply.connect;
-          }
+          const result = resolveCtx.reply.connect;
           self._connectResponse(result);
           if (resolveCtx.next) {
             resolveCtx.next();
@@ -630,9 +728,10 @@ export class Centrifuge extends EventEmitter {
         self._debug('transport level error', e);
       },
       onClose: function (closeEvent) {
+        self._debug(transportName, 'transport closed');
         self._transportClosed = true;
 
-        let reason = errorConnectionClosed;
+        let reason = 'connection closed';
         let needReconnect = true;
         let code = 0;
 
@@ -660,50 +759,28 @@ export class Centrifuge extends EventEmitter {
             self._currentTransportIndex++;
           }
         } else {
-          // Codes >= 3000 come from a server application level.
+          // Codes >= 3000 are sent from a server application level.
           self._transportWasOpen = true;
-        }
-
-        // onTransportClose callback should be executed every time transport was closed.
-        // This can be helpful to catch failed connection events (because our disconnect
-        // event only called once and every future attempts to connect do not fire disconnect
-        // event again).
-        if (self._config.onTransportClose !== null) {
-          const ctx = {
-            event: closeEvent,
-            reason: reason,
-            reconnect: needReconnect
-          };
-          if (this._config.protocolVersion === 'v2') {
-            ctx['code'] = code;
-          }
-          self._config.onTransportClose(ctx);
         }
 
         let isInitialHandshake = false;
         if (self._emulation && !self._transportWasOpen && self._currentTransportIndex < self._transports.length) {
           isInitialHandshake = true;
         }
+        if (isInitialHandshake) {
+          code = -1;
+        }
 
-        self._disconnect(code, reason, needReconnect, isInitialHandshake);
+        self._disconnect(code, reason, needReconnect);
 
-        if (self._reconnect === true) {
-          self._reconnecting = true;
-          let interval = self._getRetryInterval();
-
+        if (self._isConnecting()) {
+          const interval = self._getRetryInterval();
           if (isInitialHandshake) {
             interval = 0;
           }
-
           self._debug('reconnect after ' + interval + ' milliseconds');
           self._reconnectTimeout = setTimeout(() => {
-            if (self._reconnect === true) {
-              if (self._refreshRequired) {
-                self._refresh();
-              } else {
-                self._connect();
-              }
-            }
+            self._startReconnecting();
           }, interval);
         }
       },
@@ -716,15 +793,62 @@ export class Centrifuge extends EventEmitter {
     }, this._encoder.encodeCommands([connectCommand]));
   };
 
-  _connectError(err) {
-    if (err.code === 112) { // unrecoverable position.
-      this._handleClose('unrecoverable position');
+  _startReconnecting() {
+    if (!this._isConnecting()) {
       return;
     }
-    if (err.code === 109) { // token expired.
+    if (!this._refreshRequired) {
+      this._startConnecting();
+      return;
+    }
+
+    const self = this;
+
+    this._getToken().then(function (token) {
+      if (!self._isConnecting()) {
+        return;
+      }
+      if (!token) {
+        self._close(closeReasons.UNAUTHORIZED, true, true);
+        return;
+      }
+      self._token = token;
+      self._debug('connection token refreshed');
+      self._startConnecting();
+    }).catch(function (e) {
+      if (!self._isConnecting()) {
+        return;
+      }
+      const interval = self._getRetryInterval();
+      self._debug('error on connection token refresh, reconnect after ' + interval + ' milliseconds', e);
+      self._reconnectTimeout = setTimeout(() => {
+        self._startReconnecting();
+      }, interval);
+    });
+  }
+
+  _connectError(err) {
+    let isInitialHandshake = false;
+    if (err.code < 100 &&
+      this._emulation && !this._transportWasOpen &&
+      this._currentTransportIndex < this._transports.length) {
+      isInitialHandshake = true;
+    }
+    if (err.code === 112) { // unrecoverable position.
+      this._close(closeReasons.UNRECOVERABLE_POSITION, true, false);
+      return;
+    } else if (err.code === 109) { // token expired.
       this._refreshRequired = true;
     }
-    this._disconnect(6, 'connect error', true);
+    let disconnectCode = 6;
+    if (isInitialHandshake) {
+      disconnectCode = -1;
+    }
+    if (err.code < 100 || err.temporary === true || err.code === 109) {
+      this._disconnect(disconnectCode, 'connect error', true);
+    } else {
+      this._closeConnectFailed();
+    }
   }
 
   _constructConnectCommand() {
@@ -733,8 +857,8 @@ export class Centrifuge extends EventEmitter {
     if (this._token) {
       req.token = this._token;
     }
-    if (this._connectData) {
-      req.data = this._connectData;
+    if (this._config.data) {
+      req.data = this._config.data;
     }
     if (this._config.name) {
       req.name = this._config.name;
@@ -751,17 +875,8 @@ export class Centrifuge extends EventEmitter {
         let sub = {
           'recover': true
         };
-        if (this._serverSubs[channel].seq || this._serverSubs[channel].gen) {
-          if (this._serverSubs[channel].seq) {
-            sub['seq'] = this._serverSubs[channel].seq;
-          }
-          if (this._serverSubs[channel].gen) {
-            sub['gen'] = this._serverSubs[channel].gen;
-          }
-        } else {
-          if (this._serverSubs[channel].offset) {
-            sub['offset'] = this._serverSubs[channel].offset;
-          }
+        if (this._serverSubs[channel].offset) {
+          sub['offset'] = this._serverSubs[channel].offset;
         }
         if (this._serverSubs[channel].epoch) {
           sub['epoch'] = this._serverSubs[channel].epoch;
@@ -772,74 +887,9 @@ export class Centrifuge extends EventEmitter {
     if (hasSubs) {
       req.subs = subs;
     }
-
-    const cmd = {};
-    if (this._config.protocolVersion === 'v2') {
-      cmd.connect = req;
-    } else {
-      // Can omit CONNECT method here due to zero value.
-      cmd.params = req;
-    }
-    return cmd;
-  }
-
-  rpc(data) {
-    return this._rpc('', data);
-  }
-
-  namedRPC(method, data) {
-    return this._rpc(method, data);
-  }
-
-  _rpc(method, data) {
-    const req = {
-      data: data
+    return {
+      connect: req
     };
-    if (method !== '') {
-      req.method = method;
-    };
-    const msg = {};
-    if (this._config.protocolVersion === 'v2') {
-      msg.rpc = req;
-    } else {
-      msg.method = this._methodType.RPC;
-      msg.params = req;
-    }
-    let self = this;
-    return this._methodCall(msg, function (reply) {
-      let result;
-      if (self._config.protocolVersion === 'v1') {
-        result = self._decoder.decodeCommandResult(self._methodType.RPC, reply.result);
-      } else {
-        result = reply.rpc;
-      }
-      return {
-        'data': result.data
-      };
-    });
-  }
-
-  send(data) {
-    const req = {
-      data: data
-    };
-    const msg = {};
-    if (this._config.protocolVersion === 'v2') {
-      msg.send = req;
-    } else {
-      msg.method = this._methodType.SEND;
-      msg.params = req;
-    }
-
-    if (!this.isConnected()) {
-      return Promise.reject(this._createErrorObject(errorConnectionClosed, 0));
-    }
-
-    const sent = this._transportSend([msg]); // can send async message to server without id set
-    if (!sent) {
-      return Promise.reject(this._createErrorObject(errorConnectionClosed, 0));
-    };
-    return Promise.resolve({});
   }
 
   _getHistoryRequest(channel, options) {
@@ -865,12 +915,25 @@ export class Centrifuge extends EventEmitter {
     return params;
   }
 
-  _methodCall(msg, resultCB) {
-    if (!this.isConnected()) {
-      return Promise.reject(this._createErrorObject(errorConnectionClosed, 0));
+  _methodCall() {
+    if (this._isConnected()) {
+      return Promise.resolve();
     }
+    return new Promise((res, rej) => {
+      const timeout = setTimeout(function () {
+        rej({ 'code': 0, 'message': 'timeout' });
+      }, this._config.timeout);
+      this._promises[this._nextPromiseId()] = {
+        timeout: timeout,
+        resolve: res,
+        reject: rej
+      };
+    });
+  }
+
+  _callPromise(cmd, resultCB) {
     return new Promise((resolve, reject) => {
-      this._call(msg).then(resolveCtx => {
+      this._call(cmd).then(resolveCtx => {
         resolve(resultCB(resolveCtx.reply));
         if (resolveCtx.next) {
           resolveCtx.next();
@@ -881,98 +944,6 @@ export class Centrifuge extends EventEmitter {
           rejectCtx.next();
         }
       });
-    });
-  }
-
-  publish(channel, data) {
-    const req = {
-      channel: channel,
-      data: data
-    };
-    const msg = {};
-    if (this._config.protocolVersion === 'v2') {
-      msg.publish = req;
-    } else {
-      msg.method = this._methodType.PUBLISH;
-      msg.params = req;
-    }
-    return this._methodCall(msg, function () {
-      return {};
-    });
-  }
-
-  history(channel, options) {
-    const req = this._getHistoryRequest(channel, options);
-    const msg = {};
-    if (this._config.protocolVersion === 'v2') {
-      msg.history = req;
-    } else {
-      msg.method = this._methodType.HISTORY;
-      msg.params = req;
-    }
-    let self = this;
-    return this._methodCall(msg, function (reply) {
-      let result;
-      if (self._config.protocolVersion === 'v1') {
-        result = self._decoder.decodeCommandResult(self._methodType.HISTORY, reply.result);
-      } else {
-        result = reply.history;
-      }
-      return {
-        'publications': result.publications,
-        'epoch': result.epoch || '',
-        'offset': result.offset || 0
-      };
-    });
-  }
-
-  presence(channel) {
-    const req = {
-      channel: channel
-    };
-    const msg = {};
-    if (this._config.protocolVersion === 'v2') {
-      msg.presence = req;
-    } else {
-      msg.method = this._methodType.PRESENCE;
-      msg.params = req;
-    }
-    let self = this;
-    return this._methodCall(msg, function (reply) {
-      let result;
-      if (self._config.protocolVersion === 'v1') {
-        result = self._decoder.decodeCommandResult(self._methodType.PRESENCE, reply.result);
-      } else {
-        result = reply.presence;
-      }
-      return {
-        'presence': result.presence
-      };
-    });
-  }
-
-  presenceStats(channel) {
-    const req = {
-      channel: channel
-    };
-    const msg = {};
-    if (this._config.protocolVersion === 'v2') {
-      msg['presence_stats'] = req;
-    } else {
-      msg.method = this._methodType.PRESENCE_STATS;
-      msg.params = req;
-    }
-    return this._methodCall(msg, function (reply) {
-      let result;
-      if (self._config.protocolVersion === 'v1') {
-        result = self._decoder.decodeCommandResult(self._methodType.PRESENCE_STATS, reply.result);
-      } else {
-        result = reply.presence_stats;
-      }
-      return {
-        'num_users': result.num_users,
-        'num_clients': result.num_clients
-      };
     });
   }
 
@@ -1027,24 +998,21 @@ export class Centrifuge extends EventEmitter {
     if (id && id > 0) {
       this._handleReply(reply, next);
     } else {
-      if (this._config.protocolVersion === 'v1') {
-        this._handlePush(reply.result, next);
+      if (!reply.push) {
+        this._handleServerPing(next);
       } else {
-        if (!reply.push) {
-          this._handleServerPing(next);
-        } else {
-          this._handlePushV2(reply.push, next);
-        }
+        this._handlePush(reply.push, next);
       }
     }
 
     return p;
   };
 
-  _call(msg) {
+  _call(cmd) {
     return new Promise((resolve, reject) => {
-      const id = this._addMessage(msg);
-      this._registerCall(id, resolve, reject);
+      cmd.id = this._nextCommandId();
+      this._registerCall(cmd.id, resolve, reject);
+      this._addCommand(cmd);
     });
   }
 
@@ -1054,203 +1022,137 @@ export class Centrifuge extends EventEmitter {
     });
   }
 
-  _connect() {
-    if (this.isConnected()) {
-      this._debug('connect called when already connected');
-      return;
-    }
-    if (this._isConnecting()) {
-      this._debug('connect called when already connecting');
-      if (this._reconnectTimeout !== null) {
-        clearTimeout(this._reconnectTimeout);
-      }
-    }
-
+  _startConnecting() {
     this._debug('start connecting');
     this._setState(states.CONNECTING);
-    this._clientID = null;
-    this._reconnect = true;
-    this._setupTransport();
-  };
+    this._client = null;
+    this._initializeTransport();
+  }
 
-  _handleClose(reason) {
-    this._serverSubs = {};
-    this._clearConnectedState(true);
-    this._setState(states.CLOSED);
-    if (this._transport && !this._transportClosed) {
-      this._transport.close();
-    }
-    this.emit('close', { reason: reason });
-  };
-
-  _disconnect(code, reason, shouldReconnect, isInitialHandshake) {
+  _disconnect(code, reason, shouldReconnect, clearServerSubs, clearClientSubs) {
     const reconnect = shouldReconnect || false;
-    if (reconnect === false) {
-      this._reconnect = false;
-    }
 
-    if (this._isDisconnected()) {
+    if (this._isDisconnected() || this._isClosed()) {
       if (!reconnect) {
-        this._clearConnectedState(reconnect);
+        this._clearConnectedState(reconnect, clearServerSubs, clearClientSubs);
       }
       return;
     }
 
-    this._clearConnectedState(reconnect);
-
-    this._debug('disconnected:', reason, shouldReconnect);
-    if (shouldReconnect) {
-      this._setState(states.CONNECTING);
-    } else {
-      this._setState(states.DISCONNECTED);
-    }
-
-    if (this._reconnecting === false) {
-      // fire unsubscribe events for server side subs.
-      for (const channel in this._serverSubs) {
-        if (this._serverSubs.hasOwnProperty(channel)) {
-          this.emit('unsubscribe', { channel: channel });
-        }
+    if (code === -1) {
+      // Happens during initial handshake when we are trying different transports.
+      this._clearConnectedState(reconnect, clearServerSubs, clearClientSubs);
+      if (this._transport && !this._transportClosed) {
+        this._transportClosed = true;
+        this._transport.close();
       }
-      const ctx = {
-        reason: reason,
-        reconnect: reconnect
-      };
-      if (this._config.protocolVersion === 'v2') {
-        ctx['code'] = code;
-      }
-      if (!isInitialHandshake) {
-        this.emit('disconnect', ctx);
-      }
-    }
-
-    if (this._transport && !this._transportClosed) {
-      this._transport.close();
-    }
-  };
-
-  _refreshFailed() {
-    this._numRefreshFailed = 0;
-    if (!this._isDisconnected()) {
-      this._disconnect(7, 'refresh failed', false);
-    }
-    if (this._config.onRefreshFailed !== null) {
-      this._config.onRefreshFailed();
-    }
-  };
-
-  _refresh() {
-    // ask application for new connection token.
-    this._debug('refresh token');
-
-    if (this._config.refreshAttempts === 0) {
-      this._debug('refresh attempts set to 0, do not send refresh request at all');
-      this._refreshFailed();
       return;
     }
 
-    if (this._refreshTimeout !== null) {
-      clearTimeout(this._refreshTimeout);
-      this._refreshTimeout = null;
-    }
+    this._clearConnectedState(reconnect, clearServerSubs, clearClientSubs);
 
-    const clientID = this._clientID;
-    const xhrID = this._newXHRID();
+    const isNewDisconnect = this._isConnecting &&
+      (this._lastDisconnectCode === -1 || (this._lastDisconnectCode !== code && code >= 3000));
 
-    const cb = (resp) => {
-      if (xhrID in this._xhrs) {
-        delete this._xhrs[xhrID];
-      }
-      if (this._clientID !== clientID) {
-        return;
-      }
-      if (resp.error || resp.status !== 200) {
-        // We don't perform any connection status related actions here as we are
-        // relying on server that must close connection eventually.
-        if (resp.error) {
-          this._debug('error refreshing connection token', resp.error);
-        } else {
-          this._debug('error refreshing connection token: wrong status code', resp.status);
-        }
-        this._numRefreshFailed++;
-        if (this._refreshTimeout !== null) {
-          clearTimeout(this._refreshTimeout);
-          this._refreshTimeout = null;
-        }
-        if (this._config.refreshAttempts !== null && this._numRefreshFailed >= this._config.refreshAttempts) {
-          this._refreshFailed();
-          return;
-        }
-        const jitter = Math.round(Math.random() * 1000 * Math.max(this._numRefreshFailed, 20));
-        const interval = this._config.refreshInterval + jitter;
-        this._refreshTimeout = setTimeout(() => this._refresh(), interval);
-        return;
-      }
-      this._numRefreshFailed = 0;
-      this._token = resp.data.token;
-      if (!this._token) {
-        this._refreshFailed();
-        return;
-      }
-      if (this._isDisconnected() && this._reconnect) {
-        this._debug('token refreshed, connect from scratch');
-        this._connect();
-      } else {
-        this._debug('send refreshed token');
-        const req = { token: this._token };
-        const msg = {};
-        if (this._config.protocolVersion === 'v2') {
-          msg.refresh = req;
-        } else {
-          msg.method = this._methodType.REFRESH;
-          msg.params = req;
-        }
+    const wasConnected = this._isConnected();
 
-        const self = this;
+    const needDisconnectEvent = wasConnected || isNewDisconnect;
 
-        this._call(msg).then(resolveCtx => {
-          let result;
-          if (self._config.protocolVersion === 'v1') {
-            result = self._decoder.decodeCommandResult(self._methodType.REFRESH, resolveCtx.reply.result);
-          } else {
-            result = resolveCtx.reply.refresh;
-          }
-          this._refreshResponse(result);
-          if (resolveCtx.next) {
-            resolveCtx.next();
-          }
-        }, rejectCtx => {
-          this._refreshError(rejectCtx.error);
-          if (rejectCtx.next) {
-            rejectCtx.next();
-          }
-        });
-      }
+    const disconnectCtx = {
+      code: code,
+      reason: reason,
+      reconnect: reconnect
     };
 
-    if (this._config.onRefresh !== null) {
-      const context = {};
-      this._config.onRefresh(context, cb);
+    this._debug('disconnect:', reason, shouldReconnect);
+    if (shouldReconnect) {
+      this._setState(states.CONNECTING);
+      if (needDisconnectEvent) {
+        this.emit('disconnect', disconnectCtx);
+        this._lastDisconnectCode = code;
+      }
     } else {
-      const xhr = this._ajax(
-        this._config.refreshEndpoint,
-        this._config.refreshParams,
-        this._config.refreshHeaders,
-        this._config.refreshData,
-        cb
-      );
-      this._xhrs[xhrID] = xhr;
+      this._setState(states.DISCONNECTED);
+      if (needDisconnectEvent) {
+        this.emit('disconnect', disconnectCtx);
+        this._close(closeReasons.SERVER, true, true);
+      }
     }
+
+    if (this._transport && !this._transportClosed) {
+      this._transportClosed = true;
+      this._transport.close();
+    }
+  };
+
+  _closeConnectFailed() {
+    this._close(closeReasons.CONNECT_FAILED, false, false);
+  }
+
+  _closeRefreshFailed() {
+    this._close(closeReasons.REFRESH_FAILED, false, false);
+  }
+
+  _closeUnauthorized() {
+    this._close(closeReasons.UNAUTHORIZED, false, false);
+  }
+
+  _getToken() {
+    // ask application for new connection token.
+    this._debug('get connection token');
+    if (this._config.getConnectionToken === null) {
+      throw new Error('provide a function to get connection token');
+    }
+    return this._config.getConnectionToken({});
+  }
+
+  _refresh() {
+    const clientId = this._client;
+    const self = this;
+    this._getToken().then(function (token) {
+      if (clientId !== self._client) {
+        return;
+      }
+      if (!token) {
+        self._closeUnauthorized();
+        return;
+      }
+      self._token = token;
+      self._debug('connection token refreshed');
+
+      if (!self._isConnected()) {
+        return;
+      }
+
+      const cmd = {
+        refresh: { token: self._token }
+      };
+
+      self._call(cmd).then(resolveCtx => {
+        const result = resolveCtx.reply.refresh;
+        self._refreshResponse(result);
+        if (resolveCtx.next) {
+          resolveCtx.next();
+        }
+      }, rejectCtx => {
+        self._refreshError(rejectCtx.error);
+        if (rejectCtx.next) {
+          rejectCtx.next();
+        }
+      });
+    }).catch(function (e) {
+      self._debug('error refreshing connection token', e);
+      self._refreshTimeout = setTimeout(() => self._refresh(), backoff(0, 5000, 10000));
+    });
   };
 
   _refreshError(err) {
     this._debug('refresh error', err);
-    if (this._refreshTimeout) {
-      clearTimeout(this._refreshTimeout);
-      this._refreshTimeout = null;
+    if (err.code < 100 || err.temporary === true) {
+      this._refreshTimeout = setTimeout(() => this._refresh(), backoff(0, 5000, 10000));
+    } else {
+      this._closeRefreshFailed();
     }
-    const interval = this._config.refreshInterval + Math.round(Math.random() * 1000);
-    this._refreshTimeout = setTimeout(() => this._refresh(), interval);
   }
 
   _refreshResponse(result) {
@@ -1259,141 +1161,12 @@ export class Centrifuge extends EventEmitter {
       this._refreshTimeout = null;
     }
     if (result.expires) {
-      this._clientID = result.client;
-      this._refreshTimeout = setTimeout(() => this._refresh(), this._getTTLMilliseconds(result.ttl));
+      this._client = result.client;
+      this._refreshTimeout = setTimeout(() => this._refresh(), ttlMilliseconds(result.ttl));
     }
   };
 
-  _newXHRID() {
-    this._xhrID++;
-    return this._xhrID;
-  }
-
-  _subRefresh(channel) {
-    this._debug('refresh subscription token for channel', channel);
-
-    if (this._subRefreshTimeouts[channel] !== undefined) {
-      this._clearSubRefreshTimeout(channel);
-    } else {
-      return;
-    }
-
-    const clientID = this._clientID;
-    const xhrID = this._newXHRID();
-
-    const cb = (resp) => {
-      if (xhrID in this._xhrs) {
-        delete this._xhrs[xhrID];
-      }
-      if (resp.error || resp.status !== 200 || this._clientID !== clientID) {
-        return;
-      }
-      let channelsData = {};
-      if (resp.data.channels) {
-        for (const i in resp.data.channels) {
-          const channelData = resp.data.channels[i];
-          if (!channelData.channel) {
-            continue;
-          }
-          channelsData[channelData.channel] = channelData.token;
-        }
-      }
-
-      const token = channelsData[channel];
-      if (!token) {
-        return;
-      }
-
-      const sub = this._getSub(channel);
-      if (sub === null) {
-        return;
-      }
-
-      const req = {
-        channel: channel,
-        token: token
-      };
-      const msg = {};
-
-      if (this._config.protocolVersion === 'v2') {
-        msg['sub_refresh'] = req;
-      } else {
-        msg.method = this._methodType.SUB_REFRESH;
-        msg.params = req;
-      }
-
-      const self = this;
-
-      this._call(msg).then(resolveCtx => {
-        let result;
-        if (self._config.protocolVersion === 'v1') {
-          result = self._decoder.decodeCommandResult(self._methodType.SUB_REFRESH, resolveCtx.reply.result);
-        } else {
-          result = resolveCtx.reply.sub_refresh;
-        }
-        this._subRefreshResponse(channel, result);
-        if (resolveCtx.next) {
-          resolveCtx.next();
-        }
-      }, rejectCtx => {
-        this._subRefreshError(channel, rejectCtx.error);
-        if (rejectCtx.next) {
-          rejectCtx.next();
-        }
-      });
-    };
-
-    const data = {
-      client: this._clientID,
-      channels: [channel]
-    };
-
-    if (this._config.onPrivateSubscribe !== null) {
-      this._config.onPrivateSubscribe({
-        data: data
-      }, cb);
-    } else {
-      const xhr = this._ajax(
-        this._config.subscribeEndpoint, this._config.subscribeParams, this._config.subscribeHeaders, data, cb);
-      this._xhrs[xhrID] = xhr;
-    }
-  };
-
-  _clearSubRefreshTimeout(channel) {
-    if (this._subRefreshTimeouts[channel] !== undefined) {
-      clearTimeout(this._subRefreshTimeouts[channel]);
-      delete this._subRefreshTimeouts[channel];
-    }
-  }
-
-  _subRefreshError(channel, err) {
-    this._debug('subscription refresh error', channel, err);
-    this._clearSubRefreshTimeout(channel);
-    const sub = this._getSub(channel);
-    if (sub === null) {
-      return;
-    }
-    const jitter = Math.round(Math.random() * 1000);
-    let subRefreshTimeout = setTimeout(() => this._subRefresh(channel), this._config.subRefreshInterval + jitter);
-    this._subRefreshTimeouts[channel] = subRefreshTimeout;
-    return;
-  }
-
-  _subRefreshResponse(channel, result) {
-    this._debug('subscription refresh success', channel);
-    this._clearSubRefreshTimeout(channel);
-    const sub = this._getSub(channel);
-    if (sub === null) {
-      return;
-    }
-    if (result.expires === true) {
-      let subRefreshTimeout = setTimeout(() => this._subRefresh(channel), this._getTTLMilliseconds(result.ttl));
-      this._subRefreshTimeouts[channel] = subRefreshTimeout;
-    }
-    return;
-  };
-
-  _subscribe(sub, isResubscribe) {
+  _subscribe(sub) {
     this._debug('subscribing on', sub.channel);
     const channel = sub.channel;
 
@@ -1401,124 +1174,137 @@ export class Centrifuge extends EventEmitter {
       this._subs[channel] = sub;
     }
 
-    if (!this.isConnected()) {
-      // subscribe will be called later
-      sub._setSubscribing();
+    if (!this._isConnected()) {
+      // subscribe will be called later.
       return;
     }
 
-    sub._setSubscribing(isResubscribe);
+    // If channel name does not start with privateChannelPrefix - then we
+    // can just send subscribe command to the server. If channel name
+    // starts with privateChannelPrefix - then this is a private channel
+    // and we should get subscription token first.
+    if (startsWith(channel, this._config.privateChannelPrefix)) {
+      // private channel, need to get token before sending subscribe.
+      const clientId = this._client;
+      const self = this;
+      if (sub._token) {
+        this._sendSubscribe(sub, sub._token);
+      } else {
+        sub._getToken().then(function (token) {
+          if (clientId !== self._client) {
+            return;
+          }
+          if (!sub._isSubscribing()) {
+            return;
+          }
+          if (!token) {
+            sub._closeUnauthorized();
+            return;
+          }
+          if (!sub._tokenUniquePerConnection) {
+            // Persist token in subscription.
+            sub._token = token;
+          }
+          self._sendSubscribe(sub, token);
+        }).catch(function () {
+          // TODO: make sure subscription properly retried later.
+          sub._subscribeError({ code: 0, message: 'token error' });
+        });
+      }
+    } else {
+      this._sendSubscribe(sub);
+    }
+  };
+
+  _sendSubscribe(sub, token) {
+    const channel = sub.channel;
 
     const req = {
       channel: channel
     };
 
-    if (sub._subscribeData) {
-      req.data = sub._subscribeData;
+    if (token) {
+      req.token = token;
     }
 
-    // If channel name does not start with privateChannelPrefix - then we
-    // can just send subscription message to Centrifuge. If channel name
-    // starts with privateChannelPrefix - then this is a private channel
-    // and we should ask web application backend for permission first.
-    if (startsWith(channel, this._config.privateChannelPrefix)) {
-      // private channel.
-      if (this._isSubscribeBatching) {
-        this._privateChannels[channel] = true;
-      } else {
-        this.startSubscribeBatching();
-        this._subscribe(sub);
-        this.stopSubscribeBatching();
-      }
-    } else {
-      const recover = sub._needRecover();
-      if (recover === true) {
-        req.recover = true;
-        const seq = this._getLastSeq(channel);
-        const gen = this._getLastGen(channel);
-        if (seq || gen) {
-          if (seq) {
-            req.seq = seq;
-          }
-          if (gen) {
-            req.gen = gen;
-          }
-        } else {
-          const offset = this._getLastOffset(channel);
-          if (offset) {
-            req.offset = offset;
-          }
-        }
-        const epoch = this._getLastEpoch(channel);
-        if (epoch) {
-          req.epoch = epoch;
-        }
-      }
-
-      const msg = {};
-      if (this._config.protocolVersion === 'v2') {
-        msg.subscribe = req;
-      } else {
-        msg.method = this._methodType.SUBSCRIBE;
-        msg.params = req;
-      }
-
-      this._call(msg).then(resolveCtx => {
-        let result;
-        if (this._config.protocolVersion === 'v1') {
-          result = this._decoder.decodeCommandResult(this._methodType.SUBSCRIBE, resolveCtx.reply.result);
-        } else {
-          result = resolveCtx.reply.subscribe;
-        }
-        this._subscribeResponse(
-          channel,
-          recover,
-          result
-        );
-        if (resolveCtx.next) {
-          resolveCtx.next();
-        }
-      }, rejectCtx => {
-        this._subscribeError(channel, rejectCtx.error);
-        if (rejectCtx.next) {
-          rejectCtx.next();
-        }
-      });
+    if (sub._data) {
+      req.data = sub._data;
     }
-  };
+
+    if (sub._needRecover()) {
+      req.recover = true;
+      const offset = sub._getLastOffset();
+      if (offset) {
+        req.offset = offset;
+      }
+      const epoch = sub._getLastEpoch();
+      if (epoch) {
+        req.epoch = epoch;
+      }
+    }
+
+    const cmd = {
+      subscribe: req
+    };
+
+    this._call(cmd).then(resolveCtx => {
+      const result = resolveCtx.reply.subscribe;
+      this._subscribeResponse(
+        channel,
+        result
+      );
+      if (resolveCtx.next) {
+        resolveCtx.next();
+      }
+    }, rejectCtx => {
+      this._subscribeError(channel, rejectCtx.error);
+      if (rejectCtx.next) {
+        rejectCtx.next();
+      }
+    });
+  }
+
+  _sendSubRefresh(sub, token) {
+    const req = {
+      channel: sub.channel,
+      token: token
+    };
+    const cmd = {
+      'sub_refresh': req
+    };
+
+    this._call(cmd).then(resolveCtx => {
+      const result = resolveCtx.reply.sub_refresh;
+      sub._refreshResponse(result);
+      if (resolveCtx.next) {
+        resolveCtx.next();
+      }
+    }, rejectCtx => {
+      sub._refreshError(rejectCtx.error);
+      if (rejectCtx.next) {
+        rejectCtx.next();
+      }
+    });
+  }
 
   _removeSubscription(sub) {
     delete this._subs[sub.channel];
   }
 
   _unsubscribe(sub) {
-    this._removeSubscription(sub);
-    delete this._lastOffset[sub.channel];
-    delete this._lastEpoch[sub.channel];
-    if (this.isConnected()) {
-      // No need to unsubscribe in disconnected state - i.e. client already unsubscribed.
-      const req = {
-        channel: sub.channel
-      };
-      const msg = {};
-      if (this._config.protocolVersion === 'v2') {
-        msg.unsubscribe = req;
-      } else {
-        msg.method = this._methodType.UNSUBSCRIBE;
-        msg.params = req;
-      }
-      this._addMessage(msg);
+    if (!this._isConnected()) {
+      // No need to send unsubscribe command in disconnected state.
+      return;
     }
+    const req = {
+      channel: sub.channel
+    };
+    const cmd = {
+      unsubscribe: req
+    };
+    cmd.id = this._nextCommandId();
+    this._addCommand(cmd);
   };
-
-  _getTTLMilliseconds(ttl) {
-    // https://stackoverflow.com/questions/12633405/what-is-the-maximum-delay-for-setinterval
-    return Math.min(ttl * 1000, 2147483647);
-  }
-
-  getSub(channel) {
-    return this._getSub(channel);
-  }
 
   _getSub(channel) {
     const sub = this._subs[channel];
@@ -1533,13 +1319,11 @@ export class Centrifuge extends EventEmitter {
   };
 
   _connectResponse(result) {
-    const wasReconnecting = this._reconnecting;
     this._transportWasOpen = true;
-    this._reconnecting = false;
-    this._resetRetry();
+    this._reconnectAttempts = 0;
     this._refreshRequired = false;
 
-    if (this.isConnected()) {
+    if (this._isConnected()) {
       return;
     }
 
@@ -1548,43 +1332,41 @@ export class Centrifuge extends EventEmitter {
       this._latencyStart = null;
     }
 
-    this._clientID = result.client;
+    this._client = result.client;
     this._setState(states.CONNECTED);
 
     if (this._refreshTimeout) {
       clearTimeout(this._refreshTimeout);
     }
-
     if (result.expires) {
-      this._refreshTimeout = setTimeout(() => this._refresh(), this._getTTLMilliseconds(result.ttl));
+      this._refreshTimeout = setTimeout(() => this._refresh(), ttlMilliseconds(result.ttl));
     }
 
     this._session = result.session;
     this._node = result.node;
 
     this.startBatching();
-    this.startSubscribeBatching();
     for (const channel in this._subs) {
       if (this._subs.hasOwnProperty(channel)) {
         const sub = this._subs[channel];
-        if (sub._shouldResubscribe()) {
-          this._subscribe(sub, wasReconnecting);
+        if (sub._isSubscribing()) {
+          this._subscribe(sub);
         }
       }
     }
-    this.stopSubscribeBatching();
     this.stopBatching();
 
     const ctx = {
       client: result.client,
-      transport: this._transport.subName(),
-      latency: this._latency
+      transport: this._transport.subName()
     };
     if (result.data) {
       ctx.data = result.data;
     }
 
     this.emit('connect', ctx);
+
+    this._resolvePromises();
 
     if (result.subs) {
       this._processServerSubs(result.subs);
@@ -1604,9 +1386,7 @@ export class Centrifuge extends EventEmitter {
     for (const channel in subs) {
       if (subs.hasOwnProperty(channel)) {
         const sub = subs[channel];
-        const isResubscribe = this._serverSubs[channel] !== undefined;
-        let subCtx = { channel: channel, isResubscribe: isResubscribe };
-        subCtx = this._expandSubscribeContext(subCtx, sub);
+        const subCtx = this._getSubscribeContext(channel, sub);
         this.emit('subscribe', subCtx);
       }
     }
@@ -1616,13 +1396,6 @@ export class Centrifuge extends EventEmitter {
         if (sub.recovered) {
           let pubs = sub.publications;
           if (pubs && pubs.length > 0) {
-
-            // handle legacy order.
-            // TODO: remove as soon as Centrifuge v1 released.
-            if (pubs.length > 1 && (!pubs[0].offset || pubs[0].offset > pubs[1].offset)) {
-              pubs = pubs.reverse();
-            }
-
             for (let i in pubs) {
               if (pubs.hasOwnProperty(i)) {
                 this._handlePublication(channel, pubs[i]);
@@ -1631,8 +1404,6 @@ export class Centrifuge extends EventEmitter {
           }
         }
         this._serverSubs[channel] = {
-          'seq': sub.seq,
-          'gen': sub.gen,
           'offset': sub.offset,
           'epoch': sub.epoch,
           'recoverable': sub.recoverable
@@ -1660,14 +1431,14 @@ export class Centrifuge extends EventEmitter {
     if (this._config.maxServerPingDelay === 0) {
       return;
     }
-    if (!this.isConnected()) {
+    if (!this._isConnected()) {
       return;
     }
     if (this._serverPingTimeout) {
       clearTimeout(this._serverPingTimeout);
     }
     this._serverPingTimeout = setTimeout(() => {
-      if (!this.isConnected()) {
+      if (!this._isConnected()) {
         this._stopPing();
         return;
       }
@@ -1676,19 +1447,18 @@ export class Centrifuge extends EventEmitter {
   };
 
   _startClientPing() {
-    if (this._config.ping !== true || this._config.pingInterval <= 0) {
+    if (this._config.pingInterval <= 0) {
       return;
     }
-    if (!this.isConnected()) {
+    if (!this._isConnected()) {
       return;
     }
-
     this._pingTimeout = setTimeout(() => {
-      if (!this.isConnected()) {
+      if (!this._isConnected()) {
         this._stopPing();
         return;
       }
-      this.ping();
+      this._ping();
       this._pongTimeout = setTimeout(() => {
         this._disconnect(11, 'no ping', true);
       }, this._config.pongWaitTimeout);
@@ -1708,20 +1478,17 @@ export class Centrifuge extends EventEmitter {
     if (!sub._isSubscribing()) {
       return;
     }
-    if (error.code === 0 && error.message === errorTimeout) { // client side timeout.
+    if (error.code === 1) { // client side timeout.
       this._disconnect(10, 'subscribe timeout', true);
       return;
     }
-    sub._setSubscribeError(error);
+    sub._subscribeError(error);
   };
 
-  _expandSubscribeContext(ctx, result) {
-    let recovered = false;
-    if ('recovered' in result) {
-      recovered = result.recovered;
-    }
-    ctx.recovered = recovered;
-
+  _getSubscribeContext(channel, result) {
+    const ctx = {
+      channel: channel
+    };
     let positioned = false;
     if ('positioned' in result) {
       positioned = result.positioned;
@@ -1746,7 +1513,7 @@ export class Centrifuge extends EventEmitter {
     return ctx;
   }
 
-  _subscribeResponse(channel, isRecover, result) {
+  _subscribeResponse(channel, result) {
     const sub = this._getSub(channel);
     if (!sub) {
       return;
@@ -1754,37 +1521,7 @@ export class Centrifuge extends EventEmitter {
     if (!sub._isSubscribing()) {
       return;
     }
-    sub._setSubscribeSuccess(result);
-
-    let pubs = result.publications;
-    if (pubs && pubs.length > 0) {
-      if (pubs.length >= 2 && !pubs[0].offset && !pubs[1].offset) {
-        // handle legacy order.
-        pubs = pubs.reverse();
-      }
-      for (let i in pubs) {
-        if (pubs.hasOwnProperty(i)) {
-          this._handlePublication(channel, pubs[i]);
-        }
-      }
-    }
-
-    if (result.recoverable && (!isRecover || !result.recovered)) {
-      this._lastSeq[channel] = result.seq || 0;
-      this._lastGen[channel] = result.gen || 0;
-      this._lastOffset[channel] = result.offset || 0;
-    }
-
-    this._lastEpoch[channel] = result.epoch || '';
-
-    if (result.recoverable) {
-      sub._recoverable = true;
-    }
-
-    if (result.expires === true) {
-      let subRefreshTimeout = setTimeout(() => this._subRefresh(channel), this._getTTLMilliseconds(result.ttl));
-      this._subRefreshTimeouts[channel] = subRefreshTimeout;
-    }
+    sub._setSubscribed(result);
   };
 
   _handleReply(reply, next) {
@@ -1815,32 +1552,30 @@ export class Centrifuge extends EventEmitter {
   }
 
   _handleJoin(channel, join) {
-    const ctx = { 'info': join.info };
     const sub = this._getSub(channel);
     if (!sub) {
       if (this._isServerSub(channel)) {
-        ctx.channel = channel;
+        const ctx = { channel: channel, info: this._getJoinLeaveContext(join.info) };
         this.emit('join', ctx);
       }
       return;
     }
-    sub.emit('join', ctx);
+    sub._handleJoin(join);
   };
 
   _handleLeave(channel, leave) {
-    const ctx = { 'info': leave.info };
     const sub = this._getSub(channel);
     if (!sub) {
       if (this._isServerSub(channel)) {
-        ctx.channel = channel;
+        const ctx = { 'channel': channel, 'info': this._getJoinLeaveContext(leave.info) };
         this.emit('leave', ctx);
       }
       return;
     }
-    sub.emit('leave', ctx);
+    sub._handleLeave(leave);
   };
 
-  _handleUnsub(channel, unsub) {
+  _handleUnsubscribe(channel, unsub) {
     const ctx = {};
     const sub = this._getSub(channel);
     if (!sub) {
@@ -1851,30 +1586,24 @@ export class Centrifuge extends EventEmitter {
       }
       return;
     }
-    let clearSubscribedState;
-    if (this._config.protocolVersion === 'v1') {
-      clearSubscribedState = true;
-    } else {
-      clearSubscribedState = unsub.type !== 1;
-    }
-    sub._setUnsubscribed(clearSubscribedState);
-    if (this._config.protocolVersion === 'v2' && unsub.type === 1) {
-      sub._recover = true;
+
+    if (unsub.type === 1) { // Insufficient.
+      sub._setUnsubscribed(false);
       sub.subscribe();
-    }
+    } else if (unsub.type === 2) { // Unrecoverable.
+      sub._close(sub.CLOSE_UNRECOVERABLE_POSITION, true);
+    } else {
+      sub._close(sub.CLOSE_SERVER, false);
+    };
   };
 
-  _handleSub(channel, sub) {
+  _handleSubscribe(channel, sub) {
     this._serverSubs[channel] = {
-      'seq': sub.seq,
-      'gen': sub.gen,
       'offset': sub.offset,
       'epoch': sub.epoch,
       'recoverable': sub.recoverable
     };
-    let ctx = { 'channel': channel, isResubscribe: false };
-    ctx = this._expandSubscribeContext(ctx, sub);
-    this.emit('subscribe', ctx);
+    this.emit('subscribe', this._getSubscribeContext(channel, sub));
   };
 
   _handleDisconnect(disconnect) {
@@ -1886,91 +1615,65 @@ export class Centrifuge extends EventEmitter {
     this._disconnect(code, disconnect.reason, needReconnect);
   };
 
-  _handlePublication(channel, pub) {
-    const sub = this._getSub(channel);
+  _getPublicationContext(channel, pub) {
     const ctx = {
-      'data': pub.data,
-      'seq': pub.seq,
-      'gen': pub.gen,
-      'offset': pub.offset
+      'channel': channel,
+      'data': pub.data
     };
+    if (pub.offset) {
+      ctx.offset = pub.offset;
+    }
     if (pub.info) {
-      ctx.info = pub.info;
+      ctx.info = this._getJoinLeaveContext(pub.info);
     }
     if (pub.tags) {
       ctx.tags = pub.tags;
     }
+    return ctx;
+  }
+
+  _getJoinLeaveContext(clientInfo) {
+    const info = {
+      client: clientInfo.client,
+      user: clientInfo.user
+    };
+    if (clientInfo.conn_info) {
+      info.connInfo = clientInfo.conn_info;
+    }
+    if (clientInfo.chan_info) {
+      info.chanInfo = clientInfo.chan_info;
+    }
+    return info;
+  }
+
+  _handlePublication(channel, pub) {
+    const sub = this._getSub(channel);
     if (!sub) {
       if (this._isServerSub(channel)) {
-        if (pub.seq !== undefined) {
-          this._serverSubs[channel].seq = pub.seq;
-        }
-        if (pub.gen !== undefined) {
-          this._serverSubs[channel].gen = pub.gen;
-        }
+        const ctx = this._getPublicationContext(channel, pub);
+        this.emit('publication', ctx);
         if (pub.offset !== undefined) {
           this._serverSubs[channel].offset = pub.offset;
         }
-        ctx.channel = channel;
-        this.emit('publish', ctx);
       }
       return;
     }
-    if (pub.seq !== undefined) {
-      this._lastSeq[channel] = pub.seq;
-    }
-    if (pub.gen !== undefined) {
-      this._lastGen[channel] = pub.gen;
-    }
-    if (pub.offset !== undefined) {
-      this._lastOffset[channel] = pub.offset;
-    }
-    sub.emit('publish', ctx);
+    sub._handlePublication(pub);
   };
 
   _handleMessage(message) {
     this.emit('message', message.data);
   };
 
-  _handlePush(data, next) {
-    const push = this._decoder.decodePush(data);
-    let type = 0;
-    if ('type' in push) {
-      type = push['type'];
-    }
-    const channel = push.channel;
-
-    if (type === this._pushType.PUBLICATION) {
-      const pub = this._decoder.decodePushData(this._pushType.PUBLICATION, push.data);
-      this._handlePublication(channel, pub);
-    } else if (type === this._pushType.MESSAGE) {
-      const message = this._decoder.decodePushData(this._pushType.MESSAGE, push.data);
-      this._handleMessage(message);
-    } else if (type === this._pushType.JOIN) {
-      const join = this._decoder.decodePushData(this._pushType.JOIN, push.data);
-      this._handleJoin(channel, join);
-    } else if (type === this._pushType.LEAVE) {
-      const leave = this._decoder.decodePushData(this._pushType.LEAVE, push.data);
-      this._handleLeave(channel, leave);
-    } else if (type === this._pushType.UNSUBSCRIBE) {
-      const unsub = this._decoder.decodePushData(this._pushType.UNSUBSCRIBE, push.data);
-      this._handleUnsub(channel, unsub);
-    } else if (type === this._pushType.SUBSCRIBE) {
-      const sub = this._decoder.decodePushData(this._pushType.UNSUBSCRIBE, push.data);
-      this._handleSub(channel, sub);
-    }
-    next();
-  }
-
   _handleServerPing(next) {
     if (this._sendPong) {
-      const msg = {};
-      this._transportSend([msg]);
+      const cmd = {};
+      this._transportSendCommands([cmd]);
     }
     next();
   }
 
-  _handlePushV2(data, next) {
+  _handlePush(data, next) {
     const channel = data.channel;
     if (data.pub) {
       this._handlePublication(channel, data.pub);
@@ -1981,9 +1684,9 @@ export class Centrifuge extends EventEmitter {
     } else if (data.leave) {
       this._handleLeave(channel, data.leave);
     } else if (data.unsubscribe) {
-      this._handleUnsub(channel, data.unsubscribe);
+      this._handleUnsubscribe(channel, data.unsubscribe);
     } else if (data.subscribe) {
-      this._handleSub(channel, data.subscribe);
+      this._handleSubscribe(channel, data.subscribe);
     } else if (data.disconnect) {
       this._handleDisconnect(data.disconnect);
     }
@@ -1991,20 +1694,14 @@ export class Centrifuge extends EventEmitter {
   }
 
   _flush() {
-    const messages = this._messages.slice(0);
-    this._messages = [];
-    this._transportSend(messages);
+    const commands = this._commands.slice(0);
+    this._commands = [];
+    this._transportSendCommands(commands);
   };
 
   _ping() {
-    const msg = {};
-    if (this._config.protocolVersion === 'v2') {
-      // v2 does not require any additional data for pings;
-    } else {
-      msg.method = this._methodType.PING;
-    }
-    this._call(msg).then(resolveCtx => {
-      this._pingResponse(this._decoder.decodeCommandResult(this._methodType.PING, resolveCtx.result));
+    const cmd = {};
+    this._call(cmd).then(resolveCtx => {
       if (resolveCtx.next) {
         resolveCtx.next();
       }
@@ -2016,52 +1713,22 @@ export class Centrifuge extends EventEmitter {
     });
   };
 
-  _pingResponse(result) {
-    if (!this.isConnected()) {
+  _pingResponse() {
+    if (!this._isConnected()) {
       return;
     }
     this._stopPing();
     this._startClientPing();
   }
 
-  _getLastSeq(channel) {
-    const lastSeq = this._lastSeq[channel];
-    if (lastSeq) {
-      return lastSeq;
-    }
-    return 0;
-  };
-
-  _getLastOffset(channel) {
-    const lastOffset = this._lastOffset[channel];
-    if (lastOffset) {
-      return lastOffset;
-    }
-    return 0;
-  };
-
-  _getLastGen(channel) {
-    const lastGen = this._lastGen[channel];
-    if (lastGen) {
-      return lastGen;
-    }
-    return 0;
-  };
-
-  _getLastEpoch(channel) {
-    const lastEpoch = this._lastEpoch[channel];
-    if (lastEpoch) {
-      return lastEpoch;
-    }
-    return '';
-  };
-
-  _createErrorObject(message, code) {
+  _createErrorObject(code, message, temporary) {
     const errObject = {
-      message: message,
-      code: code || 0
+      code: code,
+      message: message
     };
-
+    if (temporary) {
+      errObject.temporary = true;
+    }
     return errObject;
   };
 
@@ -2074,240 +1741,69 @@ export class Centrifuge extends EventEmitter {
     this._callbacks[id].timeout = setTimeout(() => {
       delete this._callbacks[id];
       if (isFunction(errback)) {
-        errback({ error: this._createErrorObject(errorTimeout) });
+        errback({ error: this._createErrorObject(1, 'timeout') });
       }
     }, this._config.timeout);
   };
 
-  _addMessage(message) {
-    let id = this._nextMessageId();
-    message.id = id;
-    if (this._isBatching === true) {
-      this._messages.push(message);
+  _addCommand(command) {
+    if (this._isBatching) {
+      this._commands.push(command);
     } else {
-      this._transportSend([message]);
+      this._transportSendCommands([command]);
     }
-    return id;
   };
 
-  isConnected() {
-    return this._isConnected();
+  _close(reason, clearServerSubs, clearClientSubs) {
+    this._disconnect(0, 'closing', false, clearServerSubs, clearClientSubs);
+    this._setState(states.CLOSED);
+    this.emit('close', { reason: reason });
+    this._rejectPromises({ state: states.CLOSED });
   }
 
-  connect() {
-    this._connect();
-  };
-
-  disconnect() {
-    this._disconnect(0, 'client', false);
-  };
-
-  close() {
-    this.disconnect();
-    this._handleClose('client');
-  };
-
-  ping() {
-    return this._ping();
+  _nextPromiseId() {
+    return ++this._promiseId;
   }
 
-  startBatching() {
-    // start collecting messages without sending them to Centrifuge until flush
-    // method called
-    this._isBatching = true;
-  };
-
-  stopBatching() {
-    this._isBatching = false;
-    this._flush();
-  };
-
-  startSubscribeBatching() {
-    // start collecting private channels to create bulk authentication
-    // request to subscribeEndpoint when stopSubscribeBatching will be called
-    this._isSubscribeBatching = true;
-  };
-
-  stopSubscribeBatching() {
-    // create request to subscribeEndpoint with collected private channels
-    // to ask if this client can subscribe on each channel
-    this._isSubscribeBatching = false;
-    const authChannels = this._privateChannels;
-    this._privateChannels = {};
-
-    const channels = [];
-
-    for (const channel in authChannels) {
-      if (authChannels.hasOwnProperty(channel)) {
-        const sub = this._getSub(channel);
-        if (!sub) {
-          continue;
-        }
-        channels.push(channel);
+  _resolvePromises() {
+    for (const id in this._promises) {
+      if (this._promises[id].timeout) {
+        clearTimeout(this._promises[id].timeout);
       }
+      this._promises[id].resolve();
+      delete this._promises[id];
     }
-
-    if (channels.length === 0) {
-      this._debug('no private channels found, no need to make token request');
-      return;
-    }
-
-    const data = {
-      client: this._clientID,
-      channels: channels
-    };
-
-    const clientID = this._clientID;
-    const xhrID = this._newXHRID();
-
-    const cb = (resp) => {
-      if (xhrID in this._xhrs) {
-        delete this._xhrs[xhrID];
-      }
-      if (this._clientID !== clientID) {
-        return;
-      }
-      if (resp.error || resp.status !== 200) {
-        this._debug('authorization request failed');
-        for (const i in channels) {
-          if (channels.hasOwnProperty(i)) {
-            const channel = channels[i];
-            this._subscribeError(channel, this._createErrorObject('authorization request failed'));
-          }
-        }
-        return;
-      }
-
-      let channelsData = {};
-      if (resp.data.channels) {
-        for (const i in resp.data.channels) {
-          const channelData = resp.data.channels[i];
-          if (!channelData.channel) {
-            continue;
-          }
-          channelsData[channelData.channel] = channelData.token;
-        }
-      }
-
-      // try to send all subscriptions in one request.
-      let batch = false;
-
-      if (!this._isBatching) {
-        this.startBatching();
-        batch = true;
-      }
-
-      for (const i in channels) {
-        if (channels.hasOwnProperty(i)) {
-          const channel = channels[i];
-          const token = channelsData[channel];
-
-          if (!token) {
-            // subscription:error
-            this._subscribeError(channel, this._createErrorObject('permission denied', 103));
-            continue;
-          } else {
-            const sub = this._getSub(channel);
-            if (sub === null) {
-              continue;
-            }
-
-            const req = {
-              channel: channel,
-              token: token
-            };
-
-            const recover = sub._needRecover();
-
-            if (recover === true) {
-              req.recover = true;
-              const seq = this._getLastSeq(channel);
-              const gen = this._getLastGen(channel);
-              if (seq || gen) {
-                if (seq) {
-                  req.seq = seq;
-                }
-                if (gen) {
-                  req.gen = gen;
-                }
-              } else {
-                const offset = this._getLastOffset(channel);
-                if (offset) {
-                  req.offset = offset;
-                }
-              }
-              const epoch = this._getLastEpoch(channel);
-              if (epoch) {
-                req.epoch = epoch;
-              }
-            }
-            const msg = {};
-            if (this._config.protocolVersion === 'v2') {
-              msg.subscribe = req;
-            } else {
-              msg.method = this._methodType.SUBSCRIBE;
-              msg.params = req;
-            }
-            this._call(msg).then(resolveCtx => {
-              let result;
-              if (this._config.protocolVersion === 'v1') {
-                result = this._decoder.decodeCommandResult(this._methodType.SUBSCRIBE, resolveCtx.reply.result);
-              } else {
-                result = resolveCtx.reply.subscribe;
-              }
-              this._subscribeResponse(
-                channel,
-                recover,
-                result
-              );
-              if (resolveCtx.next) {
-                resolveCtx.next();
-              }
-            }, rejectCtx => {
-              this._subscribeError(channel, rejectCtx.error);
-              if (rejectCtx.next) {
-                rejectCtx.next();
-              }
-            });
-          }
-        }
-      }
-
-      if (batch) {
-        this.stopBatching();
-      }
-
-    };
-
-    if (this._config.onPrivateSubscribe !== null) {
-      this._config.onPrivateSubscribe({
-        data: data
-      }, cb);
-    } else {
-      const xhr = this._ajax(
-        this._config.subscribeEndpoint, this._config.subscribeParams, this._config.subscribeHeaders, data, cb);
-      this._xhrs[xhrID] = xhr;
-    }
-  };
-
-  _setSubscribeSince(sub, since) {
-    this._lastOffset[sub.channel] = since.offset;
-    this._lastEpoch[sub.channel] = since.epoch;
-    sub._setNeedRecover(true);
   }
 
-  subscribe(channel, events, opts) {
-    const currentSub = this._getSub(channel);
-    if (currentSub !== null) {
-      currentSub._setEvents(events);
-      if (currentSub._isUnsubscribed()) {
-        currentSub.subscribe(opts);
+  _rejectPromises(err) {
+    for (const id in this._promises) {
+      if (this._promises[id].timeout) {
+        clearTimeout(this._promises[id].timeout);
       }
-      return currentSub;
+      this._promises[id].reject(err);
+      delete this._promises[id];
     }
-    const sub = new Subscription(this, channel, events);
-    this._subs[channel] = sub;
-    sub.subscribe(opts);
-    return sub;
-  };
+  }
 }
+
+Centrifuge.STATE_DISCONNECTED =
+  Centrifuge.prototype.STATE_DISCONNECTED = states.DISCONNECTED;
+Centrifuge.STATE_CONNECTING =
+  Centrifuge.prototype.STATE_CONNECTING = states.CONNECTING;
+Centrifuge.STATE_CONNECTED =
+  Centrifuge.prototype.STATE_CONNECTED = states.CONNECTED;
+Centrifuge.STATE_CLOSED =
+  Centrifuge.prototype.STATE_CLOSED = states.CLOSED;
+
+Centrifuge.CLOSE_CLIENT =
+  Centrifuge.prototype.CLOSE_CLIENT = closeReasons.CLIENT;
+Centrifuge.CLOSE_SERVER =
+  Centrifuge.prototype.CLOSE_SERVER = closeReasons.SERVER;
+Centrifuge.CLOSE_CONNECT_FAILED =
+  Centrifuge.prototype.CLOSE_CONNECT_FAILED = closeReasons.CONNECT_FAILED;
+Centrifuge.CLOSE_REFRESH_FAILED =
+  Centrifuge.prototype.CLOSE_REFRESH_FAILED = closeReasons.REFRESH_FAILED;
+Centrifuge.CLOSE_UNAUTHORIZED =
+  Centrifuge.prototype.CLOSE_UNAUTHORIZED = closeReasons.UNAUTHORIZED;
+Centrifuge.CLOSE_UNRECOVERABLE_POSITION =
+  Centrifuge.prototype.CLOSE_UNRECOVERABLE_POSITION = closeReasons.UNRECOVERABLE_POSITION;

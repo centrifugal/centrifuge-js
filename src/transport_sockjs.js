@@ -10,13 +10,7 @@ export class SockjsTransport {
   }
 
   subName() {
-    return 'sockjs-' + this._transport.transport;;
-  }
-
-  isOpen() {
-    return this._transport &&
-      this._transport.transport &&
-      this._transport.transport.readyState === this._transport.transport.OPEN;
+    return 'sockjs-' + this._transport.transport;
   }
 
   emulation() {
@@ -28,11 +22,6 @@ export class SockjsTransport {
   }
 
   initialize(_protocol, callbacks, _connectCommand) {
-    if (this.options.sockjs !== null) {
-      this._transport = this.options.sockjs;
-    } else {
-      this._transport = global.SockJS;
-    }
     const sockjsOptions = {
       transports: this.options.transports
     };

@@ -2,7 +2,6 @@ export class SseTransport {
   constructor(endpoint, options) {
     this.endpoint = endpoint;
     this.options = options;
-    this._open = false;
     this._protocol = 'json';
     this._transport = null;
     this._onClose = null;
@@ -14,10 +13,6 @@ export class SseTransport {
 
   subName() {
     return 'sse';
-  }
-
-  isOpen() {
-    return this._open;
   }
 
   emulation() {
@@ -38,12 +33,10 @@ export class SseTransport {
     const self = this;
 
     eventSource.onopen = function (e) {
-      self._open = true;
       callbacks.onOpen();
     };
 
     eventSource.onerror = function (e) {
-      self._open = false;
       eventSource.close();
       callbacks.onError(e);
       callbacks.onClose({
@@ -65,7 +58,6 @@ export class SseTransport {
   }
 
   close() {
-    this._open = false;
     this._transport.close();
     if (this._onClose !== null) {
       this._onClose();

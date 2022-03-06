@@ -13,10 +13,6 @@ export class WebsocketTransport {
     return 'websocket';
   }
 
-  isOpen() {
-    return this._transport && this._transport.readyState === this._transport.OPEN;
-  }
-
   emulation() {
     return false;
   }

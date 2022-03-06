@@ -19,11 +19,15 @@ export function log(level, args) {
   }
 };
 
-export function backoff(step, min, max) {
-  const jitter = 0.5 * Math.random();
-  const interval = Math.min(max, min * Math.pow(2, step + 1));
+function randomInt(min, max) { // min and max included
+  return Math.floor(Math.random() * (max - min + 1) + min);
+};
 
-  return Math.floor((1 - jitter) * interval);
+export function backoff(step, min, max) {
+  // Full jitter technique, see:
+  // https://aws.amazon.com/blogs/architecture/exponential-backoff-and-jitter/
+  const interval = randomInt(0, Math.min(max, min * Math.pow(2, step)));
+  return Math.min(max, min + interval);
 };
 
 export function errorExists(data) {
@@ -37,4 +41,9 @@ export function extend(a, b) {
     }
   }
   return a;
+};
+
+export function ttlMilliseconds(ttl) {
+  // https://stackoverflow.com/questions/12633405/what-is-the-maximum-delay-for-setinterval
+  return Math.min(ttl * 1000, 2147483647);
 };

@@ -18,6 +18,10 @@
                     "message": {
                       "type": "string",
                       "id": 2
+                    },
+                    "temporary": {
+                      "type": "bool",
+                      "id": 3
                     }
                   }
                 },
@@ -308,7 +312,20 @@
                   }
                 },
                 "Unsubscribe": {
-                  "fields": {}
+                  "fields": {
+                    "type": {
+                      "type": "Type",
+                      "id": 2
+                    }
+                  },
+                  "nested": {
+                    "Type": {
+                      "values": {
+                        "PERMANENT": 0,
+                        "INSUFFICIENT": 1
+                      }
+                    }
+                  }
                 },
                 "Subscribe": {
                   "fields": {

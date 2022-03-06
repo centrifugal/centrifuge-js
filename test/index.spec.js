@@ -1,5 +1,3 @@
-/* global describe, it, before */
-
 import chai from 'chai';
 import CentrifugeJSON from '../dist/centrifuge.js';
 import CentrifugeProtobuf from '../dist/centrifuge.protobuf.js';

@@ -774,7 +774,7 @@ export class Centrifuge extends EventEmitter {
         self._disconnect(code, reason, needReconnect);
 
         if (self._isConnecting()) {
-          const interval = self._getRetryInterval();
+          let interval = self._getRetryInterval();
           if (isInitialHandshake) {
             interval = 0;
           }

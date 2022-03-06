@@ -22,7 +22,7 @@ export class WebsocketTransport {
   }
 
   initialize(protocol, callbacks, _connectCommand) {
-    const subProtocol = '';
+    let subProtocol = '';
     if (protocol === 'protobuf') {
       subProtocol = 'centrifuge-protobuf';
     }

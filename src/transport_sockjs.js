@@ -35,7 +35,6 @@ export class SockjsTransport {
     this._transport = new this.options.sockjs(this.endpoint, null, sockjsOptions);
 
     this._transport.onopen = () => {
-      this._transport.onheartbeat = () => callbacks.restartPing();
       callbacks.onOpen();
     };
 

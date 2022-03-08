@@ -2,35 +2,41 @@
 
 export = Centrifuge;
 
-// From https://github.com/DefinitelyTyped/DefinitelyTyped/blob/master/types/node/globals.d.ts
-declare class EventEmitter {
-  addListener(event: string | symbol, listener: (...args: any[]) => void): this;
-  on(event: string | symbol, listener: (...args: any[]) => void): this;
-  once(event: string | symbol, listener: (...args: any[]) => void): this;
-  removeListener(event: string | symbol, listener: (...args: any[]) => void): this;
-  off(event: string | symbol, listener: (...args: any[]) => void): this;
-  removeAllListeners(event?: string | symbol): this;
-  setMaxListeners(n: number): this;
-  getMaxListeners(): number;
-  listeners(event: string | symbol): Function[];
-  rawListeners(event: string | symbol): Function[];
-  emit(event: string | symbol, ...args: any[]): boolean;
-  listenerCount(type: string | symbol): number;
-  prependListener(event: string | symbol, listener: (...args: any[]) => void): this;
-  prependOnceListener(event: string | symbol, listener: (...args: any[]) => void): this;
-  eventNames(): Array<string | symbol>;
+type EventMap = {
+  [key: string]: (...args: any[]) => void
 }
 
-declare class Centrifuge extends EventEmitter {
+declare class TypedEventEmitter<Events extends EventMap> {
+  addListener<E extends keyof Events>(event: E, listener: Events[E]): this
+  on<E extends keyof Events>(event: E, listener: Events[E]): this
+  once<E extends keyof Events>(event: E, listener: Events[E]): this
+  prependListener<E extends keyof Events>(event: E, listener: Events[E]): this
+  prependOnceListener<E extends keyof Events>(event: E, listener: Events[E]): this
+
+  off<E extends keyof Events>(event: E, listener: Events[E]): this
+  removeAllListeners<E extends keyof Events>(event?: E): this
+  removeListener<E extends keyof Events>(event: E, listener: Events[E]): this
+
+  emit<E extends keyof Events>(event: E, ...args: Parameters<Events[E]>): boolean
+
+  rawListeners<E extends keyof Events>(event: E): Events[E][]
+  listeners<E extends keyof Events>(event: E): Events[E][]
+  listenerCount<E extends keyof Events>(event: E): number
+
+  getMaxListeners(): number
+  setMaxListeners(maxListeners: number): this
+}
+
+declare class Centrifuge extends TypedEventEmitter<Centrifuge.Events> {
+  state: Centrifuge.State;
   constructor(endpoint: string | Array<Centrifuge.TransportEndpoint>, options?: Centrifuge.Options);
-  newSubscription(channel: string, options?: Centrifuge.SubscribeOptions): Centrifuge.Subscription;
+  newSubscription(channel: string, options?: Centrifuge.SubscriptionOptions): Centrifuge.Subscription;
   getSubscription(channel: string): Centrifuge.Subscription | null;
-  state(): "disconnected" | "connecting" | "connected" | "closed";
   connect(): void;
   disconnect(): void;
   close(): void;
-  send(data: any): Promise<any>;
-  rpc(method: string, data: any): Promise<any>;
+  send(data: any): Promise<void>;
+  rpc(method: string, data: any): Promise<Centrifuge.RpcResult>;
   publish(channel: string, data: any): Promise<Centrifuge.PublishResult>;
   history(channel: string, options?: Centrifuge.HistoryOptions): Promise<Centrifuge.HistoryResult>;
   presence(channel: string): Promise<Centrifuge.PresenceResult>;
@@ -41,13 +47,69 @@ declare class Centrifuge extends EventEmitter {
 
 declare namespace Centrifuge {
 
+  enum State {
+    Disconnected = "disconnected",
+    Connecting = "connecting",
+    Connected = "connected",
+    Closed = "closed",
+  }
+
+  enum CloseReason {
+    Client = "client",
+    Server = "server",
+    ConnectFailed = "connect failed",
+    RefreshFailed = "refresh failed",
+    Unauthorized = "unauthorized",
+    UnrecoverablePosition = "unrecoverable position",
+  }
+
+  type Events = {
+    state: (ctx: StateContext) => void;
+    connect: (ctx: ConnectContext) => void;
+    error: (ctx: ConnectErrorContext) => void;
+    disconnect: (ctx: DisconnectContext) => void;
+    close: (ctx: CloseContext) => void;
+    publication: (ctx: PublicationContext) => void;
+    join: (ctx: JoinLeaveContext) => void;
+    leave: (ctx: JoinLeaveContext) => void;
+    subscribe: (ctx: SubscribeContext) => void;
+    unsubscribe: (ctx: UnsubscribeContext) => void;
+  }
+
+  enum SubscriptionState {
+    Unsubscribed = "unsubscribed",
+    Subscribing = "subscribing",
+    Subscribed = "subscribed",
+    Closed = "closed",
+  }
+
+  enum SubscriptionCloseReason {
+    Client = "client",
+    Server = "server",
+    ConnectFailed = "connect failed",
+    RefreshFailed = "refresh failed",
+    Unauthorized = "unauthorized",
+    UnrecoverablePosition = "unrecoverable position",
+  }
+
+  type SubscriptionEvents = {
+    state: (ctx: SubscriptionStateContext) => void;
+    subscribe: (ctx: SubscribeContext) => void;
+    error: (ctx: SubscribeErrorContext) => void;
+    unsubscribe: (ctx: UnsubscribeContext) => void;
+    close: (ctx: SubscriptionCloseContext) => void;
+    publication: (ctx: PublicationContext) => void;
+    join: (ctx: JoinLeaveContext) => void;
+    leave: (ctx: JoinLeaveContext) => void;
+  }
+
   export interface TransportEndpoint {
     transport: string;
     endpoint: string;
   }
 
   export interface Options {
-    protocol?: string;
+    protocol?: 'json' | 'protobuf';
     debug?: boolean;
     token?: string;
     data?: any;
@@ -66,29 +128,28 @@ declare namespace Centrifuge {
     sockjsServer?: string;
     sockjsTimeout?: number;
     sockjsTransports?: string[];
+    httpStreamRequestMode?: string;
+    emulationEndpoint?: string;
+    emulationRequestMode?: string;
     getConnectionToken?: (ctx: ConnectionTokenContext) => Promise<string>;
     getSubscriptionToken?: (ctx: SubscriptionTokenContext) => Promise<string>;
-
-    // TODO: remove?
-    pingInterval?: number;
-    pongWaitTimeout?: number;
   }
 
-  export interface Events {
-    connect?: (ctx: ConnectContext) => void;
-    disconnect?: (ctx: DisconnectContext) => void;
-    close?: (ctx: CloseContext) => void;
-    publication?: (ctx: PublicationContext) => void;
-    join?: (ctx: JoinLeaveContext) => void;
-    leave?: (ctx: JoinLeaveContext) => void;
-    subscribe?: (ctx: SubscribeSuccessContext) => void;
-    unsubscribe?: (ctx: UnsubscribeContext) => void;
+  export interface StateContext {
+    newState: State;
+    oldState: State;
   }
 
   export interface ConnectContext {
     client: string;
     transport: string;
     data?: any;
+  }
+
+  export interface ConnectErrorContext {
+    code: number;
+    message: string;
+    closeEvent?: any;
   }
 
   export interface DisconnectContext {
@@ -98,13 +159,13 @@ declare namespace Centrifuge {
   }
 
   export interface CloseContext {
-    reason: string;
+    reason: CloseReason;
   }
 
-  export class Subscription extends EventEmitter {
+  export class Subscription extends TypedEventEmitter<SubscriptionEvents> {
     channel: string;
-    state(): "unsubscribed" | "subscribing" | "subscribed" | "closed";
-    subscribe(opts?: SubscribeOptions): void;
+    state: SubscriptionState;
+    subscribe(options?: SubscribeOptions): void;
     unsubscribe(): void;
     close(): void;
     cancel(): void;
@@ -114,19 +175,9 @@ declare namespace Centrifuge {
     presenceStats(): Promise<PresenceStatsResult>;
   }
 
-  export interface SubscriptionEvents {
-    publication?: (ctx: PublicationContext) => void;
-    join?: (ctx: JoinLeaveContext) => void;
-    leave?: (ctx: JoinLeaveContext) => void;
-    subscribe?: (ctx: SubscribeSuccessContext) => void;
-    error?: (ctx: SubscribeErrorContext) => void;
-    unsubscribe?: (ctx: UnsubscribeContext) => void;
-    close?: (ctx: SubscriptionCloseContext) => void;
-  }
-
   export interface SubscriptionCloseContext {
     channel: string;
-    reason: string;
+    reason: SubscriptionCloseReason;
   }
 
   export interface PublicationContext {
@@ -139,7 +190,7 @@ declare namespace Centrifuge {
 
   export interface ClientInfo {
     client: string;
-    user?: string;
+    user: string;
     connInfo?: any;
     chanInfo?: any;
   }
@@ -149,7 +200,13 @@ declare namespace Centrifuge {
     info: ClientInfo;
   }
 
-  export interface SubscribeSuccessContext {
+  export interface SubscriptionStateContext {
+    channel: string;
+    newState: SubscriptionState;
+    oldState: SubscriptionState;
+  }
+
+  export interface SubscribeContext {
     channel: string;
     streamPosition?: StreamPosition;
     data?: any;
@@ -157,7 +214,8 @@ declare namespace Centrifuge {
 
   export interface SubscribeErrorContext {
     channel: string;
-    error: string;
+    code: number;
+    message: string;
   }
 
   export interface UnsubscribeContext {
@@ -173,6 +231,10 @@ declare namespace Centrifuge {
   }
 
   export interface PublishResult {
+  }
+
+  export interface RpcResult {
+    data: any;
   }
 
   export interface PresenceResult {

@@ -1,17 +1,10 @@
 import EventEmitter from 'events';
-import Subscription from './subscription';
+import { subscriptionState, subscriptionCloseReason, Subscription } from './subscription';
 
 import { SockjsTransport } from './transport_sockjs';
 import { WebsocketTransport } from './transport_websocket';
 import { HttpStreamTransport } from './transport_http_stream';
 import { SseTransport } from './transport_sse';
-
-// Rework error objects.
-// Think more about disconnect/close reasons and contexts.
-// Rename presence->presence to presence->clients?
-// Typed EventEmitter? https://github.com/andywer/typed-emitter
-// Disconnect on unsubscribe command failure.
-// Decide on disconnect fire on first transport error. Maybe 'error' event + connected() promise?
 
 import {
   JsonEncoder,
@@ -28,82 +21,79 @@ import {
   ttlMilliseconds
 } from './utils';
 
-const states = {
-  // Initial state, state when connection explicitly disconnected.
-  DISCONNECTED: 'disconnected',
+const clientState = {
+  // Initial state, state when connection explicitly disconnected (paused).
+  Disconnected: 'disconnected',
   // State after connect, state after connection lost, after disconnect with reconnect code.
-  CONNECTING: 'connecting',
-  // State when connected and authentication passed (connect result received).
-  CONNECTED: 'connected',
+  Connecting: 'connecting',
+  // State when connected and authenticated (connect result received).
+  Connected: 'connected',
   // State when client closed. Close can be clean or caused by one of the close reasons.
-  CLOSED: 'closed'
+  Closed: 'closed'
 };
 
-const closeReasons = {
+const clientCloseReason = {
   // Connection closed by client, server-side subscription position state cleared.
   // Client-side subscriptions registry is untouched and client-side subscriptions
   // position state is not affected.
-  CLIENT: 'client',
+  Client: 'client',
   // Connection closed by server, all subscription position state kept.
-  SERVER: 'server',
+  Server: 'server',
   // Fatal error during connect or reconnect, all subscription position state kept.
-  CONNECT_FAILED: 'connect failed',
+  ConnectFailed: 'connect failed',
   // Fatal error during token refresh, all subscription position state kept.
-  REFRESH_FAILED: 'refresh failed',
+  RefreshFailed: 'refresh failed',
   // Access denied, all subscription position state kept.
-  UNAUTHORIZED: 'unauthorized',
+  Unauthorized: 'unauthorized',
   // Client was not able to recover server-side subscriptions state. Only server-side
   // subscriptions position state cleared at this point – client-side subscriptions
   // still keep their position state. If client closed due to this reason application
   // must decide what to do: connect from scratch (possibly load initial state from the
   // backend), or do nothing.
-  UNRECOVERABLE_POSITION: 'unrecoverable position'
+  UnrecoverablePosition: 'unrecoverable position'
 };
 
 export class Centrifuge extends EventEmitter {
 
   constructor(endpoint, options) {
     super();
+    this.state = clientState.Disconnected;
     this._endpoint = endpoint;
     this._transports = [];
     this._emulation = false;
     this._currentTransportIndex = 0;
     this._transportWasOpen = false;
-    this._lastDisconnectCode = -1;
     this._transport = null;
     this._transportClosed = true;
     this._encoder = null;
     this._decoder = null;
-    this._state = states.DISCONNECTED;
     this._reconnectTimeout = null;
-    this._commandId = 0;
+    this._reconnectAttempts = 0;
     this._client = null;
     this._session = '';
     this._node = '';
-    this._refreshRequired = false;
     this._subs = {};
     this._serverSubs = {};
+    this._commandId = 0;
     this._commands = [];
     this._isBatching = false;
+    this._refreshRequired = false;
     this._refreshTimeout = null;
-    this._pingTimeout = null;
-    this._pongTimeout = null;
-    this._reconnectAttempts = 0;
     this._callbacks = {};
     this._latency = null;
     this._latencyStart = null;
     this._token = null;
     this._dispatchPromise = Promise.resolve();
-    this._protocol = 'json';
     this._serverPing = 0;
-    this._sendPong = false;
     this._serverPingTimeout = null;
+    this._sendPong = false;
     this._promises = {};
     this._promiseId = 0;
+    this._debugEnabled = false;
     this._config = {
+      protocol: 'json',
       token: null,
       data: null,
-      protocol: 'json',
       debug: false,
       name: 'js',
       version: '',
@@ -133,21 +123,21 @@ export class Centrifuge extends EventEmitter {
       maxReconnectDelay: 20000,
       timeout: 5000,
       maxServerPingDelay: 10000,
-      pingInterval: 25000,
-      pongWaitTimeout: 10000,
       privateChannelPrefix: '$',
       getConnectionToken: null,
       getSubscriptionToken: null
     };
     this._configure(options);
+    if (this._debugEnabled) {
+      this.on('error', function (ctx) {
+        this._debug('connect error', ctx);
+      });
+    }
   }
 
-  state() {
-    return this._state;
-  }
-
-  // newSubscription allocates new Subscription to a channel. It throws
-  // if client already has channel subscription internally.
+  // newSubscription allocates new Subscription to a channel. Since server only allows
+  // one subscription per channel per client this method throws if client already has
+  // channel subscription in internal registry.
   newSubscription(channel, opts) {
     if (this.getSubscription(channel) !== null) {
       throw new Error('Subscription to a channel already exists');
@@ -163,13 +153,18 @@ export class Centrifuge extends EventEmitter {
     return this._getSub(channel);
   }
 
-  // connected returns a Promise which resolves upon client goes to CONNECTED
-  // state and rejects in case of client goes to DISCONNECTED or CLOSED state.
-  _connected() {
-    if (this._state === states.DISCONNECTED || this._state === states.CLOSED) {
-      return Promise.reject({ state: this._state });
+  subscriptions() {
+    return this._subs;
+  }
+
+  // connected returns a Promise which resolves upon client goes to Connected
+  // state and rejects in case of client goes to Disconnected or Closed state.
+  // Users can provide optional timeout in milliseconds.
+  connected(timeout) {
+    if (this.state === clientState.Disconnected || this.state === clientState.Closed) {
+      return Promise.reject({ state: this.state });
     };
-    if (this._state === states.CONNECTED) {
+    if (this.state === clientState.Connected) {
       return Promise.resolve();
     };
     return new Promise((res, rej) => {
@@ -177,10 +172,16 @@ export class Centrifuge extends EventEmitter {
         resolve: res,
         reject: rej
       };
+      if (timeout) {
+        ctx.timeout = setTimeout(function () {
+          rej({ 'code': 1, 'message': 'timeout' });
+        }, timeout);;
+      }
       this._promises[this._nextPromiseId()] = ctx;
     });
   }
 
+  // connect to a server.
   connect() {
     if (this._isConnected()) {
       this._debug('connect called when already connected');
@@ -193,14 +194,18 @@ export class Centrifuge extends EventEmitter {
     this._startConnecting();
   };
 
+  // disconnect from a server keeping all the subscription position state.
   disconnect() {
     this._disconnect(0, 'client disconnect', false, false, false);
   };
 
+  // close connection with clearing server-side subscription position state,
+  // client-side subscription position state is kept.
   close() {
-    this._close(closeReasons.CLIENT, true, false);
+    this._close(clientCloseReason.Client, true, false);
   };
 
+  // send asynchronous data to a server (without any response expected).
   send(data) {
     const cmd = {
       send: {
@@ -219,6 +224,7 @@ export class Centrifuge extends EventEmitter {
     });
   }
 
+  // rpc to a server - i.e. a call which wait for a response with data.
   rpc(method, data) {
     const cmd = {
       rpc: {
@@ -238,6 +244,7 @@ export class Centrifuge extends EventEmitter {
     });
   }
 
+  // publish data to a channel.
   publish(channel, data) {
     const cmd = {
       publish: {
@@ -255,6 +262,7 @@ export class Centrifuge extends EventEmitter {
     });
   }
 
+  // history of a channel.
   history(channel, options) {
     const cmd = {
       history: this._getHistoryRequest(channel, options)
@@ -280,6 +288,7 @@ export class Centrifuge extends EventEmitter {
     });
   }
 
+  // presence for a channel.
   presence(channel) {
     const cmd = {
       presence: {
@@ -298,6 +307,7 @@ export class Centrifuge extends EventEmitter {
     });
   }
 
+  // presence stats for a channel.
   presenceStats(channel) {
     const cmd = {
       'presence_stats': {
@@ -318,12 +328,14 @@ export class Centrifuge extends EventEmitter {
     });
   }
 
+  // start command batching until stopBatching called.
   startBatching() {
     // start collecting messages without sending them to Centrifuge until flush
     // method called
     this._isBatching = true;
   };
 
+  // stop batching commands and flush collected to the network.
   stopBatching() {
     this._isBatching = false;
     this._flush();
@@ -332,7 +344,10 @@ export class Centrifuge extends EventEmitter {
   _log() { log('info', arguments); };
 
   _debug() {
-    if (this._config.debug === true) { log('debug', arguments); }
+    if (!this._debugEnabled) {
+      return;
+    }
+    log('debug', arguments);
   };
 
   _setFormat(format) {
@@ -340,7 +355,7 @@ export class Centrifuge extends EventEmitter {
       return;
     }
     if (format === 'protobuf') {
-      throw new Error('not implemented by JSON only Centrifuge client – use client with Protobuf');
+      throw new Error('not implemented by JSON-only Centrifuge client, use client with Protobuf support');
     }
     this._encoder = new JsonEncoder();
     this._decoder = new JsonDecoder();
@@ -356,7 +371,6 @@ export class Centrifuge extends EventEmitter {
     }
 
     extend(this._config, options || {});
-    this._debug('centrifuge config', this._config);
 
     if (!this._endpoint) {
       throw new Error('endpoint configuration required');
@@ -373,22 +387,17 @@ export class Centrifuge extends EventEmitter {
     this._setFormat('json');
     if (this._config.protocol === 'protobuf') {
       this._setFormat('protobuf');
-      this._protocol = 'protobuf';
     }
 
+    if (this._config.debug === true ||
+      (typeof localStorage !== 'undefined' && localStorage.getItem('centrifuge.debug'))) {
+      this._debugEnabled = true;
+    }
+
+    this._debug('config', this._config);
+
     if (typeof this._endpoint === 'string') {
-      const isProtobufURL = startsWith(this._endpoint, 'ws') && this._endpoint.indexOf('format=protobuf') > -1;
-      if (isProtobufURL) {
-        // Using a URL is a legacy way to define a protocol type. At the moment explicit
-        // configuration option is a prefferred way.
-        this._setFormat('protobuf');
-        this._protocol = 'protobuf';
-      } else {
-        if (this._config.protocol !== '' && this._config.protocol !== 'json') {
-          throw new Error('unsupported protocol ' + this._config.protocol);
-        }
-        this._setFormat('json');
-      }
+      // Single address.
     } else if (typeof this._endpoint === 'object' && this._endpoint instanceof Array) {
       this._transports = this._endpoint;
       this._emulation = true;
@@ -408,37 +417,37 @@ export class Centrifuge extends EventEmitter {
   };
 
   _setState(newState) {
-    if (this._state !== newState) {
-      const prevState = this._state;
-      this._debug('state', this._state, '->', newState);
-      this._state = newState;
-      this.emit('state', { 'state': newState, 'prevState': prevState });
+    if (this.state !== newState) {
+      const oldState = this.state;
+      this._debug('state', this.state, '->', newState);
+      this.state = newState;
+      this.emit('state', { 'newState': newState, 'oldState': oldState });
       return true;
     }
     return false;
   };
 
   _isDisconnected() {
-    return this._state === states.DISCONNECTED;
+    return this.state === clientState.Disconnected;
   };
 
   _isConnecting() {
-    return this._state === states.CONNECTING;
+    return this.state === clientState.Connecting;
   };
 
   _isConnected() {
-    return this._state === states.CONNECTED;
+    return this.state === clientState.Connected;
   };
 
   _isClosed() {
-    return this._state === states.CLOSED;
+    return this.state === clientState.Closed;
   };
 
   _nextCommandId() {
     return ++this._commandId;
   };
 
-  _getRetryInterval() {
+  _getReconnectInterval() {
     const interval = backoff(this._reconnectAttempts, this._config.minReconnectDelay, this._config.maxReconnectDelay);
     this._reconnectAttempts += 1;
     return interval;
@@ -446,7 +455,7 @@ export class Centrifuge extends EventEmitter {
 
   _clearConnectedState(reconnect, clearServerSubs, clearClientSubs) {
     this._client = null;
-    this._stopPing();
+    this._clearServerPingTimeout();
 
     if (this._refreshTimeout) {
       clearTimeout(this._refreshTimeout);
@@ -698,7 +707,7 @@ export class Centrifuge extends EventEmitter {
 
     let transportName;
 
-    this._transport.initialize(this._protocol, {
+    this._transport.initialize(this._config.protocol, {
       onOpen: function () {
         transportName = self._transport.subName();
         self._debug(transportName, 'transport open');
@@ -711,24 +720,13 @@ export class Centrifuge extends EventEmitter {
 
         self._latencyStart = new Date();
 
-        self._call(connectCommand).then(resolveCtx => {
-          const result = resolveCtx.reply.connect;
-          self._connectResponse(result);
-          if (resolveCtx.next) {
-            resolveCtx.next();
-          }
-        }, rejectCtx => {
-          self._connectError(rejectCtx.error);
-          if (rejectCtx.next) {
-            rejectCtx.next();
-          }
-        });
+        self._sendConnect();
       },
       onError: function (e) {
         self._debug('transport level error', e);
       },
       onClose: function (closeEvent) {
-        self._debug(transportName, 'transport closed');
+        self._debug(self._transport.name(), 'transport closed');
         self._transportClosed = true;
 
         let reason = 'connection closed';
@@ -771,27 +769,53 @@ export class Centrifuge extends EventEmitter {
           code = -1;
         }
 
+        if (self._isConnecting()) {
+          self.emit('error', {
+            code: 0,
+            message: 'transport closed',
+            transport: self._transport.name(),
+            closeEvent: closeEvent
+          });
+        }
+
         self._disconnect(code, reason, needReconnect);
+        if (!needReconnect) {
+          self._close(clientCloseReason.Server, true, true);
+        }
 
         if (self._isConnecting()) {
-          let interval = self._getRetryInterval();
+          let delay = self._getReconnectDelay();
           if (isInitialHandshake) {
-            interval = 0;
+            delay = 0;
           }
-          self._debug('reconnect after ' + interval + ' milliseconds');
+          self._debug('reconnect after ' + delay + ' milliseconds');
           self._reconnectTimeout = setTimeout(() => {
             self._startReconnecting();
-          }, interval);
+          }, delay);
         }
       },
       onMessage: function (data) {
         self._dataReceived(data);
-      },
-      restartPing: function () {
-        self._restartPing();
       }
     }, this._encoder.encodeCommands([connectCommand]));
   };
+
+  _sendConnect() {
+    const connectCommand = this._constructConnectCommand();
+    const self = this;
+    this._call(connectCommand).then(resolveCtx => {
+      const result = resolveCtx.reply.connect;
+      self._connectResponse(result);
+      if (resolveCtx.next) {
+        resolveCtx.next();
+      }
+    }, rejectCtx => {
+      self._connectError(rejectCtx.error);
+      if (rejectCtx.next) {
+        rejectCtx.next();
+      }
+    });
+  }
 
   _startReconnecting() {
     if (!this._isConnecting()) {
@@ -809,7 +833,7 @@ export class Centrifuge extends EventEmitter {
         return;
       }
       if (!token) {
-        self._close(closeReasons.UNAUTHORIZED, true, true);
+        self._close(clientCloseReason.Unauthorized, true, true);
         return;
       }
       self._token = token;
@@ -819,11 +843,11 @@ export class Centrifuge extends EventEmitter {
       if (!self._isConnecting()) {
         return;
       }
-      const interval = self._getRetryInterval();
-      self._debug('error on connection token refresh, reconnect after ' + interval + ' milliseconds', e);
+      const delay = self._getReconnectDelay();
+      self._debug('error on connection token refresh, reconnect after ' + delay + ' milliseconds', e);
       self._reconnectTimeout = setTimeout(() => {
         self._startReconnecting();
-      }, interval);
+      }, delay);
     });
   }
 
@@ -835,7 +859,7 @@ export class Centrifuge extends EventEmitter {
       isInitialHandshake = true;
     }
     if (err.code === 112) { // unrecoverable position.
-      this._close(closeReasons.UNRECOVERABLE_POSITION, true, false);
+      this._close(clientCloseReason.UnrecoverablePosition, true, false);
       return;
     } else if (err.code === 109) { // token expired.
       this._refreshRequired = true;
@@ -844,6 +868,7 @@ export class Centrifuge extends EventEmitter {
     if (isInitialHandshake) {
       disconnectCode = -1;
     }
+    this.emit('error', err);
     if (err.code < 100 || err.temporary === true || err.code === 109) {
       this._disconnect(disconnectCode, 'connect error', true);
     } else {
@@ -921,7 +946,7 @@ export class Centrifuge extends EventEmitter {
     }
     return new Promise((res, rej) => {
       const timeout = setTimeout(function () {
-        rej({ 'code': 0, 'message': 'timeout' });
+        rej({ 'code': 1, 'message': 'timeout' });
       }, this._config.timeout);
       this._promises[this._nextPromiseId()] = {
         timeout: timeout,
@@ -950,8 +975,6 @@ export class Centrifuge extends EventEmitter {
   _dataReceived(data) {
     if (this._serverPing > 0) {
       this._waitServerPing();
-    } else {
-      this._restartPing();
     }
     const replies = this._decoder.decodeReplies(data);
     // we have to guarantee order of events in replies processing - i.e. start processing
@@ -1024,7 +1047,7 @@ export class Centrifuge extends EventEmitter {
 
   _startConnecting() {
     this._debug('start connecting');
-    this._setState(states.CONNECTING);
+    this._setState(clientState.Connecting);
     this._client = null;
     this._initializeTransport();
   }
@@ -1051,12 +1074,7 @@ export class Centrifuge extends EventEmitter {
 
     this._clearConnectedState(reconnect, clearServerSubs, clearClientSubs);
 
-    const isNewDisconnect = this._isConnecting &&
-      (this._lastDisconnectCode === -1 || (this._lastDisconnectCode !== code && code >= 3000));
-
-    const wasConnected = this._isConnected();
-
-    const needDisconnectEvent = wasConnected || isNewDisconnect;
+    const needDisconnectEvent = this._isConnected();
 
     const disconnectCtx = {
       code: code,
@@ -1066,16 +1084,14 @@ export class Centrifuge extends EventEmitter {
 
     this._debug('disconnect:', reason, shouldReconnect);
     if (shouldReconnect) {
-      this._setState(states.CONNECTING);
+      this._setState(clientState.Connecting);
       if (needDisconnectEvent) {
         this.emit('disconnect', disconnectCtx);
-        this._lastDisconnectCode = code;
       }
     } else {
-      this._setState(states.DISCONNECTED);
+      this._setState(clientState.Disconnected);
       if (needDisconnectEvent) {
         this.emit('disconnect', disconnectCtx);
-        this._close(closeReasons.SERVER, true, true);
       }
     }
 
@@ -1086,15 +1102,15 @@ export class Centrifuge extends EventEmitter {
   };
 
   _closeConnectFailed() {
-    this._close(closeReasons.CONNECT_FAILED, false, false);
+    this._close(clientCloseReason.ConnectFailed, false, false);
   }
 
   _closeRefreshFailed() {
-    this._close(closeReasons.REFRESH_FAILED, false, false);
+    this._close(clientCloseReason.RefreshFailed, false, false);
   }
 
   _closeUnauthorized() {
-    this._close(closeReasons.UNAUTHORIZED, false, false);
+    this._close(clientCloseReason.Unauthorized, false, false);
   }
 
   _getToken() {
@@ -1142,17 +1158,21 @@ export class Centrifuge extends EventEmitter {
       });
     }).catch(function (e) {
       self._debug('error refreshing connection token', e);
-      self._refreshTimeout = setTimeout(() => self._refresh(), backoff(0, 5000, 10000));
+      self._refreshTimeout = setTimeout(() => self._refresh(), self._getRefreshRetryDelay());
     });
   };
 
   _refreshError(err) {
     this._debug('refresh error', err);
     if (err.code < 100 || err.temporary === true) {
-      this._refreshTimeout = setTimeout(() => this._refresh(), backoff(0, 5000, 10000));
+      this._refreshTimeout = setTimeout(() => this._refresh(), this._getRefreshRetryDelay());
     } else {
       this._closeRefreshFailed();
     }
+  }
+
+  _getRefreshRetryDelay() {
+    return backoff(0, 5000, 10000);
   }
 
   _refreshResponse(result) {
@@ -1206,7 +1226,8 @@ export class Centrifuge extends EventEmitter {
             sub._token = token;
           }
           self._sendSubscribe(sub, token);
-        }).catch(function () {
+        }).catch(function (e) {
+          self._debug('private channel get token error', e);
           // TODO: make sure subscription properly retried later.
           sub._subscribeError({ code: 0, message: 'token error' });
         });
@@ -1293,7 +1314,7 @@ export class Centrifuge extends EventEmitter {
 
   _unsubscribe(sub) {
     if (!this._isConnected()) {
-      // No need to send unsubscribe command in disconnected state.
+      // No need to send unsubscribe command in disconnected clientState.
       return;
     }
     const req = {
@@ -1302,8 +1323,19 @@ export class Centrifuge extends EventEmitter {
     const cmd = {
       unsubscribe: req
     };
-    cmd.id = this._nextCommandId();
-    this._addCommand(cmd);
+
+    const self = this;
+
+    this._call(cmd).then(resolveCtx => {
+      if (resolveCtx.next) {
+        resolveCtx.next();
+      }
+    }, rejectCtx => {
+      if (rejectCtx.next) {
+        rejectCtx.next();
+      }
+      self._disconnect(13, 'unsubscribe error', true);
+    });
   };
 
   _getSub(channel) {
@@ -1333,7 +1365,7 @@ export class Centrifuge extends EventEmitter {
     }
 
     this._client = result.client;
-    this._setState(states.CONNECTED);
+    this._setState(clientState.Connected);
 
     if (this._refreshTimeout) {
       clearTimeout(this._refreshTimeout);
@@ -1378,7 +1410,6 @@ export class Centrifuge extends EventEmitter {
       this._waitServerPing();
     } else {
       this._serverPing = 0;
-      this._startClientPing();
     }
   };
 
@@ -1412,18 +1443,10 @@ export class Centrifuge extends EventEmitter {
     }
   };
 
-  _stopPing() {
+  _clearServerPingTimeout() {
     if (this._serverPingTimeout !== null) {
       clearTimeout(this._serverPingTimeout);
       this._serverPingTimeout = null;
-    }
-    if (this._pongTimeout !== null) {
-      clearTimeout(this._pongTimeout);
-      this._pongTimeout = null;
-    }
-    if (this._pingTimeout !== null) {
-      clearTimeout(this._pingTimeout);
-      this._pingTimeout = null;
     }
   };
 
@@ -1434,40 +1457,14 @@ export class Centrifuge extends EventEmitter {
     if (!this._isConnected()) {
       return;
     }
-    if (this._serverPingTimeout) {
-      clearTimeout(this._serverPingTimeout);
-    }
+    this._clearServerPingTimeout();
     this._serverPingTimeout = setTimeout(() => {
       if (!this._isConnected()) {
-        this._stopPing();
+        this._clearServerPingTimeout();
         return;
       }
       this._disconnect(11, 'no ping', true);
     }, this._serverPing + this._config.maxServerPingDelay);
-  };
-
-  _startClientPing() {
-    if (this._config.pingInterval <= 0) {
-      return;
-    }
-    if (!this._isConnected()) {
-      return;
-    }
-    this._pingTimeout = setTimeout(() => {
-      if (!this._isConnected()) {
-        this._stopPing();
-        return;
-      }
-      this._ping();
-      this._pongTimeout = setTimeout(() => {
-        this._disconnect(11, 'no ping', true);
-      }, this._config.pongWaitTimeout);
-    }, this._config.pingInterval);
-  };
-
-  _restartPing() {
-    this._stopPing();
-    this._startClientPing();
   };
 
   _subscribeError(channel, error) {
@@ -1591,9 +1588,9 @@ export class Centrifuge extends EventEmitter {
       sub._setUnsubscribed(false);
       sub.subscribe();
     } else if (unsub.type === 2) { // Unrecoverable.
-      sub._close(sub.CLOSE_UNRECOVERABLE_POSITION, true);
+      sub._close(sub.CLOSE_UnrecoverablePosition, true);
     } else {
-      sub._close(sub.CLOSE_SERVER, false);
+      sub._close(sub.CLOSE_Server, false);
     };
   };
 
@@ -1613,6 +1610,9 @@ export class Centrifuge extends EventEmitter {
       needReconnect = false;
     }
     this._disconnect(code, disconnect.reason, needReconnect);
+    if (!needReconnect) {
+      this._close(clientCloseReason.Server, true, true);
+    }
   };
 
   _getPublicationContext(channel, pub) {
@@ -1699,28 +1699,6 @@ export class Centrifuge extends EventEmitter {
     this._transportSendCommands(commands);
   };
 
-  _ping() {
-    const cmd = {};
-    this._call(cmd).then(resolveCtx => {
-      if (resolveCtx.next) {
-        resolveCtx.next();
-      }
-    }, rejectCtx => {
-      this._debug('ping error', rejectCtx.error);
-      if (rejectCtx.next) {
-        rejectCtx.next();
-      }
-    });
-  };
-
-  _pingResponse() {
-    if (!this._isConnected()) {
-      return;
-    }
-    this._stopPing();
-    this._startClientPing();
-  }
-
   _createErrorObject(code, message, temporary) {
     const errObject = {
       code: code,
@@ -1756,9 +1734,9 @@ export class Centrifuge extends EventEmitter {
 
   _close(reason, clearServerSubs, clearClientSubs) {
     this._disconnect(0, 'closing', false, clearServerSubs, clearClientSubs);
-    this._setState(states.CLOSED);
+    this._setState(clientState.Closed);
     this.emit('close', { reason: reason });
-    this._rejectPromises({ state: states.CLOSED });
+    this._rejectPromises({ state: clientState.Closed });
   }
 
   _nextPromiseId() {
@@ -1786,24 +1764,7 @@ export class Centrifuge extends EventEmitter {
   }
 }
 
-Centrifuge.STATE_DISCONNECTED =
-  Centrifuge.prototype.STATE_DISCONNECTED = states.DISCONNECTED;
-Centrifuge.STATE_CONNECTING =
-  Centrifuge.prototype.STATE_CONNECTING = states.CONNECTING;
-Centrifuge.STATE_CONNECTED =
-  Centrifuge.prototype.STATE_CONNECTED = states.CONNECTED;
-Centrifuge.STATE_CLOSED =
-  Centrifuge.prototype.STATE_CLOSED = states.CLOSED;
-
-Centrifuge.CLOSE_CLIENT =
-  Centrifuge.prototype.CLOSE_CLIENT = closeReasons.CLIENT;
-Centrifuge.CLOSE_SERVER =
-  Centrifuge.prototype.CLOSE_SERVER = closeReasons.SERVER;
-Centrifuge.CLOSE_CONNECT_FAILED =
-  Centrifuge.prototype.CLOSE_CONNECT_FAILED = closeReasons.CONNECT_FAILED;
-Centrifuge.CLOSE_REFRESH_FAILED =
-  Centrifuge.prototype.CLOSE_REFRESH_FAILED = closeReasons.REFRESH_FAILED;
-Centrifuge.CLOSE_UNAUTHORIZED =
-  Centrifuge.prototype.CLOSE_UNAUTHORIZED = closeReasons.UNAUTHORIZED;
-Centrifuge.CLOSE_UNRECOVERABLE_POSITION =
-  Centrifuge.prototype.CLOSE_UNRECOVERABLE_POSITION = closeReasons.UNRECOVERABLE_POSITION;
+Centrifuge.State = clientState;
+Centrifuge.CloseReason = clientCloseReason;
+Centrifuge.SubscriptionState = subscriptionState;
+Centrifuge.SubscriptionCloseReason = subscriptionCloseReason;

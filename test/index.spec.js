@@ -13,22 +13,22 @@ describe('Given an instance of my Centrifuge', () => {
   before(() => {
     centrifugeJSON = new CentrifugeJSON('ws://localhost:8000/connection/websocket');
   });
-  describe('when I need the url', () => {
-    it('should return the url', () => {
-      expect(centrifugeJSON._url).to.be.equal('ws://localhost:8000/connection/websocket');
+  describe('when I need the endpoint', () => {
+    it('should return the endpoint', () => {
+      expect(centrifugeJSON._endpoint).to.be.equal('ws://localhost:8000/connection/websocket');
     });
   });
 });
 
 describe('Given an instance of my Centrifuge', () => {
   before(() => {
-    centrifugeJSON = new CentrifugeJSON('ws://localhost:8000/connection/websocket');
+    centrifugeJSON = new CentrifugeJSON('ws://localhost:8000/connection/websocket', { timeout: 200 });
   });
   describe('when I try to send message in disconnected state', () => {
     it('send rejects a promise', () => {
       return centrifugeJSON.send({})
         .then(function () { throw new Error('was not supposed to succeed'); })
-        .catch(function (m) { expect(m.code).to.equal(0); });
+        .catch(function (m) { expect(m.code).to.equal(1); });
     });
   });
 });
@@ -37,9 +37,9 @@ describe('Given an instance of my Centrifuge with Protobuf', () => {
   before(() => {
     centrifugeProtobuf = new CentrifugeProtobuf('ws://localhost:8000/connection/websocket');
   });
-  describe('when I need the url', () => {
-    it('should return the url', () => {
-      expect(centrifugeProtobuf._url).to.be.equal('ws://localhost:8000/connection/websocket');
+  describe('when I need the endpoint', () => {
+    it('should return the endpoint', () => {
+      expect(centrifugeProtobuf._endpoint).to.be.equal('ws://localhost:8000/connection/websocket');
     });
   });
 });

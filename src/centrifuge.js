@@ -224,7 +224,7 @@ export class Centrifuge extends EventEmitter {
     });
   }
 
-  // rpc to a server - i.e. a call which wait for a response with data.
+  // rpc to a server - i.e. a call which waits for a response with data.
   rpc(method, data) {
     const cmd = {
       rpc: {

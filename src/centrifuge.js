@@ -1,5 +1,5 @@
 import EventEmitter from 'events';
-import { subscriptionState, subscriptionCloseReason, Subscription } from './subscription';
+import { subscriptionState, subscriptionFailReason, Subscription } from './subscription';
 
 import { SockjsTransport } from './transport_sockjs';
 import { WebsocketTransport } from './transport_websocket';
@@ -21,36 +21,54 @@ import {
   ttlMilliseconds
 } from './utils';
 
+// If the client state becomes Failed, all channels will become Failed.
+// If the client state becomes Closed, all channels will become Unsubscribed.
 const clientState = {
   // Initial state, state when connection explicitly disconnected (paused).
+  // Possible next states:
+  // * connecting
+  // * closed
   Disconnected: 'disconnected',
-  // State after connect, state after connection lost, after disconnect with reconnect code.
+  // State after connect call, state after connection lost, after disconnect with
+  // reconnect code.
+  // Possible next states:
+  // * connected
+  // * failed
+  // * closed
   Connecting: 'connecting',
   // State when connected and authenticated (connect result received).
+  // Possible next states:
+  // * disconnected
+  // * connecting
   Connected: 'connected',
-  // State when client closed. Close can be clean or caused by one of the close reasons.
+  // Failed state happens when client can't proceed with a connection due to some reason.
+  // Client always disconnected before going into this state.
+  // Possible next states:
+  // * connecting
+  // * closed
+  Failed: 'failed',
+  // State when client explicitly closed by user. Upon close server-side subscriptions
+  // unsubscribe evens called. Client-side subscriptions go to unsubscribed state.
+  // Client always disconnected before going into this state.
+  // Possible next states: no
   Closed: 'closed'
 };
 
-const clientCloseReason = {
-  // Connection closed by client, server-side subscription position state cleared.
-  // Client-side subscriptions registry is untouched and client-side subscriptions
-  // position state is not affected.
-  Client: 'client',
-  // Connection closed by server, all subscription position state kept.
+const clientFailReason = {
+  // Connection forced to fail by a server advice.
   Server: 'server',
-  // Fatal error during connect or reconnect, all subscription position state kept.
+  // Fatal error during connect or reconnect.
   ConnectFailed: 'connect failed',
-  // Fatal error during token refresh, all subscription position state kept.
+  // Fatal error during token refresh.
   RefreshFailed: 'refresh failed',
-  // Access denied, all subscription position state kept.
+  // Access denied (empty connection token).
   Unauthorized: 'unauthorized',
-  // Client was not able to recover server-side subscriptions state. Only server-side
+  // Client was not able to recover server-side subscriptions state. Server-side
   // subscriptions position state cleared at this point – client-side subscriptions
   // still keep their position state. If client closed due to this reason application
   // must decide what to do: connect from scratch (possibly load initial state from the
   // backend), or do nothing.
-  UnrecoverablePosition: 'unrecoverable position'
+  Unrecoverable: 'unrecoverable'
 };
 
 export class Centrifuge extends EventEmitter {
@@ -76,7 +94,7 @@ export class Centrifuge extends EventEmitter {
     this._serverSubs = {};
     this._commandId = 0;
     this._commands = [];
-    this._isBatching = false;
+    this._batching = false;
     this._refreshRequired = false;
     this._refreshTimeout = null;
     this._callbacks = {};
@@ -129,8 +147,17 @@ export class Centrifuge extends EventEmitter {
     };
     this._configure(options);
     if (this._debugEnabled) {
+      this.on('state', function (ctx) {
+        this._debug('state', ctx.oldState, '->', ctx.newState);
+      });
       this.on('error', function (ctx) {
-        this._debug('connect error', ctx);
+        this._debug('client error', ctx);
+      });
+      this.on('fail', function (ctx) {
+        this._debug('client failed', ctx);
+      });
+      this.on('close', function (ctx) {
+        this._debug('client closed', ctx);
       });
     }
   }
@@ -151,6 +178,18 @@ export class Centrifuge extends EventEmitter {
   // registry or null.
   getSubscription(channel) {
     return this._getSub(channel);
+  }
+
+  // removeSubscription allows removing Subcription from the internal registry.
+  // Subscrption must be in unsubscribed or failed state.
+  removeSubscription(sub) {
+    if (!sub) {
+      return;
+    }
+    if (sub.state !== subscriptionState.Unsubscribed || sub.state !== subscriptionState.Failed) {
+      throw new Error('Subscription must be in unsubscribed or failed state to be removed');
+    }
+    this._removeSubscription(sub);
   }
 
   subscriptions() {
@@ -196,13 +235,14 @@ export class Centrifuge extends EventEmitter {
 
   // disconnect from a server keeping all the subscription position state.
   disconnect() {
-    this._disconnect(0, 'client disconnect', false, false, false);
+    this._disconnect(0, 'client', false);
   };
 
-  // close connection with clearing server-side subscription position state,
+  // close client will move all subscriptions to unsubscribed state.
+  // with clearing server-side subscription position state,
   // client-side subscription position state is kept.
   close() {
-    this._close(clientCloseReason.Client, true, false);
+    this._close();
   };
 
   // send asynchronous data to a server (without any response expected).
@@ -332,12 +372,12 @@ export class Centrifuge extends EventEmitter {
   startBatching() {
     // start collecting messages without sending them to Centrifuge until flush
     // method called
-    this._isBatching = true;
+    this._batching = true;
   };
 
   // stop batching commands and flush collected to the network.
   stopBatching() {
-    this._isBatching = false;
+    this._batching = false;
     this._flush();
   };
 
@@ -419,7 +459,6 @@ export class Centrifuge extends EventEmitter {
   _setState(newState) {
     if (this.state !== newState) {
       const oldState = this.state;
-      this._debug('state', this.state, '->', newState);
       this.state = newState;
       this.emit('state', { 'newState': newState, 'oldState': oldState });
       return true;
@@ -439,6 +478,10 @@ export class Centrifuge extends EventEmitter {
     return this.state === clientState.Connected;
   };
 
+  _isFailed() {
+    return this.state === clientState.Failed;
+  };
+
   _isClosed() {
     return this.state === clientState.Closed;
   };
@@ -447,13 +490,13 @@ export class Centrifuge extends EventEmitter {
     return ++this._commandId;
   };
 
-  _getReconnectInterval() {
-    const interval = backoff(this._reconnectAttempts, this._config.minReconnectDelay, this._config.maxReconnectDelay);
+  _getReconnectDelay() {
+    const delay = backoff(this._reconnectAttempts, this._config.minReconnectDelay, this._config.maxReconnectDelay);
     this._reconnectAttempts += 1;
-    return interval;
+    return delay;
   };
 
-  _clearConnectedState(reconnect, clearServerSubs, clearClientSubs) {
+  _clearConnectedState(reconnect) {
     this._client = null;
     this._clearServerPingTimeout();
 
@@ -476,44 +519,33 @@ export class Centrifuge extends EventEmitter {
         if (!errback) {
           continue;
         }
-        errback({ error: this._createErrorObject(0, 'disconnected') });
+        errback({ error: this._createErrorObject(3, 'disconnected') });
       }
     }
     this._callbacks = {};
 
-    // fire unsubscribe events.
-    for (const channel in this._subs) {
-      if (!this._subs.hasOwnProperty(channel)) {
-        continue;
-      }
-      const sub = this._subs[channel];
-      const needUnsubscribe = sub._isSubscribed();
-      if (sub._isSubscribed()) {
-        if (clearClientSubs) {
-          sub._setUnsubscribed();
+    if (this._isConnected()) {
+      // fire unsubscribe events.
+      for (const channel in this._subs) {
+        if (!this._subs.hasOwnProperty(channel)) {
+          continue;
+        }
+        const sub = this._subs[channel];
+        if (reconnect) {
+          if (sub._isSubscribed()) {
+            sub._setSubscribing();
+          }
         } else {
-          sub._setSubscribing();
+          sub._setUnsubscribed();
         }
       }
-      if (needUnsubscribe) {
-        sub._triggerUnsubscribe();
-      }
-    }
 
-    // fire unsubscribe events for server side subs.
-    if (this._isConnected()) {
+      // fire unsubscribe events for server side subs.
       for (const channel in this._serverSubs) {
         if (this._serverSubs.hasOwnProperty(channel)) {
           this.emit('unsubscribe', { channel: channel });
         }
       }
-    }
-
-    if (clearClientSubs) {
-      this._subs = {};
-    }
-    if (clearServerSubs) {
-      this._serverSubs = {};
     }
   };
 
@@ -706,9 +738,11 @@ export class Centrifuge extends EventEmitter {
     const self = this;
 
     let transportName;
+    let wasOpen = false;
 
     this._transport.initialize(this._config.protocol, {
       onOpen: function () {
+        wasOpen = true;
         transportName = self._transport.subName();
         self._debug(transportName, 'transport open');
         self._transportWasOpen = true;
@@ -769,19 +803,19 @@ export class Centrifuge extends EventEmitter {
           code = -1;
         }
 
-        if (self._isConnecting()) {
+        if (self._isConnecting() && !wasOpen) {
           self.emit('error', {
-            code: 0,
-            message: 'transport closed',
-            transport: self._transport.name(),
-            closeEvent: closeEvent
+            type: 'transport',
+            error: {
+              code: 0,
+              message: 'transport closed'
+            },
+            closeEvent: closeEvent,
+            transport: self._transport.name()
           });
         }
 
         self._disconnect(code, reason, needReconnect);
-        if (!needReconnect) {
-          self._close(clientCloseReason.Server, true, true);
-        }
 
         if (self._isConnecting()) {
           let delay = self._getReconnectDelay();
@@ -833,7 +867,7 @@ export class Centrifuge extends EventEmitter {
         return;
       }
       if (!token) {
-        self._close(clientCloseReason.Unauthorized, true, true);
+        self._failUnauthorized(clientFailReason.Unauthorized);
         return;
       }
       self._token = token;
@@ -843,6 +877,13 @@ export class Centrifuge extends EventEmitter {
       if (!self._isConnecting()) {
         return;
       }
+      this.emit('error', {
+        'type': 'connectToken',
+        'error': {
+          code: 3,
+          message: e.toString()
+        }
+      });
       const delay = self._getReconnectDelay();
       self._debug('error on connection token refresh, reconnect after ' + delay + ' milliseconds', e);
       self._reconnectTimeout = setTimeout(() => {
@@ -852,27 +893,25 @@ export class Centrifuge extends EventEmitter {
   }
 
   _connectError(err) {
-    let isInitialHandshake = false;
-    if (err.code < 100 &&
-      this._emulation && !this._transportWasOpen &&
-      this._currentTransportIndex < this._transports.length) {
-      isInitialHandshake = true;
-    }
+    this.emit('error', {
+      'type': 'connect',
+      'error': err
+    });
     if (err.code === 112) { // unrecoverable position.
-      this._close(clientCloseReason.UnrecoverablePosition, true, false);
+      this._failUnrecoverable();
       return;
     } else if (err.code === 109) { // token expired.
+      // next connect attempt will try to refresh token.
       this._refreshRequired = true;
     }
-    let disconnectCode = 6;
-    if (isInitialHandshake) {
-      disconnectCode = -1;
-    }
-    this.emit('error', err);
     if (err.code < 100 || err.temporary === true || err.code === 109) {
-      this._disconnect(disconnectCode, 'connect error', true);
+      // Not yet connected, closing transport is enough.
+      if (this._transport && !this._transportClosed) {
+        this._transportClosed = true;
+        this._transport.close();
+      }
     } else {
-      this._closeConnectFailed();
+      this._connectFailed();
     }
   }
 
@@ -1052,19 +1091,14 @@ export class Centrifuge extends EventEmitter {
     this._initializeTransport();
   }
 
-  _disconnect(code, reason, shouldReconnect, clearServerSubs, clearClientSubs) {
-    const reconnect = shouldReconnect || false;
-
-    if (this._isDisconnected() || this._isClosed()) {
-      if (!reconnect) {
-        this._clearConnectedState(reconnect, clearServerSubs, clearClientSubs);
-      }
+  _disconnect(code, reason, reconnect) {
+    if (this._isDisconnected() || this._isClosed() || this._isFailed()) {
       return;
     }
 
     if (code === -1) {
       // Happens during initial handshake when we are trying different transports.
-      this._clearConnectedState(reconnect, clearServerSubs, clearClientSubs);
+      this._clearConnectedState(reconnect);
       if (this._transport && !this._transportClosed) {
         this._transportClosed = true;
         this._transport.close();
@@ -1072,7 +1106,7 @@ export class Centrifuge extends EventEmitter {
       return;
     }
 
-    this._clearConnectedState(reconnect, clearServerSubs, clearClientSubs);
+    this._clearConnectedState(reconnect);
 
     const needDisconnectEvent = this._isConnected();
 
@@ -1082,8 +1116,8 @@ export class Centrifuge extends EventEmitter {
       reconnect: reconnect
     };
 
-    this._debug('disconnect:', reason, shouldReconnect);
-    if (shouldReconnect) {
+    this._debug('disconnect:', reason, reconnect);
+    if (reconnect) {
       this._setState(clientState.Connecting);
       if (needDisconnectEvent) {
         this.emit('disconnect', disconnectCtx);
@@ -1099,18 +1133,31 @@ export class Centrifuge extends EventEmitter {
       this._transportClosed = true;
       this._transport.close();
     }
+
+    if (!reconnect && code >= 3000) {
+      this._failServer(code);
+    }
   };
 
-  _closeConnectFailed() {
-    this._close(clientCloseReason.ConnectFailed, false, false);
+  _connectFailed() {
+    this._fail(clientFailReason.ConnectFailed, 5);
   }
 
-  _closeRefreshFailed() {
-    this._close(clientCloseReason.RefreshFailed, false, false);
+  _refreshFailed() {
+    this._fail(clientFailReason.RefreshFailed, 6);
   }
 
-  _closeUnauthorized() {
-    this._close(clientCloseReason.Unauthorized, false, false);
+  _failUnauthorized() {
+    this._fail(clientFailReason.Unauthorized, 7);
+  }
+
+  _failUnrecoverable() {
+    this._serverSubs = {};
+    this._fail(clientFailReason.Unrecoverable, 8);
+  }
+
+  _failServer(disconnectCode) {
+    this._fail(clientFailReason.Server, disconnectCode);
   }
 
   _getToken() {
@@ -1130,7 +1177,7 @@ export class Centrifuge extends EventEmitter {
         return;
       }
       if (!token) {
-        self._closeUnauthorized();
+        self._failUnauthorized();
         return;
       }
       self._token = token;
@@ -1157,17 +1204,26 @@ export class Centrifuge extends EventEmitter {
         }
       });
     }).catch(function (e) {
-      self._debug('error refreshing connection token', e);
+      this.emit('error', {
+        type: 'refreshToken',
+        error: {
+          code: 4,
+          message: e.toString()
+        }
+      });
       self._refreshTimeout = setTimeout(() => self._refresh(), self._getRefreshRetryDelay());
     });
   };
 
   _refreshError(err) {
-    this._debug('refresh error', err);
+    this.emit('error', {
+      type: 'refresh',
+      error: err
+    });
     if (err.code < 100 || err.temporary === true) {
       this._refreshTimeout = setTimeout(() => this._refresh(), this._getRefreshRetryDelay());
     } else {
-      this._closeRefreshFailed();
+      this._refreshFailed();
     }
   }
 
@@ -1218,7 +1274,7 @@ export class Centrifuge extends EventEmitter {
             return;
           }
           if (!token) {
-            sub._closeUnauthorized();
+            sub._failUnauthorized();
             return;
           }
           if (!sub._tokenUniquePerConnection) {
@@ -1227,9 +1283,18 @@ export class Centrifuge extends EventEmitter {
           }
           self._sendSubscribe(sub, token);
         }).catch(function (e) {
-          self._debug('private channel get token error', e);
-          // TODO: make sure subscription properly retried later.
-          sub._subscribeError({ code: 0, message: 'token error' });
+          if (!sub._isSubscribing()) {
+            return;
+          }
+          sub.emit('error', {
+            type: 'subscribeToken',
+            channel: sub.channel,
+            error: {
+              code: 5,
+              message: e.toString()
+            }
+          });
+          sub._scheduleResubscribe();
         });
       }
     } else {
@@ -1254,11 +1319,11 @@ export class Centrifuge extends EventEmitter {
 
     if (sub._needRecover()) {
       req.recover = true;
-      const offset = sub._getLastOffset();
+      const offset = sub._getOffset();
       if (offset) {
         req.offset = offset;
       }
-      const epoch = sub._getLastEpoch();
+      const epoch = sub._getEpoch();
       if (epoch) {
         req.epoch = epoch;
       }
@@ -1309,6 +1374,9 @@ export class Centrifuge extends EventEmitter {
   }
 
   _removeSubscription(sub) {
+    if (sub === null) {
+      return;
+    }
     delete this._subs[sub.channel];
   }
 
@@ -1484,8 +1552,12 @@ export class Centrifuge extends EventEmitter {
 
   _getSubscribeContext(channel, result) {
     const ctx = {
-      channel: channel
+      channel: channel,
+      recovered: false
     };
+    if (result.recovered) {
+      ctx.recovered = true;
+    }
     let positioned = false;
     if ('positioned' in result) {
       positioned = result.positioned;
@@ -1585,12 +1657,14 @@ export class Centrifuge extends EventEmitter {
     }
 
     if (unsub.type === 1) { // Insufficient.
-      sub._setUnsubscribed(false);
+      if (sub._isSubscribed()) {
+        sub._setSubscribing();
+      }
       sub.subscribe();
     } else if (unsub.type === 2) { // Unrecoverable.
-      sub._close(sub.CLOSE_UnrecoverablePosition, true);
+      sub._failUnrecoverable();
     } else {
-      sub._close(sub.CLOSE_Server, false);
+      sub.unsubscribe();
     };
   };
 
@@ -1610,9 +1684,6 @@ export class Centrifuge extends EventEmitter {
       needReconnect = false;
     }
     this._disconnect(code, disconnect.reason, needReconnect);
-    if (!needReconnect) {
-      this._close(clientCloseReason.Server, true, true);
-    }
   };
 
   _getPublicationContext(channel, pub) {
@@ -1725,17 +1796,37 @@ export class Centrifuge extends EventEmitter {
   };
 
   _addCommand(command) {
-    if (this._isBatching) {
+    if (this._batching) {
       this._commands.push(command);
     } else {
       this._transportSendCommands([command]);
     }
   };
 
-  _close(reason, clearServerSubs, clearClientSubs) {
-    this._disconnect(0, 'closing', false, clearServerSubs, clearClientSubs);
+  _fail(reason, disconnectCode) {
+    if (this._isFailed() || this._isClosed()) {
+      return;
+    }
+    this._disconnect(disconnectCode, 'failed', false);
+    this._setState(clientState.Failed);
+    for (const channel in this._subs) {
+      if (!this._subs.hasOwnProperty(channel)) {
+        continue;
+      }
+      const sub = this._subs[channel];
+      sub._clientFailed();
+    }
+    this.emit('fail', { reason: reason });
+    this._rejectPromises({ state: clientState.Failed });
+  }
+
+  _close() {
+    if (this._isClosed()) {
+      return;
+    }
+    this._disconnect(0, 'closed', false);
     this._setState(clientState.Closed);
-    this.emit('close', { reason: reason });
+    this.emit('close', {});
     this._rejectPromises({ state: clientState.Closed });
   }
 
@@ -1765,6 +1856,6 @@ export class Centrifuge extends EventEmitter {
 }
 
 Centrifuge.State = clientState;
-Centrifuge.CloseReason = clientCloseReason;
+Centrifuge.FailReason = clientFailReason;
 Centrifuge.SubscriptionState = subscriptionState;
-Centrifuge.SubscriptionCloseReason = subscriptionCloseReason;
+Centrifuge.SubscriptionFailReason = subscriptionFailReason;

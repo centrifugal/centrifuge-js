@@ -3,19 +3,20 @@ import EventEmitter from 'events';
 import { ttlMilliseconds, backoff } from './utils';
 
 export const subscriptionState = {
+  // Unsubscribed is an initial state, also state when unsubscribe called from client,
+  // also state when server called unsubscribe for a channel.
   Unsubscribed: 'unsubscribed',
+  // Subscribing to a channel in progress.
   Subscribing: 'subscribing',
+  // Sussessfully subscribed to a channel.
   Subscribed: 'subscribed',
-  Closed: 'closed'
+  // Failed to subscribe.
+  Failed: 'failed'
 };
 
-export const subscriptionCloseReason = {
-  // Subscription closed by client, subscription position state cleared.
-  // Subscription still kept in client's registry until explicitly cancelled by client.
-  Client: 'client',
-  // Subscription closed by server, subscription position state kept.
-  // Subscription still kept in client's registry until explicitly cancelled by client.
-  Server: 'server',
+export const subscriptionFailReason = {
+  // Subscription failure caused by client connection failure.
+  ClientFailed: 'client failed',
   // Fatal error during subscribe or resubscribe, subscription position state kept.
   // Subscription still kept in client's registry until explicitly cancelled by client.
   SubscribeFailed: 'subscribe failed',
@@ -29,7 +30,7 @@ export const subscriptionCloseReason = {
   // position state is cleared. If subscription closed due to this reason application
   // must decide what to do: subscribe from scratch, possibly load initial state from
   // the backend, or cancel subscription.
-  UnrecoverablePosition: 'unrecoverable position'
+  Unrecoverable: 'unrecoverable'
 };
 
 export class Subscription extends EventEmitter {
@@ -56,15 +57,19 @@ export class Subscription extends EventEmitter {
     this._setOptions(options);
     if (this._centrifuge._debugEnabled) {
       this.on('error', function (ctx) {
-        this._centrifuge._debug('subscribe error', channel, ctx);
+        this._centrifuge._debug('subscription error', channel, ctx);
+      });
+      this.on('fail', function (ctx) {
+        this._centrifuge._debug('subscription failed', channel, ctx);
       });
     }
   }
 
   // subscribed returns a Promise which resolves upon subscription goes to Subscribed
-  // state and rejects in case of subscription goes to Unsubscribed or Closed state.
+  // state and rejects in case of subscription goes to Unsubscribed or Failed state.
+  // Optional timeout can be passed.
   subscribed(timeout) {
-    if (this.state === subscriptionState.Unsubscribed || this.state === subscriptionState.Closed) {
+    if (this.state === subscriptionState.Unsubscribed || this.state === subscriptionState.Failed) {
       return Promise.reject({ code: 0, message: this.state });
     };
     if (this.state === subscriptionState.Subscribed) {
@@ -99,18 +104,23 @@ export class Subscription extends EventEmitter {
     if (this._isSubscribed()) {
       this._centrifuge._unsubscribe(this);
     }
-    this._setUnsubscribed(false);
+    this._setUnsubscribed();
     this._recover = true;
   };
 
-  // close subscription, position state removed.
-  close() {
-    this._close(subscriptionCloseReason.Client, true);
-  };
+  // reset allows clearing subscription position state.
+  reset() {
+    this._clearPositionState();
+  }
 
   // cancel Subscription – remove it from client's registry and
   // remove link to a client. Subscription is unusable after this.
+  // Subscription must be in Unsubscribed or Failed state vefore calling
+  // this.
   cancel() {
+    if (this.state !== subscriptionState.Unsubscribed && this.state !== subscriptionState.Failed) {
+      throw new Error('Subscription must be unsubscribed or failed to cancel');
+    }
     this._centrifuge._removeSubscription(this);
     this._centrifuge = undefined;
   };
@@ -188,10 +198,6 @@ export class Subscription extends EventEmitter {
     return this._isInState(subscriptionState.Subscribed);
   }
 
-  _isClosed() {
-    return this._isInState(subscriptionState.Closed);
-  }
-
   _isInState(state) {
     return this.state === state;
   }
@@ -208,8 +214,12 @@ export class Subscription extends EventEmitter {
   };
 
   _setSubscribing() {
+    const needUnsubscribe = this._isSubscribed();
     this._clearRefreshTimeout();
     this._setState(subscriptionState.Subscribing);
+    if (needUnsubscribe) {
+      this._triggerUnsubscribe();
+    }
   };
 
   _handlePublication(pub) {
@@ -282,36 +292,41 @@ export class Subscription extends EventEmitter {
     }
   }
 
+  _scheduleResubscribe() {
+    const self = this;
+    const delay = this._getResubscribeDelay();
+    this._resubscribeTimeout = setTimeout(function () {
+      if (self._isSubscribing()) {
+        self.subscribe();
+      }
+    }, delay);
+  }
+
   _subscribeError(err) {
     if (!this._isSubscribing()) {
       return;
     }
 
     const errContext = {
-      'channel': this.channel,
-      'code': err.code,
-      'message': err.message
+      channel: this.channel,
+      type: 'subscribe',
+      error: err
     };
+
+    this.emit('error', errContext);
 
     if (err.code === 112) { // Unrecoverable position error.
       // In this case we assume that application should load initial state
       // and subscribe from scratch.
-      this._close(subscriptionCloseReason.UnrecoverablePosition, true);
+      this._clearPositionState();
+      this._failUnrecoverable();
     } else if (err.code < 100 || err.code === 109 || err.temporary === true) {
       if (err.code === 109) { // Token expired error.
         this._token = null;
       }
-      this.emit('error', errContext);
-      const self = this;
-      const delay = this._getResubscribeDelay();
-      this._resubscribeTimeout = setTimeout(function () {
-        if (self._isSubscribing()) {
-          self.subscribe();
-        }
-      }, delay);
+      this._scheduleResubscribe();
     } else {
-      this.emit('error', errContext);
-      this._close(subscriptionCloseReason.SubscribeFailed, true);
+      this._subscribeFailed();
     }
   };
 
@@ -331,37 +346,28 @@ export class Subscription extends EventEmitter {
     this._epoch = null;
   }
 
-  _setUnsubscribed(clearPositionState) {
+  _setUnsubscribed() {
     this._resubscribeAttempts = 0;
     this._clearResubscribeTimeout();
     this._clearRefreshTimeout();
     if (this._isUnsubscribed()) {
       return;
     }
-    const needTrigger = this._isSubscribed();
+    const triggerUnsubscribeEvent = this._isSubscribed();
     this._setState(subscriptionState.Unsubscribed);
-    if (clearPositionState === true) {
-      this._clearPositionState();
-    }
-    if (needTrigger) {
+    if (triggerUnsubscribeEvent) {
       this._triggerUnsubscribe();
     }
     this._rejectPromises({ code: 0, message: subscriptionState.Unsubscribed });
   };
 
-  _close(reason, clearPositionState) {
-    if (this._isClosed()) {
-      if (clearPositionState) {
-        this._clearPositionState();
-      }
-      return;
-    }
+  _fail(reason) {
     if (this._isSubscribed()) {
       this._centrifuge._unsubscribe(this);
     }
-    this._setUnsubscribed(clearPositionState);
-    this._setState(subscriptionState.Closed);
-    this.emit('close', { channel: this.channel, reason: reason });
+    this._setUnsubscribed();
+    this._setState(subscriptionState.Failed);
+    this.emit('fail', { channel: this.channel, reason: reason });
   }
 
   _setOptions(options) {
@@ -393,7 +399,7 @@ export class Subscription extends EventEmitter {
     }
   }
 
-  _getLastOffset() {
+  _getOffset() {
     const lastOffset = this._offset;
     if (lastOffset !== null) {
       return lastOffset;
@@ -401,7 +407,7 @@ export class Subscription extends EventEmitter {
     return 0;
   };
 
-  _getLastEpoch() {
+  _getEpoch() {
     const lastEpoch = this._epoch;
     if (lastEpoch !== null) {
       return lastEpoch;
@@ -452,7 +458,7 @@ export class Subscription extends EventEmitter {
         return;
       }
       if (!token) {
-        self._closeUnauthorized();
+        self._failUnauthorized();
         return;
       }
       if (!self._tokenUniquePerConnection) {
@@ -478,22 +484,16 @@ export class Subscription extends EventEmitter {
         }
       });
     }).catch(function (e) {
-      self._centrifuge._debug('error refreshing subscription token', e);
+      self.emit('error', {
+        type: 'refreshToken',
+        channel: self.channel,
+        error: {
+          code: 6,
+          message: e.toString()
+        }
+      });
       self._refreshTimeout = setTimeout(() => self._refresh(), self._getRefreshRetryDelay());
     });
-  }
-
-  _getRefreshRetryDelay() {
-    return backoff(0, 10000, 20000);
-  }
-
-  _refreshError(err) {
-    this._centrifuge._debug('subscription refresh error', this.channel, err);
-    if (err.code < 100 || err.temporary === true) {
-      this._refreshTimeout = setTimeout(() => this._refresh(), this._getRefreshRetryDelay());
-    } else {
-      this._closeRefreshFailed();
-    }
   }
 
   _refreshResponse(result) {
@@ -504,11 +504,40 @@ export class Subscription extends EventEmitter {
     }
   };
 
-  _closeUnauthorized() {
-    this._close(subscriptionCloseReason.Unauthorized, false);
+  _refreshError(err) {
+    this.emit('error', {
+      type: 'refresh',
+      channel: this.channel,
+      error: err
+    });
+    if (err.code < 100 || err.temporary === true) {
+      this._refreshTimeout = setTimeout(() => this._refresh(), this._getRefreshRetryDelay());
+    } else {
+      this._refreshFailed();
+    }
+  }
+
+  _getRefreshRetryDelay() {
+    return backoff(0, 10000, 20000);
+  }
+
+  _clientFailed() {
+    this._fail(subscriptionFailReason.ClientFailed);
+  }
+
+  _subscribeFailed() {
+    this._fail(subscriptionFailReason.SubscribeFailed);
+  }
+
+  _refreshFailed() {
+    this._fail(subscriptionFailReason.RefreshFailed);
   };
 
-  _closeRefreshFailed() {
-    this._close(subscriptionCloseReason.RefreshFailed, false);
+  _failUnauthorized() {
+    this._fail(subscriptionFailReason.Unauthorized);
   };
+
+  _failUnrecoverable() {
+    this._fail(subscriptionFailReason.Unrecoverable, true);
+  }
 }

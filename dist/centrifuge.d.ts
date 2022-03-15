@@ -26,6 +26,7 @@ declare class Centrifuge extends TypedEventEmitter<Centrifuge.Events> {
   constructor(endpoint: string | Array<Centrifuge.TransportEndpoint>, options?: Centrifuge.Options);
   newSubscription(channel: string, options?: Centrifuge.SubscriptionOptions): Centrifuge.Subscription;
   getSubscription(channel: string): Centrifuge.Subscription | null;
+  removeSubscription(sub: Centrifuge.Subscription): void;
   connect(): void;
   disconnect(): void;
   close(): void;

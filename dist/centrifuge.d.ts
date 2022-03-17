@@ -49,7 +49,6 @@ declare namespace Centrifuge {
     Connecting = "connecting",
     Connected = "connected",
     Failed = "failed",
-    Closed = "closed",
   }
 
   enum FailReason {
@@ -65,7 +64,6 @@ declare namespace Centrifuge {
     connect: (ctx: ConnectContext) => void;
     disconnect: (ctx: DisconnectContext) => void;
     fail: (ctx: FailContext) => void;
-    close: (ctx: CloseContext) => void;
     error: (ctx: ConnectErrorContext) => void;
 
     // Server-side subscription events.

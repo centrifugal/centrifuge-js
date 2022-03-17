@@ -45,13 +45,7 @@ const clientState = {
   // Client always disconnected before going into this state.
   // Possible next states:
   // * connecting
-  // * closed
-  Failed: 'failed',
-  // State when client explicitly closed by user. Upon close server-side subscriptions
-  // unsubscribe evens called. Client-side subscriptions go to unsubscribed state.
-  // Client always disconnected before going into this state.
-  // Possible next states: no
-  Closed: 'closed'
+  Failed: 'failed'
 };
 
 const clientFailReason = {
@@ -200,10 +194,10 @@ export class Centrifuge extends EventEmitter {
   }
 
   // connected returns a Promise which resolves upon client goes to Connected
-  // state and rejects in case of client goes to Disconnected or Closed state.
+  // state and rejects in case of client goes to Disconnected or Failed state.
   // Users can provide optional timeout in milliseconds.
   connected(timeout) {
-    if (this.state === clientState.Disconnected || this.state === clientState.Closed) {
+    if (this.state === clientState.Disconnected || this.state === clientState.Failed) {
       return Promise.reject({ state: this.state });
     };
     if (this.state === clientState.Connected) {
@@ -239,13 +233,6 @@ export class Centrifuge extends EventEmitter {
   // disconnect from a server keeping all the subscription position state.
   disconnect() {
     this._disconnect(0, 'client', false);
-  };
-
-  // close client will move all subscriptions to unsubscribed state.
-  // with clearing server-side subscription position state,
-  // client-side subscription position state is kept.
-  close() {
-    this._close();
   };
 
   // send asynchronous data to a server (without any response from a server
@@ -485,10 +472,6 @@ export class Centrifuge extends EventEmitter {
 
   _isFailed() {
     return this.state === clientState.Failed;
-  };
-
-  _isClosed() {
-    return this.state === clientState.Closed;
   };
 
   _nextCommandId() {
@@ -1819,16 +1802,6 @@ export class Centrifuge extends EventEmitter {
     }
     this.emit('fail', { reason: reason });
     this._rejectPromises({ state: clientState.Failed });
-  }
-
-  _close() {
-    if (this._isClosed()) {
-      return;
-    }
-    this._disconnect(0, 'closed', false);
-    this._setState(clientState.Closed);
-    this.emit('close', {});
-    this._rejectPromises({ state: clientState.Closed });
   }
 
   _nextPromiseId() {

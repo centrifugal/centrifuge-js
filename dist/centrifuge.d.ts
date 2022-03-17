@@ -27,6 +27,7 @@ declare class Centrifuge extends TypedEventEmitter<Centrifuge.Events> {
   newSubscription(channel: string, options?: Centrifuge.SubscriptionOptions): Centrifuge.Subscription;
   getSubscription(channel: string): Centrifuge.Subscription | null;
   removeSubscription(sub: Centrifuge.Subscription): void;
+  subscriptions(): Map<string, Centrifuge.Subscription>;
   connect(): void;
   disconnect(): void;
   close(): void;
@@ -46,24 +47,27 @@ declare namespace Centrifuge {
     Disconnected = "disconnected",
     Connecting = "connecting",
     Connected = "connected",
+    Failed = "failed",
     Closed = "closed",
   }
 
-  enum CloseReason {
-    Client = "client",
+  enum FailReason {
     Server = "server",
     ConnectFailed = "connect failed",
     RefreshFailed = "refresh failed",
     Unauthorized = "unauthorized",
-    UnrecoverablePosition = "unrecoverable position",
+    Unrecoverable = "unrecoverable",
   }
 
   type Events = {
     state: (ctx: StateContext) => void;
     connect: (ctx: ConnectContext) => void;
-    error: (ctx: ConnectErrorContext) => void;
     disconnect: (ctx: DisconnectContext) => void;
+    fail: (ctx: FailContext) => void;
     close: (ctx: CloseContext) => void;
+    error: (ctx: ConnectErrorContext) => void;
+
+    // Server-side subscription events.
     publication: (ctx: PublicationContext) => void;
     join: (ctx: JoinLeaveContext) => void;
     leave: (ctx: JoinLeaveContext) => void;
@@ -75,24 +79,23 @@ declare namespace Centrifuge {
     Unsubscribed = "unsubscribed",
     Subscribing = "subscribing",
     Subscribed = "subscribed",
-    Closed = "closed",
+    Failed = "failed"
   }
 
-  enum SubscriptionCloseReason {
-    Client = "client",
-    Server = "server",
-    ConnectFailed = "connect failed",
+  enum SubscriptionFailReason {
+    ClientFailed = "client failed",
+    SubscribeFailed = "subscribe failed",
     RefreshFailed = "refresh failed",
     Unauthorized = "unauthorized",
-    UnrecoverablePosition = "unrecoverable position",
+    Unrecoverable = "unrecoverable",
   }
 
   type SubscriptionEvents = {
     state: (ctx: SubscriptionStateContext) => void;
     subscribe: (ctx: SubscribeContext) => void;
-    error: (ctx: SubscribeErrorContext) => void;
     unsubscribe: (ctx: UnsubscribeContext) => void;
-    close: (ctx: SubscriptionCloseContext) => void;
+    fail: (ctx: SubscriptionFailContext) => void;
+    error: (ctx: SubscribeErrorContext) => void;
     publication: (ctx: PublicationContext) => void;
     join: (ctx: JoinLeaveContext) => void;
     leave: (ctx: JoinLeaveContext) => void;
@@ -153,8 +156,11 @@ declare namespace Centrifuge {
     reconnect: boolean;
   }
 
+  export interface FailContext {
+    reason: FailReason;
+  }
+
   export interface CloseContext {
-    reason: CloseReason;
   }
 
   export class Subscription extends TypedEventEmitter<SubscriptionEvents> {
@@ -162,7 +168,6 @@ declare namespace Centrifuge {
     state: SubscriptionState;
     subscribe(options?: SubscribeOptions): void;
     unsubscribe(): void;
-    close(): void;
     cancel(): void;
     publish(data: any): Promise<PublishResult>;
     history(options?: HistoryOptions): Promise<HistoryResult>;
@@ -170,9 +175,9 @@ declare namespace Centrifuge {
     presenceStats(): Promise<PresenceStatsResult>;
   }
 
-  export interface SubscriptionCloseContext {
+  export interface SubscriptionFailContext {
     channel: string;
-    reason: SubscriptionCloseReason;
+    reason: SubscriptionFailReason;
   }
 
   export interface PublicationContext {
@@ -233,11 +238,7 @@ declare namespace Centrifuge {
   }
 
   export interface PresenceResult {
-    clients: ClientsMap;
-  }
-
-  export interface ClientsMap {
-    [key: string]: ClientInfo;
+    clients: Map<string, ClientInfo>;
   }
 
   export interface PresenceStatsResult {

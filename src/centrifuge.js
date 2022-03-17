@@ -145,7 +145,9 @@ export class Centrifuge extends EventEmitter {
       getConnectionToken: null,
       getSubscriptionToken: null
     };
+
     this._configure(options);
+
     if (this._debugEnabled) {
       this.on('state', function (ctx) {
         this._debug('state', ctx.oldState, '->', ctx.newState);
@@ -192,6 +194,7 @@ export class Centrifuge extends EventEmitter {
     this._removeSubscription(sub);
   }
 
+  // Get a map with all current client-side subscriptions.
   subscriptions() {
     return this._subs;
   }
@@ -245,7 +248,8 @@ export class Centrifuge extends EventEmitter {
     this._close();
   };
 
-  // send asynchronous data to a server (without any response expected).
+  // send asynchronous data to a server (without any response from a server
+  // expected, see rpc method if you need response).
   send(data) {
     const cmd = {
       send: {
@@ -368,14 +372,15 @@ export class Centrifuge extends EventEmitter {
     });
   }
 
-  // start command batching until stopBatching called.
+  // start command batching (collect into temporary buffer without sending to a server)
+  // until stopBatching called.
   startBatching() {
     // start collecting messages without sending them to Centrifuge until flush
     // method called
     this._batching = true;
   };
 
-  // stop batching commands and flush collected to the network.
+  // stop batching commands and flush collected commands to the network (all in one request/frame).
   stopBatching() {
     this._batching = false;
     this._flush();
@@ -957,26 +962,26 @@ export class Centrifuge extends EventEmitter {
   }
 
   _getHistoryRequest(channel, options) {
-    let params = {
+    let req = {
       channel: channel
     };
     if (options !== undefined) {
       if (options.since) {
-        params['since'] = {
-          'offset': options.since.offset
+        req.since = {
+          offset: options.since.offset
         };
         if (options.since.epoch) {
-          params['since']['epoch'] = options.since.epoch;
+          req.since.epoch = options.since.epoch;
         }
       };
       if (options.limit !== undefined) {
-        params['limit'] = options.limit;
+        req.limit = options.limit;
       }
       if (options.reverse === true) {
-        params['reverse'] = true;
+        req.reverse = true;
       }
     };
-    return params;
+    return req;
   }
 
   _methodCall() {
@@ -1016,7 +1021,7 @@ export class Centrifuge extends EventEmitter {
       this._waitServerPing();
     }
     const replies = this._decoder.decodeReplies(data);
-    // we have to guarantee order of events in replies processing - i.e. start processing
+    // We have to guarantee order of events in replies processing - i.e. start processing
     // next reply only when we finished processing of current one. Without syncing things in
     // this way we could get wrong publication events order as reply promises resolve
     // on next loop tick so for loop continues before we finished emitting all reply events.
@@ -1251,7 +1256,7 @@ export class Centrifuge extends EventEmitter {
     }
 
     if (!this._isConnected()) {
-      // subscribe will be called later.
+      // subscribe will be called later automatically.
       return;
     }
 
@@ -1329,9 +1334,7 @@ export class Centrifuge extends EventEmitter {
       }
     }
 
-    const cmd = {
-      subscribe: req
-    };
+    const cmd = { subscribe: req };
 
     this._call(cmd).then(resolveCtx => {
       const result = resolveCtx.reply.subscribe;
@@ -1355,9 +1358,7 @@ export class Centrifuge extends EventEmitter {
       channel: sub.channel,
       token: token
     };
-    const cmd = {
-      'sub_refresh': req
-    };
+    const cmd = { 'sub_refresh': req };
 
     this._call(cmd).then(resolveCtx => {
       const result = resolveCtx.reply.sub_refresh;
@@ -1388,9 +1389,7 @@ export class Centrifuge extends EventEmitter {
     const req = {
       channel: sub.channel
     };
-    const cmd = {
-      unsubscribe: req
-    };
+    const cmd = { unsubscribe: req };
 
     const self = this;
 
@@ -1483,31 +1482,34 @@ export class Centrifuge extends EventEmitter {
 
   _processServerSubs(subs) {
     for (const channel in subs) {
-      if (subs.hasOwnProperty(channel)) {
-        const sub = subs[channel];
-        const subCtx = this._getSubscribeContext(channel, sub);
-        this.emit('subscribe', subCtx);
+      if (!subs.hasOwnProperty(channel)) {
+        continue;
       }
+      const sub = subs[channel];
+      const subCtx = this._getSubscribeContext(channel, sub);
+      this.emit('subscribe', subCtx);
     }
+
     for (const channel in subs) {
-      if (subs.hasOwnProperty(channel)) {
-        const sub = subs[channel];
-        if (sub.recovered) {
-          let pubs = sub.publications;
-          if (pubs && pubs.length > 0) {
-            for (let i in pubs) {
-              if (pubs.hasOwnProperty(i)) {
-                this._handlePublication(channel, pubs[i]);
-              }
+      if (!subs.hasOwnProperty(channel)) {
+        continue;
+      }
+      const sub = subs[channel];
+      if (sub.recovered) {
+        let pubs = sub.publications;
+        if (pubs && pubs.length > 0) {
+          for (let i in pubs) {
+            if (pubs.hasOwnProperty(i)) {
+              this._handlePublication(channel, pubs[i]);
             }
           }
         }
-        this._serverSubs[channel] = {
-          'offset': sub.offset,
-          'epoch': sub.epoch,
-          'recoverable': sub.recoverable
-        };
       }
+      this._serverSubs[channel] = {
+        'offset': sub.offset,
+        'epoch': sub.epoch,
+        'recoverable': sub.recoverable || false
+      };
     }
   };
 
@@ -1528,7 +1530,6 @@ export class Centrifuge extends EventEmitter {
     this._clearServerPingTimeout();
     this._serverPingTimeout = setTimeout(() => {
       if (!this._isConnected()) {
-        this._clearServerPingTimeout();
         return;
       }
       this._disconnect(11, 'no ping', true);
@@ -1672,7 +1673,7 @@ export class Centrifuge extends EventEmitter {
     this._serverSubs[channel] = {
       'offset': sub.offset,
       'epoch': sub.epoch,
-      'recoverable': sub.recoverable
+      'recoverable': sub.recoverable || false
     };
     this.emit('subscribe', this._getSubscribeContext(channel, sub));
   };
@@ -1688,8 +1689,8 @@ export class Centrifuge extends EventEmitter {
 
   _getPublicationContext(channel, pub) {
     const ctx = {
-      'channel': channel,
-      'data': pub.data
+      channel: channel,
+      data: pub.data
     };
     if (pub.offset) {
       ctx.offset = pub.offset;

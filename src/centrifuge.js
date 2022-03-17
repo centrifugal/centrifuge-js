@@ -27,14 +27,13 @@ const clientState = {
   // Initial state, state when connection explicitly disconnected (paused).
   // Possible next states:
   // * connecting
-  // * closed
+  // * failed
   Disconnected: 'disconnected',
   // State after connect call, state after connection lost, after disconnect with
   // reconnect code.
   // Possible next states:
   // * connected
   // * failed
-  // * closed
   Connecting: 'connecting',
   // State when connected and authenticated (connect result received).
   // Possible next states:
@@ -53,7 +52,7 @@ const clientFailReason = {
   Server: 'server',
   // Fatal error during connect or reconnect.
   ConnectFailed: 'connect failed',
-  // Fatal error during token refresh.
+  // Fatal error during connection token refresh.
   RefreshFailed: 'refresh failed',
   // Access denied (empty connection token).
   Unauthorized: 'unauthorized',
@@ -144,16 +143,13 @@ export class Centrifuge extends EventEmitter {
 
     if (this._debugEnabled) {
       this.on('state', function (ctx) {
-        this._debug('state', ctx.oldState, '->', ctx.newState);
+        this._debug('client state', ctx.oldState, '->', ctx.newState);
       });
       this.on('error', function (ctx) {
         this._debug('client error', ctx);
       });
       this.on('fail', function (ctx) {
         this._debug('client failed', ctx);
-      });
-      this.on('close', function (ctx) {
-        this._debug('client closed', ctx);
       });
     }
   }

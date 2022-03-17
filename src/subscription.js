@@ -17,17 +17,14 @@ export const subscriptionState = {
 export const subscriptionFailReason = {
   // Subscription failure caused by client connection failure.
   ClientFailed: 'client failed',
-  // Fatal error during subscribe or resubscribe, subscription position state kept.
-  // Subscription still kept in client's registry until explicitly cancelled by client.
+  // Fatal error during subscribe or resubscribe.
   SubscribeFailed: 'subscribe failed',
-  // Fatal error during subscribe or resubscribe, subscription position state kept.
-  // Subscription still kept in client's registry until explicitly cancelled by client.
+  // Fatal error during subscription token refresh.
   RefreshFailed: 'refresh failed',
-  // Access denied, subscription position state kept.
-  // Subscription still kept in client's registry until explicitly cancelled by client.
+  // Access denied signaled by the application (empty subscription token).
   Unauthorized: 'unauthorized',
   // Client was not able to recover subscription state automatically, subscription
-  // position state is cleared. If subscription closed due to this reason application
+  // position state is cleared. If subscription failed due to this reason application
   // must decide what to do: subscribe from scratch, possibly load initial state from
   // the backend, or cancel subscription.
   Unrecoverable: 'unrecoverable'
@@ -56,6 +53,9 @@ export class Subscription extends EventEmitter {
     this._refreshTimeout = null;
     this._setOptions(options);
     if (this._centrifuge._debugEnabled) {
+      this.on('state', function (ctx) {
+        this._centrifuge._debug('subscription state', channel, ctx.oldState, '->', ctx.newState);
+      });
       this.on('error', function (ctx) {
         this._centrifuge._debug('subscription error', channel, ctx);
       });
@@ -107,11 +107,6 @@ export class Subscription extends EventEmitter {
     this._setUnsubscribed();
     this._recover = true;
   };
-
-  // reset allows clearing subscription position state.
-  reset() {
-    this._clearPositionState();
-  }
 
   // cancel Subscription – remove it from client's registry and
   // remove link to a client. Subscription is unusable after this.
@@ -205,7 +200,6 @@ export class Subscription extends EventEmitter {
   _setState(newState) {
     if (this.state !== newState) {
       const oldState = this.state;
-      this._centrifuge._debug('subscription state', this.channel, this.state, '->', newState);
       this.state = newState;
       this.emit('state', { 'newState': newState, 'oldState': oldState, channel: this.channel });
       return true;
@@ -400,17 +394,17 @@ export class Subscription extends EventEmitter {
   }
 
   _getOffset() {
-    const lastOffset = this._offset;
-    if (lastOffset !== null) {
-      return lastOffset;
+    const offset = this._offset;
+    if (offset !== null) {
+      return offset;
     }
     return 0;
   };
 
   _getEpoch() {
-    const lastEpoch = this._epoch;
-    if (lastEpoch !== null) {
-      return lastEpoch;
+    const epoch = this._epoch;
+    if (epoch !== null) {
+      return epoch;
     }
     return '';
   };
@@ -440,7 +434,7 @@ export class Subscription extends EventEmitter {
     if (getToken === null) {
       getToken = this._centrifuge._config.getSubscriptionToken;
       if (getToken === null) {
-        throw new Error('provide a function to get private channel subscription token');
+        throw new Error('provide a function to get channel subscription token');
       }
     }
     return getToken(ctx);

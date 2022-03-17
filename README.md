@@ -2,7 +2,8 @@
 
 This client can connect to [Centrifuge](https://github.com/centrifugal/centrifuge) server (and [Centrifugo](https://github.com/centrifugal/centrifugo) in particular) using pure WebSocket or [SockJS](https://github.com/sockjs/sockjs-client) polyfill transports from web browser or NodeJS environments.
 
-* [Install and quick start](#install-and-quick-start)
+* [Install](#install)
+* [Quick start](#quick-start)
 * [Connection Token](#connection-token)
 * [Configuration parameters](#configuration-parameters)
 * [Client API](#client-api)
@@ -17,21 +18,15 @@ This client can connect to [Centrifuge](https://github.com/centrifugal/centrifug
 * [Subscribe since known position](#subscribe-since-known-position)
 * [Feature Matrix](#feature-matrix)
 
-## Install and quick start
+## Install
 
-The simplest way to use `centrifuge-js` client is download it from `dist` folder and include into your web page using `script` tag:
-
-```html
-<script src="centrifuge.js"></script>
-```
-
-Or using cdn (replace `X` to concrete version number):
+Using cdn (replace `X` to concrete version number):
 
 ```html
-<script src="https://cdn.jsdelivr.net/gh/centrifugal/centrifuge-js@2.X.X/dist/centrifuge.min.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/centrifugal/centrifuge-js@3.X.X/dist/centrifuge.min.js"></script>
 ```
 
-Client is also available via `npm`:
+Also available via `npm`:
 
 ```bash
 npm install centrifuge
@@ -43,21 +38,35 @@ And then:
 var Centrifuge = require("centrifuge");
 ```
 
-Default library works with JSON only, see `Protobuf support` section to see how to import client with Protobuf support.
-
-As soon as you installed and imported `centrifuge-js` you can create new `Centrifuge` object instance, subscribe on channel and call `.connect()` method to make actual connection to server:
+Or:
 
 ```javascript
-var centrifuge = new Centrifuge('ws://centrifuge.example.com/connection/websocket');
+import Centrifuge from 'centrifuge';
+```
 
-centrifuge.subscribe("news", function(message) {
-    console.log(message);
+By default, library works with JSON only, see `Protobuf support` section to see how to import client with Protobuf support.
+
+## Quick start
+
+As soon as you installed `centrifuge-js` you can create new `Centrifuge` object instance, subscribe on a channel and call `.connect()` method to make actual connection to server:
+
+```javascript
+const centrifuge = new Centrifuge('ws://centrifuge.example.com/connection/websocket');
+
+const sub = centrifuge.newSubscription('news');
+
+sub.on('publication', function(ctx) {
+    console.log(ctx);
 });
 
 centrifuge.connect();
 ```
 
-In example above we initialize `Centrifuge` object instance, subscribe on channel `news`, print all new messages received from channel `news` into console and actually make connection to server. And that's all for basic real-time messaging on client side!
+In example above we initialize `Centrifuge` object instance, subscribe on channel `news`, print all new publications received from `news` into console and actually make connection to a server.
+
+**`Centrifuge` object and `Subscription` object are both instances of [EventEmitter](https://nodejs.org/api/events.html#events_class_eventemitter).** Below we will describe events that can be exposed in detail.
+
+## Using SockJS
 
 If you want to use SockJS you must also import SockJS client before centrifuge.js
 
@@ -66,7 +75,7 @@ If you want to use SockJS you must also import SockJS client before centrifuge.j
 <script src="centrifuge.js" type="text/javascript"></script>
 ```
 
-Or provide it explicitly:
+Or provide it explicitly as a dependency:
 
 ```javascript
 var Centrifuge = require("centrifuge");
@@ -77,31 +86,125 @@ var centrifuge = new Centrifuge("http://localhost:8000/connection/sockjs", {
 })
 ```
 
-**`Centrifuge` object is an instance of [EventEmitter](https://nodejs.org/api/events.html#events_class_eventemitter).**
+## Bidirectional emulation
+
+SockJS transport is pretty old and comes with overhead and sticky sessions requirement for distributed backend. In most cases these days clients are fine to use WebSocket protocol for messaging. There are rare connection problems though which are caused by corporate firewalls/proxy software. To deal with users behind these proxies Centrifuge offers its own bidirectional emulation layer. This layer uses two HTTP-based transports (and can even use SockJS as the third option). And this layer does not require using sticky sessions on the backend. 
+
+We believe that bidirectional emulation is only necessary for browsers.
+
+Bidirectional emulation must be configured on a server-side, then in Javascript you can slightly change client initialization and point it to a list of endpoints and transports you want to use:
+
+```javascript
+const transports = [
+    {
+        transport: 'websocket',
+        endpoint: 'ws://example.com/connection/websocket'
+    },
+    {
+        transport: 'http_stream',
+        endpoint: 'http://example.com/connection/http_stream'
+    },
+    {
+        transport: 'sse',
+        endpoint: 'http://example.com/connection/sse'
+    }
+];
+const centrifuge = new Centrifuge(transports);
+centrifuge.connect()
+```
+
+In this case, client will try transports one by one during the initial handshake. Until success. Then will only use a successful transport during reconnects.
+
+Supported transports are:
+
+* `websocket`
+* `http_stream`
+* `sse`
+* `sockjs`
 
 ## Connection Token
 
-If you are connecting to Centrifugo **you must also provide connection token**:
+Depending on authentication scheme used by a server you may also want to provide connection token:
 
 ```javascript
-var centrifuge = new Centrifuge('ws://centrifuge.example.com/connection/websocket');
-
-centrifuge.setToken(YOUR_TOKEN);
-
-centrifuge.subscribe("news", function(message) {
-    console.log(message);
+const centrifuge = new Centrifuge('ws://centrifuge.example.com/connection/websocket', {
+    token: "USER_TOKEN"
 });
-
-centrifuge.connect();
 ```
 
-This token contains information about user of your application that tries to connect. See [server authentication documentation](https://centrifugal.github.io/centrifugo/server/authentication/) for details on how to generate it on your backend side.
+In case of Centrifugo on a server side this may be a JSON Web Token - see [authentication documentation](https://centrifugal.github.io/centrifugo/server/authentication/) for details on how to generate it on your backend side.
 
-**Connection JWT comes to Javascript code from application backend - i.e. must be generated on backend**.
+**Connection token must come to the frontend from application backend - i.e. must be generated on the backend side**. The way to deliver token to the application frontend is up to the developer. Usually you can pass it in template rendering context or issue a separate call to request a connection token from the backend.
+
+## Client states
+
+TODO
+
+## Client events
+
+TODO
+
+## Subscription states
+
+TODO
+
+## Subscription events
+
+TODO
 
 ## Configuration parameters
 
-Let's also look at optional configuration parameters available when initializing `Centrifuge` object instance.
+Let's look at available configuration parameters when initializing `Centrifuge` object instance.
+
+#### debug
+
+`debug` is a boolean option which is `false` by default. When enabled lots of various debug
+messages will be logged into javascript console. Mostly useful for development or
+troubleshooting.
+
+#### minReconnectDelay
+
+When client disconnected from a server it will automatically try to reconnect using a backoff algorithm with jitter. `minReconnectDelay` option sets minimal interval value in milliseconds before first reconnect attempt. Default is `500` milliseconds.
+
+#### maxReconnectDelay
+
+`maxReconnectDelay` sets an upper reconnect delay value. Default is `20000` milliseconds - i.e. clients won't have delays between reconnect attempts which are larger than 20 seconds.
+
+#### maxServerPingDelay
+
+TODO
+
+#### protocol
+
+TODO
+
+#### token
+
+TODO
+
+#### data
+
+TODO
+
+#### name
+
+TODO
+
+#### version
+
+TODO
+
+#### timeout
+
+TODO
+
+#### getConnectionToken
+
+TODO
+
+#### getSubscriptionToken
+
+TODO
 
 #### websocket
 
@@ -126,7 +229,7 @@ var centrifuge = new Centrifuge('https://centrifuge.example.com/connection/sockj
 
 In case of using SockJS additional configuration parameter can be used - `sockjsTransports`.
 
-It defines allowed SockJS transports and by default equals
+It defines allowed SockJS transports.
 
 ```javascript
 var centrifuge = new Centrifuge(
@@ -147,83 +250,10 @@ var centrifuge = new Centrifuge(
 });
 ```
 
-i.e. all possible SockJS transports.
-
-So to say `centrifuge-js` to use only `websocket` and `xhr-streaming` transports when
-using SockJS endpoint:
-
-```javascript
-var centrifuge = new Centrifuge('http://centrifuge.example.com/connection/sockjs', {
-    sockjsTransports: ["websocket", "xhr-streaming"]
-});
-```
-
 #### sockjsServer
 
 `sockjsServer` is SockJS specific option to set server name into connection urls instead
 of random chars. See SockJS docs for more info.
-
-#### debug
-
-`debug` is a boolean option which is `false` by default. When enabled lots of various debug
-messages will be logged into javascript console. Mostly useful for development or
-troubleshooting.
-
-#### minRetry
-
-When client disconnected from server it will automatically try to reconnect using exponential
-backoff algorithm to get interval between reconnect attempts which value grows exponentially.
-`minRetry` option sets minimal interval value in milliseconds. Default is `1000` milliseconds.
-
-#### maxRetry
-
-`maxRetry` sets upper interval value limit when reconnecting. Or your clients will never reconnect
-as exponent grows very fast:) Default is `20000` milliseconds.
-
-#### subscribeEndpoint
-
-`subscribeEndpoint` is url to use when sending auth request for authorizing subscription on private channel. By default `/centrifuge/subscribe`. See also useful related options:
-
-* `subscribeHeaders` - map of headers to send with subscribe request (default `{}`)
-* `subscribeParams` - map of params to include in subscribe endpoint url (default `{}`)
-
-#### refreshEndpoint
-
-`refreshEndpoint` is url to use when refreshing client connection parameters when connection check mechanism enabled in Centrifugo configuration. See also related options:
-
-* `refreshHeaders` - map of headers to send with refresh request (default `{}`)
-* `refreshParams` - map of params to include in refresh url (default `{}`)
-* `refreshData` - send extra data in body (as JSON payload) when sending AJAX POST refresh request.
-* `refreshAttempts` - limit amount of refresh requests before giving up (by default `null` - unlimited)
-* `onRefreshFailed` - callback function called when `refreshAttempts` came to the end. By default `null` - i.e. nothing called.
-* `onRefresh` - optional callback to fully control refresh behaviour. This function will ve called as soon as connection token needs to be refreshed. After this it's up to application to get new token in a way it needs. As soon as application got token it must call callback passed as argument with proper data - see example below. *In this case `centrifuge-js` will not send automatic AJAX requests to your application*.
-
-Here is an example of using custom `onRefresh` function:
-
-```javascript
-centrifuge = new Centrifuge("http://localhost:8000/connection/websocket", {
-    debug: true,
-    onRefresh: function(ctx, cb) {
-        let promise = fetch("http://localhost:3000/centrifuge/refresh", {
-            method: "POST"
-        }).then(function(resp) {
-            resp.json().then(function(data) {
-                // Data must be like {"status": 200, "data": {"token": "JWT"}} - see 
-                // type definitions in dist folder. Note that setting status to 200 is
-                // required at moment. Any other status will result in refresh process
-                // failure so client will eventually be disconnected by server.
-                cb(data);
-            });
-        });
-    }
-});
-```
-
-#### disableWithCredentials
-
-`disableWithCredentials` is a reverse boolean option for control
-[withCredentials](https://developer.mozilla.org/en-US/docs/Web/API/XMLHttpRequest/withCredentials)
-property of XMLHttpRequest. By default `false` - i.e. `withCredentials` property is enabled.
 
 ## Client API
 
@@ -403,7 +433,7 @@ Allows setting custom data sent to a server in first message. This data will be 
 centrifuge.setConnectData({"any": "key"});
 ```
 
-## Subscriptions
+## Subscription API
 
 Of course being just connected is useless. What we usually want from Centrifugo is to
 receive new messages published into channels. So our next step is `subscribe` on channel

@@ -1076,7 +1076,7 @@ export class Centrifuge extends EventEmitter {
   }
 
   _disconnect(code, reason, reconnect) {
-    if (this._isDisconnected() || this._isClosed() || this._isFailed()) {
+    if (this._isDisconnected() || this._isFailed()) {
       return;
     }
 
@@ -1784,7 +1784,7 @@ export class Centrifuge extends EventEmitter {
   };
 
   _fail(reason, disconnectCode) {
-    if (this._isFailed() || this._isClosed()) {
+    if (this._isFailed()) {
       return;
     }
     this._disconnect(disconnectCode, 'failed', false);

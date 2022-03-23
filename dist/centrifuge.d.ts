@@ -30,7 +30,6 @@ declare class Centrifuge extends TypedEventEmitter<Centrifuge.Events> {
   subscriptions(): Map<string, Centrifuge.Subscription>;
   connect(): void;
   disconnect(): void;
-  close(): void;
   send(data: any): Promise<void>;
   rpc(method: string, data: any): Promise<Centrifuge.RpcResult>;
   publish(channel: string, data: any): Promise<Centrifuge.PublishResult>;
@@ -64,7 +63,7 @@ declare namespace Centrifuge {
     connect: (ctx: ConnectContext) => void;
     disconnect: (ctx: DisconnectContext) => void;
     fail: (ctx: FailContext) => void;
-    error: (ctx: ConnectErrorContext) => void;
+    error: (ctx: ErrorContext) => void;
 
     // Server-side subscription events.
     publication: (ctx: PublicationContext) => void;
@@ -94,7 +93,7 @@ declare namespace Centrifuge {
     subscribe: (ctx: SubscribeContext) => void;
     unsubscribe: (ctx: UnsubscribeContext) => void;
     fail: (ctx: SubscriptionFailContext) => void;
-    error: (ctx: SubscribeErrorContext) => void;
+    error: (ctx: SubscriptionErrorContext) => void;
     publication: (ctx: PublicationContext) => void;
     join: (ctx: JoinLeaveContext) => void;
     leave: (ctx: JoinLeaveContext) => void;
@@ -143,10 +142,15 @@ declare namespace Centrifuge {
     data?: any;
   }
 
-  export interface ConnectErrorContext {
+  export interface ErrorContext {
+    type: string;
+    error: Error;
+    closeEvent?: any;
+  }
+
+  export interface Error {
     code: number;
     message: string;
-    closeEvent?: any;
   }
 
   export interface DisconnectContext {
@@ -212,10 +216,10 @@ declare namespace Centrifuge {
     data?: any;
   }
 
-  export interface SubscribeErrorContext {
+  export interface SubscriptionErrorContext {
     channel: string;
-    code: number;
-    message: string;
+    type: string;
+    error: Error;
   }
 
   export interface UnsubscribeContext {
@@ -259,10 +263,9 @@ declare namespace Centrifuge {
   }
 
   export interface SubscribeOptions {
+    data?: any;
     token?: string;
     tokenUniquePerConnection?: boolean;
-    getSubscriptionToken?: (ctx: SubscriptionTokenContext) => Promise<string>
-    data?: any;
     since?: StreamPosition;
     minResubscribeDelay?: number;
     maxResubscribeDelay?: number;

@@ -26,6 +26,7 @@ function randomInt(min, max) { // min and max included
 export function backoff(step, min, max) {
   // Full jitter technique, see:
   // https://aws.amazon.com/blogs/architecture/exponential-backoff-and-jitter/
+  if (step > 31) { step = 31; };
   const interval = randomInt(0, Math.min(max, min * Math.pow(2, step)));
   return Math.min(max, min + interval);
 };

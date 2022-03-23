@@ -36,13 +36,12 @@ export class Subscription extends EventEmitter {
     this.channel = channel;
     this.state = subscriptionState.Unsubscribed;
     this._centrifuge = centrifuge;
-    this._recoverable = false;
     this._token = null;
     this._data = null;
+    this._recoverable = false;
     this._recover = false;
     this._offset = null;
     this._epoch = null;
-    this._getSubscriptionToken = null;
     this._minResubscribeDelay = 500;
     this._maxResubscribeDelay = 20000;
     this._resubscribeTimeout = null;
@@ -109,7 +108,7 @@ export class Subscription extends EventEmitter {
   };
 
   // cancel Subscription – remove it from client's registry and
-  // remove link to a client. Subscription is unusable after this.
+  // remove link to a client. Subscription is UNUSABLE after this.
   // Subscription must be in Unsubscribed or Failed state vefore calling
   // this.
   cancel() {
@@ -385,9 +384,6 @@ export class Subscription extends EventEmitter {
     if ('token' in options) {
       this._token = options.token;
     }
-    if ('getSubscriptionToken' in options) {
-      this._getSubscriptionToken = options.getSubscriptionToken;
-    }
     if ('tokenUniquePerConnection' in options) {
       this._tokenUniquePerConnection = options.tokenUniquePerConnection;
     }
@@ -430,12 +426,9 @@ export class Subscription extends EventEmitter {
       client: clientId,
       channel: this.channel
     };
-    let getToken = this._getSubscriptionToken;
+    const getToken = this._centrifuge._config.getSubscriptionToken;
     if (getToken === null) {
-      getToken = this._centrifuge._config.getSubscriptionToken;
-      if (getToken === null) {
-        throw new Error('provide a function to get channel subscription token');
-      }
+      throw new Error('provide a function to get channel subscription token');
     }
     return getToken(ctx);
   }

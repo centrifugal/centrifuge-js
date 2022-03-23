@@ -189,10 +189,10 @@ export class Centrifuge extends EventEmitter {
     return this._subs;
   }
 
-  // connected returns a Promise which resolves upon client goes to Connected
+  // ready returns a Promise which resolves upon client goes to Connected
   // state and rejects in case of client goes to Disconnected or Failed state.
   // Users can provide optional timeout in milliseconds.
-  connected(timeout) {
+  ready(timeout) {
     if (this.state === clientState.Disconnected || this.state === clientState.Failed) {
       return Promise.reject({ state: this.state });
     };

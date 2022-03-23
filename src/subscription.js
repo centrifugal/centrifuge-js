@@ -64,10 +64,10 @@ export class Subscription extends EventEmitter {
     }
   }
 
-  // subscribed returns a Promise which resolves upon subscription goes to Subscribed
+  // ready returns a Promise which resolves upon subscription goes to Subscribed
   // state and rejects in case of subscription goes to Unsubscribed or Failed state.
   // Optional timeout can be passed.
-  subscribed(timeout) {
+  ready(timeout) {
     if (this.state === subscriptionState.Unsubscribed || this.state === subscriptionState.Failed) {
       return Promise.reject({ code: 0, message: this.state });
     };

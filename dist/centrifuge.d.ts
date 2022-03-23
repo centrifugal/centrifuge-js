@@ -38,7 +38,7 @@ declare class Centrifuge extends TypedEventEmitter<Centrifuge.Events> {
   presenceStats(channel: string): Promise<Centrifuge.PresenceStatsResult>;
   startBatching(): void;
   stopBatching(): void;
-  connected(timeout?: number): Promise<void>;
+  ready(timeout?: number): Promise<void>;
 }
 
 declare namespace Centrifuge {
@@ -176,7 +176,7 @@ declare namespace Centrifuge {
     presence(): Promise<PresenceResult>;
     presenceStats(): Promise<PresenceStatsResult>;
     cancel(): void;
-    subscribed(timeout?: number): Promise<void>;
+    ready(timeout?: number): Promise<void>;
   }
 
   export interface SubscriptionFailContext {

@@ -81,7 +81,7 @@ declare namespace Centrifuge {
   }
 
   enum SubscriptionFailReason {
-    ClientFailed = "client failed",
+    Server = "server",
     SubscribeFailed = "subscribe failed",
     RefreshFailed = "refresh failed",
     Unauthorized = "unauthorized",
@@ -145,7 +145,7 @@ declare namespace Centrifuge {
   export interface ErrorContext {
     type: string;
     error: Error;
-    closeEvent?: any;
+    transport?: string;
   }
 
   export interface Error {

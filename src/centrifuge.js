@@ -70,9 +70,10 @@ export class Centrifuge extends EventEmitter {
     super();
     this.state = clientState.Disconnected;
     this._endpoint = endpoint;
-    this._transports = [];
     this._emulation = false;
+    this._transports = [];
     this._currentTransportIndex = 0;
+    this._triedAllTransports = false;
     this._transportWasOpen = false;
     this._transport = null;
     this._transportClosed = true;
@@ -480,20 +481,7 @@ export class Centrifuge extends EventEmitter {
     return delay;
   };
 
-  _clearConnectedState(reconnect) {
-    this._client = null;
-    this._clearServerPingTimeout();
-
-    if (this._refreshTimeout) {
-      clearTimeout(this._refreshTimeout);
-      this._refreshTimeout = null;
-    }
-
-    if (!reconnect && this._reconnectTimeout) {
-      clearTimeout(this._reconnectTimeout);
-      this._reconnectTimeout = null;
-    }
-
+  _clearOutgoingRequests() {
     // fire errbacks of registered outgoing calls.
     for (const id in this._callbacks) {
       if (this._callbacks.hasOwnProperty(id)) {
@@ -507,28 +495,28 @@ export class Centrifuge extends EventEmitter {
       }
     }
     this._callbacks = {};
+  }
 
-    if (this._isConnected()) {
-      // fire unsubscribe events.
-      for (const channel in this._subs) {
-        if (!this._subs.hasOwnProperty(channel)) {
-          continue;
-        }
-        const sub = this._subs[channel];
-        if (reconnect) {
-          if (sub._isSubscribed()) {
-            sub._setSubscribing();
-          }
-        } else {
-          sub._setUnsubscribed();
-        }
+  _clearConnectedState() {
+    this._client = null;
+    this._clearServerPingTimeout();
+    this._clearRefreshTimeout();
+
+    // fire unsubscribe events.
+    for (const channel in this._subs) {
+      if (!this._subs.hasOwnProperty(channel)) {
+        continue;
       }
+      const sub = this._subs[channel];
+      if (sub._isSubscribed()) {
+        sub._setSubscribing();
+      }
+    }
 
-      // fire unsubscribe events for server side subs.
-      for (const channel in this._serverSubs) {
-        if (this._serverSubs.hasOwnProperty(channel)) {
-          this.emit('unsubscribe', { channel: channel });
-        }
+    // fire unsubscribe events for server side subs.
+    for (const channel in this._serverSubs) {
+      if (this._serverSubs.hasOwnProperty(channel)) {
+        this.emit('unsubscribe', { channel: channel });
       }
     }
   };
@@ -630,11 +618,12 @@ export class Centrifuge extends EventEmitter {
       }
     } else {
       if (this._currentTransportIndex >= this._transports.length) {
+        this._triedAllTransports = true;
         this._currentTransportIndex = 0;
       }
+      let count = 0;
       while (true) {
-        if (this._currentTransportIndex >= this._transports.length) {
-          this._currentTransportIndex = 0;
+        if (count >= this._transports.length) {
           throw new Error('no supported transport found');
         }
         const transportConfig = this._transports[this._currentTransportIndex];
@@ -649,6 +638,7 @@ export class Centrifuge extends EventEmitter {
           if (!this._transport.supported()) {
             this._debug('websocket transport not available');
             this._currentTransportIndex++;
+            count++;
             continue;
           }
         } else if (transportName === 'http_stream') {
@@ -665,6 +655,7 @@ export class Centrifuge extends EventEmitter {
           if (!this._transport.supported()) {
             this._debug('http_stream transport not available');
             this._currentTransportIndex++;
+            count++;
             continue;
           }
         } else if (transportName === 'sse') {
@@ -678,6 +669,7 @@ export class Centrifuge extends EventEmitter {
           if (!this._transport.supported()) {
             this._debug('sse transport not available');
             this._currentTransportIndex++;
+            count++;
             continue;
           }
         } else if (transportName === 'sockjs') {
@@ -691,6 +683,7 @@ export class Centrifuge extends EventEmitter {
           if (!this._transport.supported()) {
             this._debug('sockjs transport not available');
             this._currentTransportIndex++;
+            count++;
             continue;
           }
         } else {
@@ -712,7 +705,9 @@ export class Centrifuge extends EventEmitter {
           resolveCtx.next();
         }
       }, rejectCtx => {
-        this._connectError(rejectCtx.error);
+        if (rejectCtx.error.code >= 100) {
+          this._connectError(rejectCtx.error);
+        }
         if (rejectCtx.next) {
           rejectCtx.next();
         }
@@ -773,6 +768,10 @@ export class Centrifuge extends EventEmitter {
           reason = 'connection closed';
           if (self._emulation && !self._transportWasOpen) {
             self._currentTransportIndex++;
+            if (self._currentTransportIndex >= self._transports.length) {
+              self._triedAllTransports = true;
+              self._currentTransportIndex = 0;
+            }
           }
         } else {
           // Codes >= 3000 are sent from a server application level.
@@ -780,11 +779,8 @@ export class Centrifuge extends EventEmitter {
         }
 
         let isInitialHandshake = false;
-        if (self._emulation && !self._transportWasOpen && self._currentTransportIndex < self._transports.length) {
+        if (self._emulation && !self._transportWasOpen && !self._triedAllTransports) {
           isInitialHandshake = true;
-        }
-        if (isInitialHandshake) {
-          code = -1;
         }
 
         if (self._isConnecting() && !wasOpen) {
@@ -794,7 +790,6 @@ export class Centrifuge extends EventEmitter {
               code: 0,
               message: 'transport closed'
             },
-            closeEvent: closeEvent,
             transport: self._transport.name()
           });
         }
@@ -1080,19 +1075,25 @@ export class Centrifuge extends EventEmitter {
       return;
     }
 
-    if (code === -1) {
-      // Happens during initial handshake when we are trying different transports.
-      this._clearConnectedState(reconnect);
-      if (this._transport && !this._transportClosed) {
-        this._transportClosed = true;
-        this._transport.close();
-      }
-      return;
+    const previousState = this.state;
+
+    this._debug('disconnect:', code, reason, ', reconnect:', reconnect);
+    if (reconnect) {
+      this._setState(clientState.Connecting);
+    } else {
+      this._setState(clientState.Disconnected);
     }
 
-    this._clearConnectedState(reconnect);
+    this._clearOutgoingRequests();
 
-    const needDisconnectEvent = this._isConnected();
+    if (previousState === clientState.Connecting) {
+      this._clearReconnectTimeout();
+    }
+    if (previousState === clientState.Connected) {
+      this._clearConnectedState();
+    }
+
+    const needDisconnectEvent = previousState === clientState.Connected;
 
     const disconnectCtx = {
       code: code,
@@ -1100,17 +1101,8 @@ export class Centrifuge extends EventEmitter {
       reconnect: reconnect
     };
 
-    this._debug('disconnect:', reason, reconnect);
-    if (reconnect) {
-      this._setState(clientState.Connecting);
-      if (needDisconnectEvent) {
-        this.emit('disconnect', disconnectCtx);
-      }
-    } else {
-      this._setState(clientState.Disconnected);
-      if (needDisconnectEvent) {
-        this.emit('disconnect', disconnectCtx);
-      }
+    if (needDisconnectEvent) {
+      this.emit('disconnect', disconnectCtx);
     }
 
     if (this._transport && !this._transportClosed) {
@@ -1235,6 +1227,7 @@ export class Centrifuge extends EventEmitter {
     }
 
     if (!this._isConnected()) {
+      this._debug('delay subscribe on', sub.channel, 'till connected');
       // subscribe will be called later automatically.
       return;
     }
@@ -1492,6 +1485,20 @@ export class Centrifuge extends EventEmitter {
     }
   };
 
+  _clearRefreshTimeout() {
+    if (this._refreshTimeout !== null) {
+      clearTimeout(this._refreshTimeout);
+      this._refreshTimeout = null;
+    }
+  };
+
+  _clearReconnectTimeout() {
+    if (this._reconnectTimeout !== null) {
+      clearTimeout(this._reconnectTimeout);
+      this._reconnectTimeout = null;
+    }
+  };
+
   _clearServerPingTimeout() {
     if (this._serverPingTimeout !== null) {
       clearTimeout(this._serverPingTimeout);
@@ -1640,11 +1647,10 @@ export class Centrifuge extends EventEmitter {
       if (sub._isSubscribed()) {
         sub._setSubscribing();
       }
-      sub.subscribe();
     } else if (unsub.type === 2) { // Unrecoverable.
       sub._failUnrecoverable();
     } else {
-      sub.unsubscribe();
+      sub._failServer();
     };
   };
 
@@ -1794,7 +1800,9 @@ export class Centrifuge extends EventEmitter {
         continue;
       }
       const sub = this._subs[channel];
-      sub._clientFailed();
+      if (sub._isSubscribed()) {
+        sub._setSubscribing();
+      }
     }
     this.emit('fail', { reason: reason });
     this._rejectPromises({ state: clientState.Failed });

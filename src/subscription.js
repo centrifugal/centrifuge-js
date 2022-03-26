@@ -15,8 +15,8 @@ export const subscriptionState = {
 };
 
 export const subscriptionFailReason = {
-  // Subscription failure caused by client connection failure.
-  ClientFailed: 'client failed',
+  // Subscription failure caused by server force unsubscribe.
+  Server: 'server',
   // Fatal error during subscribe or resubscribe.
   SubscribeFailed: 'subscribe failed',
   // Fatal error during subscription token refresh.
@@ -38,7 +38,6 @@ export class Subscription extends EventEmitter {
     this._centrifuge = centrifuge;
     this._token = null;
     this._data = null;
-    this._recoverable = false;
     this._recover = false;
     this._offset = null;
     this._epoch = null;
@@ -95,7 +94,6 @@ export class Subscription extends EventEmitter {
     }
     this._setOptions(options);
     this._setSubscribing();
-    this._centrifuge._subscribe(this);
   };
 
   // unsubscribe from a channel, keeping position state.
@@ -104,7 +102,6 @@ export class Subscription extends EventEmitter {
       this._centrifuge._unsubscribe(this);
     }
     this._setUnsubscribed();
-    this._recover = true;
   };
 
   // cancel Subscription – remove it from client's registry and
@@ -171,29 +168,20 @@ export class Subscription extends EventEmitter {
     return ++this._promiseId;
   }
 
-  _setNeedRecover(enabled) {
-    this._recoverable = enabled;
-    this._recover = enabled;
-  }
-
   _needRecover() {
-    return this._recoverable === true && this._recover === true;
+    return this._recover === true;
   };
 
   _isUnsubscribed() {
-    return this._isInState(subscriptionState.Unsubscribed);
+    return this.state === subscriptionState.Unsubscribed;
   }
 
   _isSubscribing() {
-    return this._isInState(subscriptionState.Subscribing);
+    return this.state === subscriptionState.Subscribing;
   }
 
   _isSubscribed() {
-    return this._isInState(subscriptionState.Subscribed);
-  }
-
-  _isInState(state) {
-    return this.state === state;
+    return this.state === subscriptionState.Subscribed;
   }
 
   _setState(newState) {
@@ -206,14 +194,84 @@ export class Subscription extends EventEmitter {
     return false;
   };
 
-  _setSubscribing() {
-    const needUnsubscribe = this._isSubscribed();
+  _clearSubscribingState() {
+    this._resubscribeAttempts = 0;
+    this._clearResubscribeTimeout();
+  }
+
+  _clearSubscribedState() {
     this._clearRefreshTimeout();
+  }
+
+  _setSubscribing() {
+    if (this._isSubscribing()) {
+      return;
+    }
+    const needUnsubscribeEvent = this._isSubscribed();
+    if (this._isSubscribed()) {
+      this._clearSubscribedState();
+    }
     this._setState(subscriptionState.Subscribing);
-    if (needUnsubscribe) {
+    if (needUnsubscribeEvent) {
       this._triggerUnsubscribe();
     }
+    this._centrifuge._subscribe(this);
   };
+
+  _setSubscribed(result) {
+    if (!this._isSubscribing()) {
+      return;
+    }
+    this._clearSubscribingState();
+    this._setState(subscriptionState.Subscribed);
+    const successContext = this._centrifuge._getSubscribeContext(this.channel, result);
+    this.emit('subscribe', successContext);
+    this._resolvePromises();
+
+    const pubs = result.publications;
+    if (pubs && pubs.length > 0) {
+      for (let i in pubs) {
+        if (!pubs.hasOwnProperty(i)) {
+          continue;
+        }
+        this._handlePublication(pubs[i]);
+      }
+    }
+
+    if (result.recoverable) {
+      this._recover = true;
+      this._offset = result.offset || 0;
+      this._epoch = result.epoch || '';
+    }
+
+    if (result.expires === true) {
+      this._refreshTimeout = setTimeout(() => this._refresh(), ttlMilliseconds(result.ttl));
+    }
+  };
+
+  _setUnsubscribed() {
+    if (this._isUnsubscribed()) {
+      return;
+    }
+    if (this._isSubscribed()) {
+      this._clearSubscribedState();
+    }
+    if (this._isSubscribing()) {
+      this._clearSubscribingState();
+    }
+    const triggerUnsubscribeEvent = this._isSubscribed();
+    this._setState(subscriptionState.Unsubscribed);
+    if (triggerUnsubscribeEvent) {
+      this._triggerUnsubscribe();
+    }
+    this._rejectPromises({ code: 0, message: subscriptionState.Unsubscribed });
+  };
+
+  _fail(reason) {
+    this.unsubscribe();
+    this._setState(subscriptionState.Failed);
+    this.emit('fail', { channel: this.channel, reason: reason });
+  }
 
   _handlePublication(pub) {
     const ctx = this._centrifuge._getPublicationContext(this.channel, pub);
@@ -230,40 +288,6 @@ export class Subscription extends EventEmitter {
   _handleLeave(leave) {
     this.emit('leave', { channel: this.channel, info: this._centrifuge._getJoinLeaveContext(leave.info) });
   }
-
-  _setSubscribed(result) {
-    if (!this._isSubscribing()) {
-      return;
-    }
-    this._setState(subscriptionState.Subscribed);
-    this._clearResubscribeTimeout();
-    this._resubscribeAttempts = 0;
-    const successContext = this._centrifuge._getSubscribeContext(this.channel, result);
-    this.emit('subscribe', successContext);
-    this._resolvePromises();
-
-    this._recover = true;
-
-    const pubs = result.publications;
-    if (pubs && pubs.length > 0) {
-      for (let i in pubs) {
-        if (!pubs.hasOwnProperty(i)) {
-          continue;
-        }
-        this._handlePublication(pubs[i]);
-      }
-    }
-
-    if (result.recoverable) {
-      this._recoverable = true;
-      this._offset = result.offset || 0;
-      this._epoch = result.epoch || '';
-    }
-
-    if (result.expires === true) {
-      this._refreshTimeout = setTimeout(() => this._refresh(), ttlMilliseconds(result.ttl));
-    }
-  };
 
   _resolvePromises() {
     for (const id in this._promises) {
@@ -290,7 +314,7 @@ export class Subscription extends EventEmitter {
     const delay = this._getResubscribeDelay();
     this._resubscribeTimeout = setTimeout(function () {
       if (self._isSubscribing()) {
-        self.subscribe();
+        self._centrifuge._subscribe(self);
       }
     }, delay);
   }
@@ -339,30 +363,6 @@ export class Subscription extends EventEmitter {
     this._epoch = null;
   }
 
-  _setUnsubscribed() {
-    this._resubscribeAttempts = 0;
-    this._clearResubscribeTimeout();
-    this._clearRefreshTimeout();
-    if (this._isUnsubscribed()) {
-      return;
-    }
-    const triggerUnsubscribeEvent = this._isSubscribed();
-    this._setState(subscriptionState.Unsubscribed);
-    if (triggerUnsubscribeEvent) {
-      this._triggerUnsubscribe();
-    }
-    this._rejectPromises({ code: 0, message: subscriptionState.Unsubscribed });
-  };
-
-  _fail(reason) {
-    if (this._isSubscribed()) {
-      this._centrifuge._unsubscribe(this);
-    }
-    this._setUnsubscribed();
-    this._setState(subscriptionState.Failed);
-    this.emit('fail', { channel: this.channel, reason: reason });
-  }
-
   _setOptions(options) {
     if (!options) {
       return;
@@ -370,7 +370,7 @@ export class Subscription extends EventEmitter {
     if ('since' in options) {
       this._offset = options.since.offset;
       this._epoch = options.since.epoch;
-      this._setNeedRecover(true);
+      this._recover = true;
     }
     if ('data' in options) {
       this._data = options.data;
@@ -508,8 +508,8 @@ export class Subscription extends EventEmitter {
     return backoff(0, 10000, 20000);
   }
 
-  _clientFailed() {
-    this._fail(subscriptionFailReason.ClientFailed);
+  _failServer() {
+    this._fail(subscriptionFailReason.Server);
   }
 
   _subscribeFailed() {
@@ -525,6 +525,7 @@ export class Subscription extends EventEmitter {
   };
 
   _failUnrecoverable() {
+    this._clearPositionState();
     this._fail(subscriptionFailReason.Unrecoverable, true);
   }
 }

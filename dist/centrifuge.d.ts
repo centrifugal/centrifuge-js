@@ -265,7 +265,6 @@ declare namespace Centrifuge {
   export interface SubscribeOptions {
     data?: any;
     token?: string;
-    tokenUniquePerConnection?: boolean;
     since?: StreamPosition;
     minResubscribeDelay?: number;
     maxResubscribeDelay?: number;

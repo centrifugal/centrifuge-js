@@ -224,6 +224,7 @@ export class Centrifuge extends EventEmitter {
       this._debug('connect called when already connecting');
       return;
     }
+    this._reconnectAttempts = 0;
     this._startConnecting();
   };
 
@@ -1793,19 +1794,10 @@ export class Centrifuge extends EventEmitter {
     if (this._isFailed()) {
       return;
     }
+    this._rejectPromises({ state: clientState.Failed });
     this._disconnect(disconnectCode, 'failed', false);
     this._setState(clientState.Failed);
-    for (const channel in this._subs) {
-      if (!this._subs.hasOwnProperty(channel)) {
-        continue;
-      }
-      const sub = this._subs[channel];
-      if (sub._isSubscribed()) {
-        sub._setSubscribing();
-      }
-    }
     this.emit('fail', { reason: reason });
-    this._rejectPromises({ state: clientState.Failed });
   }
 
   _nextPromiseId() {

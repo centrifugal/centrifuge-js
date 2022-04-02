@@ -15,7 +15,7 @@ export const subscriptionState = {
 };
 
 export const subscriptionFailReason = {
-  // Subscription failure caused by server force unsubscribe.
+  // Subscription failure caused by force unsubscribe from a server.
   Server: 'server',
   // Fatal error during subscribe or resubscribe.
   SubscribeFailed: 'subscribe failed',
@@ -45,7 +45,6 @@ export class Subscription extends EventEmitter {
     this._maxResubscribeDelay = 20000;
     this._resubscribeTimeout = null;
     this._resubscribeAttempts = 0;
-    this._tokenUniquePerConnection = false;
     this._promises = {};
     this._promiseId = 0;
     this._refreshTimeout = null;
@@ -92,6 +91,7 @@ export class Subscription extends EventEmitter {
     if (this._isSubscribed()) {
       return;
     }
+    this._resubscribeAttempts = 0;
     this._setOptions(options);
     this._setSubscribing();
   };
@@ -384,9 +384,6 @@ export class Subscription extends EventEmitter {
     if ('token' in options) {
       this._token = options.token;
     }
-    if ('tokenUniquePerConnection' in options) {
-      this._tokenUniquePerConnection = options.tokenUniquePerConnection;
-    }
   }
 
   _getOffset() {
@@ -421,9 +418,7 @@ export class Subscription extends EventEmitter {
 
   _getToken() {
     this._centrifuge._debug('get subscription token for channel', this.channel);
-    const clientId = this._centrifuge._client;
     const ctx = {
-      client: clientId,
       channel: this.channel
     };
     const getToken = this._centrifuge._config.getSubscriptionToken;
@@ -435,22 +430,16 @@ export class Subscription extends EventEmitter {
 
   _refresh() {
     this._clearRefreshTimeout();
-    const clientId = this._centrifuge._client;
     const self = this;
     this._getToken().then(function (token) {
       if (!self._isSubscribed()) {
-        return;
-      }
-      if (clientId !== self._centrifuge._client) {
         return;
       }
       if (!token) {
         self._failUnauthorized();
         return;
       }
-      if (!self._tokenUniquePerConnection) {
-        self._token = token;
-      }
+      self._token = token;
       const req = {
         channel: self.channel,
         token: token

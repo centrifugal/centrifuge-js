@@ -313,17 +313,9 @@
                 },
                 "Unsubscribe": {
                   "fields": {
-                    "type": {
-                      "type": "Type",
+                    "code": {
+                      "type": "uint32",
                       "id": 2
-                    }
-                  },
-                  "nested": {
-                    "Type": {
-                      "values": {
-                        "PERMANENT": 0,
-                        "INSUFFICIENT": 1
-                      }
                     }
                   }
                 },

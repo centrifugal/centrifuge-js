@@ -1632,7 +1632,7 @@ export class Centrifuge extends EventEmitter {
     sub._handleLeave(leave);
   };
 
-  _handleUnsubscribe(channel, unsub) {
+  _handleUnsubscribe(channel, unsubscribe) {
     const ctx = {};
     const sub = this._getSub(channel);
     if (!sub) {
@@ -1643,16 +1643,15 @@ export class Centrifuge extends EventEmitter {
       }
       return;
     }
-
-    if (unsub.type === 1) { // Insufficient.
-      if (sub._isSubscribed()) {
-        sub._setSubscribing();
-      }
-    } else if (unsub.type === 2) { // Unrecoverable.
-      sub._failUnrecoverable();
-    } else {
+    if (unsubscribe.code === 2) { // Server unsubscribe.
       sub._failServer();
-    };
+    } else if (unsubscribe.code === 3) { // Insufficient.
+      sub._setSubscribing();
+    } else if (unsubscribe.code === 4) { // Unrecoverable.
+      sub._failUnrecoverable();
+    } else { // Unknown code – just unsubscribe.
+      sub.unsubscribe();
+    }
   };
 
   _handleSubscribe(channel, sub) {

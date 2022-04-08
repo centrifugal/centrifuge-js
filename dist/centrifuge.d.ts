@@ -46,8 +46,7 @@ declare namespace Centrifuge {
   enum State {
     Disconnected = "disconnected",
     Connecting = "connecting",
-    Connected = "connected",
-    Failed = "failed",
+    Connected = "connected"
   }
 
   type Events = {
@@ -61,15 +60,15 @@ declare namespace Centrifuge {
     publication: (ctx: PublicationContext) => void;
     join: (ctx: JoinContext) => void;
     leave: (ctx: LeaveContext) => void;
-    subscribe: (ctx: SubscribeContext) => void;
-    unsubscribe: (ctx: UnsubscribeContext) => void;
+    subscribed: (ctx: SubscribedContext) => void;
+    subscribing: (ctx: SubscribingContext) => void;
+    unsubscribed: (ctx: UnsubscribedContext) => void;
   }
 
   enum SubscriptionState {
     Unsubscribed = "unsubscribed",
     Subscribing = "subscribing",
-    Subscribed = "subscribed",
-    Failed = "failed"
+    Subscribed = "subscribed"
   }
 
   type SubscriptionEvents = {
@@ -150,7 +149,7 @@ declare namespace Centrifuge {
   export class Subscription extends TypedEventEmitter<SubscriptionEvents> {
     channel: string;
     state: SubscriptionState;
-    subscribe(options?: SubscribeOptions): void;
+    subscribe(): void;
     unsubscribe(): void;
     publish(data: any): Promise<PublishResult>;
     history(options?: HistoryOptions): Promise<HistoryResult>;
@@ -205,10 +204,14 @@ declare namespace Centrifuge {
 
   export interface UnsubscribedContext {
     channel: string;
+    code: number;
+    reason: string;
   }
 
   export interface SubscribingContext {
     channel: string;
+    code: number;
+    reason: string;
   }
 
   export interface ConnectionTokenContext {

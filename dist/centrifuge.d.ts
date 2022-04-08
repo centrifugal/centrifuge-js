@@ -50,25 +50,17 @@ declare namespace Centrifuge {
     Failed = "failed",
   }
 
-  enum FailReason {
-    Server = "server",
-    ConnectFailed = "connect failed",
-    RefreshFailed = "refresh failed",
-    Unauthorized = "unauthorized",
-    Unrecoverable = "unrecoverable",
-  }
-
   type Events = {
     state: (ctx: StateContext) => void;
-    connect: (ctx: ConnectContext) => void;
-    disconnect: (ctx: DisconnectContext) => void;
-    fail: (ctx: FailContext) => void;
+    connecting: (ctx: ConnectingContext) => void;
+    connected: (ctx: ConnectedContext) => void;
+    disconnected: (ctx: DisconnectedContext) => void;
     error: (ctx: ErrorContext) => void;
 
     // Server-side subscription events.
     publication: (ctx: PublicationContext) => void;
-    join: (ctx: JoinLeaveContext) => void;
-    leave: (ctx: JoinLeaveContext) => void;
+    join: (ctx: JoinContext) => void;
+    leave: (ctx: LeaveContext) => void;
     subscribe: (ctx: SubscribeContext) => void;
     unsubscribe: (ctx: UnsubscribeContext) => void;
   }
@@ -80,19 +72,11 @@ declare namespace Centrifuge {
     Failed = "failed"
   }
 
-  enum SubscriptionFailReason {
-    Server = "server",
-    SubscribeFailed = "subscribe failed",
-    RefreshFailed = "refresh failed",
-    Unauthorized = "unauthorized",
-    Unrecoverable = "unrecoverable",
-  }
-
   type SubscriptionEvents = {
     state: (ctx: SubscriptionStateContext) => void;
-    subscribe: (ctx: SubscribeContext) => void;
-    unsubscribe: (ctx: UnsubscribeContext) => void;
-    fail: (ctx: SubscriptionFailContext) => void;
+    subscribing: (ctx: SubscribingContext) => void;
+    subscribed: (ctx: SubscribedContext) => void;
+    unsubscribed: (ctx: UnsubscribedContext) => void;
     error: (ctx: SubscriptionErrorContext) => void;
     publication: (ctx: PublicationContext) => void;
     join: (ctx: JoinLeaveContext) => void;
@@ -136,7 +120,7 @@ declare namespace Centrifuge {
     oldState: State;
   }
 
-  export interface ConnectContext {
+  export interface ConnectedContext {
     client: string;
     transport: string;
     data?: any;
@@ -153,17 +137,14 @@ declare namespace Centrifuge {
     message: string;
   }
 
-  export interface DisconnectContext {
+  export interface ConnectingContext {
     code: number;
     reason: string;
-    reconnect: boolean;
   }
 
-  export interface FailContext {
-    reason: FailReason;
-  }
-
-  export interface CloseContext {
+  export interface DisconnectedContext {
+    code: number;
+    reason: string;
   }
 
   export class Subscription extends TypedEventEmitter<SubscriptionEvents> {
@@ -177,11 +158,6 @@ declare namespace Centrifuge {
     presenceStats(): Promise<PresenceStatsResult>;
     cancel(): void;
     ready(timeout?: number): Promise<void>;
-  }
-
-  export interface SubscriptionFailContext {
-    channel: string;
-    reason: SubscriptionFailReason;
   }
 
   export interface PublicationContext {
@@ -199,7 +175,12 @@ declare namespace Centrifuge {
     chanInfo?: any;
   }
 
-  export interface JoinLeaveContext {
+  export interface JoinContext {
+    channel: string;
+    info: ClientInfo;
+  }
+
+  export interface LeaveContext {
     channel: string;
     info: ClientInfo;
   }
@@ -210,7 +191,7 @@ declare namespace Centrifuge {
     oldState: SubscriptionState;
   }
 
-  export interface SubscribeContext {
+  export interface SubscribedContext {
     channel: string;
     streamPosition?: StreamPosition;
     data?: any;
@@ -222,7 +203,11 @@ declare namespace Centrifuge {
     error: Error;
   }
 
-  export interface UnsubscribeContext {
+  export interface UnsubscribedContext {
+    channel: string;
+  }
+
+  export interface SubscribingContext {
     channel: string;
   }
 
@@ -230,7 +215,6 @@ declare namespace Centrifuge {
   }
 
   export interface SubscriptionTokenContext {
-    client: string;
     channel: string;
   }
 
@@ -262,15 +246,13 @@ declare namespace Centrifuge {
     reverse?: boolean;
   }
 
-  export interface SubscribeOptions {
+  export interface SubscriptionOptions {
     data?: any;
     token?: string;
     since?: StreamPosition;
     minResubscribeDelay?: number;
     maxResubscribeDelay?: number;
   }
-
-  export interface SubscriptionOptions extends SubscribeOptions { }
 
   export interface StreamPosition {
     offset: number;

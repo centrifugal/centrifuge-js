@@ -17,8 +17,7 @@ export const connectingCodes = {
   transportClosed: 1,
   noPing: 2,
   subscribeTimeout: 3,
-  unsubscribeError: 4,
-  clientSlow: 5
+  unsubscribeError: 4
 };
 
 export const disconnectedCodes = {
@@ -30,8 +29,7 @@ export const disconnectedCodes = {
 
 export const subscribingCodes = {
   subscribeCalled: 0,
-  clientConnecting: 1,
-  clientDisconnected: 2
+  transportClosed: 1
 };
 
 export const unsubscribedCodes = {

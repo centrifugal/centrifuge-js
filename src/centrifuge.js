@@ -480,11 +480,7 @@ export class Centrifuge extends EventEmitter {
       }
       const sub = this._subs[channel];
       if (sub._isSubscribed()) {
-        if (this.state === clientState.Connecting) {
-          sub._setSubscribing(subscribingCodes.clientConnecting, 'client connecting');
-        } else {
-          sub._setSubscribing(subscribingCodes.clientDisconnected, 'client disconnected');
-        }
+        sub._setSubscribing(subscribingCodes.transportClosed, 'transport closed');
       }
     }
 

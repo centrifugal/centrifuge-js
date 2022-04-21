@@ -1,7 +1,7 @@
 import { Centrifuge } from './centrifuge.js';
 export default Centrifuge;
 
-export const EventNames = {
+export const EventName = {
   state: 'state',
   connecting: 'connecting',
   connected: 'connected',
@@ -15,4 +15,15 @@ export const EventNames = {
   subscribed: 'subscribed',
   subscribing: 'subscribing',
   unsubscribed: 'unsubscribed'
+};
+
+export const SubscriptionEventName = {
+  stat: 'state',
+  subscribin: 'subscribing',
+  subscribe: 'subscribed',
+  unsubscribe: 'unsubscribed',
+  erro: 'error',
+  publicatio: 'publication',
+  joi: 'join',
+  leav: 'leave'
 };

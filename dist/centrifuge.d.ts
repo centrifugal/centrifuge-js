@@ -25,7 +25,7 @@ declare class TypedEventEmitter<Events extends EventMap, ListenerContextMap exte
   listenerCount<E extends keyof Events>(event: E): number
 }
 
-declare class Centrifuge extends TypedEventEmitter<Centrifuge.Events, Centrifuge.EventNamesToContext> {
+declare class Centrifuge extends TypedEventEmitter<Centrifuge.Events, Centrifuge.EventNameToContext> {
   state: Centrifuge.State;
   constructor(endpoint: string | Array<Centrifuge.TransportEndpoint>, options?: Centrifuge.Options);
   newSubscription(channel: string, options?: Centrifuge.SubscriptionOptions): Centrifuge.Subscription;
@@ -53,7 +53,7 @@ declare namespace Centrifuge {
     Connected = "connected"
   }
 
-  enum EventNames {
+  enum EventName {
     state = 'state',
     connecting = 'connecting',
     connected = 'connected',
@@ -69,23 +69,23 @@ declare namespace Centrifuge {
     unsubscribed = 'unsubscribed',
   }
 
-  type EventNamesToContext = {
-    [EventNames.state]: StateContext
-    [EventNames.connecting]: ConnectingContext
-    [EventNames.connected]: ConnectedContext
-    [EventNames.disconnected]: DisconnectedContext
-    [EventNames.error]: ErrorContext
+  type EventNameToContext = {
+    [EventName.state]: StateContext
+    [EventName.connecting]: ConnectingContext
+    [EventName.connected]: ConnectedContext
+    [EventName.disconnected]: DisconnectedContext
+    [EventName.error]: ErrorContext
 
-    [EventNames.publication]: PublicationContext
-    [EventNames.join]: JoinContext
-    [EventNames.leave]: LeaveContext
-    [EventNames.subscribed]: SubscribedContext
-    [EventNames.subscribing]: SubscribingContext
-    [EventNames.unsubscribed]: UnsubscribedContext
+    [EventName.publication]: PublicationContext
+    [EventName.join]: JoinContext
+    [EventName.leave]: LeaveContext
+    [EventName.subscribed]: SubscribedContext
+    [EventName.subscribing]: SubscribingContext
+    [EventName.unsubscribed]: UnsubscribedContext
   }
 
   type Events = {
-    [eventName in EventNames]: (ctx: EventNamesToContext[eventName]) => void
+    [eventName in EventName]: (ctx: EventNameToContext[eventName]) => void
   }
 
   enum SubscriptionState {
@@ -94,15 +94,30 @@ declare namespace Centrifuge {
     Subscribed = "subscribed"
   }
 
+  enum SubscriptionEventName {
+    state= 'state',
+    subscribing= 'subscribing',
+    subscribed= 'subscribed',
+    unsubscribed= 'unsubscribed',
+    error= 'error',
+    publication= 'publication',
+    join= 'join',
+    leave= 'leave',
+  }
+
+  type SubscriptionEventNameToContext = {
+    [SubscriptionEventName.state]: SubscriptionStateContext
+    [SubscriptionEventName.subscribing]: SubscribingContext
+    [SubscriptionEventName.subscribed]: SubscribedContext
+    [SubscriptionEventName.unsubscribed]: UnsubscribedContext
+    [SubscriptionEventName.error]: SubscriptionErrorContext
+    [SubscriptionEventName.publication]: PublicationContext
+    [SubscriptionEventName.join]: JoinContext
+    [SubscriptionEventName.leave]: LeaveContext
+  }
+
   type SubscriptionEvents = {
-    state: (ctx: SubscriptionStateContext) => void;
-    subscribing: (ctx: SubscribingContext) => void;
-    subscribed: (ctx: SubscribedContext) => void;
-    unsubscribed: (ctx: UnsubscribedContext) => void;
-    error: (ctx: SubscriptionErrorContext) => void;
-    publication: (ctx: PublicationContext) => void;
-    join: (ctx: JoinLeaveContext) => void;
-    leave: (ctx: JoinLeaveContext) => void;
+    [eventName in SubscriptionEventName]: (ctx: SubscriptionEventNameToContext[eventName]) => void
   }
 
   export interface TransportEndpoint {
@@ -169,7 +184,7 @@ declare namespace Centrifuge {
     reason: string;
   }
 
-  export class Subscription extends TypedEventEmitter<SubscriptionEvents> {
+  export class Subscription extends TypedEventEmitter<SubscriptionEvents, SubscriptionEventNameToContext> {
     channel: string;
     state: SubscriptionState;
     subscribe(): void;

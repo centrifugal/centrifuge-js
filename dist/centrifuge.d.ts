@@ -8,8 +8,10 @@ type EventMap = {
   [key: string]: (...args: any[]) => void
 }
 
-declare class TypedEventEmitter<Events extends EventMap> {
-  addListener<E extends keyof Events>(event: E, listener: Events[E]): this
+type EventListener<Events extends EventMap, ContextMap extends Record<keyof Events, unknown>, Event extends keyof Events> = (ctx: ContextMap[Event]) => void
+
+declare class TypedEventEmitter<Events extends EventMap, ListenerContextMap extends Record<keyof Events, unknown>> {
+  addListener<E extends keyof Events>(event: E, listener: EventListener<Events, ListenerContextMap, E>): this
   on<E extends keyof Events>(event: E, listener: Events[E]): this
   once<E extends keyof Events>(event: E, listener: Events[E]): this
   prependListener<E extends keyof Events>(event: E, listener: Events[E]): this
@@ -23,7 +25,7 @@ declare class TypedEventEmitter<Events extends EventMap> {
   listenerCount<E extends keyof Events>(event: E): number
 }
 
-declare class Centrifuge extends TypedEventEmitter<Centrifuge.Events> {
+declare class Centrifuge extends TypedEventEmitter<Centrifuge.Events, Centrifuge.EventNamesToContext> {
   state: Centrifuge.State;
   constructor(endpoint: string | Array<Centrifuge.TransportEndpoint>, options?: Centrifuge.Options);
   newSubscription(channel: string, options?: Centrifuge.SubscriptionOptions): Centrifuge.Subscription;

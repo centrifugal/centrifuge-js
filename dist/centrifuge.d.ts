@@ -1,5 +1,7 @@
 // Type definitions for centrifuge 3.*.*
 
+import {subscribingCodes, unsubscribedCodes} from "../src/codes";
+
 export = Centrifuge;
 
 type EventMap = {
@@ -49,20 +51,39 @@ declare namespace Centrifuge {
     Connected = "connected"
   }
 
-  type Events = {
-    state: (ctx: StateContext) => void;
-    connecting: (ctx: ConnectingContext) => void;
-    connected: (ctx: ConnectedContext) => void;
-    disconnected: (ctx: DisconnectedContext) => void;
-    error: (ctx: ErrorContext) => void;
+  enum EventNames {
+    state = 'state',
+    connecting = 'connecting',
+    connected = 'connected',
+    disconnected = 'disconnected',
+    error = 'error',
 
     // Server-side subscription events.
-    publication: (ctx: PublicationContext) => void;
-    join: (ctx: JoinContext) => void;
-    leave: (ctx: LeaveContext) => void;
-    subscribed: (ctx: SubscribedContext) => void;
-    subscribing: (ctx: SubscribingContext) => void;
-    unsubscribed: (ctx: UnsubscribedContext) => void;
+    publication = 'publication',
+    join = 'join',
+    leave = 'leave',
+    subscribed = 'subscribed',
+    subscribing = 'subscribing',
+    unsubscribed = 'unsubscribed',
+  }
+
+  type EventNamesToContext = {
+    [EventNames.state]: StateContext
+    [EventNames.connecting]: ConnectingContext
+    [EventNames.connected]: ConnectedContext
+    [EventNames.disconnected]: DisconnectedContext
+    [EventNames.error]: ErrorContext
+
+    [EventNames.publication]: PublicationContext
+    [EventNames.join]: JoinContext
+    [EventNames.leave]: LeaveContext
+    [EventNames.subscribed]: SubscribedContext
+    [EventNames.subscribing]: SubscribingContext
+    [EventNames.unsubscribed]: UnsubscribedContext
+  }
+
+  type Events = {
+    [eventName in EventNames]: (ctx: EventNamesToContext[eventName]) => void
   }
 
   enum SubscriptionState {

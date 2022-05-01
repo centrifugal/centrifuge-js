@@ -547,6 +547,14 @@
                     "data": {
                       "type": "bytes",
                       "id": 8
+                    },
+                    "positioned": {
+                      "type": "bool",
+                      "id": 9
+                    },
+                    "recoverable": {
+                      "type": "bool",
+                      "id": 10
                     }
                   }
                 },
@@ -588,6 +596,10 @@
                     "data": {
                       "type": "bytes",
                       "id": 11
+                    },
+                    "was_recovering": {
+                      "type": "bool",
+                      "id": 12
                     }
                   }
                 },

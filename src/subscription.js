@@ -23,6 +23,8 @@ export class Subscription extends EventEmitter {
     this._recover = false;
     this._offset = null;
     this._epoch = null;
+    this._recoverable = false;
+    this._positioned = false;
     this._minResubscribeDelay = 500;
     this._maxResubscribeDelay = 20000;
     this._resubscribeTimeout = null;
@@ -339,6 +341,12 @@ export class Subscription extends EventEmitter {
     }
     if ('token' in options) {
       this._token = options.token;
+    }
+    if (options.positioned === true) {
+      this._positioned = true;
+    }
+    if (options.recoverable === true) {
+      this._recoverable = true;
     }
   }
 

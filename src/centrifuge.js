@@ -1256,6 +1256,14 @@ export class Centrifuge extends EventEmitter {
       req.data = sub._data;
     }
 
+    if (sub._positioned) {
+      req.positioned = true;
+    }
+
+    if (sub._recoverable) {
+      req.recoverable = true;
+    }
+
     if (sub._needRecover()) {
       req.recover = true;
       const offset = sub._getOffset();
@@ -1509,14 +1517,22 @@ export class Centrifuge extends EventEmitter {
   _getSubscribeContext(channel, result) {
     const ctx = {
       channel: channel,
+      positioned: false,
+      recoverable: false,
+      wasRecovering: false,
       recovered: false
     };
     if (result.recovered) {
       ctx.recovered = true;
     }
-    let positioned = false;
-    if ('positioned' in result) {
-      positioned = result.positioned;
+    if (result.positioned) {
+      ctx.positioned = true;
+    }
+    if (result.recoverable) {
+      ctx.recoverable = true;
+    }
+    if (result.was_recovering) {
+      ctx.wasRecovering = true;
     }
     let epoch = '';
     if ('epoch' in result) {
@@ -1526,12 +1542,12 @@ export class Centrifuge extends EventEmitter {
     if ('offset' in result) {
       offset = result.offset;
     }
-    if (positioned) {
+    if (ctx.positioned) {
       ctx.streamPosition = {
         'offset': offset,
         'epoch': epoch
       };
-    };
+    }
     if (result.data) {
       ctx.data = result.data;
     }
@@ -1612,9 +1628,9 @@ export class Centrifuge extends EventEmitter {
       return;
     }
     if (unsubscribe.code < 2500) {
-      sub._setUnsubscribed(unsubscribe.code, 'server');
+      sub._setUnsubscribed(unsubscribe.code, 'server unsubscribe');
     } else {
-      sub._setSubscribing(unsubscribe.code, 'server');
+      sub._setSubscribing(unsubscribe.code, 'server resubscribe');
     }
   };
 

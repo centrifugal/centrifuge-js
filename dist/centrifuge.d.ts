@@ -192,7 +192,11 @@ declare namespace Centrifuge {
 
   export interface SubscribedContext {
     channel: string;
+    recoverable: boolean;
+    positioned: boolean;
     streamPosition?: StreamPosition;
+    wasRecovering: boolean;
+    recovered: boolean;
     data?: any;
   }
 
@@ -255,6 +259,8 @@ declare namespace Centrifuge {
     since?: StreamPosition;
     minResubscribeDelay?: number;
     maxResubscribeDelay?: number;
+    positioned?: boolean;
+    recoverable?: boolean
   }
 
   export interface StreamPosition {

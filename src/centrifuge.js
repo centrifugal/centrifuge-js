@@ -452,7 +452,7 @@ export class Centrifuge extends EventEmitter {
     } else {
       if (!this._websocketSupported()) {
         this._debug('No Websocket support and no SockJS configured, can not connect');
-        throw new Error('No Websocket support and no SockJS configured, can not connect')
+        throw new Error('No Websocket support and no SockJS configured, can not connect');
       }
       if (this._config.websocket !== null) {
         this._websocket = this._config.websocket;

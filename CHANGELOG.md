@@ -2,6 +2,7 @@
 =====
 
 * fix typing of subscribe error context [#187](https://github.com/centrifugal/centrifuge-js/pull/187)
+* throw error if no transport configured [#176](https://github.com/centrifugal/centrifuge-js/pull/176)
 
 2.8.4
 =====

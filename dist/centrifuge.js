@@ -568,7 +568,7 @@ var Centrifuge = /*#__PURE__*/function (_EventEmitter) {
         if (!this._websocketSupported()) {
           this._debug('No Websocket support and no SockJS configured, can not connect');
 
-          return;
+          throw new Error('No Websocket support and no SockJS configured, can not connect');
         }
 
         if (this._config.websocket !== null) {

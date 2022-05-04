@@ -811,7 +811,9 @@ export class Centrifuge extends EventEmitter {
     if (!this._isConnecting()) {
       return;
     }
-    if (!this._refreshRequired) {
+
+    const needTokenRefresh = this._refreshRequired || (!this._token && this.getConnectionToken !== null);
+    if (!needTokenRefresh) {
       this._startConnecting();
       return;
     }

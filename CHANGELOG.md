@@ -1,3 +1,8 @@
+2.8.5
+=====
+
+* fix typing of subscribe error context [#187](https://github.com/centrifugal/centrifuge-js/pull/187)
+
 2.8.4
 =====
 

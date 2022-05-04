@@ -139,7 +139,8 @@ declare namespace Centrifuge {
     }
 
     export interface SubscribeErrorContext {
-        error: string;
+        code: number;
+        message: string;
         channel: string;
         isResubscribe: boolean;
     }

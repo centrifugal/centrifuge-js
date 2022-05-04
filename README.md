@@ -19,17 +19,13 @@ This client can connect to [Centrifuge](https://github.com/centrifugal/centrifug
 
 ## Install and quick start
 
-The simplest way to use `centrifuge-js` client is download it from `dist` folder and include into your web page using `script` tag:
-
-```html
-<script src="centrifuge.js"></script>
-```
-
-Or using cdn (replace `X` to concrete version number):
+The simplest way is to include `centrifuge-js` into your web page using `script` tag. For example, from CDN (replace `X` to concrete version number):
 
 ```html
 <script src="https://cdn.jsdelivr.net/gh/centrifugal/centrifuge-js@2.X.X/dist/centrifuge.min.js"></script>
 ```
+
+Or check out [centrifuge-js on cdnjs.com](https://cdnjs.com/libraries/centrifuge).
 
 Client is also available via `npm`:
 

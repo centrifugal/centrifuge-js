@@ -316,6 +316,10 @@
                     "code": {
                       "type": "uint32",
                       "id": 2
+                    },
+                    "reason": {
+                      "type": "string",
+                      "id": 3
                     }
                   }
                 },

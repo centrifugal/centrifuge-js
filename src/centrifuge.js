@@ -365,7 +365,7 @@ export class Centrifuge extends EventEmitter {
     this._decoder = new JsonDecoder();
   }
 
-  _formatOverride(format) {
+  _formatOverride(_format) {
     return false;
   }
 
@@ -812,7 +812,7 @@ export class Centrifuge extends EventEmitter {
       return;
     }
 
-    const needTokenRefresh = this._refreshRequired || (!this._token && this.getConnectionToken !== null);
+    const needTokenRefresh = this._refreshRequired || (!this._token && this._config.getConnectionToken !== null);
     if (!needTokenRefresh) {
       this._startConnecting();
       return;
@@ -1066,13 +1066,9 @@ export class Centrifuge extends EventEmitter {
     let needEvent = false;
 
     if (reconnect) {
-      if (this._setState(clientState.Connecting)) {
-        needEvent = true;
-      };
+      needEvent = this._setState(clientState.Connecting);
     } else {
-      if (this._setState(clientState.Disconnected)) {
-        needEvent = true;
-      }
+      needEvent = this._setState(clientState.Disconnected);
       this._rejectPromises({ code: errorCodes.clientDisconnected, message: 'disconnected' });
     }
 
@@ -1427,6 +1423,11 @@ export class Centrifuge extends EventEmitter {
         continue;
       }
       const sub = subs[channel];
+      this._serverSubs[channel] = {
+        'offset': sub.offset,
+        'epoch': sub.epoch,
+        'recoverable': sub.recoverable || false
+      };
       const subCtx = this._getSubscribeContext(channel, sub);
       this.emit('subscribed', subCtx);
     }
@@ -1446,11 +1447,6 @@ export class Centrifuge extends EventEmitter {
           }
         }
       }
-      this._serverSubs[channel] = {
-        'offset': sub.offset,
-        'epoch': sub.epoch,
-        'recoverable': sub.recoverable || false
-      };
     }
 
     for (const channel in this._serverSubs) {
@@ -1544,7 +1540,7 @@ export class Centrifuge extends EventEmitter {
     if ('offset' in result) {
       offset = result.offset;
     }
-    if (ctx.positioned) {
+    if (ctx.positioned || ctx.recoverable) {
       ctx.streamPosition = {
         'offset': offset,
         'epoch': epoch
@@ -1619,20 +1615,18 @@ export class Centrifuge extends EventEmitter {
   };
 
   _handleUnsubscribe(channel, unsubscribe) {
-    const ctx = {};
     const sub = this._getSub(channel);
     if (!sub) {
       if (this._isServerSub(channel)) {
         delete this._serverSubs[channel];
-        ctx.channel = channel;
-        this.emit('unsubscribed', ctx);
+        this.emit('unsubscribed', { channel: channel });
       }
       return;
     }
     if (unsubscribe.code < 2500) {
-      sub._setUnsubscribed(unsubscribe.code, 'server unsubscribe');
+      sub._setUnsubscribed(unsubscribe.code, unsubscribe.reason, false);
     } else {
-      sub._setSubscribing(unsubscribe.code, 'server resubscribe');
+      sub._setSubscribing(unsubscribe.code, unsubscribe.reason, false);
     }
   };
 

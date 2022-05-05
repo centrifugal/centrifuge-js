@@ -184,6 +184,13 @@ export class Subscription extends EventEmitter {
       return;
     }
     this._clearSubscribingState();
+
+    if (result.recoverable) {
+      this._recover = true;
+      this._offset = result.offset || 0;
+      this._epoch = result.epoch || '';
+    }
+
     this._setState(subscriptionState.Subscribed);
     const ctx = this._centrifuge._getSubscribeContext(this.channel, result);
     this.emit('subscribed', ctx);
@@ -197,12 +204,6 @@ export class Subscription extends EventEmitter {
         }
         this._handlePublication(pubs[i]);
       }
-    }
-
-    if (result.recoverable) {
-      this._recover = true;
-      this._offset = result.offset || 0;
-      this._epoch = result.epoch || '';
     }
 
     if (result.expires === true) {
@@ -453,7 +454,7 @@ export class Subscription extends EventEmitter {
       });
       this._refreshTimeout = setTimeout(() => this._refresh(), this._getRefreshRetryDelay());
     } else {
-      this._setUnsubscribed(err.code, err.message);
+      this._setUnsubscribed(err.code, err.message, true);
     }
   }
 

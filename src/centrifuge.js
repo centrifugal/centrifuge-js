@@ -113,8 +113,7 @@ export class Centrifuge extends EventEmitter {
       timeout: 5000,
       maxServerPingDelay: 10000,
       privateChannelPrefix: '$',
-      getConnectionToken: null,
-      getSubscriptionToken: null
+      getToken: null
     };
 
     this._configure(options);
@@ -812,7 +811,7 @@ export class Centrifuge extends EventEmitter {
       return;
     }
 
-    const needTokenRefresh = this._refreshRequired || (!this._token && this._config.getConnectionToken !== null);
+    const needTokenRefresh = this._refreshRequired || (!this._token && this._config.getToken !== null);
     if (!needTokenRefresh) {
       this._startConnecting();
       return;
@@ -839,7 +838,7 @@ export class Centrifuge extends EventEmitter {
         'type': 'connectToken',
         'error': {
           code: errorCodes.clientConnectToken,
-          message: e.toString()
+          message: e !== undefined ? e.toString() : ''
         }
       });
       const delay = self._getReconnectDelay();
@@ -1102,10 +1101,10 @@ export class Centrifuge extends EventEmitter {
   _getToken() {
     // ask application for new connection token.
     this._debug('get connection token');
-    if (this._config.getConnectionToken === null) {
+    if (this._config.getToken === null) {
       throw new Error('provide a function to get connection token');
     }
-    return this._config.getConnectionToken({});
+    return this._config.getToken({});
   }
 
   _refresh() {
@@ -1143,11 +1142,11 @@ export class Centrifuge extends EventEmitter {
         }
       });
     }).catch(function (e) {
-      this.emit('error', {
+      self.emit('error', {
         type: 'refreshToken',
         error: {
           code: errorCodes.clientRefreshToken,
-          message: e.toString()
+          message: e !== undefined ? e.toString() : ''
         }
       });
       self._refreshTimeout = setTimeout(() => self._refresh(), self._getRefreshRetryDelay());
@@ -1206,7 +1205,7 @@ export class Centrifuge extends EventEmitter {
       if (sub._token) {
         this._sendSubscribe(sub, sub._token);
       } else {
-        sub._getToken().then(function (token) {
+        sub._getSubscriptionToken().then(function (token) {
           if (clientId !== self._client) {
             return;
           }
@@ -1228,7 +1227,7 @@ export class Centrifuge extends EventEmitter {
             channel: sub.channel,
             error: {
               code: errorCodes.subscriptionSubscribeToken,
-              message: e.toString()
+              message: e !== undefined ? e.toString() : ''
             }
           });
           sub._scheduleResubscribe();

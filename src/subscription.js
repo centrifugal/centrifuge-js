@@ -32,6 +32,7 @@ export class Subscription extends EventEmitter {
     this._promises = {};
     this._promiseId = 0;
     this._refreshTimeout = null;
+    this._getToken = null;
     this._setOptions(options);
     if (this._centrifuge._debugEnabled) {
       this.on('state', function (ctx) {
@@ -60,7 +61,7 @@ export class Subscription extends EventEmitter {
       };
       if (timeout) {
         ctx.timeout = setTimeout(function () {
-          rej({ code: errorCodes.timeout, message: timeout });
+          rej({ code: errorCodes.timeout, message: 'timeout' });
         }, timeout);
       }
       this._promises[this._nextPromiseId()] = ctx;
@@ -130,7 +131,7 @@ export class Subscription extends EventEmitter {
     }
     return new Promise((res, rej) => {
       const timeout = setTimeout(function () {
-        rej({ code: errorCodes.timeout, message: timeout });
+        rej({ code: errorCodes.timeout, message: 'timeout' });
       }, this._centrifuge._config.timeout);
       this._promises[this._nextPromiseId()] = {
         timeout: timeout,
@@ -293,7 +294,6 @@ export class Subscription extends EventEmitter {
     if (!this._isSubscribing()) {
       return;
     }
-
     if (err.code < 100 || err.code === 109 || err.temporary === true) {
       if (err.code === 109) { // Token expired error.
         this._token = null;
@@ -343,6 +343,9 @@ export class Subscription extends EventEmitter {
     if ('token' in options) {
       this._token = options.token;
     }
+    if ('getToken' in options) {
+      this._getToken = options.getToken;
+    }
     if (options.positioned === true) {
       this._positioned = true;
     }
@@ -381,12 +384,12 @@ export class Subscription extends EventEmitter {
     }
   }
 
-  _getToken() {
+  _getSubscriptionToken() {
     this._centrifuge._debug('get subscription token for channel', this.channel);
     const ctx = {
       channel: this.channel
     };
-    const getToken = this._centrifuge._config.getSubscriptionToken;
+    const getToken = this._getToken;
     if (getToken === null) {
       throw new Error('provide a function to get channel subscription token');
     }
@@ -396,7 +399,7 @@ export class Subscription extends EventEmitter {
   _refresh() {
     this._clearRefreshTimeout();
     const self = this;
-    this._getToken().then(function (token) {
+    this._getSubscriptionToken().then(function (token) {
       if (!self._isSubscribed()) {
         return;
       }
@@ -430,7 +433,7 @@ export class Subscription extends EventEmitter {
         channel: self.channel,
         error: {
           code: errorCodes.subscriptionRefreshToken,
-          message: e.toString()
+          message: e !== undefined ? e.toString() : ''
         }
       });
       self._refreshTimeout = setTimeout(() => self._refresh(), self._getRefreshRetryDelay());

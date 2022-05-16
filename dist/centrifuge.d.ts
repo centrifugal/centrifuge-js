@@ -91,6 +91,7 @@ declare namespace Centrifuge {
     protocol?: 'json' | 'protobuf';
     debug?: boolean;
     token?: string;
+    getToken?: (ctx: ConnectionTokenContext) => Promise<string>;
     data?: any;
     name?: string;
     version?: string;
@@ -110,8 +111,6 @@ declare namespace Centrifuge {
     httpStreamRequestMode?: string;
     emulationEndpoint?: string;
     emulationRequestMode?: string;
-    getConnectionToken?: (ctx: ConnectionTokenContext) => Promise<string>;
-    getSubscriptionToken?: (ctx: SubscriptionTokenContext) => Promise<string>;
   }
 
   export interface StateContext {
@@ -256,6 +255,7 @@ declare namespace Centrifuge {
   export interface SubscriptionOptions {
     data?: any;
     token?: string;
+    getToken?: (ctx: SubscriptionTokenContext) => Promise<string>;
     since?: StreamPosition;
     minResubscribeDelay?: number;
     maxResubscribeDelay?: number;

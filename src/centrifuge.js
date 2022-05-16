@@ -112,7 +112,6 @@ export class Centrifuge extends EventEmitter {
       maxReconnectDelay: 20000,
       timeout: 5000,
       maxServerPingDelay: 10000,
-      privateChannelPrefix: '$',
       getToken: null
     };
 
@@ -1194,12 +1193,8 @@ export class Centrifuge extends EventEmitter {
       return;
     }
 
-    // If channel name does not start with privateChannelPrefix - then we
-    // can just send subscribe command to the server. If channel name
-    // starts with privateChannelPrefix - then this is a private channel
-    // and we should get subscription token first.
-    if (startsWith(channel, this._config.privateChannelPrefix)) {
-      // private channel, need to get token before sending subscribe.
+    if (sub._usesToken()) {
+      // token channel, need to get token before sending subscribe.
       const clientId = this._client;
       const self = this;
       if (sub._token) {

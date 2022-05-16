@@ -99,7 +99,6 @@ declare namespace Centrifuge {
     maxReconnectDelay?: number;
     timeout?: number;
     maxServerPingDelay?: number;
-    privateChannelPrefix?: string;
     websocket?: any;
     fetch?: any,
     readableStream?: any,

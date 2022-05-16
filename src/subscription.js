@@ -19,6 +19,7 @@ export class Subscription extends EventEmitter {
     this.state = subscriptionState.Unsubscribed;
     this._centrifuge = centrifuge;
     this._token = null;
+    this._getToken = null;
     this._data = null;
     this._recover = false;
     this._offset = null;
@@ -32,7 +33,6 @@ export class Subscription extends EventEmitter {
     this._promises = {};
     this._promiseId = 0;
     this._refreshTimeout = null;
-    this._getToken = null;
     this._setOptions(options);
     if (this._centrifuge._debugEnabled) {
       this.on('state', function (ctx) {
@@ -170,6 +170,10 @@ export class Subscription extends EventEmitter {
     }
     return false;
   };
+
+  _usesToken() {
+    return this._token !== null || this._getToken !== null;
+  }
 
   _clearSubscribingState() {
     this._resubscribeAttempts = 0;

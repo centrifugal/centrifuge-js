@@ -2,8 +2,6 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.Centrifuge = void 0;
 const tslib_1 = require("tslib");
-// @ts-nocheck
-const events_1 = tslib_1.__importDefault(require("events"));
 const subscription_1 = require("./subscription");
 const codes_1 = require("./codes");
 const transport_sockjs_1 = require("./transport_sockjs");
@@ -12,23 +10,50 @@ const transport_http_stream_1 = require("./transport_http_stream");
 const transport_sse_1 = require("./transport_sse");
 const json_1 = require("./json");
 const utils_1 = require("./utils");
-const clientState = {
-    // Initial state, state when connection explicitly disconnected, disconnect
-    // forced by a server, or when terminal condition met on client-side.
-    // Possible next states: connecting.
-    Disconnected: 'disconnected',
-    // State after connect call, state after connection lost, after a disconnect
-    // send by server with reconnect code.
-    // Possible next states: connected, disconnected.
-    Connecting: 'connecting',
-    // State when connected and authenticated (connect result received).
-    // Possible next states: disconnected, connecting.
-    Connected: 'connected'
+const types_1 = require("./types");
+const events_1 = tslib_1.__importDefault(require("events"));
+const defaults = {
+    protocol: 'json',
+    token: null,
+    getToken: null,
+    data: null,
+    debug: false,
+    name: 'js',
+    version: '',
+    fetch: null,
+    readableStream: null,
+    websocket: null,
+    eventsource: null,
+    sockjs: null,
+    sockjsServer: null,
+    sockjsTimeout: null,
+    sockjsTransports: [
+        'websocket',
+        'xdr-streaming',
+        'xhr-streaming',
+        'eventsource',
+        'iframe-eventsource',
+        'iframe-htmlfile',
+        'xdr-polling',
+        'xhr-polling',
+        'iframe-xhr-polling',
+        'jsonp-polling'
+    ],
+    httpStreamRequestMode: 'cors',
+    emulationEndpoint: '/emulation',
+    emulationRequestMode: 'cors',
+    minReconnectDelay: 500,
+    maxReconnectDelay: 20000,
+    timeout: 5000,
+    maxServerPingDelay: 10000,
 };
 class Centrifuge extends events_1.default {
     constructor(endpoint, options) {
         super();
-        this.state = clientState.Disconnected;
+        this._reconnectTimeout = null;
+        this._refreshTimeout = null;
+        this._serverPingTimeout = null;
+        this.state = types_1.State.Disconnected;
         this._endpoint = endpoint;
         this._emulation = false;
         this._transports = [];
@@ -44,17 +69,15 @@ class Centrifuge extends events_1.default {
         this._client = null;
         this._session = '';
         this._node = '';
-        this._subs = {};
-        this._serverSubs = {};
+        this._subs = new Map();
+        this._serverSubs = new Map();
         this._commandId = 0;
         this._commands = [];
         this._batching = false;
         this._refreshRequired = false;
         this._refreshTimeout = null;
         this._callbacks = {};
-        this._latency = null;
-        this._latencyStart = null;
-        this._token = null;
+        this._token = undefined;
         this._dispatchPromise = Promise.resolve();
         this._serverPing = 0;
         this._serverPingTimeout = null;
@@ -62,47 +85,13 @@ class Centrifuge extends events_1.default {
         this._promises = {};
         this._promiseId = 0;
         this._debugEnabled = false;
-        this._config = {
-            protocol: 'json',
-            token: null,
-            data: null,
-            debug: false,
-            name: 'js',
-            version: '',
-            fetch: null,
-            readableStream: null,
-            websocket: null,
-            eventsource: null,
-            sockjs: null,
-            sockjsServer: null,
-            sockjsTimeout: null,
-            sockjsTransports: [
-                'websocket',
-                'xdr-streaming',
-                'xhr-streaming',
-                'eventsource',
-                'iframe-eventsource',
-                'iframe-htmlfile',
-                'xdr-polling',
-                'xhr-polling',
-                'iframe-xhr-polling',
-                'jsonp-polling'
-            ],
-            httpStreamRequestMode: 'cors',
-            emulationEndpoint: '/emulation',
-            emulationRequestMode: 'cors',
-            minReconnectDelay: 500,
-            maxReconnectDelay: 20000,
-            timeout: 5000,
-            maxServerPingDelay: 10000,
-            getToken: null
-        };
-        this._configure(options);
+        this._config = Object.assign(Object.assign({}, defaults), options);
+        this._configure();
         if (this._debugEnabled) {
-            this.on('state', function (ctx) {
+            this.on('state', (ctx) => {
                 this._debug('client state', ctx.oldState, '->', ctx.newState);
             });
-            this.on('error', function (ctx) {
+            this.on('error', (ctx) => {
                 this._debug('client error', ctx);
             });
         }
@@ -110,11 +99,11 @@ class Centrifuge extends events_1.default {
     // newSubscription allocates new Subscription to a channel. Since server only allows
     // one subscription per channel per client this method throws if client already has
     // channel subscription in internal registry.
-    newSubscription(channel, opts) {
+    newSubscription(channel, options) {
         if (this.getSubscription(channel) !== null) {
             throw new Error('Subscription to the channel ' + channel + ' already exists');
         }
-        const sub = new subscription_1.Subscription(this, channel, opts);
+        const sub = new subscription_1.Subscription(this, channel, options);
         this._subs[channel] = sub;
         return sub;
     }
@@ -129,7 +118,7 @@ class Centrifuge extends events_1.default {
         if (!sub) {
             return;
         }
-        if (sub.state !== subscription_1.subscriptionState.Unsubscribed) {
+        if (sub.state !== types_1.SubscriptionState.Unsubscribed) {
             throw new Error('Subscription must be in unsubscribed state to be removed');
         }
         this._removeSubscription(sub);
@@ -142,11 +131,11 @@ class Centrifuge extends events_1.default {
     // state and rejects in case of client goes to Disconnected or Failed state.
     // Users can provide optional timeout in milliseconds.
     ready(timeout) {
-        if (this.state === clientState.Disconnected) {
+        if (this.state === types_1.State.Disconnected) {
             return Promise.reject({ code: codes_1.errorCodes.clientDisconnected, message: 'client disconnected' });
         }
         ;
-        if (this.state === clientState.Connected) {
+        if (this.state === types_1.State.Connected) {
             return Promise.resolve();
         }
         ;
@@ -203,90 +192,100 @@ class Centrifuge extends events_1.default {
     }
     // rpc to a server - i.e. a call which waits for a response with data.
     rpc(method, data) {
-        const cmd = {
-            rpc: {
-                method: method,
-                data: data
-            }
-        };
-        const self = this;
-        return this._methodCall().then(function () {
-            return self._callPromise(cmd, function (reply) {
-                return {
-                    'data': reply.rpc.data
-                };
+        return tslib_1.__awaiter(this, void 0, void 0, function* () {
+            const cmd = {
+                rpc: {
+                    method: method,
+                    data: data
+                }
+            };
+            const self = this;
+            return this._methodCall().then(function () {
+                return self._callPromise(cmd, function (reply) {
+                    return {
+                        'data': reply.rpc.data
+                    };
+                });
             });
         });
     }
     // publish data to a channel.
     publish(channel, data) {
-        const cmd = {
-            publish: {
-                channel: channel,
-                data: data
-            }
-        };
-        const self = this;
-        return this._methodCall().then(function () {
-            return self._callPromise(cmd, function () {
-                return {};
+        return tslib_1.__awaiter(this, void 0, void 0, function* () {
+            const cmd = {
+                publish: {
+                    channel: channel,
+                    data: data
+                }
+            };
+            const self = this;
+            return this._methodCall().then(function () {
+                return self._callPromise(cmd, function () {
+                    return {};
+                });
             });
         });
     }
     // history of a channel.
     history(channel, options) {
-        const cmd = {
-            history: this._getHistoryRequest(channel, options)
-        };
-        const self = this;
-        return this._methodCall().then(function () {
-            return self._callPromise(cmd, function (reply) {
-                const result = reply.history;
-                const publications = [];
-                if (result.publications) {
-                    for (let i = 0; i < result.publications.length; i++) {
-                        publications.push(self._getPublicationContext(channel, result.publications[i]));
+        return tslib_1.__awaiter(this, void 0, void 0, function* () {
+            const cmd = {
+                history: this._getHistoryRequest(channel, options)
+            };
+            const self = this;
+            return this._methodCall().then(function () {
+                return self._callPromise(cmd, function (reply) {
+                    const result = reply.history;
+                    const publications = [];
+                    if (result.publications) {
+                        for (let i = 0; i < result.publications.length; i++) {
+                            publications.push(self._getPublicationContext(channel, result.publications[i]));
+                        }
                     }
-                }
-                return {
-                    'publications': publications,
-                    'epoch': result.epoch || '',
-                    'offset': result.offset || 0
-                };
+                    return {
+                        'publications': publications,
+                        'epoch': result.epoch || '',
+                        'offset': result.offset || 0
+                    };
+                });
             });
         });
     }
     // presence for a channel.
     presence(channel) {
-        const cmd = {
-            presence: {
-                channel: channel
-            }
-        };
-        const self = this;
-        return this._methodCall().then(function () {
-            return self._callPromise(cmd, function (reply) {
-                return {
-                    'clients': reply.presence.presence
-                };
+        return tslib_1.__awaiter(this, void 0, void 0, function* () {
+            const cmd = {
+                presence: {
+                    channel: channel
+                }
+            };
+            const self = this;
+            return this._methodCall().then(function () {
+                return self._callPromise(cmd, function (reply) {
+                    return {
+                        'clients': reply.presence.presence
+                    };
+                });
             });
         });
     }
     // presence stats for a channel.
     presenceStats(channel) {
-        const cmd = {
-            'presence_stats': {
-                channel: channel
-            }
-        };
-        const self = this;
-        return this._methodCall().then(function () {
-            return self._callPromise(cmd, function (reply) {
-                const result = reply.presence_stats;
-                return {
-                    'numUsers': result.num_users,
-                    'numClients': result.num_clients
-                };
+        return tslib_1.__awaiter(this, void 0, void 0, function* () {
+            const cmd = {
+                'presence_stats': {
+                    channel: channel
+                }
+            };
+            const self = this;
+            return this._methodCall().then(function () {
+                return self._callPromise(cmd, function (reply) {
+                    const result = reply.presence_stats;
+                    return {
+                        'numUsers': result.num_users,
+                        'numClients': result.num_clients
+                    };
+                });
             });
         });
     }
@@ -304,13 +303,11 @@ class Centrifuge extends events_1.default {
         this._flush();
     }
     ;
-    _log() { (0, utils_1.log)('info', arguments); }
-    ;
-    _debug() {
+    _debug(...args) {
         if (!this._debugEnabled) {
             return;
         }
-        (0, utils_1.log)('debug', arguments);
+        (0, utils_1.log)('debug', args);
     }
     ;
     _setFormat(format) {
@@ -326,11 +323,10 @@ class Centrifuge extends events_1.default {
     _formatOverride(_format) {
         return false;
     }
-    _configure(options) {
+    _configure() {
         if (!('Promise' in global)) {
             throw new Error('Promise polyfill required');
         }
-        (0, utils_1.extend)(this._config, options || {});
         if (!this._endpoint) {
             throw new Error('endpoint configuration required');
         }
@@ -375,22 +371,22 @@ class Centrifuge extends events_1.default {
         if (this.state !== newState) {
             const oldState = this.state;
             this.state = newState;
-            this.emit('state', { 'newState': newState, 'oldState': oldState });
+            this.emit('state', { newState, oldState });
             return true;
         }
         return false;
     }
     ;
     _isDisconnected() {
-        return this.state === clientState.Disconnected;
+        return this.state === types_1.State.Disconnected;
     }
     ;
     _isConnecting() {
-        return this.state === clientState.Connecting;
+        return this.state === types_1.State.Connecting;
     }
     ;
     _isConnected() {
-        return this.state === clientState.Connected;
+        return this.state === types_1.State.Connected;
     }
     ;
     _nextCommandId() {
@@ -441,7 +437,7 @@ class Centrifuge extends events_1.default {
     }
     ;
     _handleWriteError(commands) {
-        for (let command in commands) {
+        for (let command of commands) {
             let id = command.id;
             if (!(id in this._callbacks)) {
                 continue;
@@ -456,6 +452,9 @@ class Centrifuge extends events_1.default {
     _transportSendCommands(commands) {
         if (!commands.length) {
             return true;
+        }
+        if (!this._transport) {
+            return false;
         }
         try {
             this._transport.send(this._encoder.encodeCommands(commands), this._session, this._node);
@@ -617,12 +616,14 @@ class Centrifuge extends events_1.default {
         }
         const connectCommand = this._constructConnectCommand();
         if (this._transport.emulation()) {
-            this._latencyStart = new Date();
             connectCommand.id = this._nextCommandId();
             this._callConnectFake(connectCommand.id).then(resolveCtx => {
+                // @ts-ignore
                 const result = resolveCtx.reply.connect;
                 this._connectResponse(result);
+                // @ts-ignore
                 if (resolveCtx.next) {
+                    // @ts-ignore
                     resolveCtx.next();
                 }
             }, rejectCtx => {
@@ -647,7 +648,6 @@ class Centrifuge extends events_1.default {
                 if (self._transport.emulation()) {
                     return;
                 }
-                self._latencyStart = new Date();
                 self._sendConnect();
             },
             onError: function (e) {
@@ -733,9 +733,12 @@ class Centrifuge extends events_1.default {
         const connectCommand = this._constructConnectCommand();
         const self = this;
         this._call(connectCommand).then(resolveCtx => {
+            // @ts-ignore
             const result = resolveCtx.reply.connect;
             self._connectResponse(result);
+            // @ts-ignore
             if (resolveCtx.next) {
+                // @ts-ignore
                 resolveCtx.next();
             }
         }, rejectCtx => {
@@ -770,7 +773,7 @@ class Centrifuge extends events_1.default {
             if (!self._isConnecting()) {
                 return;
             }
-            this.emit('error', {
+            self.emit('error', {
                 'type': 'connectToken',
                 'error': {
                     code: codes_1.errorCodes.clientConnectToken,
@@ -785,7 +788,7 @@ class Centrifuge extends events_1.default {
         });
     }
     _connectError(err) {
-        if (this.state !== clientState.Connecting) {
+        if (this.state !== types_1.State.Connecting) {
             return;
         }
         if (err.code === 109) { // token expired.
@@ -887,8 +890,11 @@ class Centrifuge extends events_1.default {
     _callPromise(cmd, resultCB) {
         return new Promise((resolve, reject) => {
             this._call(cmd).then(resolveCtx => {
+                // @ts-ignore
                 resolve(resultCB(resolveCtx.reply));
+                // @ts-ignore
                 if (resolveCtx.next) {
+                    // @ts-ignore
                     resolveCtx.next();
                 }
             }, rejectCtx => {
@@ -968,7 +974,7 @@ class Centrifuge extends events_1.default {
     }
     _startConnecting() {
         this._debug('start connecting');
-        if (this._setState(clientState.Connecting)) {
+        if (this._setState(types_1.State.Connecting)) {
             this.emit('connecting', { code: codes_1.connectingCodes.connectCalled, reason: 'connect called' });
         }
         ;
@@ -986,17 +992,17 @@ class Centrifuge extends events_1.default {
         };
         let needEvent = false;
         if (reconnect) {
-            needEvent = this._setState(clientState.Connecting);
+            needEvent = this._setState(types_1.State.Connecting);
         }
         else {
-            needEvent = this._setState(clientState.Disconnected);
+            needEvent = this._setState(types_1.State.Disconnected);
             this._rejectPromises({ code: codes_1.errorCodes.clientDisconnected, message: 'disconnected' });
         }
         this._clearOutgoingRequests();
-        if (previousState === clientState.Connecting) {
+        if (previousState === types_1.State.Connecting) {
             this._clearReconnectTimeout();
         }
-        if (previousState === clientState.Connected) {
+        if (previousState === types_1.State.Connected) {
             this._clearConnectedState();
         }
         if (needEvent) {
@@ -1019,7 +1025,7 @@ class Centrifuge extends events_1.default {
     _getToken() {
         // ask application for new connection token.
         this._debug('get connection token');
-        if (this._config.getToken === null) {
+        if (!this._config.getToken) {
             throw new Error('provide a function to get connection token');
         }
         return this._config.getToken({});
@@ -1044,9 +1050,12 @@ class Centrifuge extends events_1.default {
                 refresh: { token: self._token }
             };
             self._call(cmd).then(resolveCtx => {
+                // @ts-ignore
                 const result = resolveCtx.reply.refresh;
                 self._refreshResponse(result);
+                // @ts-ignore
                 if (resolveCtx.next) {
+                    // @ts-ignore
                     resolveCtx.next();
                 }
             }, rejectCtx => {
@@ -1142,7 +1151,7 @@ class Centrifuge extends events_1.default {
             }
         }
         else {
-            this._sendSubscribe(sub);
+            this._sendSubscribe(sub, '');
         }
     }
     ;
@@ -1176,9 +1185,12 @@ class Centrifuge extends events_1.default {
         }
         const cmd = { subscribe: req };
         this._call(cmd).then(resolveCtx => {
+            // @ts-ignore
             const result = resolveCtx.reply.subscribe;
             this._subscribeResponse(channel, result);
+            // @ts-ignore
             if (resolveCtx.next) {
+                // @ts-ignore
                 resolveCtx.next();
             }
         }, rejectCtx => {
@@ -1195,9 +1207,12 @@ class Centrifuge extends events_1.default {
         };
         const cmd = { 'sub_refresh': req };
         this._call(cmd).then(resolveCtx => {
+            // @ts-ignore
             const result = resolveCtx.reply.sub_refresh;
             sub._refreshResponse(result);
+            // @ts-ignore
             if (resolveCtx.next) {
+                // @ts-ignore
                 resolveCtx.next();
             }
         }, rejectCtx => {
@@ -1223,7 +1238,9 @@ class Centrifuge extends events_1.default {
         const cmd = { unsubscribe: req };
         const self = this;
         this._call(cmd).then(resolveCtx => {
+            // @ts-ignore
             if (resolveCtx.next) {
+                // @ts-ignore
                 resolveCtx.next();
             }
         }, rejectCtx => {
@@ -1253,12 +1270,8 @@ class Centrifuge extends events_1.default {
         if (this._isConnected()) {
             return;
         }
-        if (this._latencyStart !== null) {
-            this._latency = (new Date()).getTime() - this._latencyStart.getTime();
-            this._latencyStart = null;
-        }
         this._client = result.client;
-        this._setState(clientState.Connected);
+        this._setState(types_1.State.Connected);
         if (this._refreshTimeout) {
             clearTimeout(this._refreshTimeout);
         }
@@ -1503,7 +1516,7 @@ class Centrifuge extends events_1.default {
             sub._setUnsubscribed(unsubscribe.code, unsubscribe.reason, false);
         }
         else {
-            sub._setSubscribing(unsubscribe.code, unsubscribe.reason, false);
+            sub._setSubscribing(unsubscribe.code, unsubscribe.reason);
         }
     }
     ;
@@ -1570,7 +1583,7 @@ class Centrifuge extends events_1.default {
     }
     ;
     _handleMessage(message) {
-        this.emit('message', message.data);
+        this.emit('message', { data: message.data });
     }
     ;
     _handleServerPing(next) {
@@ -1668,6 +1681,6 @@ class Centrifuge extends events_1.default {
     }
 }
 exports.Centrifuge = Centrifuge;
-Centrifuge.State = clientState;
-Centrifuge.SubscriptionState = subscription_1.subscriptionState;
+Centrifuge.SubscriptionState = types_1.SubscriptionState;
+Centrifuge.State = types_1.State;
 //# sourceMappingURL=centrifuge.js.map

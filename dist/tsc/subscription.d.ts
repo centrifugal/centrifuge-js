@@ -1,0 +1,51 @@
+/// <reference types="node" />
+import EventEmitter from 'events';
+export declare const subscriptionState: {
+    Unsubscribed: string;
+    Subscribing: string;
+    Subscribed: string;
+};
+export declare class Subscription extends EventEmitter {
+    constructor(centrifuge: any, channel: any, options: any);
+    ready(timeout: any): Promise<unknown>;
+    subscribe(): void;
+    unsubscribe(): void;
+    cancel(): void;
+    publish(data: any): Promise<any>;
+    presence(): Promise<any>;
+    presenceStats(): Promise<any>;
+    history(opts: any): Promise<any>;
+    _methodCall(): Promise<unknown>;
+    _nextPromiseId(): number;
+    _needRecover(): boolean;
+    _isUnsubscribed(): boolean;
+    _isSubscribing(): boolean;
+    _isSubscribed(): boolean;
+    _setState(newState: any): boolean;
+    _usesToken(): boolean;
+    _clearSubscribingState(): void;
+    _clearSubscribedState(): void;
+    _setSubscribed(result: any): void;
+    _setSubscribing(code: any, reason: any): void;
+    _setUnsubscribed(code: any, reason: any, sendUnsubscribe: any): void;
+    _handlePublication(pub: any): void;
+    _handleJoin(join: any): void;
+    _handleLeave(leave: any): void;
+    _resolvePromises(): void;
+    _rejectPromises(err: any): void;
+    _scheduleResubscribe(): void;
+    _subscribeError(err: any): void;
+    _getResubscribeDelay(): number;
+    _clearPositionState(): void;
+    _setOptions(options: any): void;
+    _getOffset(): any;
+    _getEpoch(): any;
+    _clearRefreshTimeout(): void;
+    _clearResubscribeTimeout(): void;
+    _getSubscriptionToken(): any;
+    _refresh(): void;
+    _refreshResponse(result: any): void;
+    _refreshError(err: any): void;
+    _getRefreshRetryDelay(): number;
+    _failUnauthorized(): void;
+}

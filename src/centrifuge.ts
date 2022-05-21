@@ -20,7 +20,8 @@ import {
   State, Options, SubscriptionState, ClientEvents,
   TypedEventEmitter, RpcResult, SubscriptionOptions,
   HistoryOptions, HistoryResult, PublishResult,
-  PresenceResult, PresenceStatsResult, SubscribedContext
+  PresenceResult, PresenceStatsResult, SubscribedContext,
+  TransportEndpoint,
 } from './types';
 
 import EventEmitter from 'events';
@@ -67,9 +68,10 @@ interface serverSubscription {
   recoverable: boolean;
 }
 
+/** Centrifuge is a Centrifuge/Centrifugo bidirectional client. */
 export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<ClientEvents>) {
   state: State;
-  private _endpoint: string | Array<object>;
+  private _endpoint: string | Array<TransportEndpoint>;
   private _emulation: boolean;
   private _transports: any[];
   private _currentTransportIndex: number;
@@ -77,8 +79,6 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
   private _transportWasOpen: boolean;
   private _transport?: any;
   private _transportClosed: boolean;
-  private _encoder: any;
-  private _decoder: any;
   private _reconnectTimeout?: null | ReturnType<typeof setTimeout> = null;
   private _reconnectAttempts: number;
   private _client: null;
@@ -100,13 +100,20 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
   private _promises: {};
   private _promiseId: number;
 
+  /** @internal */
   _debugEnabled: boolean;
+  /** @internal */
   _config: Options;
+  /** @internal */
+  _encoder: any;
+  /** @internal */
+  _decoder: any;
 
   static State: { Disconnected: string; Connecting: string; Connected: string; };
   static SubscriptionState: { Unsubscribed: string; Subscribing: string; Subscribed: string; };
 
-  constructor(endpoint: string | Array<object>, options: Partial<Options>) {
+  /** Constructs Centrifuge client. Call connect() method to start connecting. */
+  constructor(endpoint: string | Array<TransportEndpoint>, options?: Partial<Options>) {
     super();
     this.state = State.Disconnected;
     this._endpoint = endpoint;
@@ -154,9 +161,10 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     }
   }
 
-  // newSubscription allocates new Subscription to a channel. Since server only allows
-  // one subscription per channel per client this method throws if client already has
-  // channel subscription in internal registry.
+  /** newSubscription allocates new Subscription to a channel. Since server only allows 
+   * one subscription per channel per client this method throws if client already has 
+   * channel subscription in internal registry.
+   * */
   newSubscription(channel: string, options?: Partial<SubscriptionOptions>): Subscription {
     if (this.getSubscription(channel) !== null) {
       throw new Error('Subscription to the channel ' + channel + ' already exists');
@@ -166,32 +174,32 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     return sub;
   }
 
-  // getSubscription returns Subscription if it's registered in the internal
-  // registry or null.
+  /** getSubscription returns Subscription if it's registered in the internal 
+   * registry or null. */
   getSubscription(channel: string): Subscription | null {
     return this._getSub(channel);
   }
 
-  // removeSubscription allows removing Subcription from the internal registry.
-  // Subscrption must be in unsubscribed state.
+  /** removeSubscription allows removing Subcription from the internal registry. Subscrption 
+   * must be in unsubscribed state. */
   removeSubscription(sub: Subscription | null) {
     if (!sub) {
       return;
     }
     if (sub.state !== SubscriptionState.Unsubscribed) {
-      throw new Error('Subscription must be in unsubscribed state to be removed');
+      sub.unsubscribe();
     }
     this._removeSubscription(sub);
   }
 
-  // Get a map with all current client-side subscriptions.
+  /** Get a map with all current client-side subscriptions. */
   subscriptions(): Map<string, Subscription> {
     return this._subs;
   }
 
-  // ready returns a Promise which resolves upon client goes to Connected
-  // state and rejects in case of client goes to Disconnected or Failed state.
-  // Users can provide optional timeout in milliseconds.
+  /** ready returns a Promise which resolves upon client goes to Connected 
+   * state and rejects in case of client goes to Disconnected or Failed state.
+   * Users can provide optional timeout in milliseconds. */
   ready(timeout?: number) {
     if (this.state === State.Disconnected) {
       return Promise.reject({ code: errorCodes.clientDisconnected, message: 'client disconnected' });
@@ -213,7 +221,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     });
   }
 
-  // connect to a server.
+  /** connect to a server. */
   connect() {
     if (this._isConnected()) {
       this._debug('connect called when already connected');
@@ -227,13 +235,13 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     this._startConnecting();
   };
 
-  // disconnect from a server.
+  /** disconnect from a server. */
   disconnect() {
     this._disconnect(disconnectedCodes.disconnectCalled, 'disconnect called', false);
   };
 
-  // send asynchronous data to a server (without any response from a server
-  // expected, see rpc method if you need response).
+  /** send asynchronous data to a server (without any response from a server 
+   * expected, see rpc method if you need response). */
   async send(data: any): Promise<void> {
     const cmd = {
       send: {
@@ -252,7 +260,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     });
   }
 
-  // rpc to a server - i.e. a call which waits for a response with data.
+  /** rpc to a server - i.e. a call which waits for a response with data. */
   async rpc(method: string, data: any): Promise<RpcResult> {
     const cmd = {
       rpc: {
@@ -272,7 +280,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     });
   }
 
-  // publish data to a channel.
+  /** publish data to a channel. */
   async publish(channel: string, data: any): Promise<PublishResult> {
     const cmd = {
       publish: {
@@ -290,7 +298,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     });
   }
 
-  // history of a channel.
+  /** history of a channel. */
   async history(channel: string, options?: HistoryOptions): Promise<HistoryResult> {
     const cmd = {
       history: this._getHistoryRequest(channel, options)
@@ -316,7 +324,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     });
   }
 
-  // presence for a channel.
+  /** presence for a channel. */
   async presence(channel: string): Promise<PresenceResult> {
     const cmd = {
       presence: {
@@ -335,7 +343,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     });
   }
 
-  // presence stats for a channel.
+  /** presence stats for a channel. */
   async presenceStats(channel: string): Promise<PresenceStatsResult> {
     const cmd = {
       'presence_stats': {
@@ -356,20 +364,22 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     });
   }
 
-  // start command batching (collect into temporary buffer without sending to a server)
-  // until stopBatching called.
+  /** start command batching (collect into temporary buffer without sending to a server) 
+   * until stopBatching called.*/
   startBatching() {
     // start collecting messages without sending them to Centrifuge until flush
     // method called
     this._batching = true;
   };
 
-  // stop batching commands and flush collected commands to the network (all in one request/frame).
+  /** stop batching commands and flush collected commands to the 
+   * network (all in one request/frame).*/
   stopBatching() {
     this._batching = false;
     this._flush();
   };
 
+  /** @internal */
   _debug(...args: any[]) {
     if (!this._debugEnabled) {
       return;
@@ -377,6 +387,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     log('debug', args);
   };
 
+  /** @internal */
   private _setFormat(format: string) {
     if (this._formatOverride(format)) {
       return;
@@ -388,6 +399,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     this._decoder = new JsonDecoder();
   }
 
+  /** @internal */
   protected _formatOverride(_format: string) {
     return false;
   }
@@ -549,8 +561,8 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     if (this._config.websocket !== null) {
       websocket = this._config.websocket;
     } else {
-      if (!(typeof WebSocket !== 'function' && typeof WebSocket !== 'object')) {
-        websocket = WebSocket;
+      if (!(typeof global.WebSocket !== 'function' && typeof global.WebSocket !== 'object')) {
+        websocket = global.WebSocket;
       }
     }
 
@@ -593,7 +605,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     if (!this._emulation) {
       if (startsWith(this._endpoint, 'http')) {
         this._debug('client will use sockjs');
-        this._transport = new SockjsTransport(this._endpoint, {
+        this._transport = new SockjsTransport(this._endpoint as string, {
           sockjs: sockjs,
           transports: this._config.sockjsTransports,
           server: this._config.sockjsServer,
@@ -604,7 +616,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
         }
       } else {
         this._debug('client will use websocket');
-        this._transport = new WebsocketTransport(this._endpoint, {
+        this._transport = new WebsocketTransport(this._endpoint as string, {
           websocket: websocket
         });
         if (!this._transport.supported()) {
@@ -1058,6 +1070,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     return p;
   };
 
+  /** @internal */
   _call(cmd) {
     return new Promise((resolve, reject) => {
       cmd.id = this._nextCommandId();
@@ -1214,7 +1227,8 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     }
   };
 
-  _subscribe(sub) {
+  /** @internal */
+  _subscribe(sub: Subscription) {
     this._debug('subscribing on', sub.channel);
     const channel = sub.channel;
 
@@ -1325,6 +1339,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     });
   }
 
+  /** @internal */
   _sendSubRefresh(sub: Subscription, token: string) {
     const req = {
       channel: sub.channel,
@@ -1349,13 +1364,14 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     });
   }
 
-  protected _removeSubscription(sub: Subscription | null) {
+  private _removeSubscription(sub: Subscription | null) {
     if (sub === null) {
       return;
     }
     delete this._subs[sub.channel];
   }
 
+  /** @internal */
   _unsubscribe(sub: Subscription) {
     if (!this._isConnected()) {
       return;
@@ -1544,6 +1560,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     sub._subscribeError(error);
   };
 
+  /** @internal */
   _getSubscribeContext(channel: string, result: any): SubscribedContext {
     const ctx: any = {
       channel: channel,
@@ -1680,6 +1697,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     this._disconnect(code, disconnect.reason, reconnect);
   };
 
+  /** @internal */
   _getPublicationContext(channel: string, pub: any) {
     const ctx: any = {
       channel: channel,
@@ -1697,6 +1715,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     return ctx;
   }
 
+  /** @internal */
   _getJoinLeaveContext(clientInfo) {
     const info: any = {
       client: clientInfo.client,

@@ -175,19 +175,21 @@ class Centrifuge extends events_1.default {
     // send asynchronous data to a server (without any response from a server
     // expected, see rpc method if you need response).
     send(data) {
-        const cmd = {
-            send: {
-                data: data
-            }
-        };
-        const self = this;
-        return this._methodCall().then(function () {
-            const sent = self._transportSendCommands([cmd]); // can send async message to server without id set
-            if (!sent) {
-                return Promise.reject(self._createErrorObject(codes_1.errorCodes.transportWriteError, 'transport write error'));
-            }
-            ;
-            return Promise.resolve();
+        return tslib_1.__awaiter(this, void 0, void 0, function* () {
+            const cmd = {
+                send: {
+                    data: data
+                }
+            };
+            const self = this;
+            return this._methodCall().then(function () {
+                const sent = self._transportSendCommands([cmd]); // can send async message to server without id set
+                if (!sent) {
+                    return Promise.reject(self._createErrorObject(codes_1.errorCodes.transportWriteError, 'transport write error'));
+                }
+                ;
+                return Promise.resolve();
+            });
         });
     }
     // rpc to a server - i.e. a call which waits for a response with data.

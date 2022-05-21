@@ -2,8 +2,11 @@
   "name": "centrifuge",
   "version": "3.0.0",
   "description": "Centrifuge and Centrifugo client for NodeJS, React Native and browser",
-  "main": "./dist/tsc/main.js",
-  "types": "./dist/tsc/main.d.ts",
+  "main": "./dist/tsc/index.js",
+  "types": "./dist/tsc/index.d.ts",
+  "files": [
+    "dist"
+  ],
   "browser": {
     "events": "events"
   },
@@ -12,15 +15,15 @@
     "test": "jest",
     "clean": "rm -rf dist build package",
     "ts-node": "ts-node",
-    "docs": "typedoc --entryPoints src/*.ts",
+    "docs": "typedoc --exclude '**/transport_*.ts' --exclude '**/*.test.ts' --exclude '**/*+(utils|json|codes|browser).ts' --excludePrivate --excludeInternal --entryPoints src/*.ts",
     "build": "tsc -p tsconfig.json",
     "build-all": "yarn clean && yarn build && yarn esbuild-browser && yarn esbuild-browser-protobuf",
-    "esbuild-browser": "esbuild src/browser.ts --bundle --minify --sourcemap=external --outfile=dist/esbuild/centrifuge.js --define:global=window",
-    "esbuild-browser:dev": "esbuild src/browser.ts --bundle --outfile=dist/esbuild/centrifuge.js --define:global=window",
-    "esbuild-browser:watch": "esbuild src/browser.ts --bundle --watch --outfile=dist/esbuild/centrifuge.js --define:global=window",
-    "esbuild-browser-protobuf": "esbuild src/browser.protobuf.ts --bundle --minify --sourcemap=external --outfile=dist/esbuild/centrifuge.protobuf.js --define:global=window",
-    "esbuild-browser-protobuf:dev": "esbuild src/browser.ts --bundle --outfile=dist/esbuild/centrifuge.protobuf.js --define:global=window",
-    "esbuild-browser-protobuf:watch": "esbuild src/browser.ts --bundle --watch --outfile=dist/esbuild/centrifuge.protobuf.js --define:global=window",
+    "esbuild-browser": "esbuild src/browser.ts --bundle --minify --sourcemap --outfile=dist/centrifuge.js --legal-comments=none --define:global=window",
+    "esbuild-browser:dev": "esbuild src/browser.ts --bundle --outfile=dist/centrifuge.js --define:global=window",
+    "esbuild-browser:watch": "esbuild src/browser.ts --bundle --watch --outfile=dist/centrifuge.js --define:global=window",
+    "esbuild-browser-protobuf": "esbuild src/protobuf/browser.ts --bundle --minify --sourcemap --outfile=dist/centrifuge.protobuf.js --legal-comments=none --define:global=window",
+    "esbuild-browser-protobuf:dev": "esbuild src/protobuf/browser.ts --bundle --outfile=dist/centrifuge.protobuf.js --define:global=window",
+    "esbuild-browser-protobuf:watch": "esbuild src/protobuf/browser.ts --bundle --watch --outfile=dist/centrifuge.protobuf.js --define:global=window",
     "proto": "./make-proto"
   },
   "devDependencies": {
@@ -34,7 +37,8 @@
     "ts-jest": "^27.1.4",
     "ts-node": "^10.7.0",
     "typedoc": "^0.22.15",
-    "typescript": "^4.6.3"
+    "typescript": "^4.6.3",
+    "ws": "^8.6.0"
   },
   "repository": {
     "type": "git",
@@ -43,8 +47,11 @@
   "keywords": [
     "sockjs",
     "websocket",
+    "eventsource",
+    "streaming",
     "centrifugo",
-    "centrifuge"
+    "centrifuge",
+    "pub/sub"
   ],
   "author": "Alexander Emelin",
   "license": "MIT",

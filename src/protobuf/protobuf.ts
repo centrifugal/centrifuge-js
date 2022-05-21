@@ -1,4 +1,4 @@
-import { Centrifuge } from './centrifuge';
+import { Centrifuge } from '../centrifuge';
 
 const protobuf = require('protobufjs/light');
 const proto = protobuf.Root.fromJSON(require('./client.proto.json'));
@@ -8,13 +8,13 @@ const Reply = proto.lookupType('protocol.Reply');
 const EmulationRequest = proto.lookupType('protocol.EmulationRequest');
 
 export class ProtobufEncoder {
-  encodeEmulationRequest(req) {
+  encodeEmulationRequest(req: any) {
     const writer = protobuf.Writer.create();
     EmulationRequest.encode(req, writer);
     return writer.finish();
   }
 
-  encodeCommands(commands) {
+  encodeCommands(commands: any[]) {
     const writer = protobuf.Writer.create();
     for (const i in commands) {
       if (commands.hasOwnProperty(i)) {
@@ -27,7 +27,7 @@ export class ProtobufEncoder {
 }
 
 export class ProtobufDecoder {
-  decodeReplies(data) {
+  decodeReplies(data: any) {
     const replies = [];
     const reader = protobuf.Reader.create(new Uint8Array(data));
     while (reader.pos < reader.len) {
@@ -38,7 +38,7 @@ export class ProtobufDecoder {
     return replies;
   }
 
-  decodeReply(data) {
+  decodeReply(data: any) {
     const reader = protobuf.Reader.create(new Uint8Array(data));
     while (reader.pos < reader.len) {
       Reply.decodeDelimited(reader);
@@ -54,11 +54,9 @@ export class ProtobufDecoder {
 }
 
 export class CentrifugeProtobuf extends Centrifuge {
-  _formatOverride(format) {
+  _formatOverride(format: 'json' | 'protobuf') {
     if (format === 'protobuf') {
-      // @ts-ignore
       this._encoder = new ProtobufEncoder();
-      // @ts-ignore
       this._decoder = new ProtobufDecoder();
       return true;
     }

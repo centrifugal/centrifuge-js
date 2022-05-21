@@ -17,7 +17,7 @@ jobs:
           node-version: ${{ matrix.node-version }}
       - name: Install dependencies
         run: npm install --pure-lockfile
+      - name: Start Centrifugo
+        run: docker run -d -p 8000:8000 centrifugo/centrifugo:latest centrifugo --api_insecure
       - name: Test
         run: npm run test
-      - name: Check ts definitions
-        run: npx check-dts@0.5.6 dist/centrifuge.d.ts

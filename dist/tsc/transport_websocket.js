@@ -3,11 +3,8 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.WebsocketTransport = void 0;
 class WebsocketTransport {
     constructor(endpoint, options) {
-        // @ts-ignore
         this.endpoint = endpoint;
-        // @ts-ignore
         this.options = options;
-        // @ts-ignore
         this._transport = null;
     }
     name() {
@@ -20,8 +17,7 @@ class WebsocketTransport {
         return false;
     }
     supported() {
-        // @ts-ignore
-        return this.options.websocket !== null;
+        return this.options.websocket !== undefined && this.options.websocket !== null;
     }
     initialize(protocol, callbacks, _connectCommand) {
         let subProtocol = '';
@@ -29,11 +25,9 @@ class WebsocketTransport {
             subProtocol = 'centrifuge-protobuf';
         }
         if (subProtocol !== '') {
-            // @ts-ignore
             this._transport = new this.options.websocket(this.endpoint, subProtocol);
         }
         else {
-            // @ts-ignore
             this._transport = new this.options.websocket(this.endpoint);
         }
         if (protocol === 'protobuf') {

@@ -56,8 +56,8 @@ export declare class Subscription extends Subscription_base {
     private _clearResubscribeTimeout;
     protected _getSubscriptionToken(): Promise<string>;
     private _refresh;
-    private _refreshResponse;
-    private _refreshError;
+    _refreshResponse(result: any): void;
+    _refreshError(err: any): void;
     private _getRefreshRetryDelay;
     protected _failUnauthorized(): void;
 }

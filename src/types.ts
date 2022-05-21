@@ -1,7 +1,9 @@
+/** EventMap */
 export type EventMap = {
   [key: string]: (...args: any[]) => void
 }
 
+/** Typed event emitter. */
 export interface TypedEventEmitter<Events extends EventMap> {
   addListener<E extends keyof Events>(event: E, listener: Events[E]): this
   on<E extends keyof Events>(event: E, listener: Events[E]): this
@@ -16,6 +18,7 @@ export interface TypedEventEmitter<Events extends EventMap> {
   listeners<E extends keyof Events>(event: E): Events[E][]
 }
 
+/** Client events which can be emitted. */
 export type ClientEvents = {
   state: (ctx: StateContext) => void;
   connecting: (ctx: ConnectingContext) => void;
@@ -31,18 +34,14 @@ export type ClientEvents = {
   unsubscribed: (ctx: ServerUnsubscribedContext) => void;
 }
 
+/** State of client */
 export enum State {
   Disconnected = "disconnected",
   Connecting = "connecting",
   Connected = "connected"
 }
 
-export enum SubscriptionState {
-  Unsubscribed = "unsubscribed",
-  Subscribing = "subscribing",
-  Subscribed = "subscribed"
-}
-
+/** Events of client */
 export type SubscriptionEvents = {
   state: (ctx: SubscriptionStateContext) => void;
   subscribing: (ctx: SubscribingContext) => void;
@@ -54,33 +53,66 @@ export type SubscriptionEvents = {
   leave: (ctx: LeaveContext) => void;
 }
 
+/** State of Subscription */
+export enum SubscriptionState {
+  Unsubscribed = "unsubscribed",
+  Subscribing = "subscribing",
+  Subscribed = "subscribed"
+}
+
+/** TransportEndpoint allows configuring transport when using fallback mode */
 export interface TransportEndpoint {
-  transport: string;
+  /** transport to use */
+  transport: 'websocket' | 'http_stream' | 'sse' | 'sockjs';
+  /** endpoint for a selected transport type */
   endpoint: string;
 }
 
+/** Options for Centrifuge client. */
 export interface Options {
+  /** select protocol to use. Note that to use Protobuf protocol you need to use CentrifugeProtobuf class. */
   protocol: 'json' | 'protobuf';
+  /** allows enabling debug mode */
   debug: boolean;
+  /** allows setting connection token (JWT) */
   token: string | null;
+  /** allows setting function to get/refresh connection token */
   getToken: null | ((ctx: ConnectionTokenContext) => Promise<string>);
-  data: any;
+  /** data to send to a sever with connect command */
+  data: any | null;
+  /** name of client - it's not a unique name of each connection, it's sth to identify from where client connected */
   name: string;
+  /** version of client */
   version: string;
+  /** minimum delay between reconnect attemts */
   minReconnectDelay: number;
+  /** maximum delay between reconnect attemts */
   maxReconnectDelay: number;
+  /** timeout for operations */
   timeout: number;
+  /** maximum delay of server pings to detect broken connection */
   maxServerPingDelay: number;
+  /** provide custom WebSocket constructor, useful for NodeJS env */
   websocket: any | null;
+  /** provide shim for fetch implementation */
   fetch: any | null,
+  /** provide shim for ReadableStream */
   readableStream: any | null,
+  /** provide shim for EventSource object */
   eventsource: any | null,
+  /** provide shim for SockJS object */
   sockjs: any | null;
+  /** set sockjs server option */
   sockjsServer: string | null;
+  /** set sockjs timeout option */
   sockjsTimeout: number | null;
+  /** set custom transports to enable in SockJS */
   sockjsTransports: string[];
+  /** request mode in http stream request */
   httpStreamRequestMode: string;
+  /** which emulation endpoint to use */
   emulationEndpoint: string;
+  /** request mode in emulation request */
   emulationRequestMode: string;
 }
 
@@ -232,6 +264,7 @@ export interface HistoryOptions {
   reverse?: boolean;
 }
 
+/** SubscriptionOptions can customize Subscription. */
 export interface SubscriptionOptions {
   data: any | null;
   token: string | null;

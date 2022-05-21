@@ -1,2 +1,8 @@
-import { Centrifuge } from './centrifuge.js';
-export default Centrifuge;
+import { Centrifuge } from './centrifuge';
+import { Subscription } from './subscription';
+export * from "./types";
+
+export {
+    Centrifuge,
+    Subscription
+}

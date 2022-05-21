@@ -1,14 +1,15 @@
 export class SseTransport {
-  constructor(endpoint, options) {
-    // @ts-ignore
+  endpoint: string;
+  options: any;
+  _protocol: string;
+  _transport: any;
+  _onClose: any;
+
+  constructor(endpoint: string, options: any) {
     this.endpoint = endpoint;
-    // @ts-ignore
     this.options = options;
-    // @ts-ignore
     this._protocol = 'json';
-    // @ts-ignore
     this._transport = null;
-    // @ts-ignore
     this._onClose = null;
   }
 
@@ -25,18 +26,14 @@ export class SseTransport {
   }
 
   supported() {
-    // @ts-ignore
     return this.options.eventsource !== null && this.options.fetch !== null;
   }
 
   initialize(_protocol, callbacks, encodedConnectCommand) {
-    // @ts-ignore
     let url = new URL(this.endpoint);
     url.searchParams.append('cf_connect', encodedConnectCommand);
 
-    // @ts-ignore
     const eventSource = new this.options.eventsource(url.toString());
-    // @ts-ignore
     this._transport = eventSource;
 
     const self = this;
@@ -58,7 +55,6 @@ export class SseTransport {
       callbacks.onMessage(e.data);
     };
 
-    // @ts-ignore
     self._onClose = function () {
       callbacks.onClose({
         code: 4,
@@ -68,16 +64,13 @@ export class SseTransport {
   }
 
   close() {
-    // @ts-ignore
     this._transport.close();
-    // @ts-ignore
     if (this._onClose !== null) {
-      // @ts-ignore
       this._onClose();
     }
   }
 
-  send(data, session, node) {
+  send(data: any, session: string, node: string) {
     const req = {
       session: session,
       node: node,
@@ -87,13 +80,10 @@ export class SseTransport {
       'Content-Type': 'application/json'
     };
     const body = JSON.stringify(req);
-    // @ts-ignore
     const fetchFunc = this.options.fetch;
-    // @ts-ignore
     fetchFunc(this.options.emulationEndpoint, {
       method: 'POST',
       headers: headers,
-      // @ts-ignore
       mode: this.options.emulationRequestMode,
       body: body
     });

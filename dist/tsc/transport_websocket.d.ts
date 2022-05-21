@@ -1,5 +1,8 @@
 export declare class WebsocketTransport {
-    constructor(endpoint: any, options: any);
+    private _transport;
+    private endpoint;
+    private options;
+    constructor(endpoint: string, options: any);
     name(): string;
     subName(): string;
     emulation(): boolean;

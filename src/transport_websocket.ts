@@ -1,10 +1,11 @@
 export class WebsocketTransport {
-  constructor(endpoint, options) {
-    // @ts-ignore
+  private _transport: any;
+  private endpoint: string;
+  private options: any;
+
+  constructor(endpoint: string, options: any) {
     this.endpoint = endpoint;
-    // @ts-ignore
     this.options = options;
-    // @ts-ignore
     this._transport = null;
   }
 
@@ -21,43 +22,35 @@ export class WebsocketTransport {
   }
 
   supported() {
-    // @ts-ignore
-    return this.options.websocket !== null;
+    return this.options.websocket !== undefined && this.options.websocket !== null;
   }
 
-  initialize(protocol, callbacks, _connectCommand) {
+  initialize(protocol: string, callbacks: any, _connectCommand: any) {
     let subProtocol = '';
     if (protocol === 'protobuf') {
       subProtocol = 'centrifuge-protobuf';
     }
     if (subProtocol !== '') {
-      // @ts-ignore
       this._transport = new this.options.websocket(this.endpoint, subProtocol);
     } else {
-      // @ts-ignore
       this._transport = new this.options.websocket(this.endpoint);
     }
     if (protocol === 'protobuf') {
-      // @ts-ignore
       this._transport.binaryType = 'arraybuffer';
     }
 
-    // @ts-ignore
     this._transport.onopen = () => {
       callbacks.onOpen();
     };
 
-    // @ts-ignore
     this._transport.onerror = e => {
       callbacks.onError(e);
     };
 
-    // @ts-ignore
     this._transport.onclose = closeEvent => {
       callbacks.onClose(closeEvent);
     };
 
-    // @ts-ignore
     this._transport.onmessage = event => {
       callbacks.onMessage(event.data);
     };

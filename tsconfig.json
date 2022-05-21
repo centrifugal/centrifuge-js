@@ -17,6 +17,7 @@
     "esModuleInterop": true,
     "allowSyntheticDefaultImports": true,
     "experimentalDecorators": true,
+    "resolveJsonModule": true,
     "sourceMap": true,
     "outDir": "./dist/tsc/",
     "types": [
@@ -30,7 +31,7 @@
   },
   "include": [
     "src/**/*.ts",
-    "src/*.js"
+    "src/**/*.json"
   ],
   "exclude": [
     "node_modules",

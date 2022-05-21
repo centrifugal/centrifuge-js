@@ -1,14 +1,15 @@
 export class HttpStreamTransport {
+  endpoint: string;
+  options: any;
+  _abortController: any | null;
+  _utf8decoder: TextDecoder;
+  _protocol: string;
+
   constructor(endpoint, options) {
-    // @ts-ignore
     this.endpoint = endpoint;
-    // @ts-ignore
     this.options = options;
-    // @ts-ignore
     this._abortController = null;
-    // @ts-ignore
     this._utf8decoder = new TextDecoder();
-    // @ts-ignore
     this._protocol = 'json';
   }
 
@@ -110,9 +111,7 @@ export class HttpStreamTransport {
   }
 
   supported() {
-    // @ts-ignore
     return this.options.fetch !== null &&
-      // @ts-ignore
       this.options.readableStream !== null &&
       typeof TextDecoder !== 'undefined' &&
       typeof AbortController !== 'undefined' &&
@@ -122,10 +121,8 @@ export class HttpStreamTransport {
       typeof Error !== 'undefined';
   }
 
-  initialize(protocol, callbacks, encodedConnectCommand) {
-    // @ts-ignore
+  initialize(protocol: string, callbacks: any, encodedConnectCommand: any) {
     this._protocol = protocol;
-    // @ts-ignore
     this._abortController = new AbortController();
 
     let headers;
@@ -147,14 +144,11 @@ export class HttpStreamTransport {
     // @ts-ignore
     const eventTarget = new this._fetchEventTarget(
       this,
-      // @ts-ignore
       this.endpoint,
       {
         method: 'POST',
         headers: headers,
-        // @ts-ignore
         mode: this.options.requestMode,
-        // @ts-ignore
         signal: this._abortController.signal,
         body: body
       }
@@ -165,13 +159,11 @@ export class HttpStreamTransport {
     });
 
     eventTarget.addEventListener('error', (e) => {
-      // @ts-ignore
       this._abortController.abort();
       callbacks.onError(e);
     });
 
     eventTarget.addEventListener('close', () => {
-      // @ts-ignore
       this._abortController.abort();
       callbacks.onClose({
         code: 4,
@@ -185,7 +177,6 @@ export class HttpStreamTransport {
   }
 
   close() {
-    // @ts-ignore
     this._abortController.abort();
   }
 
@@ -197,7 +188,6 @@ export class HttpStreamTransport {
       node: node,
       data: data
     };
-    // @ts-ignore
     if (this._protocol === 'json') {
       headers = {
         'Content-Type': 'application/json'
@@ -207,17 +197,13 @@ export class HttpStreamTransport {
       headers = {
         'Content-Type': 'application/octet-stream'
       };
-      // @ts-ignore
       body = this.options.encoder.encodeEmulationRequest(req);
     }
 
-    // @ts-ignore
     const fetchFunc = this.options.fetch;
-    // @ts-ignore
     fetchFunc(this.options.emulationEndpoint, {
       method: 'POST',
       headers: headers,
-      // @ts-ignore
       mode: this.options.emulationRequestMode,
       body: body
     });

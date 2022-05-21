@@ -25,7 +25,7 @@ export class WebsocketTransport {
     return this.options.websocket !== undefined && this.options.websocket !== null;
   }
 
-  initialize(protocol: string, callbacks: any, _connectCommand: any) {
+  initialize(protocol: string, callbacks: any) {
     let subProtocol = '';
     if (protocol === 'protobuf') {
       subProtocol = 'centrifuge-protobuf';

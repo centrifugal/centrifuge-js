@@ -67,12 +67,12 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
   ready(timeout?: number) {
     if (this.state === SubscriptionState.Unsubscribed) {
       return Promise.reject({ code: errorCodes.subscriptionUnsubscribed, message: this.state });
-    };
+    }
     if (this.state === SubscriptionState.Subscribed) {
       return Promise.resolve();
-    };
+    }
     return new Promise((res, rej) => {
-      let ctx: any = {
+      const ctx: any = {
         resolve: res,
         reject: rej
       };
@@ -92,12 +92,12 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
     }
     this._resubscribeAttempts = 0;
     this._setSubscribing(subscribingCodes.subscribeCalled, 'subscribe called');
-  };
+  }
 
   // unsubscribe from a channel, keeping position state.
   unsubscribe() {
     this._setUnsubscribed(unsubscribedCodes.unsubscribeCalled, 'unsubscribe called', true);
-  };
+  }
 
   // publish data to a channel.
   async publish(data: any): Promise<PublishResult> {
@@ -105,7 +105,7 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
     return this._methodCall().then(function () {
       return self._centrifuge.publish(self.channel, data);
     });
-  };
+  }
 
   // presence for a channel.
   async presence(): Promise<PresenceResult> {
@@ -113,7 +113,7 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
     return this._methodCall().then(function () {
       return self._centrifuge.presence(self.channel);
     });
-  };
+  }
 
   // presence stats for a channel.
   async presenceStats(): Promise<PresenceStatsResult> {
@@ -121,7 +121,7 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
     return this._methodCall().then(function () {
       return self._centrifuge.presenceStats(self.channel);
     });
-  };
+  }
 
   // history for a channel.
   async history(opts: HistoryOptions): Promise<HistoryResult> {
@@ -129,7 +129,7 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
     return this._methodCall().then(function () {
       return self._centrifuge.history(self.channel, opts);
     });
-  };
+  }
 
   private _methodCall(): any {
     if (this._isSubscribed()) {
@@ -154,7 +154,7 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
   /** @internal */
   _needRecover() {
     return this._recover === true;
-  };
+  }
 
   private _isUnsubscribed() {
     return this.state === SubscriptionState.Unsubscribed;
@@ -178,7 +178,7 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
       return true;
     }
     return false;
-  };
+  }
 
   /** @internal */
   _usesToken() {
@@ -214,7 +214,7 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
 
     const pubs = result.publications;
     if (pubs && pubs.length > 0) {
-      for (let i in pubs) {
+      for (const i in pubs) {
         if (!pubs.hasOwnProperty(i)) {
           continue;
         }
@@ -225,7 +225,7 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
     if (result.expires === true) {
       this._refreshTimeout = setTimeout(() => this._refresh(), ttlMilliseconds(result.ttl));
     }
-  };
+  }
 
   /** @internal */
   _setSubscribing(code, reason) {
@@ -239,7 +239,7 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
       this.emit('subscribing', { channel: this.channel, code: code, reason: reason });
     }
     this._centrifuge._subscribe(this);
-  };
+  }
 
   /** @internal */
   _setUnsubscribed(code, reason, sendUnsubscribe) {
@@ -259,7 +259,7 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
       this.emit('unsubscribed', { channel: this.channel, code: code, reason: reason });
     }
     this._rejectPromises({ code: errorCodes.subscriptionUnsubscribed, message: 'unsubscribed' });
-  };
+  }
 
   /** @internal */
   _handlePublication(pub: any) {
@@ -330,7 +330,7 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
     } else {
       this._setUnsubscribed(err.code, err.message, false);
     }
-  };
+  }
 
   private _getResubscribeDelay() {
     const delay = backoff(this._resubscribeAttempts, this._minResubscribeDelay, this._maxResubscribeDelay);
@@ -377,7 +377,7 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
       return offset;
     }
     return 0;
-  };
+  }
 
   /** @internal */
   _getEpoch() {
@@ -386,7 +386,7 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
       return epoch;
     }
     return '';
-  };
+  }
 
   private _clearRefreshTimeout() {
     if (this._refreshTimeout !== null) {
@@ -470,7 +470,7 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
     if (result.expires === true) {
       this._refreshTimeout = setTimeout(() => this._refresh(), ttlMilliseconds(result.ttl));
     }
-  };
+  }
 
   /** @internal */
   _refreshError(err: any) {
@@ -493,5 +493,5 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
   /** @internal */
   _failUnauthorized() {
     this._setUnsubscribed(unsubscribedCodes.unauthorized, 'unauthorized', true);
-  };
+  }
 }

@@ -30,7 +30,7 @@ export class SseTransport {
   }
 
   initialize(_protocol, callbacks, encodedConnectCommand) {
-    let url = new URL(this.endpoint);
+    const url = new URL(this.endpoint);
     url.searchParams.append('cf_connect', encodedConnectCommand);
 
     const eventSource = new this.options.eventsource(url.toString());

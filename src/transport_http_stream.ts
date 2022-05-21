@@ -66,7 +66,7 @@ export class HttpStreamTransport {
                       }
                     }
                   } else {
-                    let mergedArray = new Uint8Array(protoStreamBuf.length + value.length);
+                    const mergedArray = new Uint8Array(protoStreamBuf.length + value.length);
                     mergedArray.set(protoStreamBuf);
                     mergedArray.set(value, protoStreamBuf.length);
                     protoStreamBuf = mergedArray;

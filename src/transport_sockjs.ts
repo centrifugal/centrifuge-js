@@ -25,7 +25,7 @@ export class SockjsTransport {
     return this.options.sockjs !== null;
   }
 
-  initialize(_protocol, callbacks, _connectCommand) {
+  initialize(_protocol: 'json', callbacks: any) {
     const sockjsOptions: any = {
       transports: this.options.transports
     };

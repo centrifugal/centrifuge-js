@@ -9,7 +9,7 @@ class JsonEncoder {
 exports.JsonEncoder = JsonEncoder;
 class JsonDecoder {
     decodeReplies(data) {
-        return data.split('\n').filter(r => r !== '').map(r => JSON.parse(r));
+        return data.trim().split('\n').map(r => JSON.parse(r));
     }
 }
 exports.JsonDecoder = JsonDecoder;

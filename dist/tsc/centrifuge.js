@@ -47,7 +47,9 @@ const defaults = {
     timeout: 5000,
     maxServerPingDelay: 10000,
 };
+/** Centrifuge is a Centrifuge/Centrifugo bidirectional client. */
 class Centrifuge extends events_1.default {
+    /** Constructs Centrifuge client. Call connect() method to start connecting. */
     constructor(endpoint, options) {
         super();
         this._reconnectTimeout = null;
@@ -96,9 +98,10 @@ class Centrifuge extends events_1.default {
             });
         }
     }
-    // newSubscription allocates new Subscription to a channel. Since server only allows
-    // one subscription per channel per client this method throws if client already has
-    // channel subscription in internal registry.
+    /** newSubscription allocates new Subscription to a channel. Since server only allows
+     * one subscription per channel per client this method throws if client already has
+     * channel subscription in internal registry.
+     * */
     newSubscription(channel, options) {
         if (this.getSubscription(channel) !== null) {
             throw new Error('Subscription to the channel ' + channel + ' already exists');
@@ -107,29 +110,29 @@ class Centrifuge extends events_1.default {
         this._subs[channel] = sub;
         return sub;
     }
-    // getSubscription returns Subscription if it's registered in the internal
-    // registry or null.
+    /** getSubscription returns Subscription if it's registered in the internal
+     * registry or null. */
     getSubscription(channel) {
         return this._getSub(channel);
     }
-    // removeSubscription allows removing Subcription from the internal registry.
-    // Subscrption must be in unsubscribed state.
+    /** removeSubscription allows removing Subcription from the internal registry. Subscrption
+     * must be in unsubscribed state. */
     removeSubscription(sub) {
         if (!sub) {
             return;
         }
         if (sub.state !== types_1.SubscriptionState.Unsubscribed) {
-            throw new Error('Subscription must be in unsubscribed state to be removed');
+            sub.unsubscribe();
         }
         this._removeSubscription(sub);
     }
-    // Get a map with all current client-side subscriptions.
+    /** Get a map with all current client-side subscriptions. */
     subscriptions() {
         return this._subs;
     }
-    // ready returns a Promise which resolves upon client goes to Connected
-    // state and rejects in case of client goes to Disconnected or Failed state.
-    // Users can provide optional timeout in milliseconds.
+    /** ready returns a Promise which resolves upon client goes to Connected
+     * state and rejects in case of client goes to Disconnected or Failed state.
+     * Users can provide optional timeout in milliseconds. */
     ready(timeout) {
         if (this.state === types_1.State.Disconnected) {
             return Promise.reject({ code: codes_1.errorCodes.clientDisconnected, message: 'client disconnected' });
@@ -153,7 +156,7 @@ class Centrifuge extends events_1.default {
             this._promises[this._nextPromiseId()] = ctx;
         });
     }
-    // connect to a server.
+    /** connect to a server. */
     connect() {
         if (this._isConnected()) {
             this._debug('connect called when already connected');
@@ -167,13 +170,13 @@ class Centrifuge extends events_1.default {
         this._startConnecting();
     }
     ;
-    // disconnect from a server.
+    /** disconnect from a server. */
     disconnect() {
         this._disconnect(codes_1.disconnectedCodes.disconnectCalled, 'disconnect called', false);
     }
     ;
-    // send asynchronous data to a server (without any response from a server
-    // expected, see rpc method if you need response).
+    /** send asynchronous data to a server (without any response from a server
+     * expected, see rpc method if you need response). */
     send(data) {
         return tslib_1.__awaiter(this, void 0, void 0, function* () {
             const cmd = {
@@ -192,7 +195,7 @@ class Centrifuge extends events_1.default {
             });
         });
     }
-    // rpc to a server - i.e. a call which waits for a response with data.
+    /** rpc to a server - i.e. a call which waits for a response with data. */
     rpc(method, data) {
         return tslib_1.__awaiter(this, void 0, void 0, function* () {
             const cmd = {
@@ -211,7 +214,7 @@ class Centrifuge extends events_1.default {
             });
         });
     }
-    // publish data to a channel.
+    /** publish data to a channel. */
     publish(channel, data) {
         return tslib_1.__awaiter(this, void 0, void 0, function* () {
             const cmd = {
@@ -228,7 +231,7 @@ class Centrifuge extends events_1.default {
             });
         });
     }
-    // history of a channel.
+    /** history of a channel. */
     history(channel, options) {
         return tslib_1.__awaiter(this, void 0, void 0, function* () {
             const cmd = {
@@ -253,7 +256,7 @@ class Centrifuge extends events_1.default {
             });
         });
     }
-    // presence for a channel.
+    /** presence for a channel. */
     presence(channel) {
         return tslib_1.__awaiter(this, void 0, void 0, function* () {
             const cmd = {
@@ -271,7 +274,7 @@ class Centrifuge extends events_1.default {
             });
         });
     }
-    // presence stats for a channel.
+    /** presence stats for a channel. */
     presenceStats(channel) {
         return tslib_1.__awaiter(this, void 0, void 0, function* () {
             const cmd = {
@@ -291,20 +294,22 @@ class Centrifuge extends events_1.default {
             });
         });
     }
-    // start command batching (collect into temporary buffer without sending to a server)
-    // until stopBatching called.
+    /** start command batching (collect into temporary buffer without sending to a server)
+     * until stopBatching called.*/
     startBatching() {
         // start collecting messages without sending them to Centrifuge until flush
         // method called
         this._batching = true;
     }
     ;
-    // stop batching commands and flush collected commands to the network (all in one request/frame).
+    /** stop batching commands and flush collected commands to the
+     * network (all in one request/frame).*/
     stopBatching() {
         this._batching = false;
         this._flush();
     }
     ;
+    /** @internal */
     _debug(...args) {
         if (!this._debugEnabled) {
             return;
@@ -312,6 +317,7 @@ class Centrifuge extends events_1.default {
         (0, utils_1.log)('debug', args);
     }
     ;
+    /** @internal */
     _setFormat(format) {
         if (this._formatOverride(format)) {
             return;
@@ -322,6 +328,7 @@ class Centrifuge extends events_1.default {
         this._encoder = new json_1.JsonEncoder();
         this._decoder = new json_1.JsonDecoder();
     }
+    /** @internal */
     _formatOverride(_format) {
         return false;
     }
@@ -474,8 +481,8 @@ class Centrifuge extends events_1.default {
             websocket = this._config.websocket;
         }
         else {
-            if (!(typeof WebSocket !== 'function' && typeof WebSocket !== 'object')) {
-                websocket = WebSocket;
+            if (!(typeof global.WebSocket !== 'function' && typeof global.WebSocket !== 'object')) {
+                websocket = global.WebSocket;
             }
         }
         let sockjs = null;
@@ -962,6 +969,7 @@ class Centrifuge extends events_1.default {
         return p;
     }
     ;
+    /** @internal */
     _call(cmd) {
         return new Promise((resolve, reject) => {
             cmd.id = this._nextCommandId();
@@ -1104,6 +1112,7 @@ class Centrifuge extends events_1.default {
         }
     }
     ;
+    /** @internal */
     _subscribe(sub) {
         this._debug('subscribing on', sub.channel);
         const channel = sub.channel;
@@ -1202,6 +1211,7 @@ class Centrifuge extends events_1.default {
             }
         });
     }
+    /** @internal */
     _sendSubRefresh(sub, token) {
         const req = {
             channel: sub.channel,
@@ -1230,6 +1240,7 @@ class Centrifuge extends events_1.default {
         }
         delete this._subs[sub.channel];
     }
+    /** @internal */
     _unsubscribe(sub) {
         if (!this._isConnected()) {
             return;
@@ -1405,6 +1416,7 @@ class Centrifuge extends events_1.default {
         sub._subscribeError(error);
     }
     ;
+    /** @internal */
     _getSubscribeContext(channel, result) {
         const ctx = {
             channel: channel,
@@ -1540,6 +1552,7 @@ class Centrifuge extends events_1.default {
         this._disconnect(code, disconnect.reason, reconnect);
     }
     ;
+    /** @internal */
     _getPublicationContext(channel, pub) {
         const ctx = {
             channel: channel,
@@ -1556,6 +1569,7 @@ class Centrifuge extends events_1.default {
         }
         return ctx;
     }
+    /** @internal */
     _getJoinLeaveContext(clientInfo) {
         const info = {
             client: clientInfo.client,

@@ -1,6 +1,7 @@
 import { Subscription } from './subscription';
-import { State, Options, ClientEvents, TypedEventEmitter, RpcResult, SubscriptionOptions, HistoryOptions, HistoryResult, PublishResult, PresenceResult, PresenceStatsResult, SubscribedContext } from './types';
+import { State, Options, ClientEvents, TypedEventEmitter, RpcResult, SubscriptionOptions, HistoryOptions, HistoryResult, PublishResult, PresenceResult, PresenceStatsResult, SubscribedContext, TransportEndpoint } from './types';
 declare const Centrifuge_base: new () => TypedEventEmitter<ClientEvents>;
+/** Centrifuge is a Centrifuge/Centrifugo bidirectional client. */
 export declare class Centrifuge extends Centrifuge_base {
     state: State;
     private _endpoint;
@@ -11,8 +12,6 @@ export declare class Centrifuge extends Centrifuge_base {
     private _transportWasOpen;
     private _transport?;
     private _transportClosed;
-    private _encoder;
-    private _decoder;
     private _reconnectTimeout?;
     private _reconnectAttempts;
     private _client;
@@ -33,8 +32,14 @@ export declare class Centrifuge extends Centrifuge_base {
     private _sendPong;
     private _promises;
     private _promiseId;
+    /** @internal */
     _debugEnabled: boolean;
+    /** @internal */
     _config: Options;
+    /** @internal */
+    _encoder: any;
+    /** @internal */
+    _decoder: any;
     static State: {
         Disconnected: string;
         Connecting: string;
@@ -45,24 +50,53 @@ export declare class Centrifuge extends Centrifuge_base {
         Subscribing: string;
         Subscribed: string;
     };
-    constructor(endpoint: string | Array<object>, options?: Partial<Options>);
+    /** Constructs Centrifuge client. Call connect() method to start connecting. */
+    constructor(endpoint: string | Array<TransportEndpoint>, options?: Partial<Options>);
+    /** newSubscription allocates new Subscription to a channel. Since server only allows
+     * one subscription per channel per client this method throws if client already has
+     * channel subscription in internal registry.
+     * */
     newSubscription(channel: string, options?: Partial<SubscriptionOptions>): Subscription;
+    /** getSubscription returns Subscription if it's registered in the internal
+     * registry or null. */
     getSubscription(channel: string): Subscription | null;
+    /** removeSubscription allows removing Subcription from the internal registry. Subscrption
+     * must be in unsubscribed state. */
     removeSubscription(sub: Subscription | null): void;
+    /** Get a map with all current client-side subscriptions. */
     subscriptions(): Map<string, Subscription>;
+    /** ready returns a Promise which resolves upon client goes to Connected
+     * state and rejects in case of client goes to Disconnected or Failed state.
+     * Users can provide optional timeout in milliseconds. */
     ready(timeout?: number): Promise<unknown>;
+    /** connect to a server. */
     connect(): void;
+    /** disconnect from a server. */
     disconnect(): void;
+    /** send asynchronous data to a server (without any response from a server
+     * expected, see rpc method if you need response). */
     send(data: any): Promise<void>;
+    /** rpc to a server - i.e. a call which waits for a response with data. */
     rpc(method: string, data: any): Promise<RpcResult>;
+    /** publish data to a channel. */
     publish(channel: string, data: any): Promise<PublishResult>;
+    /** history of a channel. */
     history(channel: string, options?: HistoryOptions): Promise<HistoryResult>;
+    /** presence for a channel. */
     presence(channel: string): Promise<PresenceResult>;
+    /** presence stats for a channel. */
     presenceStats(channel: string): Promise<PresenceStatsResult>;
+    /** start command batching (collect into temporary buffer without sending to a server)
+     * until stopBatching called.*/
     startBatching(): void;
+    /** stop batching commands and flush collected commands to the
+     * network (all in one request/frame).*/
     stopBatching(): void;
+    /** @internal */
     _debug(...args: any[]): void;
+    /** @internal */
     private _setFormat;
+    /** @internal */
     protected _formatOverride(_format: string): boolean;
     private _configure;
     private _setState;
@@ -86,6 +120,7 @@ export declare class Centrifuge extends Centrifuge_base {
     private _dataReceived;
     private _dispatchSynchronized;
     private _dispatchReply;
+    /** @internal */
     _call(cmd: any): Promise<unknown>;
     private _callConnectFake;
     private _startConnecting;
@@ -96,10 +131,13 @@ export declare class Centrifuge extends Centrifuge_base {
     private _refreshError;
     private _getRefreshRetryDelay;
     private _refreshResponse;
-    _subscribe(sub: any): void;
+    /** @internal */
+    _subscribe(sub: Subscription): void;
     private _sendSubscribe;
+    /** @internal */
     _sendSubRefresh(sub: Subscription, token: string): void;
-    protected _removeSubscription(sub: Subscription | null): void;
+    private _removeSubscription;
+    /** @internal */
     _unsubscribe(sub: Subscription): void;
     private _getSub;
     private _isServerSub;
@@ -110,6 +148,7 @@ export declare class Centrifuge extends Centrifuge_base {
     private _clearServerPingTimeout;
     private _waitServerPing;
     private _subscribeError;
+    /** @internal */
     _getSubscribeContext(channel: string, result: any): SubscribedContext;
     private _subscribeResponse;
     private _handleReply;
@@ -118,7 +157,9 @@ export declare class Centrifuge extends Centrifuge_base {
     private _handleUnsubscribe;
     private _handleSubscribe;
     private _handleDisconnect;
+    /** @internal */
     _getPublicationContext(channel: string, pub: any): any;
+    /** @internal */
     _getJoinLeaveContext(clientInfo: any): any;
     private _handlePublication;
     private _handleMessage;

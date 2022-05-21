@@ -3,15 +3,10 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.HttpStreamTransport = void 0;
 class HttpStreamTransport {
     constructor(endpoint, options) {
-        // @ts-ignore
         this.endpoint = endpoint;
-        // @ts-ignore
         this.options = options;
-        // @ts-ignore
         this._abortController = null;
-        // @ts-ignore
         this._utf8decoder = new TextDecoder();
-        // @ts-ignore
         this._protocol = 'json';
     }
     name() {
@@ -110,9 +105,7 @@ class HttpStreamTransport {
         return eventTarget;
     }
     supported() {
-        // @ts-ignore
         return this.options.fetch !== null &&
-            // @ts-ignore
             this.options.readableStream !== null &&
             typeof TextDecoder !== 'undefined' &&
             typeof AbortController !== 'undefined' &&
@@ -122,9 +115,7 @@ class HttpStreamTransport {
             typeof Error !== 'undefined';
     }
     initialize(protocol, callbacks, encodedConnectCommand) {
-        // @ts-ignore
         this._protocol = protocol;
-        // @ts-ignore
         this._abortController = new AbortController();
         let headers;
         let body;
@@ -143,14 +134,10 @@ class HttpStreamTransport {
             body = encodedConnectCommand;
         }
         // @ts-ignore
-        const eventTarget = new this._fetchEventTarget(this, 
-        // @ts-ignore
-        this.endpoint, {
+        const eventTarget = new this._fetchEventTarget(this, this.endpoint, {
             method: 'POST',
             headers: headers,
-            // @ts-ignore
             mode: this.options.requestMode,
-            // @ts-ignore
             signal: this._abortController.signal,
             body: body
         });
@@ -158,12 +145,10 @@ class HttpStreamTransport {
             callbacks.onOpen();
         });
         eventTarget.addEventListener('error', (e) => {
-            // @ts-ignore
             this._abortController.abort();
             callbacks.onError(e);
         });
         eventTarget.addEventListener('close', () => {
-            // @ts-ignore
             this._abortController.abort();
             callbacks.onClose({
                 code: 4,
@@ -175,7 +160,6 @@ class HttpStreamTransport {
         });
     }
     close() {
-        // @ts-ignore
         this._abortController.abort();
     }
     send(data, session, node) {
@@ -186,7 +170,6 @@ class HttpStreamTransport {
             node: node,
             data: data
         };
-        // @ts-ignore
         if (this._protocol === 'json') {
             headers = {
                 'Content-Type': 'application/json'
@@ -197,16 +180,12 @@ class HttpStreamTransport {
             headers = {
                 'Content-Type': 'application/octet-stream'
             };
-            // @ts-ignore
             body = this.options.encoder.encodeEmulationRequest(req);
         }
-        // @ts-ignore
         const fetchFunc = this.options.fetch;
-        // @ts-ignore
         fetchFunc(this.options.emulationEndpoint, {
             method: 'POST',
             headers: headers,
-            // @ts-ignore
             mode: this.options.emulationRequestMode,
             body: body
         });

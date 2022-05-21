@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.CentrifugeProtobuf = exports.ProtobufDecoder = exports.ProtobufEncoder = void 0;
+exports.ProtobufDecoder = exports.ProtobufEncoder = void 0;
 const centrifuge_1 = require("../centrifuge");
 const protobuf = require('protobufjs/light');
 const proto = protobuf.Root.fromJSON(require('./client.proto.json'));
@@ -54,14 +54,12 @@ exports.ProtobufDecoder = ProtobufDecoder;
 class CentrifugeProtobuf extends centrifuge_1.Centrifuge {
     _formatOverride(format) {
         if (format === 'protobuf') {
-            // @ts-ignore
             this._encoder = new ProtobufEncoder();
-            // @ts-ignore
             this._decoder = new ProtobufDecoder();
             return true;
         }
         return false;
     }
 }
-exports.CentrifugeProtobuf = CentrifugeProtobuf;
-//# sourceMappingURL=protobuf.js.map
+exports.default = CentrifugeProtobuf;
+//# sourceMappingURL=index.js.map

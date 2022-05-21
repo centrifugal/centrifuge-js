@@ -31,22 +31,17 @@ class WebsocketTransport {
             this._transport = new this.options.websocket(this.endpoint);
         }
         if (protocol === 'protobuf') {
-            // @ts-ignore
             this._transport.binaryType = 'arraybuffer';
         }
-        // @ts-ignore
         this._transport.onopen = () => {
             callbacks.onOpen();
         };
-        // @ts-ignore
         this._transport.onerror = e => {
             callbacks.onError(e);
         };
-        // @ts-ignore
         this._transport.onclose = closeEvent => {
             callbacks.onClose(closeEvent);
         };
-        // @ts-ignore
         this._transport.onmessage = event => {
             callbacks.onMessage(event.data);
         };

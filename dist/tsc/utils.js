@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.ttlMilliseconds = exports.extend = exports.errorExists = exports.backoff = exports.log = exports.isFunction = exports.startsWith = void 0;
+exports.ttlMilliseconds = exports.errorExists = exports.backoff = exports.log = exports.isFunction = exports.startsWith = void 0;
 function startsWith(value, prefix) {
     return value.lastIndexOf(prefix, 0) === 0;
 }
@@ -44,16 +44,6 @@ function errorExists(data) {
     return 'error' in data && data.error !== null;
 }
 exports.errorExists = errorExists;
-;
-function extend(a, b) {
-    for (const key in b) {
-        if (b.hasOwnProperty(key)) {
-            a[key] = b[key];
-        }
-    }
-    return a;
-}
-exports.extend = extend;
 ;
 function ttlMilliseconds(ttl) {
     // https://stackoverflow.com/questions/12633405/what-is-the-maximum-delay-for-setinterval

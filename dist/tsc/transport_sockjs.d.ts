@@ -1,5 +1,8 @@
 export declare class SockjsTransport {
-    constructor(endpoint: any, options: any);
+    endpoint: string;
+    options: any;
+    _transport: any;
+    constructor(endpoint: string, options: any);
     name(): string;
     subName(): string;
     emulation(): boolean;

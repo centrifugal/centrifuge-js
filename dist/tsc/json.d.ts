@@ -1,6 +1,6 @@
 export declare class JsonEncoder {
-    encodeCommands(commands: any): any;
+    encodeCommands(commands: any[]): string;
 }
 export declare class JsonDecoder {
-    decodeReplies(data: any): any;
+    decodeReplies(data: string): any[];
 }

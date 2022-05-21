@@ -1,10 +1,15 @@
 export declare class SseTransport {
-    constructor(endpoint: any, options: any);
+    endpoint: string;
+    options: any;
+    _protocol: string;
+    _transport: any;
+    _onClose: any;
+    constructor(endpoint: string, options: any);
     name(): string;
     subName(): string;
     emulation(): boolean;
     supported(): boolean;
     initialize(_protocol: any, callbacks: any, encodedConnectCommand: any): void;
     close(): void;
-    send(data: any, session: any, node: any): void;
+    send(data: any, session: string, node: string): void;
 }

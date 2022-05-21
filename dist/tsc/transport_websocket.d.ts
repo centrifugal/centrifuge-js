@@ -7,7 +7,7 @@ export declare class WebsocketTransport {
     subName(): string;
     emulation(): boolean;
     supported(): boolean;
-    initialize(protocol: any, callbacks: any, _connectCommand: any): void;
+    initialize(protocol: string, callbacks: any, _connectCommand: any): void;
     close(): void;
     send(data: any): void;
 }

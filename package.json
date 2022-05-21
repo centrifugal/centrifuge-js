@@ -5,7 +5,7 @@
   "main": "./dist/tsc/index.js",
   "types": "./dist/tsc/index.d.ts",
   "files": [
-    "dist"
+    "dist/**"
   ],
   "browser": {
     "events": "events"

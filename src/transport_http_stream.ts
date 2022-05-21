@@ -142,7 +142,7 @@ export class HttpStreamTransport {
     }
 
     // @ts-ignore
-    const eventTarget = new this._fetchEventTarget(
+    const eventTarget = this._fetchEventTarget(
       this,
       this.endpoint,
       {
@@ -171,7 +171,7 @@ export class HttpStreamTransport {
       });
     });
 
-    eventTarget.addEventListener('message', (e) => {
+    eventTarget.addEventListener('message', (e: any) => {
       callbacks.onMessage(e.data);
     });
   }

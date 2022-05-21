@@ -30,6 +30,7 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
   /** @internal */
   _positioned: boolean;
 
+  /** Subscription constructor should not be used directly, create subscriptions using Client method. */
   constructor(centrifuge: Centrifuge, channel: string, options?: Partial<SubscriptionOptions>) {
     super();
     this.channel = channel;
@@ -61,9 +62,9 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
     }
   }
 
-  // ready returns a Promise which resolves upon subscription goes to Subscribed
-  // state and rejects in case of subscription goes to Unsubscribed state.
-  // Optional timeout can be passed.
+  /** ready returns a Promise which resolves upon subscription goes to Subscribed 
+   * state and rejects in case of subscription goes to Unsubscribed state. 
+   * Optional timeout can be passed.*/
   ready(timeout?: number) {
     if (this.state === SubscriptionState.Unsubscribed) {
       return Promise.reject({ code: errorCodes.subscriptionUnsubscribed, message: this.state });
@@ -85,7 +86,7 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
     });
   }
 
-  // subscribe to a channel.
+  /** subscribe to a channel.*/
   subscribe() {
     if (this._isSubscribed()) {
       return;
@@ -94,12 +95,12 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
     this._setSubscribing(subscribingCodes.subscribeCalled, 'subscribe called');
   }
 
-  // unsubscribe from a channel, keeping position state.
+  /** unsubscribe from a channel, keeping position state.*/
   unsubscribe() {
     this._setUnsubscribed(unsubscribedCodes.unsubscribeCalled, 'unsubscribe called', true);
   }
 
-  // publish data to a channel.
+  /** publish data to a channel.*/
   async publish(data: any): Promise<PublishResult> {
     const self = this;
     return this._methodCall().then(function () {
@@ -107,7 +108,7 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
     });
   }
 
-  // presence for a channel.
+  /** presence for a channel.*/
   async presence(): Promise<PresenceResult> {
     const self = this;
     return this._methodCall().then(function () {
@@ -115,7 +116,7 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
     });
   }
 
-  // presence stats for a channel.
+  /** presence stats for a channel.*/
   async presenceStats(): Promise<PresenceStatsResult> {
     const self = this;
     return this._methodCall().then(function () {
@@ -123,7 +124,7 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
     });
   }
 
-  // history for a channel.
+  /** history for a channel.*/
   async history(opts: HistoryOptions): Promise<HistoryResult> {
     const self = this;
     return this._methodCall().then(function () {

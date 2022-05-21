@@ -16,8 +16,10 @@ jobs:
         with:
           node-version: ${{ matrix.node-version }}
       - name: Install dependencies
-        run: npm install --pure-lockfile
+        run: yarn install
       - name: Start Centrifugo
         run: docker run -d -p 8000:8000 centrifugo/centrifugo:latest centrifugo --api_insecure
+      - name: Lint
+        run: yarn lint
       - name: Test
-        run: npm run test
+        run: yarn test

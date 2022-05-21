@@ -1,16 +1,19 @@
 {
   "name": "centrifuge",
-  "version": "3.0.0",
+  "version": "3.0.0-beta.0",
   "description": "Centrifuge and Centrifugo client for NodeJS, React Native and browser",
-  "main": "./dist/tsc/index.js",
-  "types": "./dist/tsc/index.d.ts",
+  "main": "./build/index.js",
+  "types": "./build/index.d.ts",
   "files": [
-    "dist/**"
+    "dist/**",
+    "build/**"
   ],
   "browser": {
     "events": "events"
   },
   "scripts": {
+    "prepublish": "npm run build-all",
+    "prepack": "npm run build-all",
     "lint": "eslint src/ --ext .js,.jsx,.ts,.tsx",
     "test": "jest",
     "clean": "rm -rf dist build package",
@@ -27,12 +30,15 @@
     "proto": "./make-proto"
   },
   "devDependencies": {
+    "@babel/core": "^7.18.0",
+    "@babel/eslint-parser": "^7.17.0",
+    "@babel/preset-typescript": "^7.17.12",
     "@types/jest": "^27.4.1",
     "@types/node": "^17.0.26",
     "@typescript-eslint/eslint-plugin": "^5.20.0",
     "@typescript-eslint/parser": "^5.20.0",
     "esbuild": "^0.14.38",
-    "eslint": "^8.14.0",
+    "eslint": "^8.16.0",
     "jest": "27.0.0",
     "ts-jest": "^27.1.4",
     "ts-node": "^10.7.0",

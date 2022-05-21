@@ -19,7 +19,7 @@
     "experimentalDecorators": true,
     "resolveJsonModule": true,
     "sourceMap": true,
-    "outDir": "./dist/tsc/",
+    "outDir": "./build/",
     "types": [
       "node",
       "jest"

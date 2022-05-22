@@ -1,9 +1,13 @@
-# Centrifuge client for NodeJS and browser
+# Centrifuge and Centrifugo bidirectional SDK for NodeJS, React-Native and browser
 
-This client can connect to [Centrifuge](https://github.com/centrifugal/centrifuge) server (and [Centrifugo](https://github.com/centrifugal/centrifugo) in particular) using pure WebSocket or [SockJS](https://github.com/sockjs/sockjs-client) polyfill transports from web browser or NodeJS environments.
+This SDK can connect to [Centrifuge](https://github.com/centrifugal/centrifuge) server (and [Centrifugo](https://github.com/centrifugal/centrifugo) in particular) using pure WebSocket or one of the fallback transports from web browser, ReactNative, or NodeJS environments.
+
+The client behaves according to a common Centrifigo SDK spec. Please, read that before working with this SDK.
 
 * [Install](#install)
 * [Quick start](#quick-start)
+* [Using SockJS](#using-sockjs)
+* [Bidirectional emulation](#bidirectional-emulation)
 * [Connection Token](#connection-token)
 * [Configuration parameters](#configuration-parameters)
 * [Client API](#client-api)
@@ -20,7 +24,7 @@ This client can connect to [Centrifuge](https://github.com/centrifugal/centrifug
 
 ## Install
 
-Using cdn (replace `X` to concrete version number):
+Using cdn (replace `X` to a concrete version number):
 
 ```html
 <script src="https://cdn.jsdelivr.net/gh/centrifugal/centrifuge-js@3.X.X/dist/centrifuge.min.js"></script>
@@ -35,12 +39,6 @@ npm install centrifuge
 And then:
 
 ```javascript
-var Centrifuge = require("centrifuge");
-```
-
-Or:
-
-```javascript
 import Centrifuge from 'centrifuge';
 ```
 
@@ -48,7 +46,7 @@ By default, library works with JSON only, see `Protobuf support` section to see 
 
 ## Quick start
 
-As soon as you installed `centrifuge-js` you can create new `Centrifuge` object instance, subscribe on a channel and call `.connect()` method to make actual connection to server:
+As soon as you installed `centrifuge-js` you can create new `Centrifuge` object instance, subscribe on a channel and call `.connect()` method to make actual connection with a server:
 
 ```javascript
 const centrifuge = new Centrifuge('ws://centrifuge.example.com/connection/websocket');
@@ -58,6 +56,8 @@ const sub = centrifuge.newSubscription('news');
 sub.on('publication', function(ctx) {
     console.log(ctx);
 });
+
+sub.subscribe();
 
 centrifuge.connect();
 ```
@@ -136,22 +136,6 @@ In case of Centrifugo on a server side this may be a JSON Web Token - see [authe
 
 **Connection token must come to the frontend from application backend - i.e. must be generated on the backend side**. The way to deliver token to the application frontend is up to the developer. Usually you can pass it in template rendering context or issue a separate call to request a connection token from the backend.
 
-## Client states
-
-TODO
-
-## Client events
-
-TODO
-
-## Subscription states
-
-TODO
-
-## Subscription events
-
-TODO
-
 ## Configuration parameters
 
 Let's look at available configuration parameters when initializing `Centrifuge` object instance.
@@ -198,11 +182,7 @@ TODO
 
 TODO
 
-#### getConnectionToken
-
-TODO
-
-#### getSubscriptionToken
+#### getToken
 
 TODO
 
@@ -272,72 +252,51 @@ centrifuge.connect();
 
 `connect()` triggers an actual connection request to server.
 
-#### connect event
+#### connected event
 
-After connection will be established and client credentials you provided authorized
-then `connect` event on `Centrifuge` object instance will be called.
+After connection will be established and client credentials you provided authorized then `connected` event on `Centrifuge` object instance will be called.
 
 You can listen to this setting event listener function on `connect` event:
 
 ```javascript
-centrifuge.on('connect', function(context) {
-    // now client connected to Centrifugo and authorized
+centrifuge.on('connected', function(ctx) {
+    // now client connected to Centrifugo and authenticated.
 });
 ```
 
-What's in `context`:
+#### connecting event
+
+`connecting` event fired when Centrifuge object goes to connecting state. This may be called during initial connect, or after being `connected` due to temporary connection loss.
 
 ```javascript
-{
-    client: "79ec54fa-8348-4671-650b-d299c193a8a3",
-    transport: "raw-websocket",
-    latency: 21
-}
+centrifuge.on('connecting', function(ctx) {
+    // do whatever you need in case of connecting to a server
+});
 ```
 
-* `client` – client ID Centrifugo gave to this connection (string)
-* `transport` – name of transport used to establish connection with server (string)
-* `latency` – latency in milliseconds (int). This measures time passed between sending
-    `connect` client protocol command and receiving connect response.
+#### disconnected event
 
-#### disconnect event
-
-`disconnect` event fired on centrifuge object every time client disconnects for
-some reason. This can be network disconnect or disconnect initiated by Centrifugo server.
+`disconnected` event fired on Centrifuge object every time client disconnects for some reason. This can be terminal disconnect due to advice from a server or disconnect initiated by client-side.
 
 ```javascript
-centrifuge.on('disconnect', function(context) {
+centrifuge.on('disconnected', function(ctx) {
     // do whatever you need in case of disconnect from server
 });
 ```
 
-What's in `context`?
-
-```javascript
-{
-    reason: "connection closed",
-    reconnect: true
-}
-```
-
-* `reason` – the reason of client's disconnect (string)
-* `reconnect` – flag indicating if client will reconnect or not (boolean)
-
 #### disconnect method
 
-In some cases you may need to disconnect your client from server, use `disconnect` method to
-do this:
+In some cases you may need to disconnect your client from server, use `disconnect` method to do this:
 
 ```javascript
 centrifuge.disconnect();
 ```
 
-After calling this client will not try to reestablish connection periodically. You must call
-`connect` method manually again.
+After calling this client will not try to reestablish connection periodically. You must call `connect` method manually again.
 
 #### publish method
 
-Sometimes you need to publish into channel with `publish` option set to `true` without actually being subscribed to it. In this case you can use `publish` method:
+Sometimes you need to publish into channel without actually being subscribed to it. In this case you can use `publish` method:
 
 ```javascript
 centrifuge.publish("channel", {"input": "hello"}).then(function(res) {
@@ -349,7 +308,7 @@ centrifuge.publish("channel", {"input": "hello"}).then(function(res) {
 
 #### send method
 
-This is only valid for Centrifuge library and does not work for Centrifugo server. `send` method allows to send asynchronous message from client to server.
+This is only valid for Centrifuge library and does not work for Centrifugo server. `send` method allows to send asynchronous message from a client to a server.
 
 ```javascript
 centrifuge.send({"input": "hello"}).then(function(res) {
@@ -361,19 +320,7 @@ centrifuge.send({"input": "hello"}).then(function(res) {
 
 #### rpc method
 
-`rpc` method allows to send RPC request from client to server and wait for data response.
-
-```javascript
-centrifuge.rpc({"input": "hello"}).then(function(res) {
-    console.log('rpc result', res);
-}, function(err) {
-    console.log('rpc error', err);
-});
-```
-
-#### namedRPC method
-
-`namedRPC` method allows to send rpc request from client to server and wait for data response. Unlike `rpc` it additionally allows to provide method name string (which can be handy to have on RPC request top level).
+`rpc` method allows to send rpc request from client to server and wait for data response.
 
 ```javascript
 centrifuge.namedRPC("my.method.name", {"input": "hello"}).then(function(res) {
@@ -384,8 +331,6 @@ centrifuge.namedRPC("my.method.name", {"input": "hello"}).then(function(res) {
 ```
 
 #### history method
-
-Available since v2.7.0
 
 Allows to get history from a server. This is a top-level analogue of `Subscription.history` method. But accepts a channel as first argument.
 
@@ -399,8 +344,6 @@ centrifuge.history("channel", {since: {offset: 0, epoch: "xyz"}, limit: 10}).the
 
 #### presence method
 
-Available since v2.7.0
-
 Allows to get presence info from a server. This is a top-level analogue of `Subscription.presence` method. But accepts a channel as first argument.
 
 ```javascript
@@ -413,8 +356,6 @@ centrifuge.presence("channel").then(function(resp) {
 
 #### presenceStats method
 
-Available since v2.7.0
-
 Allows to get presence stats from a server. This is a top-level analogue of `Subscription.presenceStats` method. But accepts a channel as first argument.
 
 ```javascript
@@ -425,19 +366,17 @@ centrifuge.presenceStats("channel").then(function(resp) {
 });
 ```
 
-### setConnectData method
+### ready method of client
 
-Allows setting custom data sent to a server in first message. This data will be available on a server side in OnConnecting callback (if using Centrifugo library) or proxied to application backend (in using Centrifugo with connect proxy enabled).
+TODO.
 
-```
-centrifuge.setConnectData({"any": "key"});
-```
+#### error event
+
+TODO
 
 ## Subscription API
 
-Of course being just connected is useless. What we usually want from Centrifugo is to
-receive new messages published into channels. So our next step is `subscribe` on channel
-from which we want to receive real-time messages.
+Of course being just connected is useless. What we usually want from Centrifugo is to receive new messages published into channels. So our next step is to subscribe on a channel from which we want to receive real-time messages.
 
 ### subscribe method
 
@@ -537,94 +476,6 @@ var subscription = centrifuge.subscribe("news", function(message) {
 
 *Note, that in order join/leave events to work corresponding options must be enabled in server channel configuration (on top level or for channel namespace)*
 
-### subscription event context formats
-
-We already know how to listen for events on subscription. Let's look at format of
-messages event callback functions receive as arguments.
-
-#### format of message event context
-
-Let's look at message format of new message received from channel:
-
-```javascript
-{
-    "data":{"input":"hello"},
-}
-```
-
-I.e. `data` field contains actual data that was published.
-
-Message can optionally contain additional client `info` in case when this message was published by javascript client directly using `publish` method (see details below):
-
-```javascript
-{
-    "info":{
-        "user":"2694",
-        "client":"7080fd2a-bd69-4f1f-6648-5f3ceba4b643",
-        "conn_info":{"name":"Alexandr"},
-        "chan_info":{"extra":"extra JSON data when authorizing private channel"}
-    },
-    "data":{"input":"hello"}
-}
-```
-
-#### format of join/leave event message
-
-I.e. `on("join", function(message) {...})` or `on("leave", function(message) {...})`
-
-```javascript
-{
-    "info":{
-        "user":"2694",
-        "client":"2724adea-6e9b-460b-4430-a9f999e94c36",
-        "conn_info":{"first_name":"Alexandr"},
-        "chan_info":{"extra":"extra JSON data when authorizing"}
-    }
-}
-```
-
-`conn_info` and `chan_info` exist in message only if not empty.
-
-#### format of subscribe event context
-
-I.e. `on("subscribe", function(context) {...})`
-
-```javascript
-{
-    "channel": "$public:chat",
-    "isResubscribe": true,
-    "recovered": false
-}
-```
-
-`isResubscribe` – boolean flag showing if this was initial subscribe (`false`) or resubscribe (`true`)
-`recovered` – boolean flag that indicated whether missed messages were recovered on reconnect or not (recovery works according to Centrifugo channel configuration)
-
-#### format of subscription error event context
-
-I.e. `on("error", function(err) {...})`
-
-```javascript
-{
-    "error": "permission denied",
-    "channel": "$public:chat",
-    "isResubscribe": true
-}
-```
-
-`error` - error description
-`isResubscribe` – flag showing if this was initial subscribe (`false`) or resubscribe (`true`)
-
-#### format of unsubscribe event context
-
-I.e `on("unsubscribe", function(context) {...})`
-
-```javascript
-{
-    "channel": "$public:chat"
-}
-```
-
 ### presence method of subscription
 
 `presence` allows to get information about clients which are subscribed on channel at
@@ -703,11 +554,11 @@ for channel must be configured in Centrifugo to be available for `history` calls
 client.
 
 ```javascript
-var subscription = centrifuge.subscribe("news", function(message) {
+const sub = centrifuge.subscribe("news", function(message) {
     // handle message
 });
 
-subscription.history().then(function(response) {
+sub.history().then(function(response) {
     // history messages received
 }, function(err) {
     // history call failed with error
@@ -809,41 +660,7 @@ subscription.subscribe();
 
 ### ready method of subscription
 
-A small drawback of setting event handlers on subscription using `on` method is that event
-handlers can be set after `subscribe` event of underlying subscription already fired. This
-is not a problem in general but can be actual if you use one subscription (i.e. subscription
-to the same channel) from different parts of your javascript application - so be careful.
-
-For this case one extra helper method `.ready(callback, errback)` exists. This method calls
-`callback` if subscription already subscribed and calls `errback` if subscription already
-failed to subscribe with some error (because you subscribed on this channel before). So
-when you want to call subscribe on channel already subscribed before you may find `ready()`
-method useful:
-
-```javascript
-var subscription = centrifuge.subscribe("news", function(message) {
-    // handle message;
-});
-
-// artificially model subscription to the same channel that happen after
-// first subscription successfully subscribed - subscribe on the same
-// channel after 5 seconds.
-setTimeout(function() {
-    var anotherSubscription = centrifuge.subscribe("news", function(message) {
-        // another listener of channel "news"
-    }).on("subscribe", function() {
-        // won't be called on first subscribe because subscription already subscribed!
-        // but will be called every time automatic resubscribe after network disconnect
-        // happens
-    });
-    // one of subscribeSuccessHandler (or subscribeErrorHandler) will be called
-    // only if subscription already subscribed (or subscribe request already failed).
-    anotherSubscription.ready(subscribeSuccessHandler, subscribeErrorHandler);
-}, 5000);
-```
-
-When called `callback` and `errback` of `ready` method receive the same arguments as
-callback functions for `subscribe` and `error` events of subscription.
+TODO.
 
 ### Message batching
 
@@ -989,8 +806,6 @@ var centrifuge = new Centrifuge('ws://centrifuge.example.com/connection/websocke
 
 This client intended to work in all modern browsers with Websocket support: https://caniuse.com/#search=websocket.
 
-**To support IE 11** you must additionally polyfill `Promise` as this library uses `Promise`.
-
 You can easily polyfill `Promise` via CDN (example here uses [es6-promise](https://github.com/stefanpenner/es6-promise) library):
 
 ```html
@@ -1038,23 +853,6 @@ var centrifuge = new Centrifuge('ws://localhost:8000/connection/sockjs', {
 })
 ```
 
-### Custom XMLHttpRequest
-
-To work with private channels you may need to pass `XMLHttpRequest` object to library:
-
-```javascript
-const Centrifuge = require('centrifuge');
-const WebSocket = require('ws');
-const XMLHttpRequest = require("xmlhttprequest").XMLHttpRequest;
-
-var centrifuge = new Centrifuge('ws://localhost:8000/connection/websocket', {
-    websocket: WebSocket,
-    xmlhttprequest: XMLHttpRequest
-})
-```
-
-Or define XMLHttpRequest globally over `global.XMLHttpRequest = require("xmlhttprequest").XMLHttpRequest;`
-
 ### Custom WebSocket constructor
 
 If you are building a client for a non-browser environment and want to pass custom headers then you can use the following approach to wrap a WebSocket constructor and let custom options to be used on connection initialization:
@@ -1079,53 +877,3 @@ var centrifuge = new Centrifuge('ws://localhost:8000/connection/websocket', {
     websocket: myWs({ headers: { Authorization: '<token or key>' } }),
 });
 ```
-
-### Subscribe since known position
-
-Available in `centrifuge-js` >= v2.8.0.
-
-Subscribe API supports setting known StreamPosition object to use server recovery feature on the connection start (otherwise recovery only used upon client reconnections due to temporary connection problems).
-
-```javascript
-centrifuge.subscribe('channel', function(messageCtx) {
-    console.log('new message', messageCtx);
-}, {'since': {'offset': 0, 'epoch': '<EPOCH>'}});
-```
-
-## Feature matrix
-
-- [x] connect to server using JSON protocol format
-- [x] connect to server using Protobuf protocol format
-- [x] connect with token (JWT)
-- [ ] connect with custom header (not supported by browser API, though [possible for a non-browser target env](https://github.com/centrifugal/centrifuge-js#custom-websocket-constructor))
-- [x] automatic reconnect in case of errors, network problems etc
-- [x] an exponential backoff for reconnect
-- [x] connect and disconnect events
-- [x] handle disconnect reason
-- [x] subscribe on a channel and handle asynchronous Publications
-- [x] handle Join and Leave messages
-- [x] handle Unsubscribe notifications
-- [x] reconnect on subscribe timeout
-- [x] publish method of Subscription
-- [x] unsubscribe method of Subscription
-- [x] presence method of Subscription
-- [x] presence stats method of Subscription
-- [x] history method of Subscription
-- [x] top-level publish method
-- [x] top-level presence method
-- [x] top-level presence stats method
-- [x] top-level history method
-- [ ] top-level unsubscribe method
-- [x] send asynchronous messages to server
-- [x] handle asynchronous messages from server
-- [x] send RPC commands
-- [x] subscribe to private channels with token (JWT)
-- [x] connection token (JWT) refresh
-- [x] private channel subscription token (JWT) refresh
-- [x] handle connection expired error
-- [x] handle subscription expired error
-- [x] ping/pong to find broken connection
-- [x] message recovery mechanism for client-side subscriptions
-- [x] server-side subscriptions
-- [x] message recovery mechanism for server-side subscriptions
-- [x] history stream pagination

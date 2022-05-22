@@ -268,7 +268,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     const self = this;
 
     return this._methodCall().then(function () {
-      return self._callPromise(cmd, function (reply) {
+      return self._callPromise(cmd, function (reply: any) {
         return {
           'data': reply.rpc.data
         };
@@ -294,7 +294,8 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     });
   }
 
-  /** history of a channel. */
+  /** history for a channel. By default it does not return publications (only current
+   *  StreamPosition data) – provide an explicit limit > 0 to load publications.*/
   async history(channel: string, options?: HistoryOptions): Promise<HistoryResult> {
     const cmd = {
       history: this._getHistoryRequest(channel, options)
@@ -303,7 +304,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     const self = this;
 
     return this._methodCall().then(function () {
-      return self._callPromise(cmd, function (reply) {
+      return self._callPromise(cmd, function (reply: any) {
         const result = reply.history;
         const publications: any[] = [];
         if (result.publications) {
@@ -331,7 +332,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     const self = this;
 
     return this._methodCall().then(function () {
-      return self._callPromise(cmd, function (reply) {
+      return self._callPromise(cmd, function (reply: any) {
         return {
           'clients': reply.presence.presence
         };
@@ -350,7 +351,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     const self = this;
 
     return this._methodCall().then(function () {
-      return self._callPromise(cmd, function (reply) {
+      return self._callPromise(cmd, function (reply: any) {
         const result = reply.presence_stats;
         return {
           'numUsers': result.num_users,
@@ -448,7 +449,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     }
   }
 
-  private _setState(newState) {
+  private _setState(newState: State) {
     if (this.state !== newState) {
       const oldState = this.state;
       this.state = newState;
@@ -885,7 +886,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     });
   }
 
-  private _connectError(err) {
+  private _connectError(err: any) {
     if (this.state !== State.Connecting) {
       return;
     }
@@ -988,7 +989,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     });
   }
 
-  private _callPromise(cmd, resultCB) {
+  private _callPromise(cmd: any, resultCB: any) {
     return new Promise((resolve, reject) => {
       this._call(cmd).then(resolveCtx => {
         // @ts-ignore - improve later.
@@ -1025,7 +1026,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     });
   }
 
-  private _dispatchSynchronized(replies, finishDispatch) {
+  private _dispatchSynchronized(replies: any[], finishDispatch: any) {
     let p: Promise<unknown> = Promise.resolve();
     for (const i in replies) {
       if (replies.hasOwnProperty(i)) {
@@ -1039,7 +1040,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     });
   }
 
-  private _dispatchReply(reply) {
+  private _dispatchReply(reply: any) {
     let next: any;
     const p = new Promise(resolve => {
       next = resolve;
@@ -1074,7 +1075,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     });
   }
 
-  private _callConnectFake(id) {
+  private _callConnectFake(id: number) {
     return new Promise((resolve, reject) => {
       this._registerCall(id, resolve, reject);
     });
@@ -1194,7 +1195,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     });
   }
 
-  private _refreshError(err) {
+  private _refreshError(err: any) {
     if (err.code < 100 || err.temporary === true) {
       this.emit('error', {
         type: 'refresh',
@@ -1210,7 +1211,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     return backoff(0, 5000, 10000);
   }
 
-  private _refreshResponse(result) {
+  private _refreshResponse(result: any) {
     if (this._refreshTimeout) {
       clearTimeout(this._refreshTimeout);
       this._refreshTimeout = null;
@@ -1323,7 +1324,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     }
   }
 
-  private _processServerSubs(subs) {
+  private _processServerSubs(subs: Record<string, any>) {
     for (const channel in subs) {
       if (!subs.hasOwnProperty(channel)) {
         continue;
@@ -1443,7 +1444,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     return ctx;
   }
 
-  private _handleReply(reply, next) {
+  private _handleReply(reply: any, next: any) {
     const id = reply.id;
     if (!(id in this._callbacks)) {
       next();
@@ -1470,7 +1471,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     }
   }
 
-  private _handleJoin(channel, join) {
+  private _handleJoin(channel: string, join: any) {
     const sub = this._getSub(channel);
     if (!sub) {
       if (this._isServerSub(channel)) {
@@ -1483,7 +1484,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     sub._handleJoin(join);
   }
 
-  private _handleLeave(channel, leave) {
+  private _handleLeave(channel: string, leave: any) {
     const sub = this._getSub(channel);
     if (!sub) {
       if (this._isServerSub(channel)) {
@@ -1496,7 +1497,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     sub._handleLeave(leave);
   }
 
-  private _handleUnsubscribe(channel, unsubscribe) {
+  private _handleUnsubscribe(channel: string, unsubscribe: any) {
     const sub = this._getSub(channel);
     if (!sub) {
       if (this._isServerSub(channel)) {
@@ -1514,7 +1515,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     }
   }
 
-  private _handleSubscribe(channel, sub) {
+  private _handleSubscribe(channel: string, sub: any) {
     this._serverSubs[channel] = {
       'offset': sub.offset,
       'epoch': sub.epoch,
@@ -1523,7 +1524,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     this.emit('subscribed', this._getSubscribeContext(channel, sub));
   }
 
-  private _handleDisconnect(disconnect) {
+  private _handleDisconnect(disconnect: any) {
     const code = disconnect.code;
     let reconnect = true;
     if ((code >= 3500 && code < 4000) || (code >= 4500 && code < 5000)) {
@@ -1549,7 +1550,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     return ctx;
   }
 
-  private _getJoinLeaveContext(clientInfo) {
+  private _getJoinLeaveContext(clientInfo: any) {
     const info: any = {
       client: clientInfo.client,
       user: clientInfo.user

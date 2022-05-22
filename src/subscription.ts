@@ -1,7 +1,11 @@
 import EventEmitter from 'events';
 import { Centrifuge } from './centrifuge';
 import { errorCodes, unsubscribedCodes, subscribingCodes, connectingCodes } from './codes';
-import { HistoryOptions, HistoryResult, PresenceResult, PresenceStatsResult, PublishResult, State, SubscriptionEvents, SubscriptionOptions, SubscriptionState, SubscriptionTokenContext, TypedEventEmitter } from './types';
+import {
+  HistoryOptions, HistoryResult, PresenceResult, PresenceStatsResult,
+  PublishResult, State, SubscriptionEvents, SubscriptionOptions,
+  SubscriptionState, SubscriptionTokenContext, TypedEventEmitter
+} from './types';
 import { ttlMilliseconds, backoff } from './utils';
 
 /** Subscription to a channel */
@@ -108,7 +112,7 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
     });
   }
 
-  /** presence for a channel.*/
+  /** get online presence for a channel.*/
   async presence(): Promise<PresenceResult> {
     const self = this;
     return this._methodCall().then(function () {
@@ -116,7 +120,7 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
     });
   }
 
-  /** presence stats for a channel.*/
+  /** presence stats for a channel (num clients and unique users).*/
   async presenceStats(): Promise<PresenceStatsResult> {
     const self = this;
     return this._methodCall().then(function () {
@@ -124,7 +128,8 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
     });
   }
 
-  /** history for a channel.*/
+  /** history for a channel. By default it does not return publications (only current
+   *  StreamPosition data) – provide an explicit limit > 0 to load publications.*/
   async history(opts: HistoryOptions): Promise<HistoryResult> {
     const self = this;
     return this._methodCall().then(function () {

@@ -57,12 +57,10 @@ export class WebsocketTransport {
   }
 
   close() {
-    // @ts-ignore
     this._transport.close();
   }
 
   send(data) {
-    // @ts-ignore
     this._transport.send(data);
   }
 }

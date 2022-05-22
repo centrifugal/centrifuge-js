@@ -141,7 +141,6 @@ export class HttpStreamTransport {
       body = encodedConnectCommand;
     }
 
-    // @ts-ignore
     const eventTarget = this._fetchEventTarget(
       this,
       this.endpoint,

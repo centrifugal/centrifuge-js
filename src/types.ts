@@ -24,33 +24,41 @@ export type ClientEvents = {
   connecting: (ctx: ConnectingContext) => void;
   connected: (ctx: ConnectedContext) => void;
   disconnected: (ctx: DisconnectedContext) => void;
+
+  // Async message coming from a server.
   message: (ctx: MessageContext) => void;
+  // Listen to errors happening internally. 
   error: (ctx: ErrorContext) => void;
-  publication: (ctx: PublicationContext) => void;
-  join: (ctx: JoinContext) => void;
-  leave: (ctx: LeaveContext) => void;
+
+  // Listen for server-side subscription events.
   subscribed: (ctx: ServerSubscribedContext) => void;
   subscribing: (ctx: ServerSubscribingContext) => void;
   unsubscribed: (ctx: ServerUnsubscribedContext) => void;
+  publication: (ctx: ServerPublicationContext) => void;
+  join: (ctx: ServerJoinContext) => void;
+  leave: (ctx: ServerLeaveContext) => void;
 }
 
-/** State of client */
+/** State of client. */
 export enum State {
   Disconnected = "disconnected",
   Connecting = "connecting",
   Connected = "connected"
 }
 
-/** Events of client */
+/** Events of Subscription. */
 export type SubscriptionEvents = {
   state: (ctx: SubscriptionStateContext) => void;
   subscribing: (ctx: SubscribingContext) => void;
   subscribed: (ctx: SubscribedContext) => void;
   unsubscribed: (ctx: UnsubscribedContext) => void;
-  error: (ctx: SubscriptionErrorContext) => void;
+
   publication: (ctx: PublicationContext) => void;
   join: (ctx: JoinContext) => void;
   leave: (ctx: LeaveContext) => void;
+
+  // listen to errors happening internally. 
+  error: (ctx: SubscriptionErrorContext) => void;
 }
 
 /** State of Subscription */
@@ -78,7 +86,7 @@ export interface Options {
   token: string | null;
   /** allows setting function to get/refresh connection token */
   getToken: null | ((ctx: ConnectionTokenContext) => Promise<string>);
-  /** data to send to a sever with connect command */
+  /** data to send to a server with connect command */
   data: any | null;
   /** name of client - it's not a unique name of each connection, it's sth to identify from where client connected */
   name: string;
@@ -184,12 +192,19 @@ export interface SubscriptionStateContext {
 }
 
 export interface ServerSubscribedContext {
+  /** channel of Subscription. */
   channel: string;
+  /** Subscription is recoverable – i.e. can automatically recover missied messages */
   recoverable: boolean;
+  /** Subscription is positioned – i.e. server tracks message loss on the way from PUB/SUB broker */
   positioned: boolean;
+  /** streamPosition set when Subscription is recoverable or positioned. */
   streamPosition?: StreamPosition;
+  /** wasRecovering is true when recovery was used in subscribe request. */
   wasRecovering: boolean;
+  /** whether or not missed publications may be successfully recovered.  */
   recovered: boolean;
+  /** custom data for Subscription returned from server. */
   data?: any;
 }
 
@@ -213,6 +228,24 @@ export interface UnsubscribedContext {
   channel: string;
   code: number;
   reason: string;
+}
+
+export interface ServerPublicationContext {
+  channel: string;
+  data: any;
+  info?: ClientInfo;
+  offset?: number;
+  tags?: Map<string, string>;
+}
+
+export interface ServerJoinContext {
+  channel: string;
+  info: ClientInfo;
+}
+
+export interface ServerLeaveContext {
+  channel: string;
+  info: ClientInfo;
 }
 
 export interface ServerUnsubscribedContext {
@@ -266,16 +299,25 @@ export interface HistoryOptions {
 
 /** SubscriptionOptions can customize Subscription. */
 export interface SubscriptionOptions {
-  data: any | null;
+  /** allows setting subscription token (JWT) */
   token: string | null;
+  /** allows setting function to get/refresh subscription token */
   getToken: null | ((ctx: SubscriptionTokenContext) => Promise<string>);
+  /** data to send to a server with subscribe command */
+  data: any | null;
+  /** force recovery on first subscribe from a provided StreamPosition. */
   since: StreamPosition | null;
+  /** min delay between resubscribe attemts. */
   minResubscribeDelay: number;
+  /** max delay between resubscribe attempts. */
   maxResubscribeDelay: number;
+  /** ask server to make subsription positioned. */
   positioned: boolean;
-  recoverable: boolean
+  /** ask server to make subsription recoverable. */
+  recoverable: boolean;
 }
 
+/** Stream postion describes position of publication inside a stream.  */
 export interface StreamPosition {
   offset: number;
   epoch: string;

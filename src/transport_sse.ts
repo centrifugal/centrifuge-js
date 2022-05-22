@@ -29,7 +29,7 @@ export class SseTransport {
     return this.options.eventsource !== null && this.options.fetch !== null;
   }
 
-  initialize(_protocol, callbacks, encodedConnectCommand) {
+  initialize(_protocol: 'json', callbacks: any, encodedConnectCommand: any) {
     const url = new URL(this.endpoint);
     url.searchParams.append('cf_connect', encodedConnectCommand);
 

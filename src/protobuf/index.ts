@@ -28,11 +28,10 @@ export class ProtobufEncoder {
 
 export class ProtobufDecoder {
   decodeReplies(data: any) {
-    const replies = [];
+    const replies: any[] = [];
     const reader = protobuf.Reader.create(new Uint8Array(data));
     while (reader.pos < reader.len) {
       const reply = Reply.decodeDelimited(reader);
-      // @ts-ignore
       replies.push(reply);
     }
     return replies;

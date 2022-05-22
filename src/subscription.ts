@@ -1,19 +1,18 @@
 import EventEmitter from 'events';
 import { Centrifuge } from './centrifuge';
-import { errorCodes, unsubscribedCodes, subscribingCodes } from './codes';
-import { HistoryOptions, HistoryResult, PresenceResult, PresenceStatsResult, PublishResult, SubscriptionEvents, SubscriptionOptions, SubscriptionState, SubscriptionTokenContext, TypedEventEmitter } from './types';
+import { errorCodes, unsubscribedCodes, subscribingCodes, connectingCodes } from './codes';
+import { HistoryOptions, HistoryResult, PresenceResult, PresenceStatsResult, PublishResult, State, SubscriptionEvents, SubscriptionOptions, SubscriptionState, SubscriptionTokenContext, TypedEventEmitter } from './types';
 import { ttlMilliseconds, backoff } from './utils';
 
 /** Subscription to a channel */
 export class Subscription extends (EventEmitter as new () => TypedEventEmitter<SubscriptionEvents>) {
   channel: string;
   state: SubscriptionState;
+
   private _centrifuge: Centrifuge;
-  private _promises: Map<number, any>;
+  private _promises: Record<number, any>;
   private _resubscribeTimeout?: null | ReturnType<typeof setTimeout> = null;
   private _refreshTimeout?: null | ReturnType<typeof setTimeout> = null;
-  /** @internal */
-  _token: string | null;
   private _getToken: null | ((ctx: SubscriptionTokenContext) => Promise<string>);
   private _minResubscribeDelay: number;
   private _maxResubscribeDelay: number;
@@ -23,12 +22,10 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
   private _resubscribeAttempts: number;
   private _promiseId: number;
 
-  /** @internal */
-  _data: any | null;
-  /** @internal */
-  _recoverable: boolean;
-  /** @internal */
-  _positioned: boolean;
+  private _token: string | null;
+  private _data: any | null;
+  private _recoverable: boolean;
+  private _positioned: boolean;
 
   /** Subscription constructor should not be used directly, create subscriptions using Client method. */
   constructor(centrifuge: Centrifuge, channel: string, options?: Partial<SubscriptionOptions>) {
@@ -48,15 +45,18 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
     this._maxResubscribeDelay = 20000;
     this._resubscribeTimeout = null;
     this._resubscribeAttempts = 0;
-    this._promises = new Map<number, any>();
+    this._promises = {};
     this._promiseId = 0;
     this._refreshTimeout = null;
     this._setOptions(options);
+    // @ts-ignore – we are hiding some symbols from public API autocompletion.
     if (this._centrifuge._debugEnabled) {
       this.on('state', (ctx) => {
+        // @ts-ignore – we are hiding some symbols from public API autocompletion.
         this._centrifuge._debug('subscription state', channel, ctx.oldState, '->', ctx.newState);
       });
       this.on('error', (ctx) => {
+        // @ts-ignore – we are hiding some symbols from public API autocompletion.
         this._centrifuge._debug('subscription error', channel, ctx);
       });
     }
@@ -65,7 +65,7 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
   /** ready returns a Promise which resolves upon subscription goes to Subscribed 
    * state and rejects in case of subscription goes to Unsubscribed state. 
    * Optional timeout can be passed.*/
-  ready(timeout?: number) {
+  ready(timeout?: number): Promise<void> {
     if (this.state === SubscriptionState.Unsubscribed) {
       return Promise.reject({ code: errorCodes.subscriptionUnsubscribed, message: this.state });
     }
@@ -139,6 +139,7 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
     return new Promise((res, rej) => {
       const timeout = setTimeout(function () {
         rej({ code: errorCodes.timeout, message: 'timeout' });
+        // @ts-ignore – we are hiding some symbols from public API autocompletion.
       }, this._centrifuge._config.timeout);
       this._promises[this._nextPromiseId()] = {
         timeout: timeout,
@@ -152,8 +153,7 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
     return ++this._promiseId;
   }
 
-  /** @internal */
-  _needRecover() {
+  private _needRecover() {
     return this._recover === true;
   }
 
@@ -161,13 +161,11 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
     return this.state === SubscriptionState.Unsubscribed;
   }
 
-  /** @internal */
-  _isSubscribing() {
+  private _isSubscribing() {
     return this.state === SubscriptionState.Subscribing;
   }
 
-  /** @internal */
-  _isSubscribed() {
+  private _isSubscribed() {
     return this.state === SubscriptionState.Subscribed;
   }
 
@@ -181,8 +179,7 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
     return false;
   }
 
-  /** @internal */
-  _usesToken() {
+  private _usesToken() {
     return this._token !== null || this._getToken !== null;
   }
 
@@ -195,8 +192,7 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
     this._clearRefreshTimeout();
   }
 
-  /** @internal */
-  _setSubscribed(result: any) {
+  private _setSubscribed(result: any) {
     if (!this._isSubscribing()) {
       return;
     }
@@ -209,6 +205,7 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
     }
 
     this._setState(SubscriptionState.Subscribed);
+    // @ts-ignore – we are hiding some methods from public API autocompletion.
     const ctx = this._centrifuge._getSubscribeContext(this.channel, result);
     this.emit('subscribed', ctx);
     this._resolvePromises();
@@ -228,8 +225,7 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
     }
   }
 
-  /** @internal */
-  _setSubscribing(code, reason) {
+  private _setSubscribing(code, reason) {
     if (this._isSubscribing()) {
       return;
     }
@@ -239,16 +235,139 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
     if (this._setState(SubscriptionState.Subscribing)) {
       this.emit('subscribing', { channel: this.channel, code: code, reason: reason });
     }
-    this._centrifuge._subscribe(this);
+    this._subscribe();
   }
 
-  /** @internal */
-  _setUnsubscribed(code, reason, sendUnsubscribe) {
+  private _subscribe() {
+    // @ts-ignore – we are hiding some symbols from public API autocompletion.
+    this._centrifuge._debug('subscribing on', this.channel);
+
+    if (this._centrifuge.state !== State.Connected) {
+      // @ts-ignore – we are hiding some symbols from public API autocompletion.
+      this._centrifuge._debug('delay subscribe on', this.channel, 'till connected');
+      // subscribe will be called later automatically.
+      return;
+    }
+
+    if (this._usesToken()) {
+      // token channel, need to get token before sending subscribe.
+      if (this._token) {
+        this._sendSubscribe(this._token);
+      } else {
+        const self = this;
+        this._getSubscriptionToken().then(function (token) {
+          if (!self._isSubscribing()) {
+            return;
+          }
+          if (!token) {
+            self._failUnauthorized();
+            return;
+          }
+          self._token = token;
+          self._sendSubscribe(token);
+        }).catch(function (e) {
+          if (!self._isSubscribing()) {
+            return;
+          }
+          self.emit('error', {
+            type: 'subscribeToken',
+            channel: self.channel,
+            error: {
+              code: errorCodes.subscriptionSubscribeToken,
+              message: e !== undefined ? e.toString() : ''
+            }
+          });
+          self._scheduleResubscribe();
+        });
+      }
+    } else {
+      this._sendSubscribe('');
+    }
+  }
+
+  private _sendSubscribe(token: string) {
+    const channel = this.channel;
+
+    const req: any = {
+      channel: channel
+    };
+
+    if (token) {
+      req.token = token;
+    }
+
+    if (this._data) {
+      req.data = this._data;
+    }
+
+    if (this._positioned) {
+      req.positioned = true;
+    }
+
+    if (this._recoverable) {
+      req.recoverable = true;
+    }
+
+    if (this._needRecover()) {
+      req.recover = true;
+      const offset = this._getOffset();
+      if (offset) {
+        req.offset = offset;
+      }
+      const epoch = this._getEpoch();
+      if (epoch) {
+        req.epoch = epoch;
+      }
+    }
+
+    const cmd = { subscribe: req };
+
+    // @ts-ignore – we are hiding some symbols from public API autocompletion.
+    this._centrifuge._call(cmd).then(resolveCtx => {
+      // @ts-ignore - improve later.
+      const result = resolveCtx.reply.subscribe;
+      this._handleSubscribeResponse(
+        result
+      );
+      // @ts-ignore - improve later.
+      if (resolveCtx.next) {
+        // @ts-ignore - improve later.
+        resolveCtx.next();
+      }
+    }, rejectCtx => {
+      this._handleSubscribeError(rejectCtx.error);
+      if (rejectCtx.next) {
+        rejectCtx.next();
+      }
+    });
+  }
+
+  private _handleSubscribeError(error) {
+    if (!this._isSubscribing()) {
+      return;
+    }
+    if (error.code === errorCodes.timeout) {
+      // @ts-ignore – we are hiding some symbols from public API autocompletion.
+      this._centrifuge._disconnect(connectingCodes.subscribeTimeout, 'subscribe timeout', true);
+      return;
+    }
+    this._subscribeError(error);
+  }
+
+  private _handleSubscribeResponse(result) {
+    if (!this._isSubscribing()) {
+      return;
+    }
+    this._setSubscribed(result);
+  }
+
+  private _setUnsubscribed(code, reason, sendUnsubscribe) {
     if (this._isUnsubscribed()) {
       return;
     }
     if (this._isSubscribed()) {
       if (sendUnsubscribe) {
+        // @ts-ignore – we are hiding some methods from public API autocompletion.
         this._centrifuge._unsubscribe(this);
       }
       this._clearSubscribedState();
@@ -262,8 +381,8 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
     this._rejectPromises({ code: errorCodes.subscriptionUnsubscribed, message: 'unsubscribed' });
   }
 
-  /** @internal */
-  _handlePublication(pub: any) {
+  private _handlePublication(pub: any) {
+    // @ts-ignore – we are hiding some methods from public API autocompletion.
     const ctx = this._centrifuge._getPublicationContext(this.channel, pub);
     this.emit('publication', ctx);
     if (pub.offset) {
@@ -271,14 +390,16 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
     }
   }
 
-  /** @internal */
-  _handleJoin(join: any) {
-    this.emit('join', { channel: this.channel, info: this._centrifuge._getJoinLeaveContext(join.info) });
+  protected _handleJoin(join: any) {
+    // @ts-ignore – we are hiding some methods from public API autocompletion.
+    const info = this._centrifuge._getJoinLeaveContext(join.info)
+    this.emit('join', { channel: this.channel, info: info });
   }
 
-  /** @internal */
-  _handleLeave(leave: any) {
-    this.emit('leave', { channel: this.channel, info: this._centrifuge._getJoinLeaveContext(leave.info) });
+  protected _handleLeave(leave: any) {
+    // @ts-ignore – we are hiding some methods from public API autocompletion.
+    const info = this._centrifuge._getJoinLeaveContext(leave.info)
+    this.emit('leave', { channel: this.channel, info: info });
   }
 
   private _resolvePromises() {
@@ -301,19 +422,17 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
     }
   }
 
-  /** @internal */
-  _scheduleResubscribe() {
+  private _scheduleResubscribe() {
     const self = this;
     const delay = this._getResubscribeDelay();
     this._resubscribeTimeout = setTimeout(function () {
       if (self._isSubscribing()) {
-        self._centrifuge._subscribe(self);
+        self._subscribe();
       }
     }, delay);
   }
 
-  /** @internal */
-  _subscribeError(err: any) {
+  private _subscribeError(err: any) {
     if (!this._isSubscribing()) {
       return;
     }
@@ -371,8 +490,7 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
     }
   }
 
-  /** @internal */
-  _getOffset() {
+  private _getOffset() {
     const offset = this._offset;
     if (offset !== null) {
       return offset;
@@ -380,8 +498,7 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
     return 0;
   }
 
-  /** @internal */
-  _getEpoch() {
+  private _getEpoch() {
     const epoch = this._epoch;
     if (epoch !== null) {
       return epoch;
@@ -403,8 +520,8 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
     }
   }
 
-  /** @internal */
-  _getSubscriptionToken() {
+  private _getSubscriptionToken() {
+    // @ts-ignore – we are hiding some methods from public API autocompletion.
     this._centrifuge._debug('get subscription token for channel', this.channel);
     const ctx = {
       channel: this.channel
@@ -416,7 +533,6 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
     return getToken(ctx);
   }
 
-  /** @internal */
   private _refresh() {
     this._clearRefreshTimeout();
     const self = this;
@@ -436,13 +552,14 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
       const msg = {
         'sub_refresh': req
       };
+      // @ts-ignore – we are hiding some symbols from public API autocompletion.
       self._centrifuge._call(msg).then(resolveCtx => {
-        // @ts-ignore
+        // @ts-ignore - improve later.
         const result = resolveCtx.reply.sub_refresh;
         self._refreshResponse(result);
-        // @ts-ignore
+        // @ts-ignore - improve later.
         if (resolveCtx.next) {
-          // @ts-ignore
+          // @ts-ignore - improve later.
           resolveCtx.next();
         }
       }, rejectCtx => {
@@ -464,8 +581,8 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
     });
   }
 
-  /** @internal */
-  _refreshResponse(result: any) {
+  private _refreshResponse(result: any) {
+    // @ts-ignore – we are hiding some methods from public API autocompletion.
     this._centrifuge._debug('subscription token refreshed, channel', this.channel);
     this._clearRefreshTimeout();
     if (result.expires === true) {
@@ -473,8 +590,7 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
     }
   }
 
-  /** @internal */
-  _refreshError(err: any) {
+  private _refreshError(err: any) {
     if (err.code < 100 || err.temporary === true) {
       this.emit('error', {
         type: 'refresh',
@@ -491,8 +607,7 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
     return backoff(0, 10000, 20000);
   }
 
-  /** @internal */
-  _failUnauthorized() {
+  private _failUnauthorized() {
     this._setUnsubscribed(unsubscribedCodes.unauthorized, 'unauthorized', true);
   }
 }

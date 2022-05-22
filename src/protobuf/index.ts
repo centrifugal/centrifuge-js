@@ -53,7 +53,7 @@ export class ProtobufDecoder {
 }
 
 export default class CentrifugeProtobuf extends Centrifuge {
-  _formatOverride(format: 'json' | 'protobuf') {
+  protected _formatOverride(format: 'json' | 'protobuf') {
     if (format === 'protobuf') {
       this._encoder = new ProtobufEncoder();
       this._decoder = new ProtobufDecoder();

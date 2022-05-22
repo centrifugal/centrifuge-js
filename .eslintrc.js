@@ -12,7 +12,10 @@ module.exports = {
         'no-undef': 'off',
         'no-prototype-builtins': 'off',
         'no-constant-condition': 'off',
-        '@typescript-eslint/ban-ts-comment': 'off',
+        '@typescript-eslint/ban-ts-comment': [
+            'error',
+            { 'ts-ignore': 'allow-with-description' },
+        ],
         '@typescript-eslint/no-explicit-any': 'off',
         '@typescript-eslint/no-this-alias': 'off',
         '@typescript-eslint/no-var-requires': 'off',

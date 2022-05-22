@@ -84,30 +84,26 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
   private _client: null;
   private _session: string;
   private _node: string;
-  private _subs: Map<string, Subscription>;
-  private _serverSubs: Map<string, serverSubscription>;
+  private _subs: Record<string, Subscription>;
+  private _serverSubs: Record<string, serverSubscription>;
   private _commandId: number;
   private _commands: any[];
   private _batching: boolean;
   private _refreshRequired: boolean;
   private _refreshTimeout?: null | ReturnType<typeof setTimeout> = null;
-  private _callbacks: Map<number, any>;
+  private _callbacks: Record<number, any>;
   private _token?: string;
   private _dispatchPromise: Promise<void>;
   private _serverPing: number;
   private _serverPingTimeout?: null | ReturnType<typeof setTimeout> = null;
   private _sendPong: boolean;
-  private _promises: Map<number, any>;
+  private _promises: Record<number, any>;
   private _promiseId: number;
 
-  /** @internal */
-  _debugEnabled: boolean;
-  /** @internal */
-  _config: Options;
-  /** @internal */
-  _encoder: any;
-  /** @internal */
-  _decoder: any;
+  private _debugEnabled: boolean;
+  private _config: Options;
+  protected _encoder: any;
+  protected _decoder: any;
 
   static State: { Disconnected: string; Connecting: string; Connected: string; };
   static SubscriptionState: { Unsubscribed: string; Subscribing: string; Subscribed: string; };
@@ -131,20 +127,20 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     this._client = null;
     this._session = '';
     this._node = '';
-    this._subs = new Map<string, Subscription>();
-    this._serverSubs = new Map<string, serverSubscription>();
+    this._subs = {};
+    this._serverSubs = {};
     this._commandId = 0;
     this._commands = [];
     this._batching = false;
     this._refreshRequired = false;
     this._refreshTimeout = null;
-    this._callbacks = new Map<number, any>();
+    this._callbacks = {};
     this._token = undefined;
     this._dispatchPromise = Promise.resolve();
     this._serverPing = 0;
     this._serverPingTimeout = null;
     this._sendPong = false;
-    this._promises = new Map<number, any>();
+    this._promises = {};
     this._promiseId = 0;
     this._debugEnabled = false;
 
@@ -193,14 +189,14 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
   }
 
   /** Get a map with all current client-side subscriptions. */
-  subscriptions(): Map<string, Subscription> {
+  subscriptions(): Record<string, Subscription> {
     return this._subs;
   }
 
   /** ready returns a Promise which resolves upon client goes to Connected 
    * state and rejects in case of client goes to Disconnected or Failed state.
    * Users can provide optional timeout in milliseconds. */
-  ready(timeout?: number) {
+  ready(timeout?: number): Promise<void> {
     if (this.state === State.Disconnected) {
       return Promise.reject({ code: errorCodes.clientDisconnected, message: 'client disconnected' });
     }
@@ -379,8 +375,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     this._flush();
   }
 
-  /** @internal */
-  _debug(...args: any[]) {
+  private _debug(...args: any[]) {
     if (!this._debugEnabled) {
       return;
     }
@@ -498,7 +493,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
         errback({ error: this._createErrorObject(errorCodes.connectionClosed, 'connection closed') });
       }
     }
-    this._callbacks.clear();
+    this._callbacks = {};
   }
 
   private _clearConnectedState() {
@@ -512,7 +507,8 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
         continue;
       }
       const sub = this._subs[channel];
-      if (sub._isSubscribed()) {
+      if (sub.state === SubscriptionState.Subscribed) {
+        // @ts-ignore – we are hiding some symbols from public API autocompletion.
         sub._setSubscribing(subscribingCodes.transportClosed, 'transport closed');
       }
     }
@@ -705,12 +701,12 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     if (this._transport.emulation()) {
       connectCommand.id = this._nextCommandId();
       this._callConnectFake(connectCommand.id).then(resolveCtx => {
-        // @ts-ignore
+        // @ts-ignore - improve later.
         const result = resolveCtx.reply.connect;
         this._connectResponse(result);
-        // @ts-ignore
+        // @ts-ignore - improve later.
         if (resolveCtx.next) {
-          // @ts-ignore
+          // @ts-ignore - improve later.
           resolveCtx.next();
         }
       }, rejectCtx => {
@@ -830,12 +826,12 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     const connectCommand = this._constructConnectCommand();
     const self = this;
     this._call(connectCommand).then(resolveCtx => {
-      // @ts-ignore
+      // @ts-ignore = improve later.
       const result = resolveCtx.reply.connect;
       self._connectResponse(result);
-      // @ts-ignore
+      // @ts-ignore - improve later.
       if (resolveCtx.next) {
-        // @ts-ignore
+        // @ts-ignore - improve later.
         resolveCtx.next();
       }
     }, rejectCtx => {
@@ -995,11 +991,11 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
   private _callPromise(cmd, resultCB) {
     return new Promise((resolve, reject) => {
       this._call(cmd).then(resolveCtx => {
-        // @ts-ignore
+        // @ts-ignore - improve later.
         resolve(resultCB(resolveCtx.reply));
-        // @ts-ignore
+        // @ts-ignore - improve later.
         if (resolveCtx.next) {
-          // @ts-ignore
+          // @ts-ignore - improve later.
           resolveCtx.next();
         }
       }, rejectCtx => {
@@ -1070,8 +1066,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     return p;
   }
 
-  /** @internal */
-  _call(cmd) {
+  private _call(cmd: any) {
     return new Promise((resolve, reject) => {
       cmd.id = this._nextCommandId();
       this._registerCall(cmd.id, resolve, reject);
@@ -1094,7 +1089,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     this._initializeTransport();
   }
 
-  private _disconnect(code, reason, reconnect) {
+  private _disconnect(code: number, reason: string, reconnect: boolean) {
     if (this._isDisconnected()) {
       return;
     }
@@ -1143,7 +1138,6 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
   }
 
   private _getToken() {
-    // ask application for new connection token.
     this._debug('get connection token');
     if (!this._config.getToken) {
       throw new Error('provide a function to get connection token');
@@ -1174,12 +1168,12 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
       };
 
       self._call(cmd).then(resolveCtx => {
-        // @ts-ignore
+        // @ts-ignore - improve later.
         const result = resolveCtx.reply.refresh;
         self._refreshResponse(result);
-        // @ts-ignore
+        // @ts-ignore - improve later.
         if (resolveCtx.next) {
-          // @ts-ignore
+          // @ts-ignore - improve later.
           resolveCtx.next();
         }
       }, rejectCtx => {
@@ -1227,143 +1221,6 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     }
   }
 
-  /** @internal */
-  _subscribe(sub: Subscription) {
-    this._debug('subscribing on', sub.channel);
-    const channel = sub.channel;
-
-    if (!(channel in this._subs)) {
-      this._subs[channel] = sub;
-    }
-
-    if (!this._isConnected()) {
-      this._debug('delay subscribe on', sub.channel, 'till connected');
-      // subscribe will be called later automatically.
-      return;
-    }
-
-    if (sub._usesToken()) {
-      // token channel, need to get token before sending subscribe.
-      const clientId = this._client;
-      const self = this;
-      if (sub._token) {
-        this._sendSubscribe(sub, sub._token);
-      } else {
-        sub._getSubscriptionToken().then(function (token) {
-          if (clientId !== self._client) {
-            return;
-          }
-          if (!sub._isSubscribing()) {
-            return;
-          }
-          if (!token) {
-            sub._failUnauthorized();
-            return;
-          }
-          sub._token = token;
-          self._sendSubscribe(sub, token);
-        }).catch(function (e) {
-          if (!sub._isSubscribing()) {
-            return;
-          }
-          sub.emit('error', {
-            type: 'subscribeToken',
-            channel: sub.channel,
-            error: {
-              code: errorCodes.subscriptionSubscribeToken,
-              message: e !== undefined ? e.toString() : ''
-            }
-          });
-          sub._scheduleResubscribe();
-        });
-      }
-    } else {
-      this._sendSubscribe(sub, '');
-    }
-  }
-
-  private _sendSubscribe(sub: Subscription, token: string) {
-    const channel = sub.channel;
-
-    const req: any = {
-      channel: channel
-    };
-
-    if (token) {
-      req.token = token;
-    }
-
-    if (sub._data) {
-      req.data = sub._data;
-    }
-
-    if (sub._positioned) {
-      req.positioned = true;
-    }
-
-    if (sub._recoverable) {
-      req.recoverable = true;
-    }
-
-    if (sub._needRecover()) {
-      req.recover = true;
-      const offset = sub._getOffset();
-      if (offset) {
-        req.offset = offset;
-      }
-      const epoch = sub._getEpoch();
-      if (epoch) {
-        req.epoch = epoch;
-      }
-    }
-
-    const cmd = { subscribe: req };
-
-    this._call(cmd).then(resolveCtx => {
-      // @ts-ignore
-      const result = resolveCtx.reply.subscribe;
-      this._subscribeResponse(
-        channel,
-        result
-      );
-      // @ts-ignore
-      if (resolveCtx.next) {
-        // @ts-ignore
-        resolveCtx.next();
-      }
-    }, rejectCtx => {
-      this._subscribeError(channel, rejectCtx.error);
-      if (rejectCtx.next) {
-        rejectCtx.next();
-      }
-    });
-  }
-
-  /** @internal */
-  _sendSubRefresh(sub: Subscription, token: string) {
-    const req = {
-      channel: sub.channel,
-      token: token
-    };
-    const cmd = { 'sub_refresh': req };
-
-    this._call(cmd).then(resolveCtx => {
-      // @ts-ignore
-      const result = resolveCtx.reply.sub_refresh;
-      sub._refreshResponse(result);
-      // @ts-ignore
-      if (resolveCtx.next) {
-        // @ts-ignore
-        resolveCtx.next();
-      }
-    }, rejectCtx => {
-      sub._refreshError(rejectCtx.error);
-      if (rejectCtx.next) {
-        rejectCtx.next();
-      }
-    });
-  }
-
   private _removeSubscription(sub: Subscription | null) {
     if (sub === null) {
       return;
@@ -1371,8 +1228,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     delete this._subs[sub.channel];
   }
 
-  /** @internal */
-  _unsubscribe(sub: Subscription) {
+  protected _unsubscribe(sub: Subscription) {
     if (!this._isConnected()) {
       return;
     }
@@ -1384,9 +1240,9 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     const self = this;
 
     this._call(cmd).then(resolveCtx => {
-      // @ts-ignore
+      // @ts-ignore - improve later.
       if (resolveCtx.next) {
-        // @ts-ignore
+        // @ts-ignore - improve later.
         resolveCtx.next();
       }
     }, rejectCtx => {
@@ -1433,11 +1289,13 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
 
     this.startBatching();
     for (const channel in this._subs) {
-      if (this._subs.hasOwnProperty(channel)) {
-        const sub = this._subs[channel];
-        if (sub._isSubscribing()) {
-          this._subscribe(sub);
-        }
+      if (!this._subs.hasOwnProperty(channel)) {
+        continue;
+      }
+      const sub = this._subs[channel];
+      if (sub.state === SubscriptionState.Subscribing) {
+        // @ts-ignore – we are hiding some symbols from public API autocompletion.
+        sub._subscribe();
       }
     }
     this.stopBatching();
@@ -1545,23 +1403,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     }, this._serverPing + this._config.maxServerPingDelay);
   }
 
-  private _subscribeError(channel, error) {
-    const sub = this._getSub(channel);
-    if (!sub) {
-      return;
-    }
-    if (!sub._isSubscribing()) {
-      return;
-    }
-    if (error.code === errorCodes.timeout) {
-      this._disconnect(connectingCodes.subscribeTimeout, 'subscribe timeout', true);
-      return;
-    }
-    sub._subscribeError(error);
-  }
-
-  /** @internal */
-  _getSubscribeContext(channel: string, result: any): SubscribedContext {
+  private _getSubscribeContext(channel: string, result: any): SubscribedContext {
     const ctx: any = {
       channel: channel,
       positioned: false,
@@ -1601,17 +1443,6 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     return ctx;
   }
 
-  private _subscribeResponse(channel, result) {
-    const sub = this._getSub(channel);
-    if (!sub) {
-      return;
-    }
-    if (!sub._isSubscribing()) {
-      return;
-    }
-    sub._setSubscribed(result);
-  }
-
   private _handleReply(reply, next) {
     const id = reply.id;
     if (!(id in this._callbacks)) {
@@ -1648,6 +1479,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
       }
       return;
     }
+    // @ts-ignore – we are hiding some symbols from public API autocompletion.
     sub._handleJoin(join);
   }
 
@@ -1660,6 +1492,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
       }
       return;
     }
+    // @ts-ignore – we are hiding some symbols from public API autocompletion.
     sub._handleLeave(leave);
   }
 
@@ -1673,8 +1506,10 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
       return;
     }
     if (unsubscribe.code < 2500) {
+      // @ts-ignore – we are hiding some symbols from public API autocompletion.
       sub._setUnsubscribed(unsubscribe.code, unsubscribe.reason, false);
     } else {
+      // @ts-ignore – we are hiding some symbols from public API autocompletion.
       sub._setSubscribing(unsubscribe.code, unsubscribe.reason);
     }
   }
@@ -1697,8 +1532,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     this._disconnect(code, disconnect.reason, reconnect);
   }
 
-  /** @internal */
-  _getPublicationContext(channel: string, pub: any) {
+  private _getPublicationContext(channel: string, pub: any) {
     const ctx: any = {
       channel: channel,
       data: pub.data
@@ -1715,8 +1549,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     return ctx;
   }
 
-  /** @internal */
-  _getJoinLeaveContext(clientInfo) {
+  private _getJoinLeaveContext(clientInfo) {
     const info: any = {
       client: clientInfo.client,
       user: clientInfo.user
@@ -1742,6 +1575,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
       }
       return;
     }
+    // @ts-ignore – we are hiding some symbols from public API autocompletion.
     sub._handlePublication(pub);
   }
 

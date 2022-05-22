@@ -83,7 +83,7 @@ export class HttpStreamTransport {
                     }
                   }
                 } catch (error) {
-                  // @ts-ignore
+                  // @ts-ignore - improve later.
                   eventTarget.dispatchEvent(new Event('error', { detail: error }));
                   eventTarget.dispatchEvent(new Event('close'));
                   controller.close();
@@ -91,7 +91,7 @@ export class HttpStreamTransport {
                 }
                 pump();
               }).catch(function (e) {
-                // @ts-ignore
+                // @ts-ignore - improve later.
                 eventTarget.dispatchEvent(new Event('error', { detail: e }));
                 eventTarget.dispatchEvent(new Event('close'));
                 controller.close();
@@ -103,7 +103,7 @@ export class HttpStreamTransport {
         });
       })
       .catch(error => {
-        // @ts-ignore
+        // @ts-ignore - improve later.
         eventTarget.dispatchEvent(new Event('error', { detail: error }));
         eventTarget.dispatchEvent(new Event('close'));
       });

@@ -1,5 +1,9 @@
 export class SockjsTransport {
-  constructor(endpoint, options) {
+  endpoint: string;
+  options: any;
+  _transport: any;
+
+  constructor(endpoint: string, options: any) {
     this.endpoint = endpoint;
     this.options = options;
     this._transport = null;
@@ -21,8 +25,8 @@ export class SockjsTransport {
     return this.options.sockjs !== null;
   }
 
-  initialize(_protocol, callbacks, _connectCommand) {
-    const sockjsOptions = {
+  initialize(_protocol: 'json', callbacks: any) {
+    const sockjsOptions: any = {
       transports: this.options.transports
     };
     if (this.options.server !== null) {
@@ -55,7 +59,7 @@ export class SockjsTransport {
     this._transport.close();
   }
 
-  send(data) {
+  send(data: any) {
     this._transport.send(data);
   }
 }

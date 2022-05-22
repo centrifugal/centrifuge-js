@@ -15,10 +15,10 @@ jobs:
         with:
           node-version: 16
       - name: Install dependencies
-        run: npm install --pure-lockfile
+        run: yarn install
       - name: Release on npm
         run: |
           npm config set //registry.npmjs.org/:_authToken ${NPM_TOKEN}
-          npm publish --ignore-scripts
+          npm publish --ignore-scripts --tag beta
         env:
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}

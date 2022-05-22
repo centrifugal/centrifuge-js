@@ -1,5 +1,11 @@
 export class SseTransport {
-  constructor(endpoint, options) {
+  endpoint: string;
+  options: any;
+  _protocol: string;
+  _transport: any;
+  _onClose: any;
+
+  constructor(endpoint: string, options: any) {
     this.endpoint = endpoint;
     this.options = options;
     this._protocol = 'json';
@@ -23,8 +29,8 @@ export class SseTransport {
     return this.options.eventsource !== null && this.options.fetch !== null;
   }
 
-  initialize(_protocol, callbacks, encodedConnectCommand) {
-    let url = new URL(this.endpoint);
+  initialize(_protocol: 'json', callbacks: any, encodedConnectCommand: any) {
+    const url = new URL(this.endpoint);
     url.searchParams.append('cf_connect', encodedConnectCommand);
 
     const eventSource = new this.options.eventsource(url.toString());
@@ -32,7 +38,7 @@ export class SseTransport {
 
     const self = this;
 
-    eventSource.onopen = function (e) {
+    eventSource.onopen = function () {
       callbacks.onOpen();
     };
 
@@ -64,7 +70,7 @@ export class SseTransport {
     }
   }
 
-  send(data, session, node) {
+  send(data: any, session: string, node: string) {
     const req = {
       session: session,
       node: node,

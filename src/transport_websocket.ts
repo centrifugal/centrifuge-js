@@ -1,5 +1,9 @@
 export class WebsocketTransport {
-  constructor(endpoint, options) {
+  private _transport: any;
+  private endpoint: string;
+  private options: any;
+
+  constructor(endpoint: string, options: any) {
     this.endpoint = endpoint;
     this.options = options;
     this._transport = null;
@@ -18,10 +22,10 @@ export class WebsocketTransport {
   }
 
   supported() {
-    return this.options.websocket !== null;
+    return this.options.websocket !== undefined && this.options.websocket !== null;
   }
 
-  initialize(protocol, callbacks, _connectCommand) {
+  initialize(protocol: string, callbacks: any) {
     let subProtocol = '';
     if (protocol === 'protobuf') {
       subProtocol = 'centrifuge-protobuf';

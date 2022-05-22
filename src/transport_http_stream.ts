@@ -1,4 +1,10 @@
 export class HttpStreamTransport {
+  endpoint: string;
+  options: any;
+  _abortController: any | null;
+  _utf8decoder: TextDecoder;
+  _protocol: string;
+
   constructor(endpoint, options) {
     this.endpoint = endpoint;
     this.options = options;
@@ -60,7 +66,7 @@ export class HttpStreamTransport {
                       }
                     }
                   } else {
-                    let mergedArray = new Uint8Array(protoStreamBuf.length + value.length);
+                    const mergedArray = new Uint8Array(protoStreamBuf.length + value.length);
                     mergedArray.set(protoStreamBuf);
                     mergedArray.set(value, protoStreamBuf.length);
                     protoStreamBuf = mergedArray;
@@ -77,6 +83,7 @@ export class HttpStreamTransport {
                     }
                   }
                 } catch (error) {
+                  // @ts-ignore
                   eventTarget.dispatchEvent(new Event('error', { detail: error }));
                   eventTarget.dispatchEvent(new Event('close'));
                   controller.close();
@@ -84,6 +91,7 @@ export class HttpStreamTransport {
                 }
                 pump();
               }).catch(function (e) {
+                // @ts-ignore
                 eventTarget.dispatchEvent(new Event('error', { detail: e }));
                 eventTarget.dispatchEvent(new Event('close'));
                 controller.close();
@@ -95,6 +103,7 @@ export class HttpStreamTransport {
         });
       })
       .catch(error => {
+        // @ts-ignore
         eventTarget.dispatchEvent(new Event('error', { detail: error }));
         eventTarget.dispatchEvent(new Event('close'));
       });
@@ -112,7 +121,7 @@ export class HttpStreamTransport {
       typeof Error !== 'undefined';
   }
 
-  initialize(protocol, callbacks, encodedConnectCommand) {
+  initialize(protocol: string, callbacks: any, encodedConnectCommand: any) {
     this._protocol = protocol;
     this._abortController = new AbortController();
 
@@ -132,7 +141,7 @@ export class HttpStreamTransport {
       body = encodedConnectCommand;
     }
 
-    const eventTarget = new this._fetchEventTarget(
+    const eventTarget = this._fetchEventTarget(
       this,
       this.endpoint,
       {
@@ -144,7 +153,7 @@ export class HttpStreamTransport {
       }
     );
 
-    eventTarget.addEventListener('open', (e) => {
+    eventTarget.addEventListener('open', () => {
       callbacks.onOpen();
     });
 
@@ -153,7 +162,7 @@ export class HttpStreamTransport {
       callbacks.onError(e);
     });
 
-    eventTarget.addEventListener('close', (e) => {
+    eventTarget.addEventListener('close', () => {
       this._abortController.abort();
       callbacks.onClose({
         code: 4,
@@ -161,7 +170,7 @@ export class HttpStreamTransport {
       });
     });
 
-    eventTarget.addEventListener('message', (e) => {
+    eventTarget.addEventListener('message', (e: any) => {
       callbacks.onMessage(e.data);
     });
   }

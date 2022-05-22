@@ -1,22 +1,40 @@
 import EventEmitter from 'events';
+import { Centrifuge } from './centrifuge';
 import { errorCodes, unsubscribedCodes, subscribingCodes } from './codes';
+import { HistoryOptions, HistoryResult, PresenceResult, PresenceStatsResult, PublishResult, SubscriptionEvents, SubscriptionOptions, SubscriptionState, SubscriptionTokenContext, TypedEventEmitter } from './types';
 import { ttlMilliseconds, backoff } from './utils';
 
-export const subscriptionState = {
-  // Unsubscribed is an initial state, also state when unsubscribe called from client,
-  // also state when server called unsubscribe for a channel.
-  Unsubscribed: 'unsubscribed',
-  // Subscribing to a channel in progress.
-  Subscribing: 'subscribing',
-  // Sussessfully subscribed to a channel.
-  Subscribed: 'subscribed'
-};
+/** Subscription to a channel */
+export class Subscription extends (EventEmitter as new () => TypedEventEmitter<SubscriptionEvents>) {
+  channel: string;
+  state: SubscriptionState;
+  private _centrifuge: Centrifuge;
+  private _promises: Map<number, any>;
+  private _resubscribeTimeout?: null | ReturnType<typeof setTimeout> = null;
+  private _refreshTimeout?: null | ReturnType<typeof setTimeout> = null;
+  /** @internal */
+  _token: string | null;
+  private _getToken: null | ((ctx: SubscriptionTokenContext) => Promise<string>);
+  private _minResubscribeDelay: number;
+  private _maxResubscribeDelay: number;
+  private _recover: boolean;
+  private _offset: number | null;
+  private _epoch: string | null;
+  private _resubscribeAttempts: number;
+  private _promiseId: number;
 
-export class Subscription extends EventEmitter {
-  constructor(centrifuge, channel, options) {
+  /** @internal */
+  _data: any | null;
+  /** @internal */
+  _recoverable: boolean;
+  /** @internal */
+  _positioned: boolean;
+
+  /** Subscription constructor should not be used directly, create subscriptions using Client method. */
+  constructor(centrifuge: Centrifuge, channel: string, options?: Partial<SubscriptionOptions>) {
     super();
     this.channel = channel;
-    this.state = subscriptionState.Unsubscribed;
+    this.state = SubscriptionState.Unsubscribed;
     this._centrifuge = centrifuge;
     this._token = null;
     this._getToken = null;
@@ -30,32 +48,32 @@ export class Subscription extends EventEmitter {
     this._maxResubscribeDelay = 20000;
     this._resubscribeTimeout = null;
     this._resubscribeAttempts = 0;
-    this._promises = {};
+    this._promises = new Map<number, any>();
     this._promiseId = 0;
     this._refreshTimeout = null;
     this._setOptions(options);
     if (this._centrifuge._debugEnabled) {
-      this.on('state', function (ctx) {
+      this.on('state', (ctx) => {
         this._centrifuge._debug('subscription state', channel, ctx.oldState, '->', ctx.newState);
       });
-      this.on('error', function (ctx) {
+      this.on('error', (ctx) => {
         this._centrifuge._debug('subscription error', channel, ctx);
       });
     }
   }
 
-  // ready returns a Promise which resolves upon subscription goes to Subscribed
-  // state and rejects in case of subscription goes to Unsubscribed state.
-  // Optional timeout can be passed.
-  ready(timeout) {
-    if (this.state === subscriptionState.Unsubscribed) {
+  /** ready returns a Promise which resolves upon subscription goes to Subscribed 
+   * state and rejects in case of subscription goes to Unsubscribed state. 
+   * Optional timeout can be passed.*/
+  ready(timeout?: number) {
+    if (this.state === SubscriptionState.Unsubscribed) {
       return Promise.reject({ code: errorCodes.subscriptionUnsubscribed, message: this.state });
-    };
-    if (this.state === subscriptionState.Subscribed) {
+    }
+    if (this.state === SubscriptionState.Subscribed) {
       return Promise.resolve();
-    };
+    }
     return new Promise((res, rej) => {
-      let ctx = {
+      const ctx: any = {
         resolve: res,
         reject: rej
       };
@@ -68,64 +86,53 @@ export class Subscription extends EventEmitter {
     });
   }
 
-  // subscribe to a channel.
+  /** subscribe to a channel.*/
   subscribe() {
     if (this._isSubscribed()) {
       return;
     }
     this._resubscribeAttempts = 0;
     this._setSubscribing(subscribingCodes.subscribeCalled, 'subscribe called');
-  };
+  }
 
-  // unsubscribe from a channel, keeping position state.
+  /** unsubscribe from a channel, keeping position state.*/
   unsubscribe() {
     this._setUnsubscribed(unsubscribedCodes.unsubscribeCalled, 'unsubscribe called', true);
-  };
+  }
 
-  // cancel Subscription – remove it from client's registry and
-  // remove link to a client. Subscription is UNUSABLE after this.
-  // Subscription must be in Unsubscribed state before calling this.
-  cancel() {
-    if (this.state !== subscriptionState.Unsubscribed) {
-      throw new Error('Subscription must be unsubscribed to cancel');
-    }
-    this._centrifuge._removeSubscription(this);
-    this._centrifuge = undefined;
-  };
-
-  // publish data to a channel.
-  publish(data) {
+  /** publish data to a channel.*/
+  async publish(data: any): Promise<PublishResult> {
     const self = this;
     return this._methodCall().then(function () {
       return self._centrifuge.publish(self.channel, data);
     });
-  };
+  }
 
-  // presence for a channel.
-  presence() {
+  /** presence for a channel.*/
+  async presence(): Promise<PresenceResult> {
     const self = this;
     return this._methodCall().then(function () {
       return self._centrifuge.presence(self.channel);
     });
-  };
+  }
 
-  // presence stats for a channel.
-  presenceStats() {
+  /** presence stats for a channel.*/
+  async presenceStats(): Promise<PresenceStatsResult> {
     const self = this;
     return this._methodCall().then(function () {
       return self._centrifuge.presenceStats(self.channel);
     });
-  };
+  }
 
-  // history for a channel.
-  history(opts) {
+  /** history for a channel.*/
+  async history(opts: HistoryOptions): Promise<HistoryResult> {
     const self = this;
     return this._methodCall().then(function () {
       return self._centrifuge.history(self.channel, opts);
     });
-  };
+  }
 
-  _methodCall() {
+  private _methodCall(): any {
     if (this._isSubscribed()) {
       return Promise.resolve();
     }
@@ -141,50 +148,55 @@ export class Subscription extends EventEmitter {
     });
   }
 
-  _nextPromiseId() {
+  private _nextPromiseId() {
     return ++this._promiseId;
   }
 
+  /** @internal */
   _needRecover() {
     return this._recover === true;
-  };
-
-  _isUnsubscribed() {
-    return this.state === subscriptionState.Unsubscribed;
   }
 
+  private _isUnsubscribed() {
+    return this.state === SubscriptionState.Unsubscribed;
+  }
+
+  /** @internal */
   _isSubscribing() {
-    return this.state === subscriptionState.Subscribing;
+    return this.state === SubscriptionState.Subscribing;
   }
 
+  /** @internal */
   _isSubscribed() {
-    return this.state === subscriptionState.Subscribed;
+    return this.state === SubscriptionState.Subscribed;
   }
 
-  _setState(newState) {
+  private _setState(newState: SubscriptionState) {
     if (this.state !== newState) {
       const oldState = this.state;
       this.state = newState;
-      this.emit('state', { 'newState': newState, 'oldState': oldState, channel: this.channel });
+      this.emit('state', { newState, oldState, channel: this.channel });
       return true;
     }
     return false;
-  };
+  }
 
+  /** @internal */
   _usesToken() {
     return this._token !== null || this._getToken !== null;
   }
 
-  _clearSubscribingState() {
+  private _clearSubscribingState() {
     this._resubscribeAttempts = 0;
     this._clearResubscribeTimeout();
   }
 
-  _clearSubscribedState() {
+  private _clearSubscribedState() {
     this._clearRefreshTimeout();
   }
 
-  _setSubscribed(result) {
+  /** @internal */
+  _setSubscribed(result: any) {
     if (!this._isSubscribing()) {
       return;
     }
@@ -196,14 +208,14 @@ export class Subscription extends EventEmitter {
       this._epoch = result.epoch || '';
     }
 
-    this._setState(subscriptionState.Subscribed);
+    this._setState(SubscriptionState.Subscribed);
     const ctx = this._centrifuge._getSubscribeContext(this.channel, result);
     this.emit('subscribed', ctx);
     this._resolvePromises();
 
     const pubs = result.publications;
     if (pubs && pubs.length > 0) {
-      for (let i in pubs) {
+      for (const i in pubs) {
         if (!pubs.hasOwnProperty(i)) {
           continue;
         }
@@ -214,8 +226,9 @@ export class Subscription extends EventEmitter {
     if (result.expires === true) {
       this._refreshTimeout = setTimeout(() => this._refresh(), ttlMilliseconds(result.ttl));
     }
-  };
+  }
 
+  /** @internal */
   _setSubscribing(code, reason) {
     if (this._isSubscribing()) {
       return;
@@ -223,12 +236,13 @@ export class Subscription extends EventEmitter {
     if (this._isSubscribed()) {
       this._clearSubscribedState();
     }
-    if (this._setState(subscriptionState.Subscribing)) {
+    if (this._setState(SubscriptionState.Subscribing)) {
       this.emit('subscribing', { channel: this.channel, code: code, reason: reason });
     }
     this._centrifuge._subscribe(this);
-  };
+  }
 
+  /** @internal */
   _setUnsubscribed(code, reason, sendUnsubscribe) {
     if (this._isUnsubscribed()) {
       return;
@@ -242,13 +256,14 @@ export class Subscription extends EventEmitter {
     if (this._isSubscribing()) {
       this._clearSubscribingState();
     }
-    if (this._setState(subscriptionState.Unsubscribed)) {
+    if (this._setState(SubscriptionState.Unsubscribed)) {
       this.emit('unsubscribed', { channel: this.channel, code: code, reason: reason });
     }
     this._rejectPromises({ code: errorCodes.subscriptionUnsubscribed, message: 'unsubscribed' });
-  };
+  }
 
-  _handlePublication(pub) {
+  /** @internal */
+  _handlePublication(pub: any) {
     const ctx = this._centrifuge._getPublicationContext(this.channel, pub);
     this.emit('publication', ctx);
     if (pub.offset) {
@@ -256,15 +271,17 @@ export class Subscription extends EventEmitter {
     }
   }
 
-  _handleJoin(join) {
+  /** @internal */
+  _handleJoin(join: any) {
     this.emit('join', { channel: this.channel, info: this._centrifuge._getJoinLeaveContext(join.info) });
   }
 
-  _handleLeave(leave) {
+  /** @internal */
+  _handleLeave(leave: any) {
     this.emit('leave', { channel: this.channel, info: this._centrifuge._getJoinLeaveContext(leave.info) });
   }
 
-  _resolvePromises() {
+  private _resolvePromises() {
     for (const id in this._promises) {
       if (this._promises[id].timeout) {
         clearTimeout(this._promises[id].timeout);
@@ -274,7 +291,7 @@ export class Subscription extends EventEmitter {
     }
   }
 
-  _rejectPromises(err) {
+  private _rejectPromises(err: any) {
     for (const id in this._promises) {
       if (this._promises[id].timeout) {
         clearTimeout(this._promises[id].timeout);
@@ -284,6 +301,7 @@ export class Subscription extends EventEmitter {
     }
   }
 
+  /** @internal */
   _scheduleResubscribe() {
     const self = this;
     const delay = this._getResubscribeDelay();
@@ -294,7 +312,8 @@ export class Subscription extends EventEmitter {
     }, delay);
   }
 
-  _subscribeError(err) {
+  /** @internal */
+  _subscribeError(err: any) {
     if (!this._isSubscribing()) {
       return;
     }
@@ -312,42 +331,36 @@ export class Subscription extends EventEmitter {
     } else {
       this._setUnsubscribed(err.code, err.message, false);
     }
-  };
+  }
 
-  _getResubscribeDelay() {
+  private _getResubscribeDelay() {
     const delay = backoff(this._resubscribeAttempts, this._minResubscribeDelay, this._maxResubscribeDelay);
     this._resubscribeAttempts++;
     return delay;
   }
 
-  _clearPositionState() {
-    this._recover = false;
-    this._offset = null;
-    this._epoch = null;
-  }
-
-  _setOptions(options) {
+  private _setOptions(options: Partial<SubscriptionOptions> | undefined) {
     if (!options) {
       return;
     }
-    if ('since' in options) {
+    if (options.since) {
       this._offset = options.since.offset;
       this._epoch = options.since.epoch;
       this._recover = true;
     }
-    if ('data' in options) {
+    if (options.data) {
       this._data = options.data;
     }
-    if ('minResubscribeDelay' in options) {
+    if (options.minResubscribeDelay !== undefined) {
       this._minResubscribeDelay = options.minResubscribeDelay;
     }
-    if ('maxResubscribeDelay' in options) {
+    if (options.maxResubscribeDelay !== undefined) {
       this._maxResubscribeDelay = options.maxResubscribeDelay;
     }
-    if ('token' in options) {
+    if (options.token) {
       this._token = options.token;
     }
-    if ('getToken' in options) {
+    if (options.getToken) {
       this._getToken = options.getToken;
     }
     if (options.positioned === true) {
@@ -358,36 +371,39 @@ export class Subscription extends EventEmitter {
     }
   }
 
+  /** @internal */
   _getOffset() {
     const offset = this._offset;
     if (offset !== null) {
       return offset;
     }
     return 0;
-  };
+  }
 
+  /** @internal */
   _getEpoch() {
     const epoch = this._epoch;
     if (epoch !== null) {
       return epoch;
     }
     return '';
-  };
+  }
 
-  _clearRefreshTimeout() {
+  private _clearRefreshTimeout() {
     if (this._refreshTimeout !== null) {
       clearTimeout(this._refreshTimeout);
       this._refreshTimeout = null;
     }
   }
 
-  _clearResubscribeTimeout() {
+  private _clearResubscribeTimeout() {
     if (this._resubscribeTimeout !== null) {
       clearTimeout(this._resubscribeTimeout);
       this._resubscribeTimeout = null;
     }
   }
 
+  /** @internal */
   _getSubscriptionToken() {
     this._centrifuge._debug('get subscription token for channel', this.channel);
     const ctx = {
@@ -400,7 +416,8 @@ export class Subscription extends EventEmitter {
     return getToken(ctx);
   }
 
-  _refresh() {
+  /** @internal */
+  private _refresh() {
     this._clearRefreshTimeout();
     const self = this;
     this._getSubscriptionToken().then(function (token) {
@@ -420,9 +437,12 @@ export class Subscription extends EventEmitter {
         'sub_refresh': req
       };
       self._centrifuge._call(msg).then(resolveCtx => {
+        // @ts-ignore
         const result = resolveCtx.reply.sub_refresh;
         self._refreshResponse(result);
+        // @ts-ignore
         if (resolveCtx.next) {
+          // @ts-ignore
           resolveCtx.next();
         }
       }, rejectCtx => {
@@ -444,15 +464,17 @@ export class Subscription extends EventEmitter {
     });
   }
 
-  _refreshResponse(result) {
+  /** @internal */
+  _refreshResponse(result: any) {
     this._centrifuge._debug('subscription token refreshed, channel', this.channel);
     this._clearRefreshTimeout();
     if (result.expires === true) {
       this._refreshTimeout = setTimeout(() => this._refresh(), ttlMilliseconds(result.ttl));
     }
-  };
+  }
 
-  _refreshError(err) {
+  /** @internal */
+  _refreshError(err: any) {
     if (err.code < 100 || err.temporary === true) {
       this.emit('error', {
         type: 'refresh',
@@ -465,11 +487,12 @@ export class Subscription extends EventEmitter {
     }
   }
 
-  _getRefreshRetryDelay() {
+  private _getRefreshRetryDelay() {
     return backoff(0, 10000, 20000);
   }
 
+  /** @internal */
   _failUnauthorized() {
     this._setUnsubscribed(unsubscribedCodes.unauthorized, 'unauthorized', true);
-  };
+  }
 }

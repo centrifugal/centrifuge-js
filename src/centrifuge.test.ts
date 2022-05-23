@@ -1,6 +1,6 @@
 import { Centrifuge } from './centrifuge'
 import WebSocket from 'ws';
-import { DisconnectedContext, PublicationContext, UnsubscribedContext } from './types';
+import { DisconnectedContext, Error, PublicationContext, UnsubscribedContext } from './types';
 import { disconnectedCodes, unsubscribedCodes } from './codes';
 
 test('invalid endpoint', () => {
@@ -92,4 +92,28 @@ test('publish and receive message', async () => {
     const ctx = await p;
     c.disconnect();
     expect(ctx.data).toStrictEqual({ "my": "data" });
+});
+
+test('rpc buffered till connected', async () => {
+    const c = new Centrifuge('ws://localhost:8000/connection/websocket?cf_protocol_version=v2', {
+        websocket: WebSocket
+    });
+
+    let errorReceived: any;
+    const p = new Promise<Error>((resolve, _) => {
+        errorReceived = resolve;
+    })
+
+    c.rpc('method', { "my": "data" }).then(function () {
+        // we are not expecting data in this test, we expect Not Available error.
+    }, function (err: Error) {
+        errorReceived(err);
+    });
+
+    // note: connect called after issuing rpc.
+    c.connect();
+
+    const rpcErr = await p;
+    c.disconnect();
+    expect(rpcErr.code).toStrictEqual(108);
 });

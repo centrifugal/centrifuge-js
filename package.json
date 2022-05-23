@@ -14,7 +14,7 @@
   "scripts": {
     "prepare": "npm run build-all",
     "lint": "eslint src/ --ext .js,.jsx,.ts,.tsx",
-    "test": "jest --detectOpenHandles",
+    "test": "jest --detectOpenHandles --verbose",
     "clean": "rm -rf dist build package",
     "ts-node": "ts-node",
     "docs": "typedoc --exclude '**/transport_*.ts' --exclude '**/*.test.ts' --exclude '**/*+(utils|json|codes|browser).ts' --excludePrivate --excludeInternal --entryPoints src/*.ts",

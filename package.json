@@ -33,11 +33,14 @@
     "@typescript-eslint/parser": "^5.20.0",
     "esbuild": "^0.14.39",
     "eslint": "^8.16.0",
-    "jest": "27.0.0",
-    "ts-jest": "^27.1.4",
+    "eventsource": "^2.0.2",
+    "jest": "28.1.0",
+    "node-fetch": "^3.2.4",
+    "ts-jest": "28.0.2",
     "ts-node": "^10.7.0",
     "typedoc": "^0.22.15",
     "typescript": "^4.6.4",
+    "undici": "^5.2.0",
     "ws": "^8.6.0"
   },
   "repository": {

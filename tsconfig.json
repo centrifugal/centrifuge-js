@@ -19,6 +19,7 @@
     "experimentalDecorators": true,
     "resolveJsonModule": true,
     "sourceMap": true,
+    "stripInternal": true,
     "outDir": "./build/",
     "types": [
       "node",

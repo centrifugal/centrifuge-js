@@ -1,3 +1,4 @@
+/** @internal */
 export class WebsocketTransport {
   private _transport: any;
   private endpoint: string;

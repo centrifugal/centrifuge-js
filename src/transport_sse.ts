@@ -1,3 +1,4 @@
+/** @internal */
 export class SseTransport {
   endpoint: string;
   options: any;

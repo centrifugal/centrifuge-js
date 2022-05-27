@@ -1,3 +1,4 @@
+/** @internal */
 export class HttpStreamTransport {
   endpoint: string;
   options: any;

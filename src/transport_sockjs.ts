@@ -1,3 +1,4 @@
+/** @internal */
 export class SockjsTransport {
   endpoint: string;
   options: any;

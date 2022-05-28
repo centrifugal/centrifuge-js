@@ -16,14 +16,13 @@ The client behaves according to a common [Centrifigo SDK spec](https://centrifug
 * [Subscription API](#subscription-api)
     * [Subscription methods and events](#client-methods-and-events)
     * [Subscription token](#connection-token)
+* [Message batching](#message-batching)
 * [Server-side subscriptions](#server-side-subscriptions)
-* [Connection expiration](#connection-expiration)
 * [Configuration parameters](#configuration-parameters)
 * [Protobuf support](#protobuf-support)
 * [Browser support](#browser-support)
 * [Using with NodeJS](#using-with-nodejs)
 * [Custom WebSocket constructor](#custom-websocket-constructor)
-* [Subscribe since known position](#subscribe-since-known-position)
 
 ## Install
 
@@ -45,27 +44,30 @@ And then:
 import { Centrifuge } from 'centrifuge';
 ```
 
-By default, library works with JSON only, see `Protobuf support` section to see how to import client with Protobuf support.
+By default, library works with JSON only, see [Protobuf support](#protobuf-support) section to see how to import client with Protobuf support.
 
 ## Quick start
 
 The basic usage example may look like this:
 
 ```javascript
+// Use WebSocket transport endpoint.
 const centrifuge = new Centrifuge('ws://centrifuge.example.com/connection/websocket');
 
-const sub = client.newSubscription('news');
+// Allocate Subscription to a channel.
+const sub = centrifuge.newSubscription('news');
 
+// React on `news` channel real-time publications.
 sub.on('publication', function(ctx) {
-    console.log(ctx);
+    console.log(ctx.data);
 });
 
+// Trigger subscribe process.
 sub.subscribe();
 
+// Trigger actual connection establishement.
 centrifuge.connect();
 ```
-
-In the example above we initialize `Centrifuge` object instance, create Subscription to `news` channel, print all new publications received from `news` into console.
 
 Note, that we explicitly call `.connect()` method to initiate connection establishement with a server and `.subscribe()` method to move Subscription to `subsribing` state (which should transform into `subscribed` state soon after connection with a server is established). The order of `.connect()` and `.subscribe` calls does not actually matter here.
 
@@ -73,7 +75,7 @@ Note, that we explicitly call `.connect()` method to initiate connection establi
 
 ## Websocket transport
 
-WebSocket is the main protocol used by `centrifuge-js` to communicate with a server. In browser environment it's available globally, but if you want to connect from NodeJS env – then you need to provide WebSocket constructor to `centrifuge-js` explicitly. See below more information about this.
+WebSocket is the main protocol used by `centrifuge-js` to communicate with a server. In browser environment it's available globally, but if you want to connect from NodeJS env – then you need to provide WebSocket constructor to `centrifuge-js` explicitly. [See below](#using-with-nodejs) more information about this.
 
 ## Using fallbacks
 
@@ -105,9 +107,12 @@ Note, that in SockJS case endpoint starts with `http://`, not with `ws://` as we
 
 ### Bidirectional emulation
 
-SockJS is robust and stable product, but it's pretty old, comes with some overhead and sticky sessions requirement for distributed backend case. In most scenarios these days clients are fine to use WebSocket protocol for messaging. There are rare connection issues though which are caused by corporate firewall and proxy software. To deal with users behind such proxies Centrifuge SDK offers its own bidirectional emulation layer. This layer uses two HTTP-based transports: HTTP-streaming based on ReadableStream API and SSE (EventSource).
+SockJS is robust and stable product, but it's an extra dependency, it's pretty old, comes with some overhead and sticky sessions requirement for a distributed backend case. In most scenarios these days clients are fine to use WebSocket protocol for messaging. There are rare connection issues though which are caused by corporate firewall and proxy software. To deal with users behind such proxies Centrifuge SDK offers its own bidirectional emulation layer. This layer uses two HTTP-based transports:
 
-Bidirectional emulation must be first enabled on a server-side. Then in Javascript you can slightly change client initialization and point it to a list of endpoints and transports you want to use:
+* HTTP-streaming based on ReadableStream API
+* SSE (EventSource).
+
+Bidirectional emulation must be first enabled on a server-side. For example, see Centrifugo docs to find out how. Then in Javascript you can slightly change client initialization and point it to a list of endpoints and transports you want to use:
 
 ```javascript
 const transports = [
@@ -128,7 +133,7 @@ const centrifuge = new Centrifuge(transports);
 centrifuge.connect()
 ```
 
-In this case, client will try transports one by one during the initial handshake. Until success. Then will only use a successful transport during reconnects.
+In this case, client will try transports in order, one by one, during the initial handshake. Until success. Then will only use a successful transport during reconnects.
 
 Supported transports are:
 
@@ -139,18 +144,17 @@ Supported transports are:
 
 ## Client API
 
-When `Centrifuge` object properly initialized then it is ready to start communicating with server.
+Let's look at top-level API of `Centrifuge` client.
 
 ### Client methods and events
 
 #### connect method
 
-As we showed before, we must call `connect()` method to make an actual connection
+As we already showed above, we must call `connect()` method to make an actual connection
 request to Centrifugo server:
 
 ```javascript
-var centrifuge = new Centrifuge('ws://centrifuge.example.com/connection/websocket');
-
+const centrifuge = new Centrifuge('ws://centrifuge.example.com/connection/websocket');
 centrifuge.connect();
 ```
 
@@ -158,9 +162,9 @@ centrifuge.connect();
 
 #### connected event
 
-After connection will be established and client credentials you provided authorized then `connected` event on `Centrifuge` object instance will be called.
+As soon as connection is established and client successfully authenticated – `connected` event on `Centrifuge` object instance will be called.
 
-You can listen to this setting event listener function on `connect` event:
+It's possible to listen to this event by setting event listener function on `connected` event:
 
 ```javascript
 centrifuge.on('connected', function(ctx) {
@@ -190,13 +194,13 @@ centrifuge.on('disconnected', function(ctx) {
 
 #### disconnect method
 
-In some cases you may need to disconnect your client from server, use `disconnect` method to do this:
+In some cases you may need to disconnect your client from server, use `.disconnect()` method to do this:
 
 ```javascript
 centrifuge.disconnect();
 ```
 
-After calling this client will not try to reestablish connection periodically. You must call `connect` method manually again.
+After calling this client will not try to reestablish connection periodically. You must call `.connect()` method manually again.
 
 #### publish method
 
@@ -294,13 +298,24 @@ Depending on authentication scheme used by a server you may also want to provide
 
 ```javascript
 const centrifuge = new Centrifuge('ws://centrifuge.example.com/connection/websocket', {
-    token: "<CONNECTION_TOKEN>"
+    token: '<CONNECTION_TOKEN>'
 });
 ```
 
 In case of Centrifugo on a server side this may be a JSON Web Token - see [authentication documentation](https://centrifugal.github.io/centrifugo/server/authentication/) for details on how to generate it on your backend side.
 
 **Connection token must come to the frontend from application backend - i.e. must be generated on the backend side**. The way to deliver token to the application frontend is up to the developer. Usually you can pass it in template rendering context or issue a separate call to request a connection token from the backend.
+
+For expiring tokens you should provide `getToken` function in options:
+
+```javascript
+const centrifuge = new Centrifuge('ws://centrifuge.example.com/connection/websocket', {
+    token: '<CONNECTION_TOKEN>',
+    getToken: function() {
+        return Promise.resolve('<CONNECTION_TOKEN>');
+    }
+});
+```
 
 ## Subscription API
 
@@ -461,13 +476,13 @@ sub.removeAllListeners();
 
 Returns a Promise which will be resolved upon subscription success (i.e. when Subscription goes to `subscribed` state).
 
-### Subscription Token
+### Subscription token
 
 You may want to provide subscription token:
 
 ```javascript
 const sub = centrifuge.newSubscription("news", {
-    token: "<SUBSCRIPTION_TOKEN>"
+    token: '<SUBSCRIPTION_TOKEN>'
 });
 ```
 
@@ -475,7 +490,18 @@ In case of Centrifugo on a server side this may be a JSON Web Token - see [chann
 
 **Subscription token must come to the frontend from application backend - i.e. must be generated on the backend side**. The way to deliver token to the application frontend is up to the developer. Usually you can pass it in template rendering context or issue a separate call to request a connection token from the backend.
 
-### Message batching
+For expiring tokens you should provide `getToken` function in Subscription options:
+
+```javascript
+const sub = centrifuge.newSubscription("news", {
+    token: '<SUBSCRIPTION_TOKEN>',
+    getToken: function() {
+        return Promise.resolve('<SUBSCRIPTION_TOKEN>');
+    }
+});
+```
+
+## Message batching
 
 There is also a command batching support. It allows to send several commands to a server in one request - may be especially useful when connection established via one of HTTP-based transports.
 
@@ -492,10 +518,6 @@ centrifuge.stopBatching();
 ```
 
 This call will flush all collected commands to a network.
-
-## Subscription token
-
-TODO.
 
 ## Server-side subscriptions
 

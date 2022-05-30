@@ -306,16 +306,49 @@ In case of Centrifugo on a server side this may be a JSON Web Token - see [authe
 
 **Connection token must come to the frontend from application backend - i.e. must be generated on the backend side**. The way to deliver token to the application frontend is up to the developer. Usually you can pass it in template rendering context or issue a separate call to request a connection token from the backend.
 
-For expiring tokens you should provide `getToken` function in options:
+If the token sets connection expiration then the client SDK will keep the token refreshed. It does this by calling a special callback function. This callback must return a new token. If a new token with updated connection expiration is returned from callback then it's sent to Centrifugo. If your callback returns an empty string – this means the user has no permission to connect to Centrifugo and the Client will move to a disconnected state. In case of error returned by your callback SDK will retry the operation after some jittered time.
+
+An example of possible `getToken` function implementation:
 
 ```javascript
-const centrifuge = new Centrifuge('ws://centrifuge.example.com/connection/websocket', {
-    token: '<CONNECTION_TOKEN>',
-    getToken: function() {
-        return Promise.resolve('<CONNECTION_TOKEN>');
+function getToken(url, ctx) {
+    return new Promise((resolve, reject) => {
+        fetch(url, {
+            method: 'POST',
+            headers: new Headers({ 'Content-Type': 'application/json' }),
+            body: JSON.stringify(ctx)
+        })
+        .then(res => {
+            if (!res.ok) {
+                throw new Error(`Unexpected status code ${res.status}`);
+            }
+            return res.json();
+        })
+        .then(data => {
+            resolve(data.token);
+        })
+        .catch(err => {
+            reject(err);
+        });
+    });
+}
+
+const client = new Centrifuge(
+    'ws://localhost:8000/connection/websocket',
+    {
+        token: 'JWT-GENERATED-ON-BACKEND-SIDE',
+        getToken: function (ctx) {
+            return getToken('/centrifuge/connection_token', ctx);
+        }
     }
-});
+);
 ```
+
+:::tip
+
+If initial token is not provided, but `getToken` is specified – then SDK assumes that developer wants to use token authentication. In this case SDK attempts to get a connection token before establishing an initial connection.
+
+:::
 
 ## Subscription API
 
@@ -490,16 +523,50 @@ In case of Centrifugo on a server side this may be a JSON Web Token - see [chann
 
 **Subscription token must come to the frontend from application backend - i.e. must be generated on the backend side**. The way to deliver token to the application frontend is up to the developer. Usually you can pass it in template rendering context or issue a separate call to request a connection token from the backend.
 
-For expiring tokens you should provide `getToken` function in Subscription options:
+If token sets subscription expiration client SDK will keep token refreshed. It does this by calling special callback function. This callback must return a new token. If new token with updated subscription expiration returned from a calbback then it's sent to Centrifugo. If your callback returns an empty string – this means user has no permission to subscribe to a channel anymore and subscription will be unsubscribed. In case of error returned by your callback SDK will retry operation after some jittered time. 
+
+An example:
 
 ```javascript
-const sub = centrifuge.newSubscription("news", {
-    token: '<SUBSCRIPTION_TOKEN>',
-    getToken: function() {
-        return Promise.resolve('<SUBSCRIPTION_TOKEN>');
-    }
+function getToken(url, ctx) {
+    return new Promise((resolve, reject) => {
+        fetch(url, {
+            method: 'POST',
+            headers: new Headers({ 'Content-Type': 'application/json' }),
+            body: JSON.stringify(ctx)
+        })
+        .then(res => {
+            if (!res.ok) {
+                throw new Error(`Unexpected status code ${res.status}`);
+            }
+            return res.json();
+        })
+        .then(data => {
+            resolve(data.token);
+        })
+        .catch(err => {
+            reject(err);
+        });
+    });
+}
+
+const client = new Centrifuge('ws://localhost:8000/connection/websocket', {});
+
+const sub = centrifuge.newSubscription(channel, {
+    token: 'JWT-GENERATED-ON-BACKEND-SIDE',
+    getToken: function (ctx) {
+        // ctx has channel in the Subscription token case.
+        return getToken('/centrifuge/subscription_token', ctx);
+    },
 });
+sub.subscribe();
 ```
+
+:::tip
+
+If initial token is not provided, but `getToken` is specified – then SDK assumes that developer wants to use token authorization for a channel subscription. In this case SDK attempts to get a subscription token before initial subscribe.
+
+:::
 
 ## Message batching
 

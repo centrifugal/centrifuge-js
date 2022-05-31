@@ -1,8 +1,8 @@
 # Centrifuge and Centrifugo bidirectional SDK for NodeJS, React-Native and browser
 
-This SDK can connect to [Centrifuge](https://github.com/centrifugal/centrifuge) server (and [Centrifugo](https://github.com/centrifugal/centrifugo) in particular) using pure WebSocket or one of the fallback transports from web browser, ReactNative, or NodeJS environments.
+This SDK provides a client to connect to [Centrifugo](https://github.com/centrifugal/centrifugo) or any [Centrifuge-based](https://github.com/centrifugal/centrifuge) server using pure WebSocket or one of the fallback transports from web browser, ReactNative, or NodeJS environments.
 
-The client behaves according to a common [Centrifigo SDK spec](https://centrifugal.dev/docs/transports/client_api). We recommend reading that before starting to work with this SDK as the spec covers common SDK behavior - describes client and subscription state transitions, main options and methods. Then proceed with this readme for more specifics about `centrifuge-js`.
+The client behaves according to a common [Centrifigo SDK spec](https://centrifugal.dev/docs/transports/client_api). It's recommended to read that before starting to work with this SDK as the spec covers common SDK behavior - describes client and subscription state transitions, main options and methods. Then proceed with this readme for more specifics about `centrifuge-js`.
 
 * [Install](#install)
 * [Quick start](#quick-start)

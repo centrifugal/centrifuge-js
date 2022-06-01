@@ -141,6 +141,9 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
     if (this._isSubscribed()) {
       return Promise.resolve();
     }
+    if (this._isUnsubscribed()) {
+      return Promise.reject({ code: errorCodes.subscriptionUnsubscribed, message: this.state });
+    }
     return new Promise((res, rej) => {
       const timeout = setTimeout(function () {
         rej({ code: errorCodes.timeout, message: 'timeout' });
@@ -383,7 +386,7 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
     if (this._setState(SubscriptionState.Unsubscribed)) {
       this.emit('unsubscribed', { channel: this.channel, code: code, reason: reason });
     }
-    this._rejectPromises({ code: errorCodes.subscriptionUnsubscribed, message: 'unsubscribed' });
+    this._rejectPromises({ code: errorCodes.subscriptionUnsubscribed, message: this.state });
   }
 
   private _handlePublication(pub: any) {

@@ -238,7 +238,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
 
   /** send asynchronous data to a server (without any response from a server 
    * expected, see rpc method if you need response). */
-  async send(data: any): Promise<void> {
+  send(data: any): Promise<void> {
     const cmd = {
       send: {
         data: data
@@ -248,7 +248,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     const self = this;
 
     return this._methodCall().then(function () {
-      const sent = self._transportSendCommands([cmd]); // can send async message to server without id set
+      const sent = self._transportSendCommands([cmd]); // can send message to server without id set
       if (!sent) {
         return Promise.reject(self._createErrorObject(errorCodes.transportWriteError, 'transport write error'));
       }
@@ -257,7 +257,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
   }
 
   /** rpc to a server - i.e. a call which waits for a response with data. */
-  async rpc(method: string, data: any): Promise<RpcResult> {
+  rpc(method: string, data: any): Promise<RpcResult> {
     const cmd = {
       rpc: {
         method: method,
@@ -277,7 +277,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
   }
 
   /** publish data to a channel. */
-  async publish(channel: string, data: any): Promise<PublishResult> {
+  publish(channel: string, data: any): Promise<PublishResult> {
     const cmd = {
       publish: {
         channel: channel,
@@ -296,7 +296,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
 
   /** history for a channel. By default it does not return publications (only current
    *  StreamPosition data) – provide an explicit limit > 0 to load publications.*/
-  async history(channel: string, options?: HistoryOptions): Promise<HistoryResult> {
+  history(channel: string, options?: HistoryOptions): Promise<HistoryResult> {
     const cmd = {
       history: this._getHistoryRequest(channel, options)
     };
@@ -322,7 +322,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
   }
 
   /** presence for a channel. */
-  async presence(channel: string): Promise<PresenceResult> {
+  presence(channel: string): Promise<PresenceResult> {
     const cmd = {
       presence: {
         channel: channel
@@ -341,7 +341,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
   }
 
   /** presence stats for a channel. */
-  async presenceStats(channel: string): Promise<PresenceStatsResult> {
+  presenceStats(channel: string): Promise<PresenceStatsResult> {
     const cmd = {
       'presence_stats': {
         channel: channel

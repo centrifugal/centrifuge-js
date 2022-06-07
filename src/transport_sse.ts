@@ -30,9 +30,9 @@ export class SseTransport {
     return this.options.eventsource !== null && this.options.fetch !== null;
   }
 
-  initialize(_protocol: 'json', callbacks: any, encodedConnectCommand: any) {
+  initialize(_protocol: 'json', callbacks: any, initialData: any) {
     const url = new URL(this.endpoint);
-    url.searchParams.append('cf_connect', encodedConnectCommand);
+    url.searchParams.append('cf_connect', initialData);
 
     const eventSource = new this.options.eventsource(url.toString());
     this._transport = eventSource;

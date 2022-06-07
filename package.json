@@ -2,8 +2,8 @@
   "name": "centrifuge",
   "version": "3.0.0-beta.0",
   "description": "Centrifuge and Centrifugo client for NodeJS, React Native and browser",
-  "main": "./build/index.js",
-  "types": "./build/index.d.ts",
+  "main": "build/index.js",
+  "types": "build/index.d.ts",
   "files": [
     "dist/**",
     "build/**"

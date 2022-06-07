@@ -243,14 +243,14 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
     if (this._setState(SubscriptionState.Subscribing)) {
       this.emit('subscribing', { channel: this.channel, code: code, reason: reason });
     }
-    this._subscribe();
+    this._subscribe(false);
   }
 
-  private _subscribe() {
+  private _subscribe(optimistic: boolean) {
     // @ts-ignore – we are hiding some symbols from public API autocompletion.
     this._centrifuge._debug('subscribing on', this.channel);
 
-    if (this._centrifuge.state !== State.Connected) {
+    if (this._centrifuge.state !== State.Connected && !optimistic) {
       // @ts-ignore – we are hiding some symbols from public API autocompletion.
       this._centrifuge._debug('delay subscribe on', this.channel, 'till connected');
       // subscribe will be called later automatically.
@@ -435,7 +435,7 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
     const delay = this._getResubscribeDelay();
     this._resubscribeTimeout = setTimeout(function () {
       if (self._isSubscribing()) {
-        self._subscribe();
+        self._subscribe(false);
       }
     }, delay);
   }

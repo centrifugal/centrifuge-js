@@ -61,7 +61,7 @@ export class WebsocketTransport {
     this._transport.close();
   }
 
-  send(data) {
+  send(data: any) {
     this._transport.send(data);
   }
 }

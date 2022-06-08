@@ -125,9 +125,8 @@ export class HttpStreamTransport {
   initialize(protocol: string, callbacks: any, initialData: any) {
     this._protocol = protocol;
     this._abortController = new AbortController();
-
-    let headers;
-    let body;
+    let headers: any;
+    let body: any;
     if (protocol === 'json') {
       headers = {
         'Accept': 'application/json',
@@ -180,9 +179,9 @@ export class HttpStreamTransport {
     this._abortController.abort();
   }
 
-  send(data, session, node) {
-    let headers;
-    let body;
+  send(data: any, session: string, node: string) {
+    let headers: any;
+    let body: any;
     const req = {
       session: session,
       node: node,

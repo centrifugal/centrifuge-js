@@ -154,6 +154,9 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
       this.on('error', (ctx) => {
         this._debug('client error', ctx);
       });
+    } else {
+      // Avoid unhandled exception in EventEmitter for non-set error handler.
+      this.on('error', function () { Function.prototype(); });
     }
   }
 

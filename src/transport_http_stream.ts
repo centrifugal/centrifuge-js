@@ -122,24 +122,23 @@ export class HttpStreamTransport {
       typeof Error !== 'undefined';
   }
 
-  initialize(protocol: string, callbacks: any, encodedConnectCommand: any) {
+  initialize(protocol: string, callbacks: any, initialData: any) {
     this._protocol = protocol;
     this._abortController = new AbortController();
-
-    let headers;
-    let body;
+    let headers: any;
+    let body: any;
     if (protocol === 'json') {
       headers = {
         'Accept': 'application/json',
         'Content-Type': 'application/json'
       };
-      body = encodedConnectCommand;
+      body = initialData;
     } else {
       headers = {
         'Accept': 'application/octet-stream',
         'Content-Type': 'application/octet-stream'
       };
-      body = encodedConnectCommand;
+      body = initialData;
     }
 
     const eventTarget = this._fetchEventTarget(
@@ -180,9 +179,9 @@ export class HttpStreamTransport {
     this._abortController.abort();
   }
 
-  send(data, session, node) {
-    let headers;
-    let body;
+  send(data: any, session: string, node: string) {
+    let headers: any;
+    let body: any;
     const req = {
       session: session,
       node: node,

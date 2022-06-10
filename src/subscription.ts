@@ -63,6 +63,9 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
         // @ts-ignore – we are hiding some symbols from public API autocompletion.
         this._centrifuge._debug('subscription error', channel, ctx);
       });
+    } else {
+      // Avoid unhandled exception in EventEmitter for non-set error handler.
+      this.on('error', function () { Function.prototype(); });
     }
   }
 

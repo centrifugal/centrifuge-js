@@ -30,9 +30,15 @@ export class SseTransport {
     return this.options.eventsource !== null && this.options.fetch !== null;
   }
 
-  initialize(_protocol: 'json', callbacks: any, encodedConnectCommand: any) {
-    const url = new URL(this.endpoint);
-    url.searchParams.append('cf_connect', encodedConnectCommand);
+  initialize(_protocol: 'json', callbacks: any, initialData: any) {
+    let url: any;
+    if (global && global.document && global.document.baseURI) {
+      // Handle case when endpoint is relative, like //example.com/connection/sse
+      url = new URL(this.endpoint, global.document.baseURI);
+    } else {
+      url = new URL(this.endpoint);
+    }
+    url.searchParams.append('cf_connect', initialData);
 
     const eventSource = new this.options.eventsource(url.toString());
     this._transport = eventSource;

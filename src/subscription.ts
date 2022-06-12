@@ -30,6 +30,7 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
   private _data: any | null;
   private _recoverable: boolean;
   private _positioned: boolean;
+  // @ts-ignore – this is used by a client in centrifuge.ts.
   private _inflight: boolean;
 
   /** Subscription constructor should not be used directly, create subscriptions using Client method. */

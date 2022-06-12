@@ -375,8 +375,16 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
   /** stop batching commands and flush collected commands to the 
    * network (all in one request/frame).*/
   stopBatching() {
-    this._batching = false;
-    this._flush();
+    const self = this;
+    // Why so nested? Two levels here requred to deal with promise resolving queue.
+    // In Subscription case we wait 2 futures before sending data to connection.
+    // Otherwise _batching becomes false before batching decision has a chance to be executed.
+    Promise.resolve().then(function () {
+      Promise.resolve().then(function () {
+        self._batching = false;
+        self._flush();
+      })
+    })
   }
 
   private _debug(...args: any[]) {
@@ -700,33 +708,27 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
       }
     }
 
-    const connectCommand = this._constructConnectCommand();
-
-    if (this._transport.emulation()) {
-      connectCommand.id = this._nextCommandId();
-      this._callConnectFake(connectCommand.id).then(resolveCtx => {
-        // @ts-ignore - improve later.
-        const result = resolveCtx.reply.connect;
-        this._connectResponse(result, false);
-        // @ts-ignore - improve later.
-        if (resolveCtx.next) {
-          // @ts-ignore - improve later.
-          resolveCtx.next();
-        }
-      }, rejectCtx => {
-        if (rejectCtx.error.code >= 100) {
-          this._connectError(rejectCtx.error);
-        }
-        if (rejectCtx.next) {
-          rejectCtx.next();
-        }
-      });
-    }
-
     const self = this;
 
     let transportName: string;
     let wasOpen = false;
+
+    const optimistic = true;
+
+    const initialCommands: any[] = [];
+
+    if (this._transport.emulation()) {
+      const connectCommand = self._sendConnect(true);
+      initialCommands.push(connectCommand);
+      if (optimistic) {
+        const subscribeCommands: any[] = self._sendSubscribeCommands(true, true);
+        for (const i in subscribeCommands) {
+          initialCommands.push(subscribeCommands[i]);
+        }
+      }
+    }
+
+    const initialData = this._encoder.encodeCommands(initialCommands);
 
     this._transport.initialize(this._config.protocol, {
       onOpen: function () {
@@ -739,10 +741,11 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
         if (self._transport.emulation()) {
           return;
         }
-        const optimistic = true;
         self.startBatching();
-        self._sendConnect(optimistic);
-        self._sendSubscribeCommands(optimistic);
+        self._sendConnect(false);
+        if (optimistic) {
+          self._sendSubscribeCommands(true, false);
+        }
         self.stopBatching();
       },
       onError: function (e: any) {
@@ -826,16 +829,16 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
       onMessage: function (data) {
         self._dataReceived(data);
       }
-    }, this._encoder.encodeCommands([connectCommand]));
+    }, initialData);
   }
 
-  private _sendConnect(optimistic: boolean) {
+  private _sendConnect(skipSending: boolean): any {
     const connectCommand = this._constructConnectCommand();
     const self = this;
-    this._call(connectCommand).then(resolveCtx => {
+    this._call(connectCommand, skipSending).then(resolveCtx => {
       // @ts-ignore = improve later.
       const result = resolveCtx.reply.connect;
-      self._connectResponse(result, optimistic);
+      self._connectResponse(result);
       // @ts-ignore - improve later.
       if (resolveCtx.next) {
         // @ts-ignore - improve later.
@@ -847,6 +850,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
         rejectCtx.next();
       }
     });
+    return connectCommand;
   }
 
   private _startReconnecting() {
@@ -856,7 +860,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
 
     const needTokenRefresh = this._refreshRequired || (!this._token && this._config.getToken !== null);
     if (!needTokenRefresh) {
-      this._startConnecting();
+      this._initializeTransport();
       return;
     }
 
@@ -872,7 +876,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
       }
       self._token = token;
       self._debug('connection token refreshed');
-      self._startConnecting();
+      self._initializeTransport();
     }).catch(function (e) {
       if (!self._isConnecting()) {
         return;
@@ -995,9 +999,9 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     });
   }
 
-  private _callPromise(cmd: any, resultCB: any) {
+  private _callPromise(cmd: any, resultCB: any): any {
     return new Promise((resolve, reject) => {
-      this._call(cmd).then(resolveCtx => {
+      this._call(cmd, false).then(resolveCtx => {
         // @ts-ignore - improve later.
         resolve(resultCB(resolveCtx.reply));
         // @ts-ignore - improve later.
@@ -1073,17 +1077,13 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     return p;
   }
 
-  private _call(cmd: any) {
+  private _call(cmd: any, skipSending: boolean) {
     return new Promise((resolve, reject) => {
       cmd.id = this._nextCommandId();
       this._registerCall(cmd.id, resolve, reject);
-      this._addCommand(cmd);
-    });
-  }
-
-  private _callConnectFake(id: number) {
-    return new Promise((resolve, reject) => {
-      this._registerCall(id, resolve, reject);
+      if (!skipSending) {
+        this._addCommand(cmd);
+      }
     });
   }
 
@@ -1093,7 +1093,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
       this.emit('connecting', { code: connectingCodes.connectCalled, reason: 'connect called' });
     }
     this._client = null;
-    this._initializeTransport();
+    this._startReconnecting();
   }
 
   private _disconnect(code: number, reason: string, reconnect: boolean) {
@@ -1174,7 +1174,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
         refresh: { token: self._token }
       };
 
-      self._call(cmd).then(resolveCtx => {
+      self._call(cmd, false).then(resolveCtx => {
         // @ts-ignore - improve later.
         const result = resolveCtx.reply.refresh;
         self._refreshResponse(result);
@@ -1246,7 +1246,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
 
     const self = this;
 
-    this._call(cmd).then(resolveCtx => {
+    this._call(cmd, false).then(resolveCtx => {
       // @ts-ignore - improve later.
       if (resolveCtx.next) {
         // @ts-ignore - improve later.
@@ -1272,20 +1272,29 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     return this._serverSubs[channel] !== undefined;
   }
 
-  private _sendSubscribeCommands(optimistic: boolean) {
+  private _sendSubscribeCommands(optimistic: boolean, skipSending: boolean): any[] {
+    const commands: any[] = [];
     for (const channel in this._subs) {
       if (!this._subs.hasOwnProperty(channel)) {
         continue;
       }
       const sub = this._subs[channel];
+      // @ts-ignore – we are hiding some symbols from public API autocompletion.
+      if (sub._inflight === true) {
+        continue;
+      }
       if (sub.state === SubscriptionState.Subscribing) {
         // @ts-ignore – we are hiding some symbols from public API autocompletion.
-        sub._subscribe(optimistic);
+        const cmd = sub._subscribe(optimistic, skipSending);
+        if (cmd) {
+          commands.push(cmd);
+        }
       }
     }
+    return commands;
   }
 
-  private _connectResponse(result: any, optimistic: boolean) {
+  private _connectResponse(result: any) {
     this._transportWasOpen = true;
     this._reconnectAttempts = 0;
     this._refreshRequired = false;
@@ -1307,11 +1316,9 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     this._session = result.session;
     this._node = result.node;
 
-    if (!optimistic) {
-      this.startBatching();
-      this._sendSubscribeCommands(false);
-      this.stopBatching();
-    }
+    this.startBatching();
+    this._sendSubscribeCommands(false, false);
+    this.stopBatching();
 
     const ctx: any = {
       client: result.client,

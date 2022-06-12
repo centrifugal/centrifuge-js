@@ -30,6 +30,7 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
   private _data: any | null;
   private _recoverable: boolean;
   private _positioned: boolean;
+  private _inflight: boolean;
 
   /** Subscription constructor should not be used directly, create subscriptions using Client method. */
   constructor(centrifuge: Centrifuge, channel: string, options?: Partial<SubscriptionOptions>) {
@@ -51,6 +52,7 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
     this._resubscribeAttempts = 0;
     this._promises = {};
     this._promiseId = 0;
+    this._inflight = false;
     this._refreshTimeout = null;
     this._setOptions(options);
     // @ts-ignore – we are hiding some symbols from public API autocompletion.
@@ -246,10 +248,10 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
     if (this._setState(SubscriptionState.Subscribing)) {
       this.emit('subscribing', { channel: this.channel, code: code, reason: reason });
     }
-    this._subscribe(false);
+    this._subscribe(false, false);
   }
 
-  private _subscribe(optimistic: boolean) {
+  private _subscribe(optimistic: boolean, skipSending: boolean): any {
     // @ts-ignore – we are hiding some symbols from public API autocompletion.
     this._centrifuge._debug('subscribing on', this.channel);
 
@@ -257,14 +259,17 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
       // @ts-ignore – we are hiding some symbols from public API autocompletion.
       this._centrifuge._debug('delay subscribe on', this.channel, 'till connected');
       // subscribe will be called later automatically.
-      return;
+      return null;
     }
 
     if (this._usesToken()) {
       // token channel, need to get token before sending subscribe.
       if (this._token) {
-        this._sendSubscribe(this._token);
+        return this._sendSubscribe(this._token, skipSending);
       } else {
+        if (optimistic) {
+          return null;
+        }
         const self = this;
         this._getSubscriptionToken().then(function (token) {
           if (!self._isSubscribing()) {
@@ -275,7 +280,7 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
             return;
           }
           self._token = token;
-          self._sendSubscribe(token);
+          self._sendSubscribe(token, false);
         }).catch(function (e) {
           if (!self._isSubscribing()) {
             return;
@@ -290,13 +295,14 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
           });
           self._scheduleResubscribe();
         });
+        return null;
       }
     } else {
-      this._sendSubscribe('');
+      return this._sendSubscribe('', skipSending);
     }
   }
 
-  private _sendSubscribe(token: string) {
+  private _sendSubscribe(token: string, skipSending: boolean): any {
     const channel = this.channel;
 
     const req: any = {
@@ -333,8 +339,11 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
 
     const cmd = { subscribe: req };
 
+    this._inflight = true;
+
     // @ts-ignore – we are hiding some symbols from public API autocompletion.
-    this._centrifuge._call(cmd).then(resolveCtx => {
+    this._centrifuge._call(cmd, skipSending).then(resolveCtx => {
+      this._inflight = false;
       // @ts-ignore - improve later.
       const result = resolveCtx.reply.subscribe;
       this._handleSubscribeResponse(
@@ -346,11 +355,13 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
         resolveCtx.next();
       }
     }, rejectCtx => {
+      this._inflight = false;
       this._handleSubscribeError(rejectCtx.error);
       if (rejectCtx.next) {
         rejectCtx.next();
       }
     });
+    return cmd;
   }
 
   private _handleSubscribeError(error) {
@@ -438,7 +449,7 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
     const delay = this._getResubscribeDelay();
     this._resubscribeTimeout = setTimeout(function () {
       if (self._isSubscribing()) {
-        self._subscribe(false);
+        self._subscribe(false, false);
       }
     }, delay);
   }

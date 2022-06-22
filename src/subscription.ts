@@ -468,7 +468,9 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
         type: 'subscribe',
         error: err
       };
-      this.emit('error', errContext);
+      if (this._centrifuge.state === State.Connected) {
+        this.emit('error', errContext);
+      }
       this._scheduleResubscribe();
     } else {
       this._setUnsubscribed(err.code, err.message, false);

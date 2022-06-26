@@ -239,7 +239,7 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
     }
   }
 
-  private _setSubscribing(code, reason) {
+  private _setSubscribing(code: number, reason: string) {
     if (this._isSubscribing()) {
       return;
     }
@@ -607,6 +607,9 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
   }
 
   private _refreshResponse(result: any) {
+    if (!this._isSubscribed()) {
+      return;
+    }
     // @ts-ignore – we are hiding some methods from public API autocompletion.
     this._centrifuge._debug('subscription token refreshed, channel', this.channel);
     this._clearRefreshTimeout();
@@ -616,6 +619,9 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
   }
 
   private _refreshError(err: any) {
+    if (!this._isSubscribed()) {
+      return;
+    }
     if (err.code < 100 || err.temporary === true) {
       this.emit('error', {
         type: 'refresh',

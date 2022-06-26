@@ -713,7 +713,13 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     let transportName: string;
     let wasOpen = false;
 
-    const optimistic = true;
+    let optimistic = true;
+    if (this._transport.name() === 'sse') {
+      // Avoid using optimistic subscriptions with SSE/EventSource as we are sending
+      // initial data in URL params. URL is recommended to be 2048 chars max – so adding
+      // subscription data may be risky.
+      optimistic = false;
+    }
 
     const initialCommands: any[] = [];
 

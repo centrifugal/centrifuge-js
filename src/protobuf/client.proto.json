@@ -559,6 +559,10 @@
                     "recoverable": {
                       "type": "bool",
                       "id": 10
+                    },
+                    "join_leave": {
+                      "type": "bool",
+                      "id": 11
                     }
                   }
                 },

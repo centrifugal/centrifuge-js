@@ -317,6 +317,8 @@ export interface SubscriptionOptions {
   positioned: boolean;
   /** ask server to make subsription recoverable. */
   recoverable: boolean;
+  /** ask server to send join/leave messages. */
+  joinLeave: boolean;
 }
 
 /** Stream postion describes position of publication inside a stream.  */

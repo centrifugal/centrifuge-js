@@ -30,6 +30,7 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
   private _data: any | null;
   private _recoverable: boolean;
   private _positioned: boolean;
+  private _joinLeave: boolean;
   // @ts-ignore – this is used by a client in centrifuge.ts.
   private _inflight: boolean;
 
@@ -47,6 +48,7 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
     this._epoch = null;
     this._recoverable = false;
     this._positioned = false;
+    this._joinLeave = false;
     this._minResubscribeDelay = 500;
     this._maxResubscribeDelay = 20000;
     this._resubscribeTimeout = null;
@@ -326,6 +328,10 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
       req.recoverable = true;
     }
 
+    if (this._joinLeave) {
+      req.join_leave = true;
+    }
+
     if (this._needRecover()) {
       req.recover = true;
       const offset = this._getOffset();
@@ -512,6 +518,9 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
     }
     if (options.recoverable === true) {
       this._recoverable = true;
+    }
+    if (options.joinLeave === true) {
+      this._joinLeave = true;
     }
   }
 

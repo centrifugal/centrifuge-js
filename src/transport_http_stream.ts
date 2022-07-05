@@ -26,12 +26,12 @@ export class HttpStreamTransport {
     return true;
   }
 
-  _handleErrors(response) {
+  _handleErrors(response: any) {
     if (!response.ok) throw new Error(response.status);
     return response;
   }
 
-  _fetchEventTarget(self, endpoint, options) {
+  _fetchEventTarget(self, endpoint: string, options: object) {
     const eventTarget = new EventTarget();
     // fetch with connection timeout maybe? https://github.com/github/fetch/issues/175
     const fetchFunc = self.options.fetch;
@@ -141,16 +141,23 @@ export class HttpStreamTransport {
       body = initialData;
     }
 
+    const fetchOptions = {
+      method: 'POST',
+      headers: headers,
+      body: body,
+      mode: 'cors',
+      credentials: 'same-origin',
+      cache: 'no-cache',
+      signal: this._abortController.signal
+    }
+    if (this.options.fetchOptionsModify) {
+      this.options.fetchOptionsModify(fetchOptions);
+    }
+
     const eventTarget = this._fetchEventTarget(
       this,
       this.endpoint,
-      {
-        method: 'POST',
-        headers: headers,
-        mode: this.options.requestMode,
-        signal: this._abortController.signal,
-        body: body
-      }
+      fetchOptions
     );
 
     eventTarget.addEventListener('open', () => {
@@ -200,11 +207,17 @@ export class HttpStreamTransport {
     }
 
     const fetchFunc = this.options.fetch;
-    fetchFunc(this.options.emulationEndpoint, {
+    const fetchOptions = {
       method: 'POST',
       headers: headers,
-      mode: this.options.emulationRequestMode,
-      body: body
-    });
+      body: body,
+      mode: 'cors',
+      credentials: 'omit',
+      cache: 'no-cache'
+    }
+    if (this.options.emulationFetchOptionsModify) {
+      this.options.emulationFetchOptionsModify(fetchOptions);
+    }
+    fetchFunc(this.options.emulationEndpoint, fetchOptions);
   }
 }

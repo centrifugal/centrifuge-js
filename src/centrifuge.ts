@@ -38,6 +38,7 @@ const defaults: Options = {
   readableStream: null,
   websocket: null,
   eventsource: null,
+  eventsourceOptionsModify: null,
   sockjs: null,
   sockjsServer: null,
   sockjsTimeout: null,
@@ -53,9 +54,9 @@ const defaults: Options = {
     'iframe-xhr-polling',
     'jsonp-polling'
   ],
-  httpStreamRequestMode: 'cors',
+  httpStreamFetchOptionsModify: null,
   emulationEndpoint: '/emulation',
-  emulationRequestMode: 'cors',
+  emulationFetchOptionsModify: null,
   minReconnectDelay: 500,
   maxReconnectDelay: 20000,
   timeout: 5000,
@@ -661,9 +662,9 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
           this._transport = new HttpStreamTransport(transportEndpoint, {
             fetch: fetchFunc,
             readableStream: readableStream,
-            requestMode: this._config.httpStreamRequestMode,
+            fetchOptionsModify: this._config.httpStreamFetchOptionsModify,
             emulationEndpoint: this._config.emulationEndpoint,
-            emulationRequestMode: this._config.emulationRequestMode,
+            emulationFetchOptionsModify: this._config.emulationFetchOptionsModify,
             decoder: this._decoder,
             encoder: this._encoder
           });
@@ -677,9 +678,10 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
           this._debug('trying sse transport');
           this._transport = new SseTransport(transportEndpoint, {
             eventsource: eventsource,
+            eventsourceOptionsModify: this._config.eventsourceOptionsModify,
             fetch: fetchFunc,
             emulationEndpoint: this._config.emulationEndpoint,
-            emulationRequestMode: this._config.emulationRequestMode
+            emulationFetchOptionsModify: this._config.emulationFetchOptionsModify
           });
           if (!this._transport.supported()) {
             this._debug('sse transport not available');

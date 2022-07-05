@@ -94,22 +94,24 @@ export interface Options {
   name: string;
   /** version of client */
   version: string;
-  /** minimum delay between reconnect attemts */
+  /** minimum delay between reconnect attemts in milliseconds */
   minReconnectDelay: number;
-  /** maximum delay between reconnect attemts */
+  /** maximum delay between reconnect attemts in milliseconds */
   maxReconnectDelay: number;
-  /** timeout for operations */
+  /** timeout for operations in milliseconds */
   timeout: number;
-  /** maximum delay of server pings to detect broken connection */
+  /** maximum delay of server pings to detect broken connection in milliseconds */
   maxServerPingDelay: number;
-  /** provide custom WebSocket constructor, useful for NodeJS env */
+  /** provide custom WebSocket constructor, useful for NodeJS env where WebSocket is not available globally */
   websocket: any | null;
   /** provide shim for fetch implementation */
-  fetch: any | null,
+  fetch: any | null;
   /** provide shim for ReadableStream */
-  readableStream: any | null,
+  readableStream: any | null;
   /** provide shim for EventSource object */
-  eventsource: any | null,
+  eventsource: any | null;
+  /** allows modifying options for EventSource initializing */
+  eventsourceOptionsModify: null | ((options: object) => void);
   /** provide shim for SockJS object */
   sockjs: any | null;
   /** set sockjs server option */
@@ -118,12 +120,12 @@ export interface Options {
   sockjsTimeout: number | null;
   /** set custom transports to enable in SockJS */
   sockjsTransports: string[];
-  /** request mode in http stream request */
-  httpStreamRequestMode: string;
+  /** allows modifying fetch options for http stream request */
+  httpStreamFetchOptionsModify: null | ((options: object) => void);
   /** which emulation endpoint to use */
   emulationEndpoint: string;
-  /** request mode in emulation request */
-  emulationRequestMode: string;
+  /** allows modifying fetch options for emulation request */
+  emulationFetchOptionsModify: null | ((options: object) => void);
 }
 
 export interface StateContext {

@@ -40,7 +40,12 @@ export class SseTransport {
     }
     url.searchParams.append('cf_connect', initialData);
 
-    const eventSource = new this.options.eventsource(url.toString());
+    const eventsourceOptions = {}
+    if (this.options.eventsourceOptionsModify) {
+      this.options.eventsourceOptionsModify(eventsourceOptions);
+    }
+
+    const eventSource = new this.options.eventsource(url.toString(), eventsourceOptions);
     this._transport = eventSource;
 
     const self = this;
@@ -88,11 +93,17 @@ export class SseTransport {
     };
     const body = JSON.stringify(req);
     const fetchFunc = this.options.fetch;
-    fetchFunc(this.options.emulationEndpoint, {
+    const fetchOptions = {
       method: 'POST',
       headers: headers,
-      mode: this.options.emulationRequestMode,
-      body: body
-    });
+      body: body,
+      mode: 'cors',
+      credentials: 'omit',
+      cache: 'no-cache'
+    }
+    if (this.options.emulationFetchOptionsModify) {
+      this.options.emulationFetchOptionsModify(fetchOptions);
+    }
+    fetchFunc(this.options.emulationEndpoint, fetchOptions);
   }
 }

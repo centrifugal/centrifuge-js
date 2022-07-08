@@ -1,7 +1,7 @@
 {
   "name": "centrifuge",
   "version": "3.0.0-beta.0",
-  "description": "Centrifuge and Centrifugo client for NodeJS, React Native and browser",
+  "description": "JavaScript client SDK for bidirectional communication with Centrifugo and Centrifuge-based server from browser, NodeJS and React Native",
   "main": "build/index.js",
   "types": "build/index.d.ts",
   "files": [
@@ -54,7 +54,8 @@
     "sockjs",
     "centrifugo",
     "centrifuge",
-    "pub/sub"
+    "pub/sub",
+    "real-time"
   ],
   "author": "Alexander Emelin",
   "license": "MIT",

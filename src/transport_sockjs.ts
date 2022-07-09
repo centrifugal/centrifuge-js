@@ -27,14 +27,9 @@ export class SockjsTransport {
   }
 
   initialize(_protocol: 'json', callbacks: any) {
-    const sockjsOptions: any = {
-      transports: this.options.transports
-    };
-    if (this.options.server !== null) {
-      sockjsOptions.server = this.options.server;
-    }
-    if (this.options.timeout !== null) {
-      sockjsOptions.timeout = this.options.timeout;
+    const sockjsOptions = {};
+    if (this.options.sockjsOptionsModify) {
+      this.options.sockjsOptionsModify(sockjsOptions);
     }
 
     this._transport = new this.options.sockjs(this.endpoint, null, sockjsOptions);

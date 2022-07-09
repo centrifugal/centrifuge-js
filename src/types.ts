@@ -110,17 +110,13 @@ export interface Options {
   readableStream: any | null;
   /** provide shim for EventSource object */
   eventsource: any | null;
-  /** allows modifying options for EventSource initializing */
+  /** allows modifying options passed to EventSource constructor */
   eventsourceOptionsModify: null | ((options: object) => void);
   /** provide shim for SockJS object */
   sockjs: any | null;
-  /** set sockjs server option */
-  sockjsServer: string | null;
-  /** set sockjs timeout option */
-  sockjsTimeout: number | null;
-  /** set custom transports to enable in SockJS */
-  sockjsTransports: string[];
-  /** allows modifying fetch options for http stream request */
+  /** allows modifying options passed to SockJS constructor */
+  sockjsOptionsModify: null | ((options: object) => void);
+  /** allows modifying fetch options for http stream connect request */
   httpStreamFetchOptionsModify: null | ((options: object) => void);
   /** which emulation endpoint to use */
   emulationEndpoint: string;

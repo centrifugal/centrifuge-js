@@ -40,20 +40,7 @@ const defaults: Options = {
   eventsource: null,
   eventsourceOptionsModify: null,
   sockjs: null,
-  sockjsServer: null,
-  sockjsTimeout: null,
-  sockjsTransports: [
-    'websocket',
-    'xdr-streaming',
-    'xhr-streaming',
-    'eventsource',
-    'iframe-eventsource',
-    'iframe-htmlfile',
-    'xdr-polling',
-    'xhr-polling',
-    'iframe-xhr-polling',
-    'jsonp-polling'
-  ],
+  sockjsOptionsModify: null,
   httpStreamFetchOptionsModify: null,
   emulationEndpoint: '/emulation',
   emulationFetchOptionsModify: null,
@@ -613,16 +600,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
 
     if (!this._emulation) {
       if (startsWith(this._endpoint, 'http')) {
-        this._debug('client will use sockjs');
-        this._transport = new SockjsTransport(this._endpoint as string, {
-          sockjs: sockjs,
-          transports: this._config.sockjsTransports,
-          server: this._config.sockjsServer,
-          timeout: this._config.sockjsTimeout
-        });
-        if (!this._transport.supported()) {
-          throw new Error('SockJS not available, use ws(s):// in url or include SockJS');
-        }
+        throw new Error('Provide explicit transport endpoints configuration in case of using HTTP (i.e. using array of TransportEndpoint instead of a single string), or use ws(s):// scheme in an endpoint if you aimed using WebSocket transport');
       } else {
         this._debug('client will use websocket');
         this._transport = new WebsocketTransport(this._endpoint as string, {
@@ -693,9 +671,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
           this._debug('trying sockjs');
           this._transport = new SockjsTransport(transportEndpoint, {
             sockjs: sockjs,
-            transports: this._config.sockjsTransports,
-            server: this._config.sockjsServer,
-            timeout: this._config.sockjsTimeout
+            sockjsOptionsModify: this._config.sockjsOptionsModify
           });
           if (!this._transport.supported()) {
             this._debug('sockjs transport not available');

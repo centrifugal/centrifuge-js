@@ -26,10 +26,10 @@ The client behaves according to a common [Centrifigo SDK spec](https://centrifug
 
 ## Install
 
-Using cdn (replace `X` to a concrete version number):
+Using cdn (replace `3.0.0` to a concrete version number):
 
 ```html
-<script src="https://cdn.jsdelivr.net/gh/centrifugal/centrifuge-js@3.X.X/dist/centrifuge.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/centrifuge/3.0.0/centrifuge.js"></script>
 ```
 
 Also available via `npm`:

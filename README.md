@@ -4,6 +4,8 @@ This SDK provides a client to connect to [Centrifugo](https://github.com/centrif
 
 The client behaves according to a common [Centrifigo SDK spec](https://centrifugal.dev/docs/transports/client_api). It's recommended to read that before starting to work with this SDK as the spec covers common SDK behavior - describes client and subscription state transitions, main options and methods. Then proceed with this readme for more specifics about `centrifuge-js`.
 
+The features implemented by this SDK can be found in [SDK feature matrix](https://centrifugal.dev/docs/transports/client_sdk#sdk-feature-matrix).
+
 * [Install](#install)
 * [Quick start](#quick-start)
 * [WebSocket transport](#websocket-transport)

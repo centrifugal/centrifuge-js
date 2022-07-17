@@ -1,12 +1,32 @@
-2.9.0
+3.0.0
 =====
 
-We start making some preparations for the new iteration of Centrifuge/Centrifugo client protocol. All changes introduced in v2.9.0 are backwards compatible, but the plan is to release centrifuge-js v3 at some point which will use client protocol v2 by default.
+**Breaking changes**
 
-* Support for client protocol v2. It can be enabled by providing an option `protocolVersion: 'v2'` to Centrifuge constructor. By default, centrifuge-js still uses client protocol v1 but the current plan is to make client protocol v2 default in the future. The initial motivation described in [centrifugal/centrifuge#217](https://github.com/centrifugal/centrifuge/issues/217) and implementation is in [centrifugal/centrifuge#218](https://github.com/centrifugal/centrifuge/pull/218). The minimum version of Centrifuge server library which supports client protocol v2 is v0.20.0. And for Centrifugo it's planned to be v3.2.0.
-* If client uses client protocol v2 then we expose disconnect code in disconnect event context. In this case we inherit new disconnect semantics from client protocol v2. It's described [here](https://github.com/centrifugal/centrifuge/pull/221).
-* New Subscription option `autoResubscribeErrorCodes?: number[]`. If set to an array of error codes centrifuge-js will automatically resubscribe to a channel upon receiving code from the array. It will do this with increasing intervals. Unsubscribing from subscription stops automatic reconnects.  
-* Expose `tags` field of Publication in `PublicationContext`.
+This release adopts a new iteration of Centrifugal protocol and a new iteration of API. Client now behaves according to the client [SDK API specification](https://centrifugal.dev/docs/transports/client_api). The work has been done according to [Centrifugo v4 roadmap](https://github.com/centrifugal/centrifugo/issues/500).
+
+Check out [Centrifugo v4 release post](https://centrifugal.dev/blog/2022/07/19/centrifugo-v4-released) that covers the reasoning behind changes here.
+
+New release only works with Centrifugo >= v4.0.0 and [Centrifuge](https://github.com/centrifugal/centrifuge) >= 0.25.0. See [Centrifugo v4 migration guide](https://centrifugal.dev/docs/getting-started/migration_v4) for details about the changes in the ecosystem.
+
+Note, that Centrifugo v4 supports clients working over the previous protocol iteration, so you can update Centrifugo to v4 without any changes on the client side (but you need to turn on `use_client_protocol_v1_by_default` option in the configuration of Centrifugo, see Centrifugo v4 migration guide for details).
+
+Release highlights:
+
+* new API according to the new [SDK API specification](https://centrifugal.dev/docs/transports/client_api)
+* client migrated to Typescript, all public API is strictly typed, including `EventEmitter` callbacks
+* SockJS is now DEPRECATED and requires explicit configuration, see the library readme
+* introducing our own WebSocket emulation layer - based on HTTP-streaming and SSE (Eventsource) fallbacks
+* experimental WebTransport support
+* optimistic subscriptions to reduce connect latency
+* redesigned PING-PONG (pings are only sent from server to client now)
+* resilient subscriptions which handle temporary server errors and re-subscribe (with full jitter backoff)
+
+2.8.5
+=====
+
+* fix typing of subscribe error context [#187](https://github.com/centrifugal/centrifuge-js/pull/187)
+* throw error if no transport configured [#176](https://github.com/centrifugal/centrifuge-js/pull/176)
 
 2.8.4
 =====

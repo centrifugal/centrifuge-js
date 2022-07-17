@@ -8,6 +8,7 @@ import { SockjsTransport } from './transport_sockjs';
 import { WebsocketTransport } from './transport_websocket';
 import { HttpStreamTransport } from './transport_http_stream';
 import { SseTransport } from './transport_sse';
+import { WebtransportTransport } from './transport_webtransport';
 
 import { JsonEncoder, JsonDecoder } from './json';
 
@@ -439,7 +440,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
           throw new Error('malformed transport configuration');
         }
         const transportName = transportConfig.transport;
-        if (['websocket', 'http_stream', 'sse', 'sockjs'].indexOf(transportName) < 0) {
+        if (['websocket', 'http_stream', 'sse', 'sockjs', 'webtransport'].indexOf(transportName) < 0) {
           throw new Error('unsupported transport name: ' + transportName);
         }
       }
@@ -553,7 +554,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
   }
 
   private _initializeTransport() {
-    let websocket;
+    let websocket: any;
     if (this._config.websocket !== null) {
       websocket = this._config.websocket;
     } else {
@@ -631,6 +632,19 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
           });
           if (!this._transport.supported()) {
             this._debug('websocket transport not available');
+            this._currentTransportIndex++;
+            count++;
+            continue;
+          }
+        } else if (transportName === 'webtransport') {
+          this._debug('trying webtransport transport');
+          this._transport = new WebtransportTransport(transportEndpoint, {
+            webtransport: global.WebTransport,
+            decoder: this._decoder,
+            encoder: this._encoder
+          });
+          if (!this._transport.supported()) {
+            this._debug('webtransport transport not available');
             this._currentTransportIndex++;
             count++;
             continue;

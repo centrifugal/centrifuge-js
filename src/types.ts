@@ -68,7 +68,7 @@ export enum SubscriptionState {
   Subscribed = "subscribed"
 }
 
-export type TransportName = 'websocket' | 'http_stream' | 'sse' | 'sockjs';
+export type TransportName = 'websocket' | 'http_stream' | 'sse' | 'sockjs' | 'webtransport';
 
 /** TransportEndpoint allows configuring transport when using fallback mode */
 export interface TransportEndpoint {

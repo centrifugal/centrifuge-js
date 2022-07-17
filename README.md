@@ -10,6 +10,7 @@ The client behaves according to a common [Centrifigo SDK spec](https://centrifug
 * [Using fallbacks](#using-fallbacks)
     * [SockJS](#using-fallbacks)
     * [Bidirectional emulation](#bidirectional-emulation)
+* [WebTransport (experimental)](#webtransport-transport)
 * [Client API](#client-api)
     * [Client methods and events](#client-methods-and-events)
     * [Connection token](#connection-token)
@@ -88,8 +89,8 @@ In some cases though, WebSocket connection may not be established (for example, 
 If you want to use SockJS you must also import SockJS client before centrifuge.js
 
 ```html
-<script src="https://cdn.jsdelivr.net/npm/sockjs-client@1.3/dist/sockjs.min.js" type="text/javascript"></script>
-<script src="centrifuge.js" type="text/javascript"></script>
+<script src="https://cdn.jsdelivr.net/npm/sockjs-client@1/dist/sockjs.min.js" type="text/javascript"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/centrifuge/3.0.0/centrifuge.js" type="text/javascript"></script>
 ```
 
 Or provide it explicitly as a dependency:
@@ -140,7 +141,14 @@ Supported transports are:
 * `websocket`
 * `http_stream`
 * `sse`
-* `sockjs` (yes, SockJS can also be used as a fallback in the bidirectional emulation layer, but sticky session must be used on the backend in distributed case).
+* `sockjs` (yes, SockJS can also be used as a fallback in the bidirectional emulation layer, but sticky session must be used on the backend in distributed case, SockJS is currently in DEPRECATED status in Centrifugal ecosystem).
+* `webtransport` (experimental, see details below)
+
+## WebTransport (experimental)
+
+WebTransport is experimental and is only supported by Centrifugo at the moment (i.e. it's not available in Centrifuge library for Go out of the box).
+
+See information about it in [Centrifugo WebTransport docs](https://centrifugal.dev/docs/transports/webtransport).
 
 ## Client API
 

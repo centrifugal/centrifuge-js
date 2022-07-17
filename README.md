@@ -86,28 +86,6 @@ In the quick start example above we used WebSocket endpoint to configure Centrif
 
 In some cases though, WebSocket connection may not be established (for example, due to corporate firewalls and proxies). For such situations `centrifuge-js` offers several WebSocket fallback options. 
 
-### Using SockJS
-
-If you want to use SockJS you must also import SockJS client before centrifuge.js
-
-```html
-<script src="https://cdn.jsdelivr.net/npm/sockjs-client@1/dist/sockjs.min.js" type="text/javascript"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/centrifuge/3.0.0/centrifuge.js" type="text/javascript"></script>
-```
-
-Or provide it explicitly as a dependency:
-
-```javascript
-import { Centrifuge } from 'centrifuge'
-import SockJS from 'sockjs-client'
-
-const centrifuge = new Centrifuge("http://localhost:8000/connection/sockjs", {
-  sockjs: SockJS
-})
-```
-
-Note, that in SockJS case endpoint starts with `http://`, not with `ws://` as we used above when connecting to a pure WebSocket endpoint.
-
 ### Bidirectional emulation
 
 SockJS is robust and stable product, but it's an extra dependency, it's pretty old, comes with some overhead and sticky sessions requirement for a distributed backend case. In most scenarios these days clients are fine to use WebSocket protocol for messaging. There are rare connection issues though which are caused by corporate firewall and proxy software. To deal with users behind such proxies Centrifuge SDK offers its own bidirectional emulation layer. This layer uses two HTTP-based transports:
@@ -145,6 +123,35 @@ Supported transports are:
 * `sse`
 * `sockjs` (yes, SockJS can also be used as a fallback in the bidirectional emulation layer, but sticky session must be used on the backend in distributed case, SockJS is currently in DEPRECATED status in Centrifugal ecosystem).
 * `webtransport` (experimental, see details below)
+
+### Using SockJS
+
+**SockJS usage is DEPRECATED in the Centrifugal ecosystem**
+
+If you want to use SockJS you must also import SockJS client before centrifuge.js
+
+```html
+<script src="https://cdn.jsdelivr.net/npm/sockjs-client@1/dist/sockjs.min.js" type="text/javascript"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/centrifuge/3.0.0/centrifuge.js" type="text/javascript"></script>
+```
+
+Or provide it explicitly as a dependency:
+
+```javascript
+import { Centrifuge } from 'centrifuge'
+import SockJS from 'sockjs-client'
+
+const transports = [{
+    transport: "sockjs",
+    endpoint: "http://localhost:8000/connection/sockjs"
+}];
+
+const centrifuge = new Centrifuge(transports, {
+  sockjs: SockJS
+})
+```
+
+Note, that in SockJS case endpoint starts with `http://`, not with `ws://` as we used above when connecting to a pure WebSocket endpoint.
 
 ## WebTransport (experimental)
 
@@ -658,47 +665,6 @@ Timeout for operations.
 
 `sockjs` option allows to explicitly provide SockJS client object to Centrifuge client.
 
-For example this can be useful if you develop in ES6 with imports:
-
-```javascript
-import Centrifuge from 'centrifuge'
-import SockJS from 'sockjs-client'
-
-const centrifuge = new Centrifuge('https://centrifuge.example.com/connection/sockjs', {
-  sockjs: SockJS
-});
-```
-
-### sockjsTransports
-
-In case of using SockJS additional configuration parameter can be used - `sockjsTransports`.
-
-It defines allowed SockJS transports.
-
-```javascript
-const centrifuge = new Centrifuge(
-  'http://centrifuge.example.com/connection/sockjs', 
-  {
-    sockjsTransports: [
-        'websocket', 
-        'xdr-streaming',
-        'xhr-streaming',
-        'eventsource',
-        'iframe-eventsource',
-        'iframe-htmlfile',
-        'xdr-polling',
-        'xhr-polling',
-        'iframe-xhr-polling',
-        'jsonp-polling'
-    ]
-});
-```
-
-### sockjsServer
-
-`sockjsServer` is SockJS specific option to set server name into connection urls instead
-of random chars. See SockJS docs for more info.
-
 ## Protobuf support
 
 To import client with Protobuf protocol support:
@@ -754,18 +720,7 @@ Or define it globally:
 const Centrifuge = require('centrifuge');
 global.WebSocket = require('ws'); 
 
-var centrifuge = new Centrifuge('ws://localhost:8000/connection/websocket')
-```
-
-The same if you want to use `SockJS`:
-
-```javascript
-const Centrifuge = require('centrifuge');
-const SockJS = require('sockjs-client');
-
-var centrifuge = new Centrifuge('ws://localhost:8000/connection/sockjs', {
-    sockjs: SockJS
-})
+const centrifuge = new Centrifuge('ws://localhost:8000/connection/websocket');
 ```
 
 ## Custom WebSocket constructor

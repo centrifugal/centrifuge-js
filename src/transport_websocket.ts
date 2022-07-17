@@ -30,8 +30,6 @@ export class WebsocketTransport {
     let subProtocol = '';
     if (protocol === 'protobuf') {
       subProtocol = 'centrifuge-protobuf';
-    } else {
-      subProtocol = 'centrifuge-json';
     }
     if (subProtocol !== '') {
       this._transport = new this.options.websocket(this.endpoint, subProtocol);

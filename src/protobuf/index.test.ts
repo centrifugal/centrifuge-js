@@ -1,0 +1,115 @@
+import Centrifuge from './index'
+import { DisconnectedContext, UnsubscribedContext, TransportName, PublicationContext } from './../types';
+import { disconnectedCodes, unsubscribedCodes } from './../codes';
+import WebSocket from 'ws';
+import { fetch } from 'undici';
+import { ReadableStream } from 'node:stream/web';
+
+const transportCases = [
+  ['websocket', 'ws://localhost:8000/connection/websocket?cf_protocol_version=v2'],
+  ['http_stream', 'http://localhost:8000/connection/http_stream?cf_protocol_version=v2'],
+]
+
+test.each(transportCases)("%s (Protobuf): connects and disconnects", async (transport, endpoint) => {
+  const c = new Centrifuge([{
+    transport: transport as TransportName,
+    endpoint: endpoint,
+  }], {
+    protocol: 'protobuf',
+    websocket: WebSocket,
+    fetch: fetch,
+    readableStream: ReadableStream,
+  });
+
+  let disconnectCalled: any;
+  const p = new Promise<DisconnectedContext>((resolve, _) => {
+    disconnectCalled = resolve;
+  })
+
+  c.on('disconnected', (ctx) => {
+    disconnectCalled(ctx);
+  })
+
+  c.connect();
+  await c.ready(5000);
+  expect(c.state).toBe(Centrifuge.State.Connected);
+
+  c.disconnect();
+  const ctx = await p;
+  expect(c.state).toBe(Centrifuge.State.Disconnected);
+  expect(ctx.code).toBe(disconnectedCodes.disconnectCalled);
+});
+
+test.each(transportCases)("%s (Protobuf): subscribe and unsubscribe", async (transport, endpoint) => {
+  const c = new Centrifuge([{
+    transport: transport as TransportName,
+    endpoint: endpoint,
+  }], {
+    protocol: 'protobuf',
+    websocket: WebSocket,
+    fetch: fetch,
+    readableStream: ReadableStream,
+    emulationEndpoint: 'http://localhost:8000/emulation'
+  });
+
+  let unsubscribeCalled: any;
+  const p = new Promise<UnsubscribedContext>((resolve, _) => {
+    unsubscribeCalled = resolve;
+  })
+
+  c.connect();
+  await c.ready(5000);
+  const sub = c.newSubscription('test');
+  sub.on('unsubscribed', (ctx: UnsubscribedContext) => {
+    unsubscribeCalled(ctx);
+  });
+
+  sub.subscribe()
+  await sub.ready(5000);
+  expect(sub.state).toBe(Centrifuge.SubscriptionState.Subscribed);
+  expect(c.state).toBe(Centrifuge.State.Connected);
+
+  sub.unsubscribe();
+  c.disconnect();
+
+  const ctx = await p;
+
+  expect(sub.state).toBe(Centrifuge.SubscriptionState.Unsubscribed);
+  expect(c.state).toBe(Centrifuge.State.Disconnected);
+  expect(ctx.code).toBe(unsubscribedCodes.unsubscribeCalled);
+});
+
+test.each(transportCases)("%s (Protobuf): publish and receive message", async (transport, endpoint) => {
+  const c = new Centrifuge([{
+    transport: transport as TransportName,
+    endpoint: endpoint,
+  }], {
+    protocol: 'protobuf',
+    websocket: WebSocket,
+    fetch: fetch,
+    readableStream: ReadableStream,
+    emulationEndpoint: 'http://localhost:8000/emulation'
+  });
+
+  c.connect();
+  await c.ready(5000);
+
+  let publicationReceived: any;
+  const p = new Promise<PublicationContext>((resolve, _) => {
+    publicationReceived = resolve;
+  })
+
+  const sub = c.newSubscription('test');
+  sub.on('publication', (ctx: PublicationContext) => {
+    publicationReceived(ctx);
+  });
+  sub.subscribe()
+  await sub.ready(5000);
+
+  const binary = new TextEncoder().encode(JSON.stringify({ "my": "data" }));
+  await sub.publish(binary);
+
+  const ctx = await p;
+  c.disconnect();
+  expect(ctx.data).toStrictEqual(binary);
+});

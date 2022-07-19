@@ -209,7 +209,7 @@ export class HttpStreamTransport {
       headers: headers,
       body: body,
       mode: 'cors',
-      credentials: 'omit',
+      credentials: 'same-origin',
       cache: 'no-cache'
     }
     fetchFunc(this.options.emulationEndpoint, fetchOptions);

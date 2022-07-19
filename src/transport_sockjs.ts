@@ -27,12 +27,7 @@ export class SockjsTransport {
   }
 
   initialize(_protocol: 'json', callbacks: any) {
-    const sockjsOptions = {};
-    if (this.options.sockjsOptionsModify) {
-      this.options.sockjsOptionsModify(sockjsOptions);
-    }
-
-    this._transport = new this.options.sockjs(this.endpoint, null, sockjsOptions);
+    this._transport = new this.options.sockjs(this.endpoint, null, this.options.sockjsOptions);
 
     this._transport.onopen = () => {
       callbacks.onOpen();

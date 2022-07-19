@@ -39,12 +39,9 @@ const defaults: Options = {
   readableStream: null,
   websocket: null,
   eventsource: null,
-  eventsourceOptionsModify: null,
   sockjs: null,
-  sockjsOptionsModify: null,
-  httpStreamFetchOptionsModify: null,
+  sockjsOptions: {},
   emulationEndpoint: '/emulation',
-  emulationFetchOptionsModify: null,
   minReconnectDelay: 500,
   maxReconnectDelay: 20000,
   timeout: 5000,
@@ -654,9 +651,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
           this._transport = new HttpStreamTransport(transportEndpoint, {
             fetch: fetchFunc,
             readableStream: readableStream,
-            fetchOptionsModify: this._config.httpStreamFetchOptionsModify,
             emulationEndpoint: this._config.emulationEndpoint,
-            emulationFetchOptionsModify: this._config.emulationFetchOptionsModify,
             decoder: this._decoder,
             encoder: this._encoder
           });
@@ -670,10 +665,8 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
           this._debug('trying sse transport');
           this._transport = new SseTransport(transportEndpoint, {
             eventsource: eventsource,
-            eventsourceOptionsModify: this._config.eventsourceOptionsModify,
             fetch: fetchFunc,
             emulationEndpoint: this._config.emulationEndpoint,
-            emulationFetchOptionsModify: this._config.emulationFetchOptionsModify
           });
           if (!this._transport.supported()) {
             this._debug('sse transport not available');
@@ -685,7 +678,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
           this._debug('trying sockjs');
           this._transport = new SockjsTransport(transportEndpoint, {
             sockjs: sockjs,
-            sockjsOptionsModify: this._config.sockjsOptionsModify
+            sockjsOptions: this._config.sockjsOptions
           });
           if (!this._transport.supported()) {
             this._debug('sockjs transport not available');

@@ -41,10 +41,6 @@ export class SseTransport {
     url.searchParams.append('cf_connect', initialData);
 
     const eventsourceOptions = {}
-    if (this.options.eventsourceOptionsModify) {
-      this.options.eventsourceOptionsModify(eventsourceOptions);
-    }
-
     const eventSource = new this.options.eventsource(url.toString(), eventsourceOptions);
     this._transport = eventSource;
 
@@ -100,9 +96,6 @@ export class SseTransport {
       mode: 'cors',
       credentials: 'omit',
       cache: 'no-cache'
-    }
-    if (this.options.emulationFetchOptionsModify) {
-      this.options.emulationFetchOptionsModify(fetchOptions);
     }
     fetchFunc(this.options.emulationEndpoint, fetchOptions);
   }

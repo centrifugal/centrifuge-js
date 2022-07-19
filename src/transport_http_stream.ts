@@ -150,9 +150,6 @@ export class HttpStreamTransport {
       cache: 'no-cache',
       signal: this._abortController.signal
     }
-    if (this.options.fetchOptionsModify) {
-      this.options.fetchOptionsModify(fetchOptions);
-    }
 
     const eventTarget = this._fetchEventTarget(
       this,
@@ -214,9 +211,6 @@ export class HttpStreamTransport {
       mode: 'cors',
       credentials: 'omit',
       cache: 'no-cache'
-    }
-    if (this.options.emulationFetchOptionsModify) {
-      this.options.emulationFetchOptionsModify(fetchOptions);
     }
     fetchFunc(this.options.emulationEndpoint, fetchOptions);
   }

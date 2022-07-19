@@ -35,7 +35,6 @@
     "eslint": "^8.16.0",
     "eventsource": "^2.0.2",
     "jest": "28.1.0",
-    "node-fetch": "^3.2.4",
     "ts-jest": "28.0.2",
     "ts-node": "^10.7.0",
     "typedoc": "^0.22.15",

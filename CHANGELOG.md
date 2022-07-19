@@ -11,13 +11,13 @@ New release only works with Centrifugo >= v4.0.0 and [Centrifuge](https://github
 
 Note, that Centrifugo v4 supports clients working over the previous protocol iteration, so you can update Centrifugo to v4 without any changes on the client side (but you need to turn on `use_client_protocol_v1_by_default` option in the configuration of Centrifugo, see Centrifugo v4 migration guide for details).
 
-Release highlights:
+Release notes:
 
 * new API according to the new [SDK API specification](https://centrifugal.dev/docs/transports/client_api)
 * client migrated to Typescript, all public API is strictly typed, including `EventEmitter` callbacks
-* SockJS is now DEPRECATED and requires explicit configuration, see the library readme
+* SockJS is now DEPRECATED in Centrifugal ecosystem and requires explicit configuration, see the library readme
 * introducing our own WebSocket emulation layer - based on HTTP-streaming and SSE (Eventsource) fallbacks
-* experimental WebTransport support
+* experimental WebTransport support (only works with Centrifugo v4 experimental HTTP/3 support)
 * optimistic subscriptions to reduce connect latency
 * redesigned PING-PONG (pings are only sent from server to client now)
 * resilient subscriptions which handle temporary server errors and re-subscribe (with full jitter backoff)

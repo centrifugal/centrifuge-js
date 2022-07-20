@@ -28,13 +28,15 @@ The features implemented by this SDK can be found in [SDK feature matrix](https:
 
 ## Install
 
-Using [centrifuge on cdnjs](https://cdnjs.com/libraries/centrifuge) (replace `3.0.0` to a concrete version number):
+Using CDN (replace `3.0.0` to a concrete version number):
 
 ```html
-<script src="https://cdnjs.cloudflare.com/ajax/libs/centrifuge/3.0.0/centrifuge.js"></script>
+<script src="https://unpkg.com/centrifuge@3.0.0/dist/centrifuge.js"></script>
 ```
 
-Also available via `npm`:
+It's also [available on cdnjs](https://cdnjs.com/libraries/centrifuge).
+
+You can install this SDK via `npm`:
 
 ```bash
 npm install centrifuge
@@ -133,7 +135,7 @@ If you want to use SockJS you must also import SockJS client before centrifuge.j
 
 ```html
 <script src="https://cdn.jsdelivr.net/npm/sockjs-client@1/dist/sockjs.min.js" type="text/javascript"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/centrifuge/3.0.0/centrifuge.js" type="text/javascript"></script>
+<script src="https://unpkg.com/centrifuge@3.0.0/dist/centrifuge.js" type="text/javascript"></script>
 ```
 
 Or provide it explicitly as a dependency:
@@ -673,7 +675,7 @@ Timeout for operations in milliseconds.
 To import client with Protobuf protocol support:
 
 ```html
-<script src="https://cdn.jsdelivr.net/gh/centrifugal/centrifuge-js@2.X.X/dist/centrifuge.protobuf.min.js"></script>
+<script src="https://unpkg.com/centrifuge@3.0.0/dist/centrifuge.protobuf.js"></script>
 ```
 
 Or if you are developing with npm:

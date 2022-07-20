@@ -10,20 +10,19 @@ The features implemented by this SDK can be found in [SDK feature matrix](https:
 * [Quick start](#quick-start)
 * [WebSocket transport](#websocket-transport)
 * [Using fallbacks](#using-fallbacks)
-    * [SockJS](#using-fallbacks)
     * [Bidirectional emulation](#bidirectional-emulation)
-* [WebTransport (experimental)](#webtransport-transport)
+    * [SockJS](#using-sockjs)
+* [WebTransport (experimental)](#webtransport-experimental)
 * [Client API](#client-api)
     * [Client methods and events](#client-methods-and-events)
     * [Connection token](#connection-token)
 * [Subscription API](#subscription-api)
     * [Subscription methods and events](#client-methods-and-events)
-    * [Subscription token](#connection-token)
+    * [Subscription token](#subscription-token)
 * [Message batching](#message-batching)
 * [Server-side subscriptions](#server-side-subscriptions)
 * [Configuration parameters](#configuration-parameters)
 * [Protobuf support](#protobuf-support)
-* [Browser support](#browser-support)
 * [Using with NodeJS](#using-with-nodejs)
 * [Custom WebSocket constructor](#custom-websocket-constructor)
 
@@ -609,6 +608,8 @@ TODO.
 
 ## Configuration parameters
 
+You can check out all available options with description [in source code](https://github.com/centrifugal/centrifuge-js/blob/master/src/types.ts#L82).
+
 Let's look at available configuration parameters when initializing `Centrifuge` object instance.
 
 ### debug
@@ -688,10 +689,6 @@ const centrifuge = new Centrifuge('ws://centrifuge.example.com/connection/websoc
     protocol: 'protobuf'
 });
 ```
-
-## Browser support
-
-TODO.
 
 ## Using with NodeJS
 

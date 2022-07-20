@@ -123,7 +123,7 @@ Supported transports are:
 * `sockjs` (yes, SockJS can also be used as a fallback in the bidirectional emulation layer, but sticky session must be used on the backend in distributed case, SockJS is currently in DEPRECATED status in Centrifugal ecosystem).
 * `webtransport` (experimental, see details below)
 
-If you want to use sticky sessions on a load balancer level as an optimimization for Centrifugal bidirectional emulation layer keep in mind that we currently use `same-origin` credentials policy for emulation requests in `http_stream` and `sse` transport cases. Please open an issue in case you need to configure more relaxed credentials.
+If you want to use sticky sessions on a load balancer level as an optimimization for Centrifugal bidirectional emulation layer keep in mind that we currently use `same-origin` credentials policy for emulation requests in `http_stream` and `sse` transport cases. So cookies will only be passed in same-origin case. Please open an issue in case you need to configure more relaxed credentials. Though in most cases stickyness based on client's IP may be sufficient enough.
 
 ### Using SockJS
 

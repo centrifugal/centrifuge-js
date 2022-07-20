@@ -21,7 +21,7 @@ The features implemented by this SDK can be found in [SDK feature matrix](https:
     * [Subscription token](#subscription-token)
 * [Message batching](#message-batching)
 * [Server-side subscriptions](#server-side-subscriptions)
-* [Configuration parameters](#configuration-parameters)
+* [Configuration options](#configuration-options)
 * [Protobuf support](#protobuf-support)
 * [Using with NodeJS](#using-with-nodejs)
 * [Custom WebSocket constructor](#custom-websocket-constructor)
@@ -606,7 +606,7 @@ This call will flush all collected commands to a network.
 
 TODO.
 
-## Configuration parameters
+## Configuration options
 
 You can check out all available options with description [in source code](https://github.com/centrifugal/centrifuge-js/blob/master/src/types.ts#L82).
 
@@ -628,7 +628,7 @@ When client disconnected from a server it will automatically try to reconnect us
 
 ### maxServerPingDelay
 
-`maxServerPingDelay` sets the maximum delay of server pings after which connection is considered broken and client reconnects.
+`maxServerPingDelay` sets the maximum delay of server pings after which connection is considered broken and client reconnects. In milliseconds. Default is `10000`.
 
 ### protocol
 
@@ -656,7 +656,7 @@ Version of your application - useful for analitycs.
 
 ### timeout
 
-Timeout for operations.
+Timeout for operations in milliseconds.
 
 ### websocket
 

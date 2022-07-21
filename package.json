@@ -20,10 +20,10 @@
     "docs": "typedoc --exclude '**/transport_*.ts' --exclude '**/*.test.ts' --exclude '**/*+(utils|json|codes|browser).ts' --excludePrivate --excludeInternal --entryPoints src/*.ts",
     "build": "tsc -p tsconfig.json",
     "build-all": "yarn clean && yarn build && yarn build-browser && yarn build-browser-protobuf",
-    "build-browser": "esbuild src/browser.ts --bundle --minify --sourcemap --outfile=dist/centrifuge.js --define:global=window",
-    "dev": "esbuild src/browser.ts --bundle --outfile=dist/centrifuge.js --define:global=window --servedir=dist/ --serve=2000",
-    "build-browser-protobuf": "esbuild src/protobuf/browser.ts --bundle --minify --sourcemap --outfile=dist/centrifuge.protobuf.js --define:global=window",
-    "dev-protobuf": "esbuild src/protobuf/browser.ts --bundle --outfile=dist/centrifuge.protobuf.js --define:global=window --servedir=dist/ --serve=2000",
+    "build-browser": "esbuild src/browser.ts --bundle --minify --sourcemap --outfile=dist/centrifuge.js",
+    "dev": "esbuild src/browser.ts --bundle --outfile=dist/centrifuge.js --servedir=dist/ --serve=2000",
+    "build-browser-protobuf": "esbuild src/protobuf/browser.ts --bundle --minify --sourcemap --outfile=dist/centrifuge.protobuf.js",
+    "dev-protobuf": "esbuild src/protobuf/browser.ts --bundle --outfile=dist/centrifuge.protobuf.js --servedir=dist/ --serve=2000",
     "proto": "./make-proto"
   },
   "devDependencies": {

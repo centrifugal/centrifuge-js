@@ -13,11 +13,11 @@ export function isFunction(value) {
 
 /** @internal */
 export function log(level, args) {
-  if (global.console) {
-    const logger = global.console[level];
+  if (globalThis.console) {
+    const logger = globalThis.console[level];
 
     if (isFunction(logger)) {
-      logger.apply(global.console, args);
+      logger.apply(globalThis.console, args);
     }
   }
 }

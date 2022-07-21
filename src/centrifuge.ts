@@ -398,7 +398,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
   }
 
   private _configure() {
-    if (!('Promise' in global)) {
+    if (!('Promise' in globalThis)) {
       throw new Error('Promise polyfill required');
     }
 
@@ -555,8 +555,8 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     if (this._config.websocket !== null) {
       websocket = this._config.websocket;
     } else {
-      if (!(typeof global.WebSocket !== 'function' && typeof global.WebSocket !== 'object')) {
-        websocket = global.WebSocket;
+      if (!(typeof globalThis.WebSocket !== 'function' && typeof globalThis.WebSocket !== 'object')) {
+        websocket = globalThis.WebSocket;
       }
     }
 
@@ -564,8 +564,8 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     if (this._config.sockjs !== null) {
       sockjs = this._config.sockjs;
     } else {
-      if (typeof global.SockJS !== 'undefined') {
-        sockjs = global.SockJS;
+      if (typeof globalThis.SockJS !== 'undefined') {
+        sockjs = globalThis.SockJS;
       }
     }
 
@@ -573,8 +573,8 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     if (this._config.eventsource !== null) {
       eventsource = this._config.eventsource;
     } else {
-      if (typeof global.EventSource !== 'undefined') {
-        eventsource = global.EventSource;
+      if (typeof globalThis.EventSource !== 'undefined') {
+        eventsource = globalThis.EventSource;
       }
     }
 
@@ -582,8 +582,8 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     if (this._config.fetch !== null) {
       fetchFunc = this._config.fetch;
     } else {
-      if (typeof global.fetch !== 'undefined') {
-        fetchFunc = global.fetch;
+      if (typeof globalThis.fetch !== 'undefined') {
+        fetchFunc = globalThis.fetch;
       }
     }
 
@@ -591,8 +591,8 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     if (this._config.readableStream !== null) {
       readableStream = this._config.readableStream;
     } else {
-      if (typeof global.ReadableStream !== 'undefined') {
-        readableStream = global.ReadableStream;
+      if (typeof globalThis.ReadableStream !== 'undefined') {
+        readableStream = globalThis.ReadableStream;
       }
     }
 
@@ -636,7 +636,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
         } else if (transportName === 'webtransport') {
           this._debug('trying webtransport transport');
           this._transport = new WebtransportTransport(transportEndpoint, {
-            webtransport: global.WebTransport,
+            webtransport: globalThis.WebTransport,
             decoder: this._decoder,
             encoder: this._encoder
           });

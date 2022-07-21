@@ -32,9 +32,9 @@ export class SseTransport {
 
   initialize(_protocol: 'json', callbacks: any, initialData: any) {
     let url: any;
-    if (global && global.document && global.document.baseURI) {
+    if (globalThis && globalThis.document && globalThis.document.baseURI) {
       // Handle case when endpoint is relative, like //example.com/connection/sse
-      url = new URL(this.endpoint, global.document.baseURI);
+      url = new URL(this.endpoint, globalThis.document.baseURI);
     } else {
       url = new URL(this.endpoint);
     }

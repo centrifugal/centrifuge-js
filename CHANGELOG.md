@@ -1,3 +1,8 @@
+3.0.1
+=====
+
+* Avoid using `tslib` and fix global object checks, see [issue #193](https://github.com/centrifugal/centrifuge-js/issues/193) and [PR #194](https://github.com/centrifugal/centrifuge-js/pull/194).
+
 3.0.0
 =====
 

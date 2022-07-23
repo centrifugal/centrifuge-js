@@ -8,11 +8,11 @@ The features implemented by this SDK can be found in [SDK feature matrix](https:
 
 * [Install](#install)
 * [Quick start](#quick-start)
-* [WebSocket transport](#websocket-transport)
-* [Using fallbacks](#using-fallbacks)
-    * [Bidirectional emulation](#bidirectional-emulation)
-    * [SockJS](#using-sockjs)
-* [WebTransport (experimental)](#webtransport-experimental)
+* [Supported real-time transports](#supported-real-time-transports)
+    * [WebSocket transport](#websocket-transport)
+    * [HTTP-based WebSocket fallbacks](#http-based-websocket-fallbacks)
+    * [Using SockJS](#using-sockjs)
+    * [WebTransport (experimental)](#webtransport-experimental)
 * [Client API](#client-api)
     * [Client methods and events](#client-methods-and-events)
     * [Connection token](#connection-token)
@@ -77,24 +77,28 @@ Note, that we explicitly call `.connect()` method to initiate connection establi
 
 **`Centrifuge` object and `Subscription` object are both instances of [EventEmitter](https://nodejs.org/api/events.html#events_class_eventemitter).** Below we will describe events that can be exposed in detail.
 
-## Websocket transport
+## Supported real-time transports
 
-WebSocket is the main protocol used by `centrifuge-js` to communicate with a server. In browser environment it's available globally, but if you want to connect from NodeJS env – then you need to provide WebSocket constructor to `centrifuge-js` explicitly. [See below](#using-with-nodejs) more information about this.
+This SDK supports several real-time transports.
 
-## Using fallbacks
+### Websocket transport
+
+WebSocket is the main protocol used by `centrifuge-js` to communicate with a server. In browser environment WebSocket is available globally, but if you want to connect from NodeJS env – then you need to provide WebSocket constructor to `centrifuge-js` explicitly. [See below](#using-with-nodejs) more information about this.
+
+It's the only transport for which you can just use string endpoint as first argument of `Centrifuge` constructor. If you need to use other transports, or several transports – then you should use `Array<TransportEndpoint>`.
+
+### HTTP-based WebSocket fallbacks
 
 In the quick start example above we used WebSocket endpoint to configure Centrifuge. WebSocket is the main transport – it's bidirectional out of the box.
 
-In some cases though, WebSocket connection may not be established (for example, due to corporate firewalls and proxies). For such situations `centrifuge-js` offers several WebSocket fallback options. 
+In some cases though, WebSocket connection may not be established (for example, due to corporate firewalls and proxies). For such situations `centrifuge-js` offers several WebSocket fallback options based on HTTP:
 
-### Bidirectional emulation
+* HTTP-streaming based on [ReadableStream API](https://developer.mozilla.org/en-US/docs/Web/API/ReadableStream)
+* [SSE (EventSource)](https://developer.mozilla.org/en-US/docs/Web/API/EventSource).
 
-SockJS is robust and stable product, but it's an extra dependency, it's pretty old, comes with some overhead and sticky sessions requirement for a distributed backend case. In most scenarios these days clients are fine to use WebSocket protocol for messaging. There are rare connection issues though which are caused by corporate firewall and proxy software. To deal with users behind such proxies Centrifuge SDK offers its own bidirectional emulation layer. This layer uses two HTTP-based transports:
+These two transports use Centrifugo/Centrifuge own bidirectional emulation layer. See [more details in introduction post](https://centrifugal.dev/blog/2022/07/19/centrifugo-v4-released#modern-websocket-emulation-in-javascript). Bidirectional emulation must be first enabled on a server-side. See [Centrifugo docs](https://centrifugal.dev/docs/transports/overview) to find out how.
 
-* HTTP-streaming based on ReadableStream API
-* SSE (EventSource).
-
-Bidirectional emulation must be first enabled on a server-side. For example, see Centrifugo docs to find out how. Then in Javascript you can slightly change client initialization and point it to a list of endpoints and transports you want to use:
+After enabling HTTP-streaming or SSE endpoints on a server side you can slightly change client initialization and point Javascript SDK to a list of endpoints and transports you want to use:
 
 ```javascript
 const transports = [
@@ -115,14 +119,14 @@ const centrifuge = new Centrifuge(transports);
 centrifuge.connect()
 ```
 
-In this case, client will try transports in order, one by one, during the initial handshake. Until success. Then will only use a successful transport during reconnects.
+In this case, client will try transports in order, one by one, during the initial handshake. Until success. Then will only use a successfully chosen transport during reconnects.
 
 Supported transports are:
 
 * `websocket`
 * `http_stream`
 * `sse`
-* `sockjs` (yes, SockJS can also be used as a fallback in the bidirectional emulation layer, but sticky session must be used on the backend in distributed case, SockJS is currently in DEPRECATED status in Centrifugal ecosystem).
+* `sockjs` (SockJS can also be used as a fallback, but sticky session must be used on the backend in distributed case, SockJS is currently in DEPRECATED status in Centrifugal ecosystem).
 * `webtransport` (experimental, see details below)
 
 If you want to use sticky sessions on a load balancer level as an optimimization for Centrifugal bidirectional emulation layer keep in mind that we currently use `same-origin` credentials policy for emulation requests in `http_stream` and `sse` transport cases. So cookies will only be passed in same-origin case. Please open an issue in case you need to configure more relaxed credentials. Though in most cases stickyness based on client's IP may be sufficient enough.
@@ -156,7 +160,7 @@ const centrifuge = new Centrifuge(transports, {
 
 Note, that in SockJS case endpoint starts with `http://`, not with `ws://` as we used above when connecting to a pure WebSocket endpoint.
 
-## WebTransport (experimental)
+### WebTransport (experimental)
 
 WebTransport is experimental and is only supported by Centrifugo at the moment (i.e. it's not available in Centrifuge library for Go out of the box).
 

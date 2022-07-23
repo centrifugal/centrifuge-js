@@ -83,9 +83,11 @@ This SDK supports several real-time transports.
 
 ### Websocket transport
 
-WebSocket is the main protocol used by `centrifuge-js` to communicate with a server. In browser environment WebSocket is available globally, but if you want to connect from NodeJS env – then you need to provide WebSocket constructor to `centrifuge-js` explicitly. [See below](#using-with-nodejs) more information about this.
+WebSocket is the main protocol used by `centrifuge-js` to communicate with a server.
 
-It's the only transport for which you can just use string endpoint as first argument of `Centrifuge` constructor. If you need to use other transports, or several transports – then you should use `Array<TransportEndpoint>`.
+In a browser environment WebSocket is available globally, but if you want to connect from NodeJS env – then you need to provide WebSocket constructor to `centrifuge-js` explicitly. [See below](#using-with-nodejs) more information about this.
+
+It's the only transport for which you can just use a string endpoint as first argument of `Centrifuge` constructor. If you need to use other transports, or several transports – then you should use `Array<TransportEndpoint>`.
 
 ### HTTP-based WebSocket fallbacks
 

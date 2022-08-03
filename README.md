@@ -692,12 +692,19 @@ import Centrifuge from 'centrifuge/build/protobuf';
 
 This client uses [protobuf.js](https://github.com/dcodeIO/ProtoBuf.js/) under the hood.
 
-Centrifuge client with Protobuf support also works with JSON. To enable binary websocket add `protocol: "protobuf"` option to Centrifuge configuration options:
+To enable binary websocket add `protocol: 'protobuf'` option to Centrifuge configuration options:
 
 ```javascript
 const centrifuge = new Centrifuge('ws://centrifuge.example.com/connection/websocket", {
     protocol: 'protobuf'
 });
+```
+
+When running with Protobuf protocol, you can send and receive any binary data as `Uint8Array`. Make sure data is properly encoded when calling methods of Centrifuge Protobuf-based instance. For example, you can not just send JSON-like objects like in JSON protocol case, you need to encode data to `Uint8Array` first:
+
+```javascript
+const data = new TextEncoder("utf-8").encode(JSON.stringify({"any": "data"})); 
+sub.publish(data);
 ```
 
 ## Using with NodeJS

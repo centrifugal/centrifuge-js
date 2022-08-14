@@ -17,7 +17,7 @@ The features implemented by this SDK can be found in [SDK feature matrix](https:
     * [Client methods and events](#client-methods-and-events)
     * [Connection token](#connection-token)
 * [Subscription API](#subscription-api)
-    * [Subscription methods and events](#client-methods-and-events)
+    * [Subscription methods and events](#subscription-methods-and-events)
     * [Subscription token](#subscription-token)
 * [Message batching](#message-batching)
 * [Server-side subscriptions](#server-side-subscriptions)

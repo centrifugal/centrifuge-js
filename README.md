@@ -26,16 +26,6 @@ The features implemented by this SDK can be found in [SDK feature matrix](https:
 
 ## Install
 
-> Note that `centrifuge-js` targets [ES6](https://caniuse.com/es6) at this point.
-
-You can import SDK from CDN (replace `3.0.1` to a concrete version number you want to use, see [releases](https://github.com/centrifugal/centrifuge-js/releases)):
-
-```html
-<script src="https://unpkg.com/centrifuge@3.0.1/dist/centrifuge.js"></script>
-```
-
-See also [centrifuge-js on cdnjs](https://cdnjs.com/libraries/centrifuge).
-
 SDK can be installed via `npm`:
 
 ```bash
@@ -47,6 +37,14 @@ And then in your project:
 ```javascript
 import { Centrifuge } from 'centrifuge';
 ```
+
+In browser, you can import SDK from CDN (replace `3.0.1` to a concrete version number you want to use, see [releases](https://github.com/centrifugal/centrifuge-js/releases)):
+
+```html
+<script src="https://unpkg.com/centrifuge@3.0.1/dist/centrifuge.js"></script>
+```
+
+See also [centrifuge-js on cdnjs](https://cdnjs.com/libraries/centrifuge). Note that `centrifuge-js` browser builds target [ES6](https://caniuse.com/es6) at this point.
 
 **By default, library works with JSON only**, if you want to send binary payloads go to [Protobuf support](#protobuf-support) section to see how to import client with Protobuf support.
 

@@ -28,10 +28,12 @@ The features implemented by this SDK can be found in [SDK feature matrix](https:
 
 ## Install
 
-Using CDN (replace `3.0.0` to a concrete version number):
+Note: SDK builds target [ES6](https://caniuse.com/es6).
+
+Using CDN (replace `3.0.1` to a concrete version number):
 
 ```html
-<script src="https://unpkg.com/centrifuge@3.0.0/dist/centrifuge.js"></script>
+<script src="https://unpkg.com/centrifuge@3.0.1/dist/centrifuge.js"></script>
 ```
 
 It's also [available on cdnjs](https://cdnjs.com/libraries/centrifuge).

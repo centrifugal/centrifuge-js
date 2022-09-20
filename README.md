@@ -4,6 +4,8 @@ The client behaves according to a common [Centrifigo SDK spec](https://centrifug
 
 The features implemented by this SDK can be found in [SDK feature matrix](https://centrifugal.dev/docs/transports/client_sdk#sdk-feature-matrix).
 
+> **`centrifuge-js` v3.x is compatible only with latest [Centrifugo](https://github.com/centrifugal/centrifugo) server (v4) and [Centrifuge](https://github.com/centrifugal/centrifuge) >= 0.25.0. For Centrifugo v2, Centrifugo v3 and Centrifuge < 0.25.0 you should use `centrifuge-js` v2.x.**
+
 * [Install](#install)
 * [Quick start](#quick-start)
 * [Supported real-time transports](#supported-real-time-transports)

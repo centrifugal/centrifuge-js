@@ -46,6 +46,7 @@ const defaults: Options = {
   maxReconnectDelay: 20000,
   timeout: 5000,
   maxServerPingDelay: 10000,
+  networkEventTarget: null,
 }
 
 interface serverSubscription {
@@ -65,6 +66,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
   private _transportWasOpen: boolean;
   private _transport?: any;
   private _transportClosed: boolean;
+  private _reconnecting: boolean;
   private _reconnectTimeout?: null | ReturnType<typeof setTimeout> = null;
   private _reconnectAttempts: number;
   private _client: null;
@@ -108,6 +110,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     this._transportClosed = true;
     this._encoder = null;
     this._decoder = null;
+    this._reconnecting = false;
     this._reconnectTimeout = null;
     this._reconnectAttempts = 0;
     this._client = null;
@@ -448,6 +451,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
 
   private _setState(newState: State) {
     if (this.state !== newState) {
+      this._reconnecting = false;
       const oldState = this.state;
       this.state = newState;
       this.emit('state', { newState, oldState });
@@ -470,6 +474,31 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
 
   private _nextCommandId() {
     return ++this._commandId;
+  }
+
+  private _setNetworkEvents() {
+    let eventTarget: any;
+    if (this._config.networkEventTarget !== null) {
+      eventTarget = this._config.networkEventTarget;
+    } else if (typeof globalThis.addEventListener !== 'undefined') {
+      eventTarget = globalThis;
+    }
+    if (eventTarget) {
+      eventTarget.addEventListener('offline', () => {
+        this._debug('offline event triggered');
+        if (this.state === State.Connected && this._transport && !this._transportClosed) {
+          this._transportClosed = true;
+          this._transport.close();
+        }
+      });
+      eventTarget.addEventListener('online', () => {
+        this._debug('online event triggered');
+        if (this.state === State.Connecting) {
+          this._clearReconnectTimeout();
+          this._startReconnecting();
+        }
+      });
+    }
   }
 
   private _getReconnectDelay() {
@@ -812,6 +841,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
             delay = 0;
           }
           self._debug('reconnect after ' + delay + ' milliseconds');
+          self._reconnecting = false;
           self._reconnectTimeout = setTimeout(() => {
             self._startReconnecting();
           }, delay);
@@ -845,9 +875,11 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
   }
 
   private _startReconnecting() {
-    if (!this._isConnecting()) {
+    if (!this._isConnecting() || this._reconnecting) {
       return;
     }
+
+    this._reconnecting = true;
 
     const needTokenRefresh = this._refreshRequired || (!this._token && this._config.getToken !== null);
     if (!needTokenRefresh) {
@@ -881,6 +913,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
       });
       const delay = self._getReconnectDelay();
       self._debug('error on connection token refresh, reconnect after ' + delay + ' milliseconds', e);
+      self._reconnecting = false;
       self._reconnectTimeout = setTimeout(() => {
         self._startReconnecting();
       }, delay);
@@ -1296,6 +1329,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
 
     this._client = result.client;
     this._setState(State.Connected);
+    this._setNetworkEvents();
 
     if (this._refreshTimeout) {
       clearTimeout(this._refreshTimeout);

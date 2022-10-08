@@ -80,7 +80,8 @@ export interface TransportEndpoint {
 
 /** Options for Centrifuge client. */
 export interface Options {
-  /** select protocol to use. Note that to use Protobuf protocol you need to use CentrifugeProtobuf class. */
+  /** select protocol to use. Note that to use Protobuf protocol you need to use 
+   * CentrifugeProtobuf class. */
   protocol: 'json' | 'protobuf';
   /** allows enabling debug mode */
   debug: boolean;
@@ -90,7 +91,8 @@ export interface Options {
   getToken: null | ((ctx: ConnectionTokenContext) => Promise<string>);
   /** data to send to a server with connect command */
   data: any | null;
-  /** name of client - it's not a unique name of each connection, it's sth to identify from where client connected */
+  /** name of client - it's not a unique name of each connection, it's sth to identify
+   * from where client connected */
   name: string;
   /** version of client */
   version: string;
@@ -102,7 +104,8 @@ export interface Options {
   timeout: number;
   /** maximum delay of server pings to detect broken connection in milliseconds */
   maxServerPingDelay: number;
-  /** provide custom WebSocket constructor, useful for NodeJS env where WebSocket is not available globally */
+  /** provide custom WebSocket constructor, useful for NodeJS env where WebSocket is not
+   * available globally */
   websocket: any | null;
   /** provide shim for fetch implementation */
   fetch: any | null;
@@ -116,6 +119,10 @@ export interface Options {
   sockjsOptions: SockjsOptions;
   /** which emulation endpoint to use */
   emulationEndpoint: string;
+  /** EventTarget for network online/offline events, in browser environment 
+   * Centrifuge uses global window online/offline events automatically
+   * by default. */
+  networkEventTarget: EventTarget | null;
 }
 
 export interface SockjsOptions {

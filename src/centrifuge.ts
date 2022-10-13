@@ -477,11 +477,11 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
   }
 
   private _setNetworkEvents() {
-    let eventTarget: any;
+    let eventTarget: EventTarget | null = null;
     if (this._config.networkEventTarget !== null) {
       eventTarget = this._config.networkEventTarget;
     } else if (typeof globalThis.addEventListener !== 'undefined') {
-      eventTarget = globalThis;
+      eventTarget = globalThis as EventTarget;
     }
     if (eventTarget) {
       eventTarget.addEventListener('offline', () => {

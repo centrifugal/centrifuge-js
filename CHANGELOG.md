@@ -1,3 +1,8 @@
+3.1.0
+=====
+
+* React on network online/offline events [#204](https://github.com/centrifugal/centrifuge-js/pull/204). In browser environment `centrifuge-js` will automatically listen to window `online` and `offline` events, on `offline` event client will immediately disconnect, on `online` event reconnect attempt will be forced
+
 3.0.1
 =====
 

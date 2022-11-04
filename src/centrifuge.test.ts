@@ -1,6 +1,6 @@
 import { Centrifuge } from './centrifuge'
 import { DisconnectedContext, Error as CentrifugeError, PublicationContext, TransportName, UnsubscribedContext } from './types';
-import { disconnectedCodes, unsubscribedCodes } from './codes';
+import { disconnectedCodes, unsubscribedCodes, connectingCodes } from './codes';
 
 import WebSocket from 'ws';
 import EventSource from 'eventsource';
@@ -155,4 +155,96 @@ test.each(transportCases)("%s: rpc buffered till connected", async (transport, e
   const rpcErr = await p;
   c.disconnect();
   expect(rpcErr.code).toStrictEqual(108);
+});
+
+test.each(transportCases)("%s: handles offline/online events", async (transport, endpoint) => {
+  const networkEventTarget = new EventTarget();
+
+  const c = new Centrifuge([{
+    transport: transport as TransportName,
+    endpoint: endpoint,
+  }], {
+    websocket: WebSocket,
+    fetch: fetch,
+    eventsource: EventSource,
+    readableStream: ReadableStream,
+    emulationEndpoint: 'http://localhost:8000/emulation',
+    networkEventTarget: networkEventTarget,
+  });
+
+  let connectingCalled: any;
+  const p = new Promise<DisconnectedContext>((resolve, _) => {
+    connectingCalled = resolve;
+  })
+
+  c.on('connecting', (ctx) => {
+    if (ctx.code == connectingCodes.transportClosed) {
+      connectingCalled(ctx);
+    }
+  })
+
+  c.connect();
+  await c.ready(5000);
+  expect(c.state).toBe(Centrifuge.State.Connected);
+
+  const offlineEvent = new Event('offline', { bubbles: true });
+  networkEventTarget.dispatchEvent(offlineEvent);
+
+  const ctx = await p;
+  expect(c.state).toBe(Centrifuge.State.Connecting);
+  expect(ctx.code).toBe(connectingCodes.transportClosed);
+
+  const onlineEvent = new Event('online', { bubbles: true });
+  networkEventTarget.dispatchEvent(onlineEvent);
+
+  let disconnectCalled: any;
+  const disconnectedPromise = new Promise<DisconnectedContext>((resolve, _) => {
+    disconnectCalled = resolve;
+  })
+  c.on('disconnected', (ctx) => {
+    disconnectCalled(ctx);
+  })
+
+  await c.ready(5000);
+  expect(c.state).toBe(Centrifuge.State.Connected);
+
+  c.disconnect();
+  await disconnectedPromise;
+  expect(c.state).toBe(Centrifuge.State.Disconnected);
+});
+
+test.each(transportCases.slice(0, 1))("%s: not connecting on online in disconnected state", async (transport, endpoint) => {
+  const networkEventTarget = new EventTarget();
+
+  const c = new Centrifuge([{
+    transport: transport as TransportName,
+    endpoint: endpoint,
+  }], {
+    websocket: WebSocket,
+    fetch: fetch,
+    eventsource: EventSource,
+    readableStream: ReadableStream,
+    emulationEndpoint: 'http://localhost:8000/emulation',
+    networkEventTarget: networkEventTarget,
+  });
+
+  c.connect();
+  await c.ready(5000);
+  expect(c.state).toBe(Centrifuge.State.Connected);
+
+  let disconnectCalled: any;
+  const disconnectedPromise = new Promise<DisconnectedContext>((resolve, _) => {
+    disconnectCalled = resolve;
+  })
+  c.on('disconnected', (ctx) => {
+    disconnectCalled(ctx);
+  })
+
+  c.disconnect();
+  await disconnectedPromise;
+  expect(c.state).toBe(Centrifuge.State.Disconnected);
+
+  const onlineEvent = new Event('online', { bubbles: true });
+  networkEventTarget.dispatchEvent(onlineEvent);
+  expect(c.state).toBe(Centrifuge.State.Disconnected);
 });

@@ -40,10 +40,10 @@ And then in your project:
 import { Centrifuge } from 'centrifuge';
 ```
 
-In browser, you can import SDK from CDN (replace `3.0.1` to a concrete version number you want to use, see [releases](https://github.com/centrifugal/centrifuge-js/releases)):
+In browser, you can import SDK from CDN (replace `3.1.0` to a concrete version number you want to use, see [releases](https://github.com/centrifugal/centrifuge-js/releases)):
 
 ```html
-<script src="https://unpkg.com/centrifuge@3.0.1/dist/centrifuge.js"></script>
+<script src="https://unpkg.com/centrifuge@3.1.0/dist/centrifuge.js"></script>
 ```
 
 See also [centrifuge-js on cdnjs](https://cdnjs.com/libraries/centrifuge). Note that `centrifuge-js` browser builds target [ES6](https://caniuse.com/es6) at this point.

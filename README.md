@@ -589,7 +589,7 @@ sub.subscribe();
 
 ## Subscription management API
 
-According to [client SDK spec](https://centrifugal.dev/docs/transports/client_api#subscription-management) centrifuge-js supports several methods to manage subscriptions in internal registry. The following methods are available on top level of the Centrifuge SDK client instance.
+According to [client SDK spec](https://centrifugal.dev/docs/transports/client_api#subscription-management) centrifuge-js supports several methods to manage client-side subscriptions in internal registry. The following methods are available on top level of the Centrifuge SDK client instance.
 
 ### newSubscription
 

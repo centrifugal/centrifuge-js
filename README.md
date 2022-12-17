@@ -19,6 +19,7 @@ The features implemented by this SDK can be found in [SDK feature matrix](https:
 * [Subscription API](#subscription-api)
     * [Subscription methods and events](#subscription-methods-and-events)
     * [Subscription token](#subscription-token)
+* [Subscription management API](#subscription-management-api)
 * [Message batching](#message-batching)
 * [Server-side subscriptions](#server-side-subscriptions)
 * [Configuration options](#configuration-options)
@@ -370,11 +371,7 @@ const client = new Centrifuge(
 );
 ```
 
-:::tip
-
-If initial token is not provided, but `getToken` is specified – then SDK assumes that developer wants to use token authentication. In this case SDK attempts to get a connection token before establishing an initial connection.
-
-:::
+> If initial token is not provided, but `getToken` is specified – then SDK assumes that developer wants to use token authentication. In this case SDK attempts to get a connection token before establishing an initial connection.
 
 ## Subscription API
 
@@ -588,11 +585,35 @@ const sub = centrifuge.newSubscription(channel, {
 sub.subscribe();
 ```
 
-:::tip
+> If initial token is not provided, but `getToken` is specified – then SDK assumes that developer wants to use token authorization for a channel subscription. In this case SDK attempts to get a subscription token before initial subscribe.
 
-If initial token is not provided, but `getToken` is specified – then SDK assumes that developer wants to use token authorization for a channel subscription. In this case SDK attempts to get a subscription token before initial subscribe.
+## Subscription management API
 
-:::
+According to [client SDK spec](https://centrifugal.dev/docs/transports/client_api#subscription-management) centrifuge-js supports several methods to manage subscriptions in internal registry. The following methods are available on top level of the Centrifuge SDK client instance.
+
+### newSubscription
+
+`newSubscription(channel: string, options?: Partial<SubscriptionOptions>): Subscription`
+
+Creates new `Subscription` to a channel or throws an exception if the Subscription to a channel already exists in the internal registry of the client.
+
+### getSubscription
+
+`getSubscription(channel: string): Subscription | null`
+
+getSubscription returns `Subscription` if it's registered in the internal registry or `null`.
+
+### removeSubscription
+
+`removeSubscription(sub: Subscription | null)`
+
+removeSubscription allows removing Subcription from the internal registry. Subscrption must be in unsubscribed state.
+
+### subscriptions
+
+`subscriptions(): Record<string, Subscription>`
+
+ Get a map with all current client-side subscriptions registered in the client.
 
 ## Message batching
 

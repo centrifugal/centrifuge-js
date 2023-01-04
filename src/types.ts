@@ -96,9 +96,9 @@ export interface Options {
   name: string;
   /** version of client */
   version: string;
-  /** minimum delay between reconnect attemts in milliseconds */
+  /** minimum delay between reconnect attempts in milliseconds */
   minReconnectDelay: number;
-  /** maximum delay between reconnect attemts in milliseconds */
+  /** maximum delay between reconnect attempts in milliseconds */
   maxReconnectDelay: number;
   /** timeout for operations in milliseconds */
   timeout: number;
@@ -200,7 +200,7 @@ export interface SubscriptionStateContext {
 export interface ServerSubscribedContext {
   /** channel of Subscription. */
   channel: string;
-  /** Subscription is recoverable – i.e. can automatically recover missied messages */
+  /** Subscription is recoverable – i.e. can automatically recover missed messages */
   recoverable: boolean;
   /** Subscription is positioned – i.e. server tracks message loss on the way from PUB/SUB broker */
   positioned: boolean;
@@ -313,13 +313,13 @@ export interface SubscriptionOptions {
   data: any | null;
   /** force recovery on first subscribe from a provided StreamPosition. */
   since: StreamPosition | null;
-  /** min delay between resubscribe attemts. */
+  /** min delay between resubscribe attempts. */
   minResubscribeDelay: number;
   /** max delay between resubscribe attempts. */
   maxResubscribeDelay: number;
-  /** ask server to make subsription positioned. */
+  /** ask server to make subscription positioned. */
   positioned: boolean;
-  /** ask server to make subsription recoverable. */
+  /** ask server to make subscription recoverable. */
   recoverable: boolean;
   /** ask server to send join/leave messages. */
   joinLeave: boolean;

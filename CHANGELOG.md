@@ -1,3 +1,8 @@
+3.1.1
+=====
+
+* Fix missing connInfo and chanInfo in presence data, see [#220](https://github.com/centrifugal/centrifuge-js/issues/220)
+
 3.1.0
 =====
 

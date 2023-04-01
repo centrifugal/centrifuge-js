@@ -248,3 +248,44 @@ test.each(transportCases.slice(0, 1))("%s: not connecting on online in disconnec
   networkEventTarget.dispatchEvent(onlineEvent);
   expect(c.state).toBe(Centrifuge.State.Disconnected);
 });
+
+test.each(transportCases)("%s: subscribe and presence", async (transport, endpoint) => {
+  const c = new Centrifuge([{
+    transport: transport as TransportName,
+    endpoint: endpoint,
+  }], {
+    websocket: WebSocket,
+    fetch: fetch,
+    eventsource: EventSource,
+    readableStream: ReadableStream,
+    emulationEndpoint: 'http://localhost:8000/emulation'
+  });
+
+  c.connect();
+  await c.ready(5000);
+  const sub = c.newSubscription('test');
+
+  sub.subscribe()
+  await sub.ready(5000);
+  expect(sub.state).toBe(Centrifuge.SubscriptionState.Subscribed);
+  expect(c.state).toBe(Centrifuge.State.Connected);
+
+  const presence = await sub.presence();
+  expect(Object.keys(presence.clients).length).toBeGreaterThan(0);
+
+  const presenceStats = await sub.presenceStats();
+  expect(presenceStats.numClients).toBeGreaterThan(0)
+  expect(presenceStats.numUsers).toBeGreaterThan(0);
+
+  let disconnectCalled: any;
+  const disconnectedPromise = new Promise<DisconnectedContext>((resolve, _) => {
+    disconnectCalled = resolve;
+  })
+  c.on('disconnected', (ctx) => {
+    disconnectCalled(ctx);
+  })
+
+  c.disconnect();
+  await disconnectedPromise;
+  expect(c.state).toBe(Centrifuge.State.Disconnected);
+});

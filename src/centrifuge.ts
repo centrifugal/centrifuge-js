@@ -325,8 +325,21 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
 
     return this._methodCall().then(function () {
       return self._callPromise(cmd, function (reply: any) {
+        const clients = reply.presence.presence;
+        for (const clientId in clients) {
+          if (clients.hasOwnProperty(clientId)) {
+            const connInfo = clients[clientId]['conn_info'];
+            const chanInfo = clients[clientId]['chan_info'];
+            if (connInfo) {
+              clients[clientId].connInfo = connInfo;
+            }
+            if (chanInfo) {
+              clients[clientId].chanInfo = chanInfo;
+            }
+          }
+        }
         return {
-          'clients': reply.presence.presence
+          'clients': clients
         };
       });
     });

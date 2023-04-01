@@ -23,6 +23,7 @@ import {
   HistoryOptions, HistoryResult, PublishResult,
   PresenceResult, PresenceStatsResult, SubscribedContext,
   TransportEndpoint,
+  DisconnectOptions,
 } from './types';
 
 import EventEmitter from 'events';
@@ -224,7 +225,10 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
   }
 
   /** disconnect from a server. */
-  disconnect() {
+  disconnect(opts?: DisconnectOptions) {
+    if (opts?.resetConnectionToken == true) {
+      this._token = undefined;
+    }
     this._disconnect(disconnectedCodes.disconnectCalled, 'disconnect called', false);
   }
 
@@ -894,7 +898,8 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
 
     this._reconnecting = true;
 
-    const needTokenRefresh = this._refreshRequired || (!this._token && this._config.getToken !== null);
+    const tokenNotSet = this._token === null || this._token === undefined;
+    const needTokenRefresh = this._refreshRequired || (tokenNotSet && this._config.getToken !== null);
     if (!needTokenRefresh) {
       this._initializeTransport();
       return;
@@ -906,7 +911,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
       if (!self._isConnecting()) {
         return;
       }
-      if (!token) {
+      if (token == null || token == undefined) {
         self._failUnauthorized();
         return;
       }

@@ -303,6 +303,10 @@ export interface HistoryOptions {
   reverse?: boolean;
 }
 
+export interface DisconnectOptions {
+  resetConnectionToken?: boolean;
+}
+
 /** SubscriptionOptions can customize Subscription. */
 export interface SubscriptionOptions {
   /** allows setting subscription token (JWT) */

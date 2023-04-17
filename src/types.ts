@@ -85,8 +85,8 @@ export interface Options {
   protocol: 'json' | 'protobuf';
   /** allows enabling debug mode */
   debug: boolean;
-  /** allows setting connection token (JWT) */
-  token: string | null;
+  /** allows setting initial connection token (JWT) */
+  token: string;
   /** allows setting function to get/refresh connection token */
   getToken: null | ((ctx: ConnectionTokenContext) => Promise<string>);
   /** data to send to a server with connect command */
@@ -309,10 +309,10 @@ export interface DisconnectOptions {
 
 /** SubscriptionOptions can customize Subscription. */
 export interface SubscriptionOptions {
-  /** allows setting subscription token (JWT) */
-  token: string | null;
+  /** allows setting initial subscription token (JWT) */
+  token: string;
   /** allows setting function to get/refresh subscription token */
-  getToken: null | ((ctx: SubscriptionTokenContext) => Promise<string>);
+  getToken: null | ((ctx: ConnectionTokenContext) => Promise<string>);
   /** data to send to a server with subscribe command */
   data: any | null;
   /** force recovery on first subscribe from a provided StreamPosition. */

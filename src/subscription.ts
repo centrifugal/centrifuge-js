@@ -1,5 +1,5 @@
 import EventEmitter from 'events';
-import { Centrifuge } from './centrifuge';
+import { Centrifuge, UnauthorizedError } from './centrifuge';
 import { errorCodes, unsubscribedCodes, subscribingCodes, connectingCodes } from './codes';
 import {
   HistoryOptions, HistoryResult, PresenceResult, PresenceStatsResult,
@@ -26,7 +26,7 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
   private _resubscribeAttempts: number;
   private _promiseId: number;
 
-  private _token: string | null;
+  private _token: string;
   private _data: any | null;
   private _recoverable: boolean;
   private _positioned: boolean;
@@ -40,7 +40,7 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
     this.channel = channel;
     this.state = SubscriptionState.Unsubscribed;
     this._centrifuge = centrifuge;
-    this._token = null;
+    this._token = '';
     this._getToken = null;
     this._data = null;
     this._recover = false;
@@ -196,7 +196,7 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
   }
 
   private _usesToken() {
-    return this._token !== null || this._getToken !== null;
+    return this._token !== '' || this._getToken !== null;
   }
 
   private _clearSubscribingState() {
@@ -286,6 +286,10 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
           self._sendSubscribe(token, false);
         }).catch(function (e) {
           if (!self._isSubscribing()) {
+            return;
+          }
+          if (e instanceof UnauthorizedError) {
+            self._failUnauthorized();
             return;
           }
           self.emit('error', {
@@ -467,7 +471,7 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
     }
     if (err.code < 100 || err.code === 109 || err.temporary === true) {
       if (err.code === 109) { // Token expired error.
-        this._token = null;
+        this._token = '';
       }
       const errContext = {
         channel: this.channel,
@@ -562,7 +566,15 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
     };
     const getToken = this._getToken;
     if (getToken === null) {
-      throw new Error('provide a function to get channel subscription token');
+      this.emit('error', {
+        type: 'configuration',
+        channel: this.channel,
+        error: {
+          code: errorCodes.badConfiguration,
+          message: 'provide a function to get channel subscription token'
+        }
+      });
+      throw new UnauthorizedError('');
     }
     return getToken(ctx);
   }
@@ -603,6 +615,10 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
         }
       });
     }).catch(function (e) {
+      if (e instanceof UnauthorizedError) {
+        self._failUnauthorized();
+        return;
+      }
       self.emit('error', {
         type: 'refreshToken',
         channel: self.channel,

@@ -9,7 +9,8 @@ export const errorCodes = {
   subscriptionSubscribeToken: 8,
   subscriptionRefreshToken: 9,
   transportWriteError: 10,
-  connectionClosed: 11
+  connectionClosed: 11,
+  badConfiguration: 12,
 };
 
 export const connectingCodes = {

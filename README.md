@@ -142,7 +142,7 @@ If you want to use SockJS you must also import SockJS client before centrifuge.j
 
 ```html
 <script src="https://cdn.jsdelivr.net/npm/sockjs-client@1/dist/sockjs.min.js" type="text/javascript"></script>
-<script src="https://unpkg.com/centrifuge@3.0.0/dist/centrifuge.js" type="text/javascript"></script>
+<script src="https://unpkg.com/centrifuge@3.1.0/dist/centrifuge.js" type="text/javascript"></script>
 ```
 
 Or provide it explicitly as a dependency:

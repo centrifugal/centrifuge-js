@@ -763,22 +763,25 @@ const centrifuge = new Centrifuge('ws://localhost:8000/connection/websocket');
 If you are building a client for a non-browser environment and want to pass custom headers then you can use the following approach to wrap a WebSocket constructor and let custom options to be used on connection initialization:
 
 ```javascript
-var Centrifuge = require("centrifuge");
-const WebSocket = require('ws');
-
 const myWs = function (options) {
-    return class wsClass extends WebSocket {
-        constructor(...args) {
-            super(...[...args, ...[options]])
-        }
+  return class wsClass extends WebSocket {
+    constructor(...args) {
+      if (args.length === 1) {
+        super(...[...args, 'centrifuge-json', ...[options]])
+      } else {
+        super(...[...args, ...[options]])
+      }
     }
+  }
 }
 ```
 
-It should be now possible to use pass your custom WebSocket constructor to `centrifuge-js` and so custom headers will be used when connecting to a server:
+It should be now possible to use pass your custom WebSocket constructor to `centrifuge-js` and so custom headers will be used when connecting to a server (only in non-browser environment):
 
 ```javascript
 var centrifuge = new Centrifuge('ws://localhost:8000/connection/websocket', {
     websocket: myWs({ headers: { Authorization: '<token or key>' } }),
 });
 ```
+
+See a basic example with React Native where this technique is used [in this comment](https://github.com/centrifugal/centrifuge-js/issues/224#issuecomment-1538820023).

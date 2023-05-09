@@ -219,6 +219,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
       this._debug('connect called when already connecting');
       return;
     }
+    this._debug('connect called');
     this._reconnectAttempts = 0;
     this._startConnecting();
   }
@@ -499,9 +500,8 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     if (eventTarget) {
       eventTarget.addEventListener('offline', () => {
         this._debug('offline event triggered');
-        if (this.state === State.Connected && this._transport && !this._transportClosed) {
-          this._transportClosed = true;
-          this._transport.close();
+        if (this.state === State.Connected) {
+          this._disconnect(connectingCodes.transportClosed, 'transport closed', true);
         }
       });
       eventTarget.addEventListener('online', () => {
@@ -736,8 +736,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     }
 
     const self = this;
-
-    let transportName: string;
+    const transport = this._transport;
     let wasOpen = false;
 
     let optimistic = true;
@@ -763,15 +762,14 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
 
     const initialData = this._encoder.encodeCommands(initialCommands);
 
+    this._transportClosed = false
+
     this._transport.initialize(this._config.protocol, {
       onOpen: function () {
         wasOpen = true;
-        transportName = self._transport.subName();
-        self._debug(transportName, 'transport open');
+        self._debug(transport.subName(), 'transport open');
         self._transportWasOpen = true;
-        self._transportClosed = false;
-
-        if (self._transport.emulation()) {
+        if (transport.emulation()) {
           return;
         }
         self.startBatching();
@@ -785,7 +783,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
         self._debug('transport level error', e);
       },
       onClose: function (closeEvent) {
-        self._debug(self._transport.name(), 'transport closed');
+        self._debug(transport.subName(), 'transport closed');
         self._transportClosed = true;
 
         let reason = 'connection closed';
@@ -891,8 +889,13 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     if (!this._isConnecting() || this._reconnecting) {
       return;
     }
-
+    this._debug('start reconnecting');
     this._reconnecting = true;
+
+    if (this._transportClosed === false) {
+      this._debug('waiting for transport close');
+      return;
+    }
 
     const needTokenRefresh = this._refreshRequired || (!this._token && this._config.getToken !== null);
     if (!needTokenRefresh) {
@@ -947,9 +950,9 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
         'error': err
       });
       // Not yet connected, closing transport is enough.
-      if (this._transport && !this._transportClosed) {
-        this._transportClosed = true;
+      if (this._transport) {
         this._transport.close();
+        this._transport = null;
       }
     } else {
       this._disconnect(err.code, err.message, false);
@@ -1171,9 +1174,9 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
       }
     }
 
-    if (this._transport && !this._transportClosed) {
-      this._transportClosed = true;
+    if (this._transport) {
       this._transport.close();
+      this._transport = null;
     }
   }
 

@@ -844,9 +844,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
           });
         }
 
-        if (self._transport !== null) {
-          self._disconnect(code, reason, needReconnect);
-        }
+        self._disconnect(code, reason, needReconnect);
 
         if (self._isConnecting()) {
           let delay = self._getReconnectDelay();

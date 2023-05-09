@@ -951,8 +951,9 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
       });
       // Not yet connected, closing transport is enough.
       if (this._transport) {
-        this._transport.close();
+        const transport = this._transport;
         this._transport = null;
+        transport.close();
       }
     } else {
       this._disconnect(err.code, err.message, false);

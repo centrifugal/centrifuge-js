@@ -844,7 +844,9 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
           });
         }
 
-        self._disconnect(code, reason, needReconnect);
+        if (self._transport !== null) {
+          self._disconnect(code, reason, needReconnect);
+        }
 
         if (self._isConnecting()) {
           let delay = self._getReconnectDelay();
@@ -1175,8 +1177,9 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     }
 
     if (this._transport) {
-      this._transport.close();
+      const transport = this._transport;
       this._transport = null;
+      transport.close(); // Close only after setting this._transport to null to avoid recursion when calling transport close().
     }
   }
 

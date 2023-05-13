@@ -87,6 +87,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
   private _sendPong: boolean;
   private _promises: Record<number, any>;
   private _promiseId: number;
+  private _networkEventsSet: boolean;
 
   private _debugEnabled: boolean;
   private _config: Options;
@@ -132,6 +133,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     this._promises = {};
     this._promiseId = 0;
     this._debugEnabled = false;
+    this._networkEventsSet = false;
 
     this._config = { ...defaults, ...options };
     this._configure();
@@ -491,6 +493,9 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
   }
 
   private _setNetworkEvents() {
+    if (this._networkEventsSet) {
+      return;
+    }
     let eventTarget: EventTarget | null = null;
     if (this._config.networkEventTarget !== null) {
       eventTarget = this._config.networkEventTarget;
@@ -500,7 +505,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     if (eventTarget) {
       eventTarget.addEventListener('offline', () => {
         this._debug('offline event triggered');
-        if (this.state === State.Connected) {
+        if (this.state === State.Connected || this.state === State.Connecting) {
           this._disconnect(connectingCodes.transportClosed, 'transport closed', true);
         }
       });
@@ -511,6 +516,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
           this._startReconnecting();
         }
       });
+      this._networkEventsSet = true;
     }
   }
 
@@ -760,6 +766,8 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
       }
     }
 
+    this._setNetworkEvents();
+
     const initialData = this._encoder.encodeCommands(initialCommands);
 
     this._transportClosed = false
@@ -840,7 +848,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
               code: errorCodes.transportClosed,
               message: 'transport closed'
             },
-            transport: self._transport.name()
+            transport: transport.name()
           });
         }
 
@@ -950,6 +958,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
         'error': err
       });
       // Not yet connected, closing transport is enough.
+      this._debug('closing transport due to connect error');
       if (this._transport) {
         const transport = this._transport;
         this._transport = null;
@@ -1347,7 +1356,6 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
 
     this._client = result.client;
     this._setState(State.Connected);
-    this._setNetworkEvents();
 
     if (this._refreshTimeout) {
       clearTimeout(this._refreshTimeout);

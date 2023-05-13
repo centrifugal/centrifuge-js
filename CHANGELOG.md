@@ -1,3 +1,11 @@
+3.1.2
+=====
+
+This release contains important connection stability improvements. If you experience disconnections due to bad request or stale reasons – this release may fix if not all but most of them.
+
+* Fix connection leak due to transport close race, [#225](https://github.com/centrifugal/centrifuge-js/pull/225).
+* Use network events in connecting state, [#227](https://github.com/centrifugal/centrifuge-js/pull/227). This allows immediately close transport upon offline event while SDK is in connecting state. Previously we only started handling these events after successful connect. Also fixes setting duplicate onlne/offline event handlers.
+
 3.1.1
 =====
 

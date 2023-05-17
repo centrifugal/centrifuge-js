@@ -805,14 +805,14 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
       },
       onError: function (e: any) {
         if (self._transportId != transportId) {
-          this._debug('error callback from non-actual transport');
+          self._debug('error callback from non-actual transport');
           return;
         }
         self._debug('transport level error', e);
       },
       onClose: function (closeEvent) {
         if (self._transportId != transportId) {
-          this._debug('close callback from non-actual transport');
+          self._debug('close callback from non-actual transport');
           return;
         }
         self._debug(transport.subName(), 'transport closed');

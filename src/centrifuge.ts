@@ -65,6 +65,8 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
   private _triedAllTransports: boolean;
   private _transportWasOpen: boolean;
   private _transport?: any;
+  private _transportId: number;
+  private _deviceWentOffline: boolean;
   private _transportClosed: boolean;
   private _reconnecting: boolean;
   private _reconnectTimeout?: null | ReturnType<typeof setTimeout> = null;
@@ -108,6 +110,8 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     this._triedAllTransports = false;
     this._transportWasOpen = false;
     this._transport = null;
+    this._transportId = 0;
+    this._deviceWentOffline = false;
     this._transportClosed = true;
     this._encoder = null;
     this._decoder = null;
@@ -507,11 +511,21 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
         this._debug('offline event triggered');
         if (this.state === State.Connected || this.state === State.Connecting) {
           this._disconnect(connectingCodes.transportClosed, 'transport closed', true);
+          this._deviceWentOffline = true;
         }
       });
       eventTarget.addEventListener('online', () => {
         this._debug('online event triggered');
         if (this.state === State.Connecting) {
+          if (this._deviceWentOffline && !this._transportClosed) {
+            // This is a workaround for mobile Safari where close callback may be
+            // not issued upon device going to the flight mode. We know for sure
+            // that transport close was called, so we start reconnecting. In this
+            // case if the close callback will be issued for some reason after some
+            // time – it will be ignored due to transport ID mismatch.
+            this._deviceWentOffline = false;
+            this._transportClosed = true;
+          }
           this._clearReconnectTimeout();
           this._startReconnecting();
         }
@@ -743,6 +757,8 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
 
     const self = this;
     const transport = this._transport;
+    const transportId = this._nextTransportId();
+    self._debug("id of transport", transportId);
     let wasOpen = false;
 
     let optimistic = true;
@@ -770,7 +786,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
 
     const initialData = this._encoder.encodeCommands(initialCommands);
 
-    this._transportClosed = false
+    this._transportClosed = false;
 
     this._transport.initialize(this._config.protocol, {
       onOpen: function () {
@@ -788,9 +804,17 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
         self.stopBatching();
       },
       onError: function (e: any) {
+        if (self._transportId != transportId) {
+          this._debug('error callback from non-actual transport');
+          return;
+        }
         self._debug('transport level error', e);
       },
       onClose: function (closeEvent) {
+        if (self._transportId != transportId) {
+          this._debug('close callback from non-actual transport');
+          return;
+        }
         self._debug(transport.subName(), 'transport closed');
         self._transportClosed = true;
 
@@ -894,16 +918,24 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
   }
 
   private _startReconnecting() {
+    this._debug('start reconnecting');
     if (!this._isConnecting() || this._reconnecting) {
       return;
     }
-    this._debug('start reconnecting');
-    this._reconnecting = true;
-
+    if (!this._isConnecting()) {
+      this._debug('stop reconnecting: client not in connecting state');
+      return;
+    }
+    if (this._reconnecting) {
+      this._debug('reconnect already in progress, return from reconnect routine');
+      return;
+    }
     if (this._transportClosed === false) {
       this._debug('waiting for transport close');
       return;
     }
+
+    this._reconnecting = true;
 
     const needTokenRefresh = this._refreshRequired || (!this._token && this._config.getToken !== null);
     if (!needTokenRefresh) {
@@ -1723,6 +1755,10 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
 
   private _nextPromiseId() {
     return ++this._promiseId;
+  }
+
+  private _nextTransportId() {
+    return ++this._transportId;
   }
 
   private _resolvePromises() {

@@ -32,6 +32,7 @@ const defaults: Options = {
   token: '',
   getToken: null,
   data: null,
+  getData: null,
   debug: false,
   name: 'js',
   version: '',
@@ -88,6 +89,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
   private _refreshTimeout?: null | ReturnType<typeof setTimeout> = null;
   private _callbacks: Record<number, any>;
   private _token: string;
+  private _data: any;
   private _dispatchPromise: Promise<void>;
   private _serverPing: number;
   private _serverPingTimeout?: null | ReturnType<typeof setTimeout> = null;
@@ -134,6 +136,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     this._refreshTimeout = null;
     this._callbacks = {};
     this._token = '';
+    this._data = null;
     this._dispatchPromise = Promise.resolve();
     this._serverPing = 0;
     this._serverPingTimeout = null;
@@ -442,6 +445,10 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
 
     if (this._config.token !== null) {
       this._token = this._config.token;
+    }
+
+    if (this._config.data !== null) {
+      this._data = this._config.data;
     }
 
     this._setFormat('json');
@@ -919,7 +926,17 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     const emptyToken = this._token === '';
     const needTokenRefresh = this._refreshRequired || (emptyToken && this._config.getToken !== null);
     if (!needTokenRefresh) {
-      this._initializeTransport();
+      if (this._config.getData) {
+        this._config.getData().then(function (data: any) {
+          if (!self._isConnecting()) {
+            return;
+          }
+          self._data = data;
+          self._initializeTransport();
+        })
+      } else {
+        this._initializeTransport();
+      }
       return;
     }
 
@@ -935,7 +952,17 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
       }
       self._token = token;
       self._debug('connection token refreshed');
-      self._initializeTransport();
+      if (self._config.getData) {
+        self._config.getData().then(function (data: any) {
+          if (!self._isConnecting()) {
+            return;
+          }
+          self._data = data;
+          self._initializeTransport();
+        })
+      } else {
+        self._initializeTransport();
+      }
     }).catch(function (e) {
       if (!self._isConnecting()) {
         return;
@@ -991,8 +1018,8 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     if (this._token) {
       req.token = this._token;
     }
-    if (this._config.data) {
-      req.data = this._config.data;
+    if (this._data) {
+      req.data = this._data;
     }
     if (this._config.name) {
       req.name = this._config.name;

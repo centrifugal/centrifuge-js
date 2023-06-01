@@ -4,7 +4,8 @@ import { errorCodes, unsubscribedCodes, subscribingCodes, connectingCodes } from
 import {
   HistoryOptions, HistoryResult, PresenceResult, PresenceStatsResult,
   PublishResult, State, SubscriptionEvents, SubscriptionOptions,
-  SubscriptionState, SubscriptionTokenContext, TypedEventEmitter
+  SubscriptionState, SubscriptionTokenContext, TypedEventEmitter,
+  SubscriptionDataContext
 } from './types';
 import { ttlMilliseconds, backoff } from './utils';
 
@@ -28,6 +29,7 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
 
   private _token: string;
   private _data: any | null;
+  private _getData: null | ((ctx: SubscriptionDataContext) => Promise<any>);
   private _recoverable: boolean;
   private _positioned: boolean;
   private _joinLeave: boolean;
@@ -43,6 +45,7 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
     this._token = '';
     this._getToken = null;
     this._data = null;
+    this._getData = null;
     this._recover = false;
     this._offset = null;
     this._epoch = null;
@@ -504,6 +507,9 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
     }
     if (options.data) {
       this._data = options.data;
+    }
+    if (options.getData) {
+      this._getData = options.getData;
     }
     if (options.minResubscribeDelay !== undefined) {
       this._minResubscribeDelay = options.minResubscribeDelay;

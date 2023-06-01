@@ -22,7 +22,7 @@ import {
   TypedEventEmitter, RpcResult, SubscriptionOptions,
   HistoryOptions, HistoryResult, PublishResult,
   PresenceResult, PresenceStatsResult, SubscribedContext,
-  TransportEndpoint, DisconnectOptions,
+  TransportEndpoint,
 } from './types';
 
 import EventEmitter from 'events';
@@ -238,11 +238,12 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
   }
 
   /** disconnect from a server. */
-  disconnect(opts?: DisconnectOptions) {
-    if (opts?.resetConnectionToken === true) {
-      this._token = '';
-    }
+  disconnect() {
     this._disconnect(disconnectedCodes.disconnectCalled, 'disconnect called', false);
+  }
+
+  resetToken() {
+    this._token = '';
   }
 
   /** send asynchronous data to a server (without any response from a server 

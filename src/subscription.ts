@@ -269,12 +269,13 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
     }
 
     const self = this;
+    const getDataCtx = {
+      channel: self.channel
+    };
 
     if (!this._usesToken() || this._token) {
       if (self._getData) {
-        self._getData({
-          channel: self.channel
-        }).then(function (data: any) {
+        self._getData(getDataCtx).then(function (data: any) {
           if (!self._isSubscribing()) {
             return;
           }
@@ -299,9 +300,7 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
       }
       self._token = token;
       if (self._getData) {
-        self._getData({
-          channel: self.channel
-        }).then(function (data: any) {
+        self._getData(getDataCtx).then(function (data: any) {
           if (!self._isSubscribing()) {
             return;
           }

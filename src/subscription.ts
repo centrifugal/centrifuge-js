@@ -268,48 +268,68 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
       return null;
     }
 
-    if (this._usesToken()) {
-      // token channel, need to get token before sending subscribe.
-      if (this._token) {
-        return this._sendSubscribe(this._token, skipSending);
-      } else {
-        if (optimistic) {
-          return null;
-        }
-        const self = this;
-        this._getSubscriptionToken().then(function (token) {
+    const self = this;
+
+    if (!this._usesToken() || this._token) {
+      if (self._getData) {
+        self._getData({
+          channel: self.channel
+        }).then(function (data: any) {
           if (!self._isSubscribing()) {
             return;
           }
-          if (!token) {
-            self._failUnauthorized();
-            return;
-          }
-          self._token = token;
-          self._sendSubscribe(token, false);
-        }).catch(function (e) {
-          if (!self._isSubscribing()) {
-            return;
-          }
-          if (e instanceof UnauthorizedError) {
-            self._failUnauthorized();
-            return;
-          }
-          self.emit('error', {
-            type: 'subscribeToken',
-            channel: self.channel,
-            error: {
-              code: errorCodes.subscriptionSubscribeToken,
-              message: e !== undefined ? e.toString() : ''
-            }
-          });
-          self._scheduleResubscribe();
-        });
+          self._data = data;
+          self._sendSubscribe(self._token, false);
+        })
         return null;
+      } else {
+        return self._sendSubscribe(self._token, skipSending);
       }
-    } else {
-      return this._sendSubscribe('', skipSending);
     }
+    if (optimistic) {
+      return null;
+    }
+    this._getSubscriptionToken().then(function (token) {
+      if (!self._isSubscribing()) {
+        return;
+      }
+      if (!token) {
+        self._failUnauthorized();
+        return;
+      }
+      self._token = token;
+      if (self._getData) {
+        self._getData({
+          channel: self.channel
+        }).then(function (data: any) {
+          if (!self._isSubscribing()) {
+            return;
+          }
+          self._data = data;
+          self._sendSubscribe(token, false);
+        })
+      } else {
+        self._sendSubscribe(token, false);
+      }
+    }).catch(function (e) {
+      if (!self._isSubscribing()) {
+        return;
+      }
+      if (e instanceof UnauthorizedError) {
+        self._failUnauthorized();
+        return;
+      }
+      self.emit('error', {
+        type: 'subscribeToken',
+        channel: self.channel,
+        error: {
+          code: errorCodes.subscriptionSubscribeToken,
+          message: e !== undefined ? e.toString() : ''
+        }
+      });
+      self._scheduleResubscribe();
+    });
+    return null;
   }
 
   private _sendSubscribe(token: string, skipSending: boolean): any {

@@ -318,7 +318,7 @@ export interface SubscriptionOptions {
   /** data to send to a server with subscribe command */
   data: any | null;
   /** allows setting function to get/renew subscription data */
-  getData: null | (() => Promise<any>);
+  getData: null | ((ctx: SubscriptionDataContext) => Promise<any>);
   /** force recovery on first subscribe from a provided StreamPosition. */
   since: StreamPosition | null;
   /** min delay between resubscribe attempts. */

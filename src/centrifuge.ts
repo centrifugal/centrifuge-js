@@ -242,8 +242,8 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     this._disconnect(disconnectedCodes.disconnectCalled, 'disconnect called', false);
   }
 
-  resetToken() {
-    this._token = '';
+  setToken(token: string) {
+    this._token = token;
   }
 
   /** send asynchronous data to a server (without any response from a server 

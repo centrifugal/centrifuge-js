@@ -924,6 +924,8 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
       return;
     }
 
+    const self = this;
+
     const emptyToken = this._token === '';
     const needTokenRefresh = this._refreshRequired || (emptyToken && this._config.getToken !== null);
     if (!needTokenRefresh) {
@@ -940,8 +942,6 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
       }
       return;
     }
-
-    const self = this;
 
     this._getToken().then(function (token: string) {
       if (!self._isConnecting()) {

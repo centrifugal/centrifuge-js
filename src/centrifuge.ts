@@ -33,6 +33,7 @@ const defaults: Options = {
   getToken: null,
   data: null,
   debug: false,
+  onDebug: null,
   name: 'js',
   version: '',
   fetch: null,
@@ -399,6 +400,9 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
   private _debug(...args: any[]) {
     if (!this._debugEnabled) {
       return;
+    }
+    if (this._config.onDebug) {
+      this._config.onDebug(args);
     }
     log('debug', args);
   }
@@ -860,11 +864,6 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
           self._transportWasOpen = true;
         }
 
-        let isInitialHandshake = false;
-        if (self._emulation && !self._transportWasOpen && !self._triedAllTransports) {
-          isInitialHandshake = true;
-        }
-
         if (self._isConnecting() && !wasOpen) {
           self.emit('error', {
             type: 'transport',
@@ -877,18 +876,6 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
         }
 
         self._disconnect(code, reason, needReconnect);
-
-        if (self._isConnecting()) {
-          let delay = self._getReconnectDelay();
-          if (isInitialHandshake) {
-            delay = 0;
-          }
-          self._debug('reconnect after ' + delay + ' milliseconds');
-          self._reconnecting = false;
-          self._reconnectTimeout = setTimeout(() => {
-            self._startReconnecting();
-          }, delay);
-        }
       },
       onMessage: function (data) {
         self._dataReceived(data);
@@ -995,6 +982,23 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
         const transport = this._transport;
         this._transport = null;
         transport.close();
+        this._transportClosed = true;
+        const self = this;
+        if (self._isConnecting()) {
+          let isInitialHandshake = false;
+          if (self._emulation && !self._transportWasOpen && !self._triedAllTransports) {
+            isInitialHandshake = true;
+          }
+          let delay = self._getReconnectDelay();
+          if (isInitialHandshake) {
+            delay = 0;
+          }
+          self._debug('reconnect after ' + delay + ' milliseconds');
+          self._reconnecting = false;
+          self._reconnectTimeout = setTimeout(() => {
+            self._startReconnecting();
+          }, delay);
+        }
       }
     } else {
       this._disconnect(err.code, err.message, false);
@@ -1217,9 +1221,29 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     }
 
     if (this._transport) {
+      this._debug("closing existing transport");
       const transport = this._transport;
       this._transport = null;
       transport.close(); // Close only after setting this._transport to null to avoid recursion when calling transport close().
+      this._transportClosed = true;
+    } else {
+      this._debug("no transport to close");
+    }
+    const self = this;
+    if (self._isConnecting()) {
+      let isInitialHandshake = false;
+      if (self._emulation && !self._transportWasOpen && !self._triedAllTransports) {
+        isInitialHandshake = true;
+      }
+      let delay = self._getReconnectDelay();
+      if (isInitialHandshake) {
+        delay = 0;
+      }
+      self._debug('reconnect after ' + delay + ' milliseconds');
+      self._reconnecting = false;
+      self._reconnectTimeout = setTimeout(() => {
+        self._startReconnecting();
+      }, delay);
     }
   }
 

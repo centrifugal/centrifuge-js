@@ -85,6 +85,8 @@ export interface Options {
   protocol: 'json' | 'protobuf';
   /** allows enabling debug mode */
   debug: boolean;
+
+  onDebug: null | ((a: any) => void)
   /** allows setting connection token (JWT) */
   token: string | null;
   /** allows setting function to get/refresh connection token */

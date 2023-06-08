@@ -70,6 +70,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
   private _deviceWentOffline: boolean;
   private _transportClosed: boolean;
   private _reconnecting: boolean;
+  private _reconnectingStage: string;
   private _reconnectTimeout?: null | ReturnType<typeof setTimeout> = null;
   private _reconnectAttempts: number;
   private _client: null;
@@ -117,6 +118,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     this._encoder = null;
     this._decoder = null;
     this._reconnecting = false;
+    this._reconnectingStage = '';
     this._reconnectTimeout = null;
     this._reconnectAttempts = 0;
     this._client = null;
@@ -476,6 +478,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
   private _setState(newState: State) {
     if (this.state !== newState) {
       this._reconnecting = false;
+      this._reconnectingStage = '';
       const oldState = this.state;
       this.state = newState;
       this.emit('state', { newState, oldState });
@@ -520,19 +523,20 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
       });
       eventTarget.addEventListener('online', () => {
         this._debug('online event triggered');
-        if (this.state === State.Connecting) {
-          if (this._deviceWentOffline && !this._transportClosed) {
-            // This is a workaround for mobile Safari where close callback may be
-            // not issued upon device going to the flight mode. We know for sure
-            // that transport close was called, so we start reconnecting. In this
-            // case if the close callback will be issued for some reason after some
-            // time – it will be ignored due to transport ID mismatch.
-            this._deviceWentOffline = false;
-            this._transportClosed = true;
-          }
-          this._clearReconnectTimeout();
-          this._startReconnecting();
+        if (this.state !== State.Connecting) {
+          return;
         }
+        if (this._deviceWentOffline && !this._transportClosed) {
+          // This is a workaround for mobile Safari where close callback may be
+          // not issued upon device going to the flight mode. We know for sure
+          // that transport close was called, so we start reconnecting. In this
+          // case if the close callback will be issued for some reason after some
+          // time – it will be ignored due to transport ID mismatch.
+          this._deviceWentOffline = false;
+          this._transportClosed = true;
+        }
+        this._clearReconnectTimeout();
+        this._startReconnecting();
       });
       this._networkEventsSet = true;
     }
@@ -794,6 +798,12 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
 
     this._transport.initialize(this._config.protocol, {
       onOpen: function () {
+        if (self._transportId != transportId) {
+          self._debug('open callback from non-actual transport');
+          transport.close();
+          return;
+        }
+        self._reconnectingStage = 'open'
         wasOpen = true;
         self._debug(transport.subName(), 'transport open');
         self._transportWasOpen = true;
@@ -875,6 +885,8 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
           });
         }
 
+        self._reconnecting = false;
+        self._reconnectingStage = '';
         self._disconnect(code, reason, needReconnect);
       },
       onMessage: function (data) {
@@ -887,6 +899,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     const connectCommand = this._constructConnectCommand();
     const self = this;
     this._call(connectCommand, skipSending).then(resolveCtx => {
+      self._reconnectingStage = 'connect_reply';
       // @ts-ignore = improve later.
       const result = resolveCtx.reply.connect;
       self._connectResponse(result);
@@ -896,6 +909,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
         resolveCtx.next();
       }
     }, rejectCtx => {
+      self._reconnectingStage = 'connect_error';
       self._connectError(rejectCtx.error);
       if (rejectCtx.next) {
         rejectCtx.next();
@@ -906,15 +920,12 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
 
   private _startReconnecting() {
     this._debug('start reconnecting');
-    if (!this._isConnecting() || this._reconnecting) {
-      return;
-    }
     if (!this._isConnecting()) {
       this._debug('stop reconnecting: client not in connecting state');
       return;
     }
     if (this._reconnecting) {
-      this._debug('reconnect already in progress, return from reconnect routine');
+      this._debug('reconnect already in progress, on stage ' + this._reconnectingStage + ', return from reconnect routine');
       return;
     }
     if (this._transportClosed === false) {
@@ -923,14 +934,18 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     }
 
     this._reconnecting = true;
+    this._reconnectingStage = 'start';
 
     const needTokenRefresh = this._refreshRequired || (!this._token && this._config.getToken !== null);
     if (!needTokenRefresh) {
+      this._reconnectingStage = 'initialize_transport';
       this._initializeTransport();
       return;
     }
 
     const self = this;
+
+    this._reconnectingStage = 'getToken';
 
     this._getToken().then(function (token) {
       if (!self._isConnecting()) {
@@ -942,6 +957,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
       }
       self._token = token;
       self._debug('connection token refreshed');
+      self._reconnectingStage = 'initialize_transport';
       self._initializeTransport();
     }).catch(function (e) {
       if (!self._isConnecting()) {
@@ -976,33 +992,30 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
         'type': 'connect',
         'error': err
       });
-      // Not yet connected, closing transport is enough.
       this._debug('closing transport due to connect error');
-      if (this._transport) {
-        const transport = this._transport;
-        this._transport = null;
-        transport.close();
-        this._transportClosed = true;
-        const self = this;
-        if (self._isConnecting()) {
-          let isInitialHandshake = false;
-          if (self._emulation && !self._transportWasOpen && !self._triedAllTransports) {
-            isInitialHandshake = true;
-          }
-          let delay = self._getReconnectDelay();
-          if (isInitialHandshake) {
-            delay = 0;
-          }
-          self._debug('reconnect after ' + delay + ' milliseconds');
-          self._reconnecting = false;
-          self._reconnectTimeout = setTimeout(() => {
-            self._startReconnecting();
-          }, delay);
-        }
-      }
+      this._reconnecting = false;
+      this._disconnect(err.code, err.message, true);
     } else {
       this._disconnect(err.code, err.message, false);
     }
+  }
+
+  private _scheduleReconnect() {
+    if (!this._isConnecting()) {
+      return;
+    }
+    let isInitialHandshake = false;
+    if (this._emulation && !this._transportWasOpen && !this._triedAllTransports) {
+      isInitialHandshake = true;
+    }
+    let delay = this._getReconnectDelay();
+    if (isInitialHandshake) {
+      delay = 0;
+    }
+    this._debug('reconnect after ' + delay + ' milliseconds');
+    this._reconnectTimeout = setTimeout(() => {
+      this._startReconnecting();
+    }, delay);
   }
 
   private _constructConnectCommand(): any {
@@ -1229,22 +1242,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     } else {
       this._debug("no transport to close");
     }
-    const self = this;
-    if (self._isConnecting()) {
-      let isInitialHandshake = false;
-      if (self._emulation && !self._transportWasOpen && !self._triedAllTransports) {
-        isInitialHandshake = true;
-      }
-      let delay = self._getReconnectDelay();
-      if (isInitialHandshake) {
-        delay = 0;
-      }
-      self._debug('reconnect after ' + delay + ' milliseconds');
-      self._reconnecting = false;
-      self._reconnectTimeout = setTimeout(() => {
-        self._startReconnecting();
-      }, delay);
-    }
+    this._scheduleReconnect();
   }
 
   private _failUnauthorized() {

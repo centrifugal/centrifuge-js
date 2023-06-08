@@ -33,7 +33,6 @@ const defaults: Options = {
   getToken: null,
   data: null,
   debug: false,
-  onDebug: null,
   name: 'js',
   version: '',
   fetch: null,
@@ -70,7 +69,6 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
   private _deviceWentOffline: boolean;
   private _transportClosed: boolean;
   private _reconnecting: boolean;
-  private _reconnectingStage: string;
   private _reconnectTimeout?: null | ReturnType<typeof setTimeout> = null;
   private _reconnectAttempts: number;
   private _client: null;
@@ -118,7 +116,6 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     this._encoder = null;
     this._decoder = null;
     this._reconnecting = false;
-    this._reconnectingStage = '';
     this._reconnectTimeout = null;
     this._reconnectAttempts = 0;
     this._client = null;
@@ -403,9 +400,6 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     if (!this._debugEnabled) {
       return;
     }
-    if (this._config.onDebug) {
-      this._config.onDebug(args);
-    }
     log('debug', args);
   }
 
@@ -478,7 +472,6 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
   private _setState(newState: State) {
     if (this.state !== newState) {
       this._reconnecting = false;
-      this._reconnectingStage = '';
       const oldState = this.state;
       this.state = newState;
       this.emit('state', { newState, oldState });
@@ -796,14 +789,18 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
 
     this._transportClosed = false;
 
+    const connectTimeout = setTimeout(function () {
+      transport.close();
+    }, this._config.timeout);
+
     this._transport.initialize(this._config.protocol, {
       onOpen: function () {
+        clearTimeout(connectTimeout);
         if (self._transportId != transportId) {
           self._debug('open callback from non-actual transport');
           transport.close();
           return;
         }
-        self._reconnectingStage = 'open'
         wasOpen = true;
         self._debug(transport.subName(), 'transport open');
         self._transportWasOpen = true;
@@ -886,7 +883,6 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
         }
 
         self._reconnecting = false;
-        self._reconnectingStage = '';
         self._disconnect(code, reason, needReconnect);
       },
       onMessage: function (data) {
@@ -899,7 +895,6 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     const connectCommand = this._constructConnectCommand();
     const self = this;
     this._call(connectCommand, skipSending).then(resolveCtx => {
-      self._reconnectingStage = 'connect_reply';
       // @ts-ignore = improve later.
       const result = resolveCtx.reply.connect;
       self._connectResponse(result);
@@ -909,7 +904,6 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
         resolveCtx.next();
       }
     }, rejectCtx => {
-      self._reconnectingStage = 'connect_error';
       self._connectError(rejectCtx.error);
       if (rejectCtx.next) {
         rejectCtx.next();
@@ -925,7 +919,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
       return;
     }
     if (this._reconnecting) {
-      this._debug('reconnect already in progress, on stage ' + this._reconnectingStage + ', return from reconnect routine');
+      this._debug('reconnect already in progress, return from reconnect routine');
       return;
     }
     if (this._transportClosed === false) {
@@ -934,18 +928,14 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     }
 
     this._reconnecting = true;
-    this._reconnectingStage = 'start';
 
     const needTokenRefresh = this._refreshRequired || (!this._token && this._config.getToken !== null);
     if (!needTokenRefresh) {
-      this._reconnectingStage = 'initialize_transport';
       this._initializeTransport();
       return;
     }
 
     const self = this;
-
-    this._reconnectingStage = 'getToken';
 
     this._getToken().then(function (token) {
       if (!self._isConnecting()) {
@@ -957,7 +947,6 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
       }
       self._token = token;
       self._debug('connection token refreshed');
-      self._reconnectingStage = 'initialize_transport';
       self._initializeTransport();
     }).catch(function (e) {
       if (!self._isConnecting()) {

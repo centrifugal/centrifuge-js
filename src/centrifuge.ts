@@ -789,13 +789,17 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
 
     this._transportClosed = false;
 
-    const connectTimeout = setTimeout(function () {
+    let connectTimeout: any;
+    connectTimeout = setTimeout(function () {
       transport.close();
     }, this._config.timeout);
 
     this._transport.initialize(this._config.protocol, {
       onOpen: function () {
-        clearTimeout(connectTimeout);
+        if (connectTimeout) {
+          clearTimeout(connectTimeout);
+          connectTimeout = null;
+        }
         if (self._transportId != transportId) {
           self._debug('open callback from non-actual transport');
           transport.close();
@@ -822,6 +826,10 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
         self._debug('transport level error', e);
       },
       onClose: function (closeEvent) {
+        if (connectTimeout) {
+          clearTimeout(connectTimeout);
+          connectTimeout = null;
+        }
         if (self._transportId != transportId) {
           self._debug('close callback from non-actual transport');
           return;

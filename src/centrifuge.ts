@@ -1236,6 +1236,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
       this._transport = null;
       transport.close(); // Close only after setting this._transport to null to avoid recursion when calling transport close().
       this._transportClosed = true;
+      this._nextTransportId();
     } else {
       this._debug("no transport to close");
     }

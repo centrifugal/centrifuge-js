@@ -314,7 +314,7 @@ export interface SubscriptionOptions {
   /** allows setting initial subscription token (JWT) */
   token: string;
   /** allows setting function to get/refresh subscription token */
-  getToken: null | ((ctx: ConnectionTokenContext) => Promise<string>);
+  getToken: null | ((ctx: SubscriptionTokenContext) => Promise<string>);
   /** data to send to a server with subscribe command */
   data: any | null;
   /** allows setting function to get/renew subscription data */

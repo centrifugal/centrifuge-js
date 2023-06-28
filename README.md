@@ -552,6 +552,10 @@ async function getToken(ctx) {
         body: JSON.stringify(ctx)
     });
     if (!res.ok) {
+        if (res.status === 403) {
+            // Return special error to not proceed with token refreshes, subscription will be unsubscribed.
+            throw new Centrifuge.UnauthorizedError();
+        }
         // Any other error thrown will result into token refresh re-attempts.
         throw new Error(`Unexpected status code ${res.status}`);
     }

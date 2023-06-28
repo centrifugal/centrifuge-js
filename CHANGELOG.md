@@ -3,9 +3,9 @@
 
 This release changes the semantics of working with connection tokens described in [Centrifugo v5 release post](https://centrifugal.dev/blog/2023/06/29/centrifugo-v5-released#token-behaviour-adjustments-in-sdks).
 
-Previously, returning an empty token string from getToken callback resulted in client disconnection with unauthorized reason.
+Previously, returning an empty token string from `getToken` callback resulted in client disconnection with unauthorized reason.
 
-Now returning an empty string from getToken is a valid scenario which won't result into disconnect on the client side. It's still possible to disconnect client by returning a special error from getToken function.
+Now returning an empty string from `getToken` is a valid scenario which won't result into disconnect on the client side. It's still possible to disconnect client by throwing a special `UnauthorizedError()` error from `getToken` function.
 
 And we are putting back `setToken` method to the SDK – so it's now possible to reset the token to be empty upon user logout.
 

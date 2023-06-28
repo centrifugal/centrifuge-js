@@ -4,7 +4,8 @@ import { errorCodes, unsubscribedCodes, subscribingCodes, connectingCodes } from
 import {
   HistoryOptions, HistoryResult, PresenceResult, PresenceStatsResult,
   PublishResult, State, SubscriptionEvents, SubscriptionOptions,
-  SubscriptionState, SubscriptionTokenContext, TypedEventEmitter
+  SubscriptionState, SubscriptionTokenContext, TypedEventEmitter,
+  SubscriptionDataContext
 } from './types';
 import { ttlMilliseconds, backoff } from './utils';
 
@@ -28,6 +29,7 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
 
   private _token: string;
   private _data: any | null;
+  private _getData: null | ((ctx: SubscriptionDataContext) => Promise<any>);
   private _recoverable: boolean;
   private _positioned: boolean;
   private _joinLeave: boolean;
@@ -43,6 +45,7 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
     this._token = '';
     this._getToken = null;
     this._data = null;
+    this._getData = null;
     this._recover = false;
     this._offset = null;
     this._epoch = null;
@@ -265,48 +268,67 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
       return null;
     }
 
-    if (this._usesToken()) {
-      // token channel, need to get token before sending subscribe.
-      if (this._token) {
-        return this._sendSubscribe(this._token, skipSending);
-      } else {
-        if (optimistic) {
-          return null;
-        }
-        const self = this;
-        this._getSubscriptionToken().then(function (token) {
+    const self = this;
+    const getDataCtx = {
+      channel: self.channel
+    };
+
+    if (!this._usesToken() || this._token) {
+      if (self._getData) {
+        self._getData(getDataCtx).then(function (data: any) {
           if (!self._isSubscribing()) {
             return;
           }
-          if (!token) {
-            self._failUnauthorized();
-            return;
-          }
-          self._token = token;
-          self._sendSubscribe(token, false);
-        }).catch(function (e) {
-          if (!self._isSubscribing()) {
-            return;
-          }
-          if (e instanceof UnauthorizedError) {
-            self._failUnauthorized();
-            return;
-          }
-          self.emit('error', {
-            type: 'subscribeToken',
-            channel: self.channel,
-            error: {
-              code: errorCodes.subscriptionSubscribeToken,
-              message: e !== undefined ? e.toString() : ''
-            }
-          });
-          self._scheduleResubscribe();
-        });
+          self._data = data;
+          self._sendSubscribe(self._token, false);
+        })
         return null;
+      } else {
+        return self._sendSubscribe(self._token, skipSending);
       }
-    } else {
-      return this._sendSubscribe('', skipSending);
     }
+    if (optimistic) {
+      return null;
+    }
+    this._getSubscriptionToken().then(function (token) {
+      if (!self._isSubscribing()) {
+        return;
+      }
+      if (!token) {
+        self._failUnauthorized();
+        return;
+      }
+      self._token = token;
+      if (self._getData) {
+        self._getData(getDataCtx).then(function (data: any) {
+          if (!self._isSubscribing()) {
+            return;
+          }
+          self._data = data;
+          self._sendSubscribe(token, false);
+        })
+      } else {
+        self._sendSubscribe(token, false);
+      }
+    }).catch(function (e) {
+      if (!self._isSubscribing()) {
+        return;
+      }
+      if (e instanceof UnauthorizedError) {
+        self._failUnauthorized();
+        return;
+      }
+      self.emit('error', {
+        type: 'subscribeToken',
+        channel: self.channel,
+        error: {
+          code: errorCodes.subscriptionSubscribeToken,
+          message: e !== undefined ? e.toString() : ''
+        }
+      });
+      self._scheduleResubscribe();
+    });
+    return null;
   }
 
   private _sendSubscribe(token: string, skipSending: boolean): any {
@@ -508,6 +530,9 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
     }
     if (options.data) {
       this._data = options.data;
+    }
+    if (options.getData) {
+      this._getData = options.getData;
     }
     if (options.minResubscribeDelay !== undefined) {
       this._minResubscribeDelay = options.minResubscribeDelay;

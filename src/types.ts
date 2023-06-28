@@ -91,6 +91,8 @@ export interface Options {
   getToken: null | ((ctx: ConnectionTokenContext) => Promise<string>);
   /** data to send to a server with connect command */
   data: any | null;
+  /** allows setting function to get/renew connection data */
+  getData: null | (() => Promise<any>);
   /** name of client - it's not a unique name of each connection, it's sth to identify
    * from where client connected */
   name: string;
@@ -275,6 +277,10 @@ export interface SubscriptionTokenContext {
   channel: string;
 }
 
+export interface SubscriptionDataContext {
+  channel: string;
+}
+
 export interface PublishResult {
 }
 
@@ -303,10 +309,6 @@ export interface HistoryOptions {
   reverse?: boolean;
 }
 
-export interface DisconnectOptions {
-  resetConnectionToken?: boolean;
-}
-
 /** SubscriptionOptions can customize Subscription. */
 export interface SubscriptionOptions {
   /** allows setting initial subscription token (JWT) */
@@ -315,6 +317,8 @@ export interface SubscriptionOptions {
   getToken: null | ((ctx: ConnectionTokenContext) => Promise<string>);
   /** data to send to a server with subscribe command */
   data: any | null;
+  /** allows setting function to get/renew subscription data */
+  getData: null | ((ctx: SubscriptionDataContext) => Promise<any>);
   /** force recovery on first subscribe from a provided StreamPosition. */
   since: StreamPosition | null;
   /** min delay between resubscribe attempts. */

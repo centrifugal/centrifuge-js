@@ -402,6 +402,10 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
       this._clearSubscribedState();
     }
     if (this._isSubscribing()) {
+      if (this._inflight && sendUnsubscribe) {
+        // @ts-ignore – we are hiding some methods from public API autocompletion.
+        this._centrifuge._unsubscribe(this);
+      }
       this._clearSubscribingState();
     }
     if (this._setState(SubscriptionState.Unsubscribed)) {

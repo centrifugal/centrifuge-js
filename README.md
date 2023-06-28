@@ -741,7 +741,7 @@ npm install ws
 At this point you have 2 options. Explicitly pass WebSocket object to Centrifuge.
 
 ```javascript
-const Centrifuge = require('centrifuge');
+const { Centrifuge } = require('centrifuge');
 const WebSocket = require('ws');
 
 var centrifuge = new Centrifuge('ws://localhost:8000/connection/websocket', {
@@ -752,7 +752,7 @@ var centrifuge = new Centrifuge('ws://localhost:8000/connection/websocket', {
 Or define it globally:
 
 ```javascript
-const Centrifuge = require('centrifuge');
+const { Centrifuge } = require('centrifuge');
 global.WebSocket = require('ws'); 
 
 const centrifuge = new Centrifuge('ws://localhost:8000/connection/websocket');

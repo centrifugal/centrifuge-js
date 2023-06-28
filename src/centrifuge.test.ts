@@ -289,3 +289,75 @@ test.each(transportCases)("%s: subscribe and presence", async (transport, endpoi
   await disconnectedPromise;
   expect(c.state).toBe(Centrifuge.State.Disconnected);
 });
+
+test.each(transportCases)("%s: connect disconnect loop", async (transport, endpoint) => {
+  const c = new Centrifuge([{
+    transport: transport as TransportName,
+    endpoint: endpoint,
+  }], {
+    websocket: WebSocket,
+    fetch: fetch,
+    eventsource: EventSource,
+    readableStream: ReadableStream,
+    emulationEndpoint: 'http://localhost:8000/emulation'
+  });
+
+  let disconnectCalled: any;
+  const disconnectedPromise = new Promise<DisconnectedContext>((resolve, _) => {
+    disconnectCalled = resolve;
+  })
+  c.on('disconnected', (ctx) => {
+    disconnectCalled(ctx);
+  })
+
+  for (let index = 0; index < 10; index++) {
+    c.connect();
+    c.disconnect();
+  }
+  expect(c.state).toBe(Centrifuge.State.Disconnected);
+  await disconnectedPromise;
+});
+
+test.each(transportCases)("%s: subscribe and unsubscribe loop", async (transport, endpoint) => {
+  const c = new Centrifuge([{
+    transport: transport as TransportName,
+    endpoint: endpoint,
+  }], {
+    websocket: WebSocket,
+    fetch: fetch,
+    eventsource: EventSource,
+    readableStream: ReadableStream,
+    emulationEndpoint: 'http://localhost:8000/emulation'
+  });
+
+  c.connect();
+  await c.ready(5000);
+  const sub = c.newSubscription('test');
+
+  let unsubcribeCalled: any;
+  const unsubscribedPromise = new Promise<UnsubscribedContext>((resolve, _) => {
+    unsubcribeCalled = resolve;
+  })
+  sub.on('unsubscribed', (ctx) => {
+    unsubcribeCalled(ctx);
+  })
+
+  for (let index = 0; index < 10; index++) {
+    sub.subscribe();
+    sub.unsubscribe();
+  }
+  expect(sub.state).toBe(Centrifuge.SubscriptionState.Unsubscribed);
+  await unsubscribedPromise;
+
+  let disconnectCalled: any;
+  const disconnectedPromise = new Promise<DisconnectedContext>((resolve, _) => {
+    disconnectCalled = resolve;
+  })
+  c.on('disconnected', (ctx) => {
+    disconnectCalled(ctx);
+  })
+
+  c.disconnect();
+  await disconnectedPromise;
+  expect(c.state).toBe(Centrifuge.State.Disconnected);
+});

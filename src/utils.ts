@@ -12,7 +12,7 @@ export function isFunction(value) {
 }
 
 /** @internal */
-export function log(level, args) {
+export function log(level: string, args) {
   if (globalThis.console) {
     const logger = globalThis.console[level];
 

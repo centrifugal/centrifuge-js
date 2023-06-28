@@ -72,6 +72,8 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
   private _triedAllTransports: boolean;
   private _transportWasOpen: boolean;
   private _transport?: any;
+  private _transportId: number;
+  private _deviceWentOffline: boolean;
   private _transportClosed: boolean;
   private _reconnecting: boolean;
   private _reconnectTimeout?: null | ReturnType<typeof setTimeout> = null;
@@ -116,6 +118,8 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     this._triedAllTransports = false;
     this._transportWasOpen = false;
     this._transport = null;
+    this._transportId = 0;
+    this._deviceWentOffline = false;
     this._transportClosed = true;
     this._encoder = null;
     this._decoder = null;
@@ -518,14 +522,25 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
         this._debug('offline event triggered');
         if (this.state === State.Connected || this.state === State.Connecting) {
           this._disconnect(connectingCodes.transportClosed, 'transport closed', true);
+          this._deviceWentOffline = true;
         }
       });
       eventTarget.addEventListener('online', () => {
         this._debug('online event triggered');
-        if (this.state === State.Connecting) {
-          this._clearReconnectTimeout();
-          this._startReconnecting();
+        if (this.state !== State.Connecting) {
+          return;
         }
+        if (this._deviceWentOffline && !this._transportClosed) {
+          // This is a workaround for mobile Safari where close callback may be
+          // not issued upon device going to the flight mode. We know for sure
+          // that transport close was called, so we start reconnecting. In this
+          // case if the close callback will be issued for some reason after some
+          // time – it will be ignored due to transport ID mismatch.
+          this._deviceWentOffline = false;
+          this._transportClosed = true;
+        }
+        this._clearReconnectTimeout();
+        this._startReconnecting();
       });
       this._networkEventsSet = true;
     }
@@ -754,6 +769,8 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
 
     const self = this;
     const transport = this._transport;
+    const transportId = this._nextTransportId();
+    self._debug("id of transport", transportId);
     let wasOpen = false;
 
     let optimistic = true;
@@ -781,10 +798,24 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
 
     const initialData = this._encoder.encodeCommands(initialCommands);
 
-    this._transportClosed = false
+    this._transportClosed = false;
+
+    let connectTimeout: any;
+    connectTimeout = setTimeout(function () {
+      transport.close();
+    }, this._config.timeout);
 
     this._transport.initialize(this._config.protocol, {
       onOpen: function () {
+        if (connectTimeout) {
+          clearTimeout(connectTimeout);
+          connectTimeout = null;
+        }
+        if (self._transportId != transportId) {
+          self._debug('open callback from non-actual transport');
+          transport.close();
+          return;
+        }
         wasOpen = true;
         self._debug(transport.subName(), 'transport open');
         self._transportWasOpen = true;
@@ -799,9 +830,21 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
         self.stopBatching();
       },
       onError: function (e: any) {
+        if (self._transportId != transportId) {
+          self._debug('error callback from non-actual transport');
+          return;
+        }
         self._debug('transport level error', e);
       },
       onClose: function (closeEvent) {
+        if (connectTimeout) {
+          clearTimeout(connectTimeout);
+          connectTimeout = null;
+        }
+        if (self._transportId != transportId) {
+          self._debug('close callback from non-actual transport');
+          return;
+        }
         self._debug(transport.subName(), 'transport closed');
         self._transportClosed = true;
 
@@ -847,11 +890,6 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
           self._transportWasOpen = true;
         }
 
-        let isInitialHandshake = false;
-        if (self._emulation && !self._transportWasOpen && !self._triedAllTransports) {
-          isInitialHandshake = true;
-        }
-
         if (self._isConnecting() && !wasOpen) {
           self.emit('error', {
             type: 'transport',
@@ -863,19 +901,8 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
           });
         }
 
+        self._reconnecting = false;
         self._disconnect(code, reason, needReconnect);
-
-        if (self._isConnecting()) {
-          let delay = self._getReconnectDelay();
-          if (isInitialHandshake) {
-            delay = 0;
-          }
-          self._debug('reconnect after ' + delay + ' milliseconds');
-          self._reconnecting = false;
-          self._reconnectTimeout = setTimeout(() => {
-            self._startReconnecting();
-          }, delay);
-        }
       },
       onMessage: function (data) {
         self._dataReceived(data);
@@ -905,17 +932,21 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
   }
 
   private _startReconnecting() {
-    if (!this._isConnecting() || this._reconnecting) {
+    this._debug('start reconnecting');
+    if (!this._isConnecting()) {
+      this._debug('stop reconnecting: client not in connecting state');
       return;
     }
-    this._debug('start reconnecting');
-    this._reconnecting = true;
-
+    if (this._reconnecting) {
+      this._debug('reconnect already in progress, return from reconnect routine');
+      return;
+    }
     if (this._transportClosed === false) {
       this._debug('waiting for transport close');
       return;
     }
 
+    this._reconnecting = true;
     const emptyToken = this._token === '';
     const needTokenRefresh = this._refreshRequired || (emptyToken && this._config.getToken !== null);
     if (!needTokenRefresh) {
@@ -973,16 +1004,30 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
         'type': 'connect',
         'error': err
       });
-      // Not yet connected, closing transport is enough.
       this._debug('closing transport due to connect error');
-      if (this._transport) {
-        const transport = this._transport;
-        this._transport = null;
-        transport.close();
-      }
+      this._reconnecting = false;
+      this._disconnect(err.code, err.message, true);
     } else {
       this._disconnect(err.code, err.message, false);
     }
+  }
+
+  private _scheduleReconnect() {
+    if (!this._isConnecting()) {
+      return;
+    }
+    let isInitialHandshake = false;
+    if (this._emulation && !this._transportWasOpen && !this._triedAllTransports) {
+      isInitialHandshake = true;
+    }
+    let delay = this._getReconnectDelay();
+    if (isInitialHandshake) {
+      delay = 0;
+    }
+    this._debug('reconnect after ' + delay + ' milliseconds');
+    this._reconnectTimeout = setTimeout(() => {
+      this._startReconnecting();
+    }, delay);
   }
 
   private _constructConnectCommand(): any {
@@ -1201,10 +1246,16 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     }
 
     if (this._transport) {
+      this._debug("closing existing transport");
       const transport = this._transport;
       this._transport = null;
       transport.close(); // Close only after setting this._transport to null to avoid recursion when calling transport close().
+      this._transportClosed = true;
+      this._nextTransportId();
+    } else {
+      this._debug("no transport to close");
     }
+    this._scheduleReconnect();
   }
 
   private _failUnauthorized() {
@@ -1753,6 +1804,10 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
 
   private _nextPromiseId() {
     return ++this._promiseId;
+  }
+
+  private _nextTransportId() {
+    return ++this._transportId;
   }
 
   private _resolvePromises() {

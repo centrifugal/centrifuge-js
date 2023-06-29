@@ -4,7 +4,7 @@ The client behaves according to a common [Centrifigo SDK spec](https://centrifug
 
 The features implemented by this SDK can be found in [SDK feature matrix](https://centrifugal.dev/docs/transports/client_sdk#sdk-feature-matrix).
 
-> **`centrifuge-js` v3.x is compatible only with latest [Centrifugo](https://github.com/centrifugal/centrifugo) server (v4) and [Centrifuge](https://github.com/centrifugal/centrifuge) >= 0.25.0. For Centrifugo v2, Centrifugo v3 and Centrifuge < 0.25.0 you should use `centrifuge-js` v2.x.**
+> **`centrifuge-js` v4.x is compatible with [Centrifugo](https://github.com/centrifugal/centrifugo) server v4 and v5 and [Centrifuge](https://github.com/centrifugal/centrifuge) >= 0.25.0. For Centrifugo v2, Centrifugo v3 and Centrifuge < 0.25.0 you should use `centrifuge-js` v2.x.**
 
 * [Install](#install)
 * [Quick start](#quick-start)
@@ -41,10 +41,10 @@ And then in your project:
 import { Centrifuge } from 'centrifuge';
 ```
 
-In browser, you can import SDK from CDN (replace `3.1.0` to a concrete version number you want to use, see [releases](https://github.com/centrifugal/centrifuge-js/releases)):
+In browser, you can import SDK from CDN (replace `4.0.0` with a concrete version number you want to use, see [releases](https://github.com/centrifugal/centrifuge-js/releases)):
 
 ```html
-<script src="https://unpkg.com/centrifuge@3.1.0/dist/centrifuge.js"></script>
+<script src="https://unpkg.com/centrifuge@4.0.0/dist/centrifuge.js"></script>
 ```
 
 See also [centrifuge-js on cdnjs](https://cdnjs.com/libraries/centrifuge). Note that `centrifuge-js` browser builds target [ES6](https://caniuse.com/es6) at this point.
@@ -142,7 +142,7 @@ If you want to use SockJS you must also import SockJS client before centrifuge.j
 
 ```html
 <script src="https://cdn.jsdelivr.net/npm/sockjs-client@1/dist/sockjs.min.js" type="text/javascript"></script>
-<script src="https://unpkg.com/centrifuge@3.1.0/dist/centrifuge.js" type="text/javascript"></script>
+<script src="https://unpkg.com/centrifuge@4.0.0/dist/centrifuge.js" type="text/javascript"></script>
 ```
 
 Or provide it explicitly as a dependency:
@@ -338,35 +338,28 @@ If the token sets connection expiration then the client SDK will keep the token 
 An example of possible `getToken` function implementation:
 
 ```javascript
-function getToken(url, ctx) {
-    return new Promise((resolve, reject) => {
-        fetch(url, {
-            method: 'POST',
-            headers: new Headers({ 'Content-Type': 'application/json' }),
-            body: JSON.stringify(ctx)
-        })
-        .then(res => {
-            if (!res.ok) {
-                throw new Error(`Unexpected status code ${res.status}`);
-            }
-            return res.json();
-        })
-        .then(data => {
-            resolve(data.token);
-        })
-        .catch(err => {
-            reject(err);
-        });
-    });
+async function getToken() {
+    if (!loggedIn) {
+        return "";
+    }
+    const res = await fetch('/centrifuge/connection_token');
+    if (!res.ok) {
+        if (res.status === 403) {
+            // Return special error to not proceed with token refreshes, client will be disconnected.
+            throw new Centrifuge.UnauthorizedError();
+        }
+        // Any other error thrown will result into token refresh re-attempts.
+        throw new Error(`Unexpected status code ${res.status}`);
+    }
+    const data = await res.json();
+    return data.token;
 }
 
 const client = new Centrifuge(
     'ws://localhost:8000/connection/websocket',
     {
         token: 'JWT-GENERATED-ON-BACKEND-SIDE',
-        getToken: function (ctx) {
-            return getToken('/centrifuge/connection_token', ctx);
-        }
+        getToken: getToken
     }
 );
 ```
@@ -551,36 +544,30 @@ If token sets subscription expiration client SDK will keep token refreshed. It d
 An example:
 
 ```javascript
-function getToken(url, ctx) {
-    return new Promise((resolve, reject) => {
-        fetch(url, {
-            method: 'POST',
-            headers: new Headers({ 'Content-Type': 'application/json' }),
-            body: JSON.stringify(ctx)
-        })
-        .then(res => {
-            if (!res.ok) {
-                throw new Error(`Unexpected status code ${res.status}`);
-            }
-            return res.json();
-        })
-        .then(data => {
-            resolve(data.token);
-        })
-        .catch(err => {
-            reject(err);
-        });
+async function getToken(ctx) {
+    // ctx argument has a channel.
+    const res = await fetch('/centrifuge/subscription_token', {
+        method: 'POST',
+        headers: new Headers({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify(ctx)
     });
+    if (!res.ok) {
+        if (res.status === 403) {
+            // Return special error to not proceed with token refreshes, subscription will be unsubscribed.
+            throw new Centrifuge.UnauthorizedError();
+        }
+        // Any other error thrown will result into token refresh re-attempts.
+        throw new Error(`Unexpected status code ${res.status}`);
+    }
+    const data = await res.json();
+    return data.token;
 }
 
 const client = new Centrifuge('ws://localhost:8000/connection/websocket', {});
 
 const sub = centrifuge.newSubscription(channel, {
     token: 'JWT-GENERATED-ON-BACKEND-SIDE',
-    getToken: function (ctx) {
-        // ctx has channel in the Subscription token case.
-        return getToken('/centrifuge/subscription_token', ctx);
-    },
+    getToken: getToken,
 });
 sub.subscribe();
 ```
@@ -702,7 +689,7 @@ Timeout for operations in milliseconds.
 To import client with Protobuf protocol support:
 
 ```html
-<script src="https://unpkg.com/centrifuge@3.0.0/dist/centrifuge.protobuf.js"></script>
+<script src="https://unpkg.com/centrifuge@4.0.0/dist/centrifuge.protobuf.js"></script>
 ```
 
 Or if you are developing with npm:

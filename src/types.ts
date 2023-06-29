@@ -85,12 +85,14 @@ export interface Options {
   protocol: 'json' | 'protobuf';
   /** allows enabling debug mode */
   debug: boolean;
-  /** allows setting connection token (JWT) */
-  token: string | null;
+  /** allows setting initial connection token (JWT) */
+  token: string;
   /** allows setting function to get/refresh connection token */
   getToken: null | ((ctx: ConnectionTokenContext) => Promise<string>);
   /** data to send to a server with connect command */
   data: any | null;
+  /** allows setting function to get/renew connection data */
+  getData: null | (() => Promise<any>);
   /** name of client - it's not a unique name of each connection, it's sth to identify
    * from where client connected */
   name: string;
@@ -275,6 +277,10 @@ export interface SubscriptionTokenContext {
   channel: string;
 }
 
+export interface SubscriptionDataContext {
+  channel: string;
+}
+
 export interface PublishResult {
 }
 
@@ -305,12 +311,14 @@ export interface HistoryOptions {
 
 /** SubscriptionOptions can customize Subscription. */
 export interface SubscriptionOptions {
-  /** allows setting subscription token (JWT) */
-  token: string | null;
+  /** allows setting initial subscription token (JWT) */
+  token: string;
   /** allows setting function to get/refresh subscription token */
   getToken: null | ((ctx: SubscriptionTokenContext) => Promise<string>);
   /** data to send to a server with subscribe command */
   data: any | null;
+  /** allows setting function to get/renew subscription data */
+  getData: null | ((ctx: SubscriptionDataContext) => Promise<any>);
   /** force recovery on first subscribe from a provided StreamPosition. */
   since: StreamPosition | null;
   /** min delay between resubscribe attempts. */

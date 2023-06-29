@@ -47,14 +47,6 @@
                       "type": "uint32",
                       "id": 1
                     },
-                    "method": {
-                      "type": "MethodType",
-                      "id": 2
-                    },
-                    "params": {
-                      "type": "bytes",
-                      "id": 3
-                    },
                     "connect": {
                       "type": "ConnectRequest",
                       "id": 4
@@ -104,24 +96,16 @@
                       "id": 15
                     }
                   },
-                  "nested": {
-                    "MethodType": {
-                      "values": {
-                        "CONNECT": 0,
-                        "SUBSCRIBE": 1,
-                        "UNSUBSCRIBE": 2,
-                        "PUBLISH": 3,
-                        "PRESENCE": 4,
-                        "PRESENCE_STATS": 5,
-                        "HISTORY": 6,
-                        "PING": 7,
-                        "SEND": 8,
-                        "RPC": 9,
-                        "REFRESH": 10,
-                        "SUB_REFRESH": 11
-                      }
-                    }
-                  }
+                  "reserved": [
+                    [
+                      2,
+                      2
+                    ],
+                    [
+                      3,
+                      3
+                    ]
+                  ]
                 },
                 "Reply": {
                   "fields": {
@@ -132,10 +116,6 @@
                     "error": {
                       "type": "Error",
                       "id": 2
-                    },
-                    "result": {
-                      "type": "bytes",
-                      "id": 3
                     },
                     "push": {
                       "type": "Push",
@@ -185,21 +165,19 @@
                       "type": "SubRefreshResult",
                       "id": 15
                     }
-                  }
+                  },
+                  "reserved": [
+                    [
+                      3,
+                      3
+                    ]
+                  ]
                 },
                 "Push": {
                   "fields": {
-                    "type": {
-                      "type": "PushType",
-                      "id": 1
-                    },
                     "channel": {
                       "type": "string",
                       "id": 2
-                    },
-                    "data": {
-                      "type": "bytes",
-                      "id": 3
                     },
                     "pub": {
                       "type": "Publication",
@@ -238,21 +216,16 @@
                       "id": 12
                     }
                   },
-                  "nested": {
-                    "PushType": {
-                      "values": {
-                        "PUBLICATION": 0,
-                        "JOIN": 1,
-                        "LEAVE": 2,
-                        "UNSUBSCRIBE": 3,
-                        "MESSAGE": 4,
-                        "SUBSCRIBE": 5,
-                        "CONNECT": 6,
-                        "DISCONNECT": 7,
-                        "REFRESH": 8
-                      }
-                    }
-                  }
+                  "reserved": [
+                    [
+                      1,
+                      1
+                    ],
+                    [
+                      3,
+                      3
+                    ]
+                  ]
                 },
                 "ClientInfo": {
                   "fields": {
@@ -293,7 +266,21 @@
                       "type": "string",
                       "id": 7
                     }
-                  }
+                  },
+                  "reserved": [
+                    [
+                      1,
+                      1
+                    ],
+                    [
+                      2,
+                      2
+                    ],
+                    [
+                      3,
+                      3
+                    ]
+                  ]
                 },
                 "Join": {
                   "fields": {
@@ -321,7 +308,13 @@
                       "type": "string",
                       "id": 3
                     }
-                  }
+                  },
+                  "reserved": [
+                    [
+                      1,
+                      1
+                    ]
+                  ]
                 },
                 "Subscribe": {
                   "fields": {
@@ -345,7 +338,17 @@
                       "type": "bytes",
                       "id": 7
                     }
-                  }
+                  },
+                  "reserved": [
+                    [
+                      2,
+                      2
+                    ],
+                    [
+                      3,
+                      3
+                    ]
+                  ]
                 },
                 "Message": {
                   "fields": {
@@ -564,7 +567,17 @@
                       "type": "bool",
                       "id": 11
                     }
-                  }
+                  },
+                  "reserved": [
+                    [
+                      4,
+                      4
+                    ],
+                    [
+                      5,
+                      5
+                    ]
+                  ]
                 },
                 "SubscribeResult": {
                   "fields": {
@@ -609,7 +622,17 @@
                       "type": "bool",
                       "id": 12
                     }
-                  }
+                  },
+                  "reserved": [
+                    [
+                      4,
+                      4
+                    ],
+                    [
+                      5,
+                      5
+                    ]
+                  ]
                 },
                 "SubRefreshRequest": {
                   "fields": {
@@ -728,7 +751,29 @@
                       "type": "bool",
                       "id": 9
                     }
-                  }
+                  },
+                  "reserved": [
+                    [
+                      2,
+                      2
+                    ],
+                    [
+                      3,
+                      3
+                    ],
+                    [
+                      4,
+                      4
+                    ],
+                    [
+                      5,
+                      5
+                    ],
+                    [
+                      6,
+                      6
+                    ]
+                  ]
                 },
                 "HistoryResult": {
                   "fields": {

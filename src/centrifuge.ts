@@ -29,9 +29,10 @@ import EventEmitter from 'events';
 
 const defaults: Options = {
   protocol: 'json',
-  token: null,
+  token: '',
   getToken: null,
   data: null,
+  getData: null,
   debug: false,
   name: 'js',
   version: '',
@@ -53,6 +54,13 @@ interface serverSubscription {
   offset: number;
   epoch: string;
   recoverable: boolean;
+}
+
+export class UnauthorizedError extends Error {
+  constructor(message: any) {
+    super(message);
+    this.name = this.constructor.name;
+  }
 }
 
 /** Centrifuge is a Centrifuge/Centrifugo bidirectional client. */
@@ -82,7 +90,8 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
   private _refreshRequired: boolean;
   private _refreshTimeout?: null | ReturnType<typeof setTimeout> = null;
   private _callbacks: Record<number, any>;
-  private _token?: string;
+  private _token: string;
+  private _data: any;
   private _dispatchPromise: Promise<void>;
   private _serverPing: number;
   private _serverPingTimeout?: null | ReturnType<typeof setTimeout> = null;
@@ -98,6 +107,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
 
   static State: { Disconnected: string; Connecting: string; Connected: string; };
   static SubscriptionState: { Unsubscribed: string; Subscribing: string; Subscribed: string; };
+  static UnauthorizedError: any;
 
   /** Constructs Centrifuge client. Call connect() method to start connecting. */
   constructor(endpoint: string | Array<TransportEndpoint>, options?: Partial<Options>) {
@@ -129,7 +139,8 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     this._refreshRequired = false;
     this._refreshTimeout = null;
     this._callbacks = {};
-    this._token = undefined;
+    this._token = '';
+    this._data = null;
     this._dispatchPromise = Promise.resolve();
     this._serverPing = 0;
     this._serverPingTimeout = null;
@@ -233,6 +244,10 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
   /** disconnect from a server. */
   disconnect() {
     this._disconnect(disconnectedCodes.disconnectCalled, 'disconnect called', false);
+  }
+
+  setToken(token: string) {
+    this._token = token;
   }
 
   /** send asynchronous data to a server (without any response from a server 
@@ -435,6 +450,10 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
 
     if (this._config.token !== null) {
       this._token = this._config.token;
+    }
+
+    if (this._config.data !== null) {
+      this._data = this._config.data;
     }
 
     this._setFormat('json');
@@ -936,28 +955,51 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     }
 
     this._reconnecting = true;
-
-    const needTokenRefresh = this._refreshRequired || (!this._token && this._config.getToken !== null);
+    const self = this;
+    const emptyToken = this._token === '';
+    const needTokenRefresh = this._refreshRequired || (emptyToken && this._config.getToken !== null);
     if (!needTokenRefresh) {
-      this._initializeTransport();
+      if (this._config.getData) {
+        this._config.getData().then(function (data: any) {
+          if (!self._isConnecting()) {
+            return;
+          }
+          self._data = data;
+          self._initializeTransport();
+        })
+      } else {
+        this._initializeTransport();
+      }
       return;
     }
 
-    const self = this;
-
-    this._getToken().then(function (token) {
+    this._getToken().then(function (token: string) {
       if (!self._isConnecting()) {
         return;
       }
-      if (!token) {
+      if (token == null || token == undefined) {
         self._failUnauthorized();
         return;
       }
       self._token = token;
       self._debug('connection token refreshed');
-      self._initializeTransport();
+      if (self._config.getData) {
+        self._config.getData().then(function (data: any) {
+          if (!self._isConnecting()) {
+            return;
+          }
+          self._data = data;
+          self._initializeTransport();
+        })
+      } else {
+        self._initializeTransport();
+      }
     }).catch(function (e) {
       if (!self._isConnecting()) {
+        return;
+      }
+      if (e instanceof UnauthorizedError) {
+        self._failUnauthorized();
         return;
       }
       self.emit('error', {
@@ -1021,8 +1063,8 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     if (this._token) {
       req.token = this._token;
     }
-    if (this._config.data) {
-      req.data = this._config.data;
+    if (this._data) {
+      req.data = this._data;
     }
     if (this._config.name) {
       req.name = this._config.name;
@@ -1247,10 +1289,17 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     this._disconnect(disconnectedCodes.unauthorized, 'unauthorized', false);
   }
 
-  private _getToken() {
+  private _getToken(): Promise<string> {
     this._debug('get connection token');
     if (!this._config.getToken) {
-      throw new Error('provide a function to get connection token');
+      this.emit('error', {
+        type: 'configuration',
+        error: {
+          code: errorCodes.badConfiguration,
+          message: 'token expired but no getToken function set in the configuration'
+        }
+      });
+      throw new UnauthorizedError('');
     }
     return this._config.getToken({});
   }
@@ -1293,6 +1342,13 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
         }
       });
     }).catch(function (e) {
+      if (!self._isConnected()) {
+        return;
+      }
+      if (e instanceof UnauthorizedError) {
+        self._failUnauthorized();
+        return;
+      }
       self.emit('error', {
         type: 'refreshToken',
         error: {
@@ -1804,3 +1860,4 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
 
 Centrifuge.SubscriptionState = SubscriptionState;
 Centrifuge.State = State
+Centrifuge.UnauthorizedError = UnauthorizedError;

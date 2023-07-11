@@ -1,3 +1,8 @@
+4.0.1
+=====
+
+* Update dependencies. In particular: migrate to the latest protobufjs 7.2.4.
+
 4.0.0
 =====
 

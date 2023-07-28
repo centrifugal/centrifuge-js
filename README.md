@@ -305,6 +305,10 @@ centrifuge.presenceStats("channel").then(function(resp) {
 
 Returns a Promise which will be resolved upon connection establishement (i.e. when Client goes to `connected` state).
 
+#### setToken method
+
+`setToken` may be useful to dynamically change the connection token. For example when you need to implement login/logout workflow. See an example in [blog post](https://centrifugal.dev/blog/2023/06/29/centrifugo-v5-released#token-behaviour-adjustments-in-sdks).
+
 #### error event
 
 To listen asynchronous error happening internally while Centrifuge client works you can set an `error` handler:

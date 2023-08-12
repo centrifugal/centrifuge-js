@@ -1,3 +1,8 @@
+4.1.0
+=====
+
+* Fix types: use `Record` instead of `Map` for publication tags and `clients` field of `PresenceResult`.
+
 4.0.1
 =====
 

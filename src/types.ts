@@ -173,7 +173,7 @@ export interface PublicationContext {
   data: any;
   info?: ClientInfo;
   offset?: number;
-  tags?: Map<string, string>;
+  tags?: Record<string, string>;
 }
 
 export interface ClientInfo {
@@ -243,7 +243,7 @@ export interface ServerPublicationContext {
   data: any;
   info?: ClientInfo;
   offset?: number;
-  tags?: Map<string, string>;
+  tags?: Record<string, string>;
 }
 
 export interface ServerJoinContext {
@@ -289,7 +289,7 @@ export interface RpcResult {
 }
 
 export interface PresenceResult {
-  clients: Map<string, ClientInfo>;
+  clients: Record<string, ClientInfo>;
 }
 
 export interface PresenceStatsResult {

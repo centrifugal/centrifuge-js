@@ -169,17 +169,30 @@ export interface MessageContext {
 }
 
 export interface PublicationContext {
+  // channel from which publication was received.
   channel: string;
+  // data contains publication payload.
   data: any;
+  // info is an optional ClientInfo object. It's appended to publication only if publication was
+  // sent using client SDK's publish method. If publication was sent over server publish API
+  // this info object is missing as we don't have publisher client context in that case.
   info?: ClientInfo;
+  // offset may be set for channels where history Centrifugo feature is on. In this case it's an
+  // incremental number assigned to publication by server broker (upon adding to history stream).   
   offset?: number;
+  // tags is an extra key-value attached to publication, tags may be set when calling server publish API. 
   tags?: Record<string, string>;
 }
 
 export interface ClientInfo {
+  // client is a globally unique identifier which server allocates for every connection.
   client: string;
+  // user contains ID of authenticated user. Empty user means anonymous user. One user can have
+  // many client connections.
   user: string;
+  // connInfo is optional information attached to connection (during connection authentication).
   connInfo?: any;
+  // chanInfo is optional information attached to subscription (during subscription authorization).
   chanInfo?: any;
 }
 
@@ -239,10 +252,18 @@ export interface UnsubscribedContext {
 }
 
 export interface ServerPublicationContext {
+  // channel from which publication was received.
   channel: string;
+  // data contains publication payload.
   data: any;
+  // info is an optional ClientInfo object. It's appended to publication only if publication was
+  // sent using client SDK's publish method. If publication was sent over server publish API
+  // this info object is missing as we don't have publisher client context in that case.
   info?: ClientInfo;
+  // offset may be set for channels where history Centrifugo feature is on. In this case it's an
+  // incremental number assigned to publication by server broker (upon adding to history stream).   
   offset?: number;
+  // tags is an extra key-value attached to publication, tags may be set when calling server publish API. 
   tags?: Record<string, string>;
 }
 

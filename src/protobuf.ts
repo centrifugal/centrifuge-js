@@ -1,7 +1,8 @@
-import * as protobuf from 'protobufjs/light'
-import * as protoJSON from './client.proto.json';
-
-const proto = protobuf.Root.fromJSON(protoJSON);
+// import * as protobuf from 'protobufjs/light'
+// import * as protoJSON from './client.proto.json';
+// const proto = protobuf.Root.fromJSON(protoJSON);
+const protobuf = require('protobufjs/light');
+const proto = protobuf.Root.fromJSON(require('./client.proto.json'));
 
 const Command = proto.lookupType('protocol.Command');
 const Reply = proto.lookupType('protocol.Reply');

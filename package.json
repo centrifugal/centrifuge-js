@@ -72,6 +72,6 @@
   "homepage": "https://github.com/centrifugal/centrifuge-js",
   "dependencies": {
     "events": "^3.3.0",
-    "protobufjs": "^7.2.4"
+    "protobufjs": "^7.2.5"
   }
 }

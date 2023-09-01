@@ -1,7 +1,7 @@
 {
   "compilerOptions": {
-    "target": "es6",
-    "module": "commonjs",
+    "target": "ESNext",
+    "module": "ESNext",
     "moduleResolution": "node",
     "declaration": true,
     "strict": true,
@@ -20,7 +20,7 @@
     "resolveJsonModule": true,
     "sourceMap": true,
     "stripInternal": true,
-    "outDir": "./build/",
+    "outDir": "./intermediate", // Intermediate files before Rollup processes them
     "types": [
       "node",
       "jest"
@@ -37,6 +37,7 @@
   "exclude": [
     "node_modules",
     "**/*.test.ts",
-    "**/browser.ts"
+    "**/browser.ts",
+    "**/centrifuge-protobuf/*",
   ]
 }

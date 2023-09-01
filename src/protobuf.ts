@@ -1,5 +1,3 @@
-import { Centrifuge } from '../centrifuge';
-
 import * as protobuf from 'protobufjs/light'
 import * as protoJSON from './client.proto.json';
 
@@ -9,7 +7,11 @@ const Command = proto.lookupType('protocol.Command');
 const Reply = proto.lookupType('protocol.Reply');
 const EmulationRequest = proto.lookupType('protocol.EmulationRequest');
 
-class ProtobufEncoder {
+export class ProtobufCodec {
+  name() {
+    return 'protobuf';
+  }
+
   encodeEmulationRequest(req: any) {
     const writer = protobuf.Writer.create();
     EmulationRequest.encode(req, writer);
@@ -26,9 +28,7 @@ class ProtobufEncoder {
     }
     return writer.finish();
   }
-}
 
-class ProtobufDecoder {
   decodeReplies(data: any) {
     const replies: any[] = [];
     const reader = protobuf.Reader.create(new Uint8Array(data));
@@ -53,16 +53,3 @@ class ProtobufDecoder {
     };
   }
 }
-
-class CentrifugeProtobuf extends Centrifuge {
-  protected _formatOverride(format: 'json' | 'protobuf') {
-    if (format === 'protobuf') {
-      this._encoder = new ProtobufEncoder();
-      this._decoder = new ProtobufDecoder();
-      return true;
-    }
-    return false;
-  }
-}
-
-export default CentrifugeProtobuf

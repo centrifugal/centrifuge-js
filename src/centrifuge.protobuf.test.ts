@@ -1,13 +1,13 @@
-import Centrifuge from './index'
-import { DisconnectedContext, UnsubscribedContext, TransportName, PublicationContext } from './../types';
-import { disconnectedCodes, unsubscribedCodes } from './../codes';
+import Centrifuge from './browser.protobuf'
+import { DisconnectedContext, UnsubscribedContext, TransportName, PublicationContext } from './types';
+import { disconnectedCodes, unsubscribedCodes } from './codes';
 import WebSocket from 'ws';
 import { fetch } from 'undici';
 import { ReadableStream } from 'node:stream/web';
 
 const transportCases = [
-  ['websocket', 'ws://localhost:8000/connection/websocket?cf_protocol_version=v2'],
-  ['http_stream', 'http://localhost:8000/connection/http_stream?cf_protocol_version=v2'],
+  ['websocket', 'ws://localhost:8000/connection/websocket'],
+  ['http_stream', 'http://localhost:8000/connection/http_stream'],
 ]
 
 test.each(transportCases)("%s (Protobuf): connects and disconnects", async (transport, endpoint) => {
@@ -15,7 +15,6 @@ test.each(transportCases)("%s (Protobuf): connects and disconnects", async (tran
     transport: transport as TransportName,
     endpoint: endpoint,
   }], {
-    protocol: 'protobuf',
     websocket: WebSocket,
     fetch: fetch,
     readableStream: ReadableStream,
@@ -45,7 +44,6 @@ test.each(transportCases)("%s (Protobuf): subscribe and unsubscribe", async (tra
     transport: transport as TransportName,
     endpoint: endpoint,
   }], {
-    protocol: 'protobuf',
     websocket: WebSocket,
     fetch: fetch,
     readableStream: ReadableStream,
@@ -84,7 +82,6 @@ test.each(transportCases)("%s (Protobuf): publish and receive message", async (t
     transport: transport as TransportName,
     endpoint: endpoint,
   }], {
-    protocol: 'protobuf',
     websocket: WebSocket,
     fetch: fetch,
     readableStream: ReadableStream,
@@ -119,7 +116,6 @@ test.each(transportCases)("%s (Protobuf): subscribe and presence", async (transp
     transport: transport as TransportName,
     endpoint: endpoint,
   }], {
-    protocol: 'protobuf',
     websocket: WebSocket,
     fetch: fetch,
     readableStream: ReadableStream,

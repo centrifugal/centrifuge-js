@@ -3,8 +3,7 @@
   "version": "4.1.0",
   "description": "JavaScript client SDK for bidirectional communication with Centrifugo and Centrifuge-based server from browser, NodeJS and React Native",
   "main": "build/index.js",
-  "type": "module",
-  "types": "intermediate/index.d.ts",
+  "types": "build/index.d.ts",
   "module": "build/index.mjs",
   "files": [
     "dist/**",
@@ -24,8 +23,8 @@
     "build-all": "yarn clean && yarn build && yarn build-browser && yarn build-browser-protobuf",
     "build-browser": "esbuild src/browser.ts --bundle --minify --sourcemap --outfile=dist/centrifuge.js",
     "dev": "esbuild src/browser.ts --bundle --outfile=dist/centrifuge.js --servedir=dist/ --serve=2000",
-    "build-browser-protobuf": "esbuild src/centrifuge-protobuf/browser.ts --bundle --minify --sourcemap --outfile=dist/centrifuge.protobuf.js",
-    "dev-protobuf": "esbuild src/centrifuge-protobuf/browser.ts --bundle --outfile=dist/centrifuge.protobuf.js --servedir=dist/ --serve=2000",
+    "build-browser-protobuf": "esbuild src/browser.protobuf.ts --bundle --minify --sourcemap --outfile=dist/centrifuge.protobuf.js",
+    "dev-protobuf": "esbuild src/browser.protobuf.ts --bundle --outfile=dist/centrifuge.protobuf.js --servedir=dist/ --serve=2000",
     "proto": "./make-proto"
   },
   "devDependencies": {
@@ -42,6 +41,7 @@
     "jest": "^28.1.0",
     "protobufjs-cli": "^1.1.1",
     "rollup": "^3.28.1",
+    "rollup-plugin-delete": "^2.0.0",
     "rollup-plugin-typescript2": "^0.35.0",
     "ts-jest": "^28.0.2",
     "ts-node": "^10.7.0",

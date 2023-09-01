@@ -20,7 +20,6 @@
     "resolveJsonModule": true,
     "sourceMap": true,
     "stripInternal": true,
-    "outDir": "./intermediate", // Intermediate files before Rollup processes them
     "types": [
       "node",
       "jest"
@@ -37,7 +36,7 @@
   "exclude": [
     "node_modules",
     "**/*.test.ts",
-    "**/browser.ts",
-    "**/centrifuge-protobuf/*",
+    "src/browser.protobuf.ts",
+    "src/browser.ts",
   ]
 }

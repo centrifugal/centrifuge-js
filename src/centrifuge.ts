@@ -243,6 +243,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     this._disconnect(disconnectedCodes.disconnectCalled, 'disconnect called', false);
   }
 
+  /** setToken allows setting connection token. Or resetting used token to be empty.  */
   setToken(token: string) {
     this._token = token;
   }

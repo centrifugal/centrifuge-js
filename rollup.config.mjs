@@ -17,6 +17,9 @@ export default [
       del({
         targets: [
           'build/protobuf.*',
+          'build/transport_*.d.ts',
+          'build/json.d.ts',
+          'build/utils.d.ts',
         ],
         hook: 'writeBundle',
         runOnce: true,
@@ -48,6 +51,14 @@ export default [
         targets: [
           'build/cjs/index.d.ts',
           'build/esm/index.d.ts',
+          'build/cjs/transport_*.d.ts',
+          'build/esm/transport_*.d.ts',
+          'build/cjs/protobuf.codec.d.ts',
+          'build/esm/protobuf.codec.d.ts',
+          'build/cjs/json.d.ts',
+          'build/cjs/utils.d.ts',
+          'build/esm/json.d.ts',
+          'build/esm/utils.d.ts',
         ],
         hook: 'writeBundle',
         runOnce: true,

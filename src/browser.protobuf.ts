@@ -3,7 +3,7 @@
  * The code executes when loaded in a browser.
  */
 import { Centrifuge } from './centrifuge';
-import { ProtobufCodec } from './protobuf';
+import { ProtobufCodec } from './protobuf.codec';
 
 export default class CentrifugeProtobuf extends Centrifuge {
     protected _formatOverride() {

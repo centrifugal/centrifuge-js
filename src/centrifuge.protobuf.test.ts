@@ -1,4 +1,4 @@
-import Centrifuge from './browser.protobuf'
+import { Centrifuge } from './protobuf'
 import { DisconnectedContext, UnsubscribedContext, TransportName, PublicationContext } from './types';
 import { disconnectedCodes, unsubscribedCodes } from './codes';
 import WebSocket from 'ws';

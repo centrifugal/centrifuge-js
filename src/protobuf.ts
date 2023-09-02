@@ -1,8 +1,10 @@
-// import * as protobuf from 'protobufjs/light'
-// import * as protoJSON from './client.proto.json';
-// const proto = protobuf.Root.fromJSON(protoJSON);
-const protobuf = require('protobufjs/light');
-const proto = protobuf.Root.fromJSON(require('./client.proto.json'));
+import { Centrifuge, UnauthorizedError } from './centrifuge';
+import { Subscription } from './subscription';
+export * from "./types";
+
+import * as protobuf from 'protobufjs/light'
+import * as protoJSON from './client.proto.json';
+const proto = protobuf.Root.fromJSON(protoJSON);
 
 const Command = proto.lookupType('protocol.Command');
 const Reply = proto.lookupType('protocol.Reply');
@@ -53,4 +55,16 @@ export class ProtobufCodec {
       ok: false
     };
   }
+}
+
+class CentrifugeProtobuf extends Centrifuge {
+  protected _formatOverride() {
+    this._codec = new ProtobufCodec();
+  }
+}
+
+export {
+  CentrifugeProtobuf as Centrifuge,
+  UnauthorizedError,
+  Subscription
 }

@@ -28,7 +28,6 @@ import {
 import EventEmitter from 'events';
 
 const defaults: Options = {
-  codec: new JsonCodec(),
   token: '',
   getToken: null,
   data: null,
@@ -417,15 +416,8 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
   }
 
   /** @internal */
-  private _setFormat(format: 'json' | 'protobuf') {
-    if (this._formatOverride(format)) {
-      return;
-    }
-  }
-
-  /** @internal */
-  protected _formatOverride(_format: 'json' | 'protobuf') {
-    return false;
+  protected _formatOverride() {
+    return;
   }
 
   private _configure() {
@@ -445,8 +437,8 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
       this._data = this._config.data;
     }
 
-    this._codec = this._config.codec;
-    this._setFormat(this._codec.name());
+    this._codec = new JsonCodec();
+    this._formatOverride();
 
     if (this._config.debug === true ||
       (typeof localStorage !== 'undefined' && localStorage.getItem('centrifuge.debug'))) {

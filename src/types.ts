@@ -80,9 +80,6 @@ export interface TransportEndpoint {
 
 /** Options for Centrifuge client. */
 export interface Options {
-  /** select codec to use. Default is JSON. To use Protobuf protocol you need to use 
-   * ProtobufCodec. */
-  codec: any;
   /** allows enabling debug mode */
   debug: boolean;
   /** allows setting initial connection token (JWT) */

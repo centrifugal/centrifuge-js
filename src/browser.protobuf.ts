@@ -6,12 +6,8 @@ import { Centrifuge } from './centrifuge';
 import { ProtobufCodec } from './protobuf';
 
 export default class CentrifugeProtobuf extends Centrifuge {
-    protected _formatOverride(format: 'json' | 'protobuf') {
-        if (format === 'protobuf') {
-            this._codec = new ProtobufCodec();
-            return true;
-        }
-        return false;
+    protected _formatOverride() {
+        this._codec = new ProtobufCodec();
     }
 }
 

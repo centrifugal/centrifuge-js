@@ -40,17 +40,14 @@ export default [
     plugins: [
       json(),
       typescript(),
+      resolve({
+        preferBuiltins: false
+      }),
       commonjs(),
       del({
         targets: [
-          'build/cjs/*',
-          'build/esm/*',
-          '!build/cjs/protobuf.js',
-          '!build/cjs/protobuf.js.map',
-          '!build/cjs/protobuf.d.ts',
-          '!build/esm/protobuf.js',
-          '!build/esm/protobuf.js.map',
-          '!build/esm/protobuf.d.ts',
+          'build/cjs/index.d.ts',
+          'build/esm/index.d.ts',
         ],
         hook: 'writeBundle',
         runOnce: true,

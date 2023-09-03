@@ -4,7 +4,6 @@ import typescript from 'rollup-plugin-typescript2';
 import json from '@rollup/plugin-json';
 import del from 'rollup-plugin-delete';
 
-// Configuration for JSON build
 export default [
   {
     input: 'src/index.ts',

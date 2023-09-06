@@ -103,9 +103,9 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
   private _config: Options;
   protected _codec: any;
 
-  static State: { Disconnected: string; Connecting: string; Connected: string; };
-  static SubscriptionState: { Unsubscribed: string; Subscribing: string; Subscribed: string; };
-  static UnauthorizedError: any;
+  static SubscriptionState: typeof SubscriptionState;
+  static State: typeof State;
+  static UnauthorizedError: typeof UnauthorizedError;
 
   /** Constructs Centrifuge client. Call connect() method to start connecting. */
   constructor(endpoint: string | Array<TransportEndpoint>, options?: Partial<Options>) {
@@ -1837,7 +1837,3 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     }
   }
 }
-
-Centrifuge.SubscriptionState = SubscriptionState;
-Centrifuge.State = State
-Centrifuge.UnauthorizedError = UnauthorizedError;

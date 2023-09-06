@@ -2,8 +2,15 @@
  * This file is the entrypoint of browser builds.
  * The code executes when loaded in a browser.
  */
-import { Centrifuge } from './centrifuge';
+import { Centrifuge, UnauthorizedError } from './centrifuge';
 import { ProtobufCodec } from './protobuf.codec';
+import {
+    State, SubscriptionState,
+} from './types';
+
+Centrifuge.SubscriptionState = SubscriptionState;
+Centrifuge.State = State
+Centrifuge.UnauthorizedError = UnauthorizedError;
 
 export default class CentrifugeProtobuf extends Centrifuge {
     protected _formatOverride() {

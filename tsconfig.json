@@ -20,7 +20,6 @@
     "resolveJsonModule": true,
     "sourceMap": false,
     "stripInternal": true,
-    "inlineSourceMap": false,
     "types": [
       "node",
       "jest"

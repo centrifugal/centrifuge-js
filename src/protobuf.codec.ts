@@ -6,6 +6,7 @@ const Command = proto.lookupType('protocol.Command');
 const Reply = proto.lookupType('protocol.Reply');
 const EmulationRequest = proto.lookupType('protocol.EmulationRequest');
 
+/** @internal */
 export class ProtobufCodec {
   name() {
     return 'protobuf';

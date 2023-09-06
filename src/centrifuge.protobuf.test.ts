@@ -1,5 +1,8 @@
 import { Centrifuge } from './protobuf'
-import { DisconnectedContext, UnsubscribedContext, TransportName, PublicationContext, State, SubscriptionState } from './types';
+import {
+  DisconnectedContext, UnsubscribedContext, TransportName,
+  PublicationContext, State, SubscriptionState
+} from './types';
 import { disconnectedCodes, unsubscribedCodes } from './codes';
 import WebSocket from 'ws';
 import { fetch } from 'undici';

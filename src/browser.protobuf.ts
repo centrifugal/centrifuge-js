@@ -8,8 +8,11 @@ import {
     State, SubscriptionState,
 } from './types';
 
+// @ts-ignore – required for browser build.
 Centrifuge.SubscriptionState = SubscriptionState;
+// @ts-ignore – need for browser build.
 Centrifuge.State = State
+// @ts-ignore – need for browser build.
 Centrifuge.UnauthorizedError = UnauthorizedError;
 
 export default class CentrifugeProtobuf extends Centrifuge {

@@ -103,10 +103,6 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
   private _config: Options;
   protected _codec: any;
 
-  static SubscriptionState: typeof SubscriptionState;
-  static State: typeof State;
-  static UnauthorizedError: typeof UnauthorizedError;
-
   /** Constructs Centrifuge client. Call connect() method to start connecting. */
   constructor(endpoint: string | Array<TransportEndpoint>, options?: Partial<Options>) {
     super();

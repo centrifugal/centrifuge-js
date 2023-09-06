@@ -40,7 +40,7 @@
     "eventsource": "^2.0.2",
     "jest": "^28.1.0",
     "protobufjs-cli": "^1.1.1",
-    "rollup": "^3.28.1",
+    "rollup": "^3.29.0",
     "rollup-plugin-delete": "^2.0.0",
     "rollup-plugin-typescript2": "^0.35.0",
     "ts-jest": "^28.0.2",

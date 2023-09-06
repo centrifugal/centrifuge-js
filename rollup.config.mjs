@@ -28,12 +28,10 @@ export default [
       {
         file: 'build/index.js',
         format: 'cjs',
-        sourcemap: true
       },
       {
         file: 'build/index.mjs',
         format: 'es',
-        sourcemap: true
       }
     ]
   },
@@ -67,12 +65,10 @@ export default [
       {
         file: 'build/cjs/protobuf.js',
         format: 'cjs',
-        sourcemap: true
       },
       {
         file: 'build/esm/protobuf.js',
         format: 'es',
-        sourcemap: true
       }
     ]
   }

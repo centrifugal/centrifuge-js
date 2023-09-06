@@ -1,5 +1,8 @@
 import { Centrifuge } from './centrifuge'
-import { DisconnectedContext, Error as CentrifugeError, PublicationContext, TransportName, UnsubscribedContext } from './types';
+import {
+  DisconnectedContext, Error as CentrifugeError,
+  PublicationContext, TransportName, UnsubscribedContext, State, SubscriptionState
+} from './types';
 import { disconnectedCodes, unsubscribedCodes, connectingCodes } from './codes';
 
 import WebSocket from 'ws';
@@ -44,11 +47,11 @@ test.each(transportCases)("%s: connects and disconnects", async (transport, endp
 
   c.connect();
   await c.ready(5000);
-  expect(c.state).toBe(Centrifuge.State.Connected);
+  expect(c.state).toBe(State.Connected);
 
   c.disconnect();
   const ctx = await p;
-  expect(c.state).toBe(Centrifuge.State.Disconnected);
+  expect(c.state).toBe(State.Disconnected);
   expect(ctx.code).toBe(disconnectedCodes.disconnectCalled);
 });
 
@@ -78,16 +81,16 @@ test.each(transportCases)("%s: subscribe and unsubscribe", async (transport, end
 
   sub.subscribe()
   await sub.ready(5000);
-  expect(sub.state).toBe(Centrifuge.SubscriptionState.Subscribed);
-  expect(c.state).toBe(Centrifuge.State.Connected);
+  expect(sub.state).toBe(SubscriptionState.Subscribed);
+  expect(c.state).toBe(State.Connected);
 
   sub.unsubscribe();
   c.disconnect();
 
   const ctx = await p;
 
-  expect(sub.state).toBe(Centrifuge.SubscriptionState.Unsubscribed);
-  expect(c.state).toBe(Centrifuge.State.Disconnected);
+  expect(sub.state).toBe(SubscriptionState.Unsubscribed);
+  expect(c.state).toBe(State.Disconnected);
   expect(ctx.code).toBe(unsubscribedCodes.unsubscribeCalled)
 });
 
@@ -185,13 +188,13 @@ test.each(transportCases)("%s: handles offline/online events", async (transport,
 
   c.connect();
   await c.ready(5000);
-  expect(c.state).toBe(Centrifuge.State.Connected);
+  expect(c.state).toBe(State.Connected);
 
   const offlineEvent = new Event('offline', { bubbles: true });
   networkEventTarget.dispatchEvent(offlineEvent);
 
   const ctx = await p;
-  expect(c.state).toBe(Centrifuge.State.Connecting);
+  expect(c.state).toBe(State.Connecting);
   expect(ctx.code).toBe(connectingCodes.transportClosed);
 
   const onlineEvent = new Event('online', { bubbles: true });
@@ -206,11 +209,11 @@ test.each(transportCases)("%s: handles offline/online events", async (transport,
   })
 
   await c.ready(5000);
-  expect(c.state).toBe(Centrifuge.State.Connected);
+  expect(c.state).toBe(State.Connected);
 
   c.disconnect();
   await disconnectedPromise;
-  expect(c.state).toBe(Centrifuge.State.Disconnected);
+  expect(c.state).toBe(State.Disconnected);
 });
 
 test.each(transportCases.slice(0, 1))("%s: not connecting on online in disconnected state", async (transport, endpoint) => {
@@ -230,7 +233,7 @@ test.each(transportCases.slice(0, 1))("%s: not connecting on online in disconnec
 
   c.connect();
   await c.ready(5000);
-  expect(c.state).toBe(Centrifuge.State.Connected);
+  expect(c.state).toBe(State.Connected);
 
   let disconnectCalled: any;
   const disconnectedPromise = new Promise<DisconnectedContext>((resolve, _) => {
@@ -242,11 +245,11 @@ test.each(transportCases.slice(0, 1))("%s: not connecting on online in disconnec
 
   c.disconnect();
   await disconnectedPromise;
-  expect(c.state).toBe(Centrifuge.State.Disconnected);
+  expect(c.state).toBe(State.Disconnected);
 
   const onlineEvent = new Event('online', { bubbles: true });
   networkEventTarget.dispatchEvent(onlineEvent);
-  expect(c.state).toBe(Centrifuge.State.Disconnected);
+  expect(c.state).toBe(State.Disconnected);
 });
 
 test.each(transportCases)("%s: subscribe and presence", async (transport, endpoint) => {
@@ -267,8 +270,8 @@ test.each(transportCases)("%s: subscribe and presence", async (transport, endpoi
 
   sub.subscribe()
   await sub.ready(5000);
-  expect(sub.state).toBe(Centrifuge.SubscriptionState.Subscribed);
-  expect(c.state).toBe(Centrifuge.State.Connected);
+  expect(sub.state).toBe(SubscriptionState.Subscribed);
+  expect(c.state).toBe(State.Connected);
 
   const presence = await sub.presence();
   expect(Object.keys(presence.clients).length).toBeGreaterThan(0);
@@ -287,7 +290,7 @@ test.each(transportCases)("%s: subscribe and presence", async (transport, endpoi
 
   c.disconnect();
   await disconnectedPromise;
-  expect(c.state).toBe(Centrifuge.State.Disconnected);
+  expect(c.state).toBe(State.Disconnected);
 });
 
 test.each(transportCases)("%s: connect disconnect loop", async (transport, endpoint) => {
@@ -314,7 +317,7 @@ test.each(transportCases)("%s: connect disconnect loop", async (transport, endpo
     c.connect();
     c.disconnect();
   }
-  expect(c.state).toBe(Centrifuge.State.Disconnected);
+  expect(c.state).toBe(State.Disconnected);
   await disconnectedPromise;
 });
 
@@ -346,7 +349,7 @@ test.each(transportCases)("%s: subscribe and unsubscribe loop", async (transport
     sub.subscribe();
     sub.unsubscribe();
   }
-  expect(sub.state).toBe(Centrifuge.SubscriptionState.Unsubscribed);
+  expect(sub.state).toBe(SubscriptionState.Unsubscribed);
   await unsubscribedPromise;
 
   let disconnectCalled: any;
@@ -359,5 +362,5 @@ test.each(transportCases)("%s: subscribe and unsubscribe loop", async (transport
 
   c.disconnect();
   await disconnectedPromise;
-  expect(c.state).toBe(Centrifuge.State.Disconnected);
+  expect(c.state).toBe(State.Disconnected);
 });

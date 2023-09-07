@@ -1,7 +1,7 @@
 {
   "compilerOptions": {
-    "target": "es6",
-    "module": "commonjs",
+    "target": "ES6",
+    "module": "ES6",
     "moduleResolution": "node",
     "declaration": true,
     "strict": true,
@@ -18,9 +18,8 @@
     "allowSyntheticDefaultImports": true,
     "experimentalDecorators": true,
     "resolveJsonModule": true,
-    "sourceMap": true,
+    "sourceMap": false,
     "stripInternal": true,
-    "outDir": "./build/",
     "types": [
       "node",
       "jest"
@@ -37,6 +36,7 @@
   "exclude": [
     "node_modules",
     "**/*.test.ts",
-    "**/browser.ts"
+    "src/browser.protobuf.ts",
+    "src/browser.ts",
   ]
 }

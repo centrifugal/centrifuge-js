@@ -10,7 +10,7 @@ import { HttpStreamTransport } from './transport_http_stream';
 import { SseTransport } from './transport_sse';
 import { WebtransportTransport } from './transport_webtransport';
 
-import { JsonEncoder, JsonDecoder } from './json';
+import { JsonCodec } from './json';
 
 import {
   isFunction, log, startsWith, errorExists,
@@ -28,7 +28,6 @@ import {
 import EventEmitter from 'events';
 
 const defaults: Options = {
-  protocol: 'json',
   token: '',
   getToken: null,
   data: null,
@@ -102,12 +101,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
 
   private _debugEnabled: boolean;
   private _config: Options;
-  protected _encoder: any;
-  protected _decoder: any;
-
-  static State: { Disconnected: string; Connecting: string; Connected: string; };
-  static SubscriptionState: { Unsubscribed: string; Subscribing: string; Subscribed: string; };
-  static UnauthorizedError: any;
+  protected _codec: any;
 
   /** Constructs Centrifuge client. Call connect() method to start connecting. */
   constructor(endpoint: string | Array<TransportEndpoint>, options?: Partial<Options>) {
@@ -123,8 +117,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     this._transportId = 0;
     this._deviceWentOffline = false;
     this._transportClosed = true;
-    this._encoder = null;
-    this._decoder = null;
+    this._codec = new JsonCodec();
     this._reconnecting = false;
     this._reconnectTimeout = null;
     this._reconnectAttempts = 0;
@@ -246,6 +239,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     this._disconnect(disconnectedCodes.disconnectCalled, 'disconnect called', false);
   }
 
+  /** setToken allows setting connection token. Or resetting used token to be empty.  */
   setToken(token: string) {
     this._token = token;
   }
@@ -419,20 +413,8 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
   }
 
   /** @internal */
-  private _setFormat(format: 'json' | 'protobuf') {
-    if (this._formatOverride(format)) {
-      return;
-    }
-    if (format === 'protobuf') {
-      throw new Error('not implemented by JSON-only Centrifuge client, use client with Protobuf support');
-    }
-    this._encoder = new JsonEncoder();
-    this._decoder = new JsonDecoder();
-  }
-
-  /** @internal */
-  protected _formatOverride(_format: 'json' | 'protobuf') {
-    return false;
+  protected _formatOverride() {
+    return;
   }
 
   private _configure() {
@@ -444,10 +426,6 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
       throw new Error('endpoint configuration required');
     }
 
-    if (this._config.protocol !== 'json' && this._config.protocol !== 'protobuf') {
-      throw new Error('unsupported protocol ' + this._config.protocol);
-    }
-
     if (this._config.token !== null) {
       this._token = this._config.token;
     }
@@ -456,10 +434,8 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
       this._data = this._config.data;
     }
 
-    this._setFormat('json');
-    if (this._config.protocol === 'protobuf') {
-      this._setFormat('protobuf');
-    }
+    this._codec = new JsonCodec();
+    this._formatOverride();
 
     if (this._config.debug === true ||
       (typeof localStorage !== 'undefined' && localStorage.getItem('centrifuge.debug'))) {
@@ -623,7 +599,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
       return false
     }
     try {
-      this._transport.send(this._encoder.encodeCommands(commands), this._session, this._node);
+      this._transport.send(this._codec.encodeCommands(commands), this._session, this._node);
     } catch (e) {
       this._debug('error writing commands', e);
       this._handleWriteError(commands);
@@ -719,8 +695,8 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
           this._debug('trying webtransport transport');
           this._transport = new WebtransportTransport(transportEndpoint, {
             webtransport: globalThis.WebTransport,
-            decoder: this._decoder,
-            encoder: this._encoder
+            decoder: this._codec,
+            encoder: this._codec
           });
           if (!this._transport.supported()) {
             this._debug('webtransport transport not available');
@@ -734,8 +710,8 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
             fetch: fetchFunc,
             readableStream: readableStream,
             emulationEndpoint: this._config.emulationEndpoint,
-            decoder: this._decoder,
-            encoder: this._encoder
+            decoder: this._codec,
+            encoder: this._codec
           });
           if (!this._transport.supported()) {
             this._debug('http_stream transport not available');
@@ -804,7 +780,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
 
     this._setNetworkEvents();
 
-    const initialData = this._encoder.encodeCommands(initialCommands);
+    const initialData = this._codec.encodeCommands(initialCommands);
 
     this._transportClosed = false;
 
@@ -813,7 +789,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
       transport.close();
     }, this._config.timeout);
 
-    this._transport.initialize(this._config.protocol, {
+    this._transport.initialize(this._codec.name(), {
       onOpen: function () {
         if (connectTimeout) {
           clearTimeout(connectTimeout);
@@ -1160,7 +1136,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     if (this._serverPing > 0) {
       this._waitServerPing();
     }
-    const replies = this._decoder.decodeReplies(data);
+    const replies = this._codec.decodeReplies(data);
     // We have to guarantee order of events in replies processing - i.e. start processing
     // next reply only when we finished processing of current one. Without syncing things in
     // this way we could get wrong publication events order as reply promises resolve
@@ -1857,7 +1833,3 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     }
   }
 }
-
-Centrifuge.SubscriptionState = SubscriptionState;
-Centrifuge.State = State
-Centrifuge.UnauthorizedError = UnauthorizedError;

@@ -80,9 +80,6 @@ export interface TransportEndpoint {
 
 /** Options for Centrifuge client. */
 export interface Options {
-  /** select protocol to use. Note that to use Protobuf protocol you need to use 
-   * CentrifugeProtobuf class. */
-  protocol: 'json' | 'protobuf';
   /** allows enabling debug mode */
   debug: boolean;
   /** allows setting initial connection token (JWT) */

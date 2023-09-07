@@ -1,13 +1,16 @@
-import Centrifuge from './index'
-import { DisconnectedContext, UnsubscribedContext, TransportName, PublicationContext } from './../types';
-import { disconnectedCodes, unsubscribedCodes } from './../codes';
+import { Centrifuge } from './protobuf'
+import {
+  DisconnectedContext, UnsubscribedContext, TransportName,
+  PublicationContext, State, SubscriptionState
+} from './types';
+import { disconnectedCodes, unsubscribedCodes } from './codes';
 import WebSocket from 'ws';
 import { fetch } from 'undici';
 import { ReadableStream } from 'node:stream/web';
 
 const transportCases = [
-  ['websocket', 'ws://localhost:8000/connection/websocket?cf_protocol_version=v2'],
-  ['http_stream', 'http://localhost:8000/connection/http_stream?cf_protocol_version=v2'],
+  ['websocket', 'ws://localhost:8000/connection/websocket'],
+  ['http_stream', 'http://localhost:8000/connection/http_stream'],
 ]
 
 test.each(transportCases)("%s (Protobuf): connects and disconnects", async (transport, endpoint) => {
@@ -15,7 +18,6 @@ test.each(transportCases)("%s (Protobuf): connects and disconnects", async (tran
     transport: transport as TransportName,
     endpoint: endpoint,
   }], {
-    protocol: 'protobuf',
     websocket: WebSocket,
     fetch: fetch,
     readableStream: ReadableStream,
@@ -32,11 +34,11 @@ test.each(transportCases)("%s (Protobuf): connects and disconnects", async (tran
 
   c.connect();
   await c.ready(5000);
-  expect(c.state).toBe(Centrifuge.State.Connected);
+  expect(c.state).toBe(State.Connected);
 
   c.disconnect();
   const ctx = await p;
-  expect(c.state).toBe(Centrifuge.State.Disconnected);
+  expect(c.state).toBe(State.Disconnected);
   expect(ctx.code).toBe(disconnectedCodes.disconnectCalled);
 });
 
@@ -45,7 +47,6 @@ test.each(transportCases)("%s (Protobuf): subscribe and unsubscribe", async (tra
     transport: transport as TransportName,
     endpoint: endpoint,
   }], {
-    protocol: 'protobuf',
     websocket: WebSocket,
     fetch: fetch,
     readableStream: ReadableStream,
@@ -66,16 +67,16 @@ test.each(transportCases)("%s (Protobuf): subscribe and unsubscribe", async (tra
 
   sub.subscribe()
   await sub.ready(5000);
-  expect(sub.state).toBe(Centrifuge.SubscriptionState.Subscribed);
-  expect(c.state).toBe(Centrifuge.State.Connected);
+  expect(sub.state).toBe(SubscriptionState.Subscribed);
+  expect(c.state).toBe(State.Connected);
 
   sub.unsubscribe();
   c.disconnect();
 
   const ctx = await p;
 
-  expect(sub.state).toBe(Centrifuge.SubscriptionState.Unsubscribed);
-  expect(c.state).toBe(Centrifuge.State.Disconnected);
+  expect(sub.state).toBe(SubscriptionState.Unsubscribed);
+  expect(c.state).toBe(State.Disconnected);
   expect(ctx.code).toBe(unsubscribedCodes.unsubscribeCalled);
 });
 
@@ -84,7 +85,6 @@ test.each(transportCases)("%s (Protobuf): publish and receive message", async (t
     transport: transport as TransportName,
     endpoint: endpoint,
   }], {
-    protocol: 'protobuf',
     websocket: WebSocket,
     fetch: fetch,
     readableStream: ReadableStream,
@@ -119,7 +119,6 @@ test.each(transportCases)("%s (Protobuf): subscribe and presence", async (transp
     transport: transport as TransportName,
     endpoint: endpoint,
   }], {
-    protocol: 'protobuf',
     websocket: WebSocket,
     fetch: fetch,
     readableStream: ReadableStream,
@@ -150,5 +149,5 @@ test.each(transportCases)("%s (Protobuf): subscribe and presence", async (transp
 
   c.disconnect();
   await disconnectedPromise;
-  expect(c.state).toBe(Centrifuge.State.Disconnected);
+  expect(c.state).toBe(State.Disconnected);
 });

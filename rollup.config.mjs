@@ -57,8 +57,7 @@ export default [
           'build/esm/json.d.ts',
           'build/esm/utils.d.ts',
         ],
-        hook: 'writeBundle',
-        runOnce: true,
+        hook: 'writeBundle'
       }),
     ],
     output: [

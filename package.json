@@ -1,6 +1,6 @@
 {
   "name": "centrifuge",
-  "version": "5.0.0-beta.0",
+  "version": "5.0.0-beta.1",
   "description": "JavaScript client SDK for bidirectional communication with Centrifugo and Centrifuge-based server from browser, NodeJS and React Native",
   "main": "build/index.js",
   "types": "build/index.d.ts",
@@ -56,6 +56,7 @@
   },
   "keywords": [
     "websocket",
+    "webtransport",
     "eventsource",
     "streaming",
     "sockjs",

@@ -4,7 +4,7 @@ The client behaves according to a common [Centrifigo SDK spec](https://centrifug
 
 The features implemented by this SDK can be found in [SDK feature matrix](https://centrifugal.dev/docs/transports/client_sdk#sdk-feature-matrix).
 
-> **`centrifuge-js` v4.x is compatible with [Centrifugo](https://github.com/centrifugal/centrifugo) server v4 and v5 and [Centrifuge](https://github.com/centrifugal/centrifuge) >= 0.25.0. For Centrifugo v2, Centrifugo v3 and Centrifuge < 0.25.0 you should use `centrifuge-js` v2.x.**
+> **`centrifuge-js` v5.x is compatible with [Centrifugo](https://github.com/centrifugal/centrifugo) server v4 and v5 and [Centrifuge](https://github.com/centrifugal/centrifuge) >= 0.25.0. For Centrifugo v2, Centrifugo v3 and Centrifuge < 0.25.0 you should use `centrifuge-js` v2.x.**
 
 * [Install](#install)
 * [Quick start](#quick-start)
@@ -41,13 +41,13 @@ And then in your project:
 import { Centrifuge } from 'centrifuge';
 ```
 
-In browser, you can import SDK from CDN (replace `4.0.0` with a concrete version number you want to use, see [releases](https://github.com/centrifugal/centrifuge-js/releases)):
+In browser, you can import SDK from CDN (replace `5.0.0` with a concrete version number you want to use, see [releases](https://github.com/centrifugal/centrifuge-js/releases)):
 
 ```html
-<script src="https://unpkg.com/centrifuge@4.0.0/dist/centrifuge.js"></script>
+<script src="https://unpkg.com/centrifuge@5.0.0/dist/centrifuge.js"></script>
 ```
 
-See also [centrifuge-js on cdnjs](https://cdnjs.com/libraries/centrifuge). Note that `centrifuge-js` browser builds target [ES6](https://caniuse.com/es6) at this point.
+See also [centrifuge-js on cdnjs](https://cdnjs.com/libraries/centrifuge). Note that `centrifuge-js` browser builds target [ES6](https://caniuse.com/es6).
 
 **By default, library works with JSON only**, if you want to send binary payloads go to [Protobuf support](#protobuf-support) section to see how to import client with Protobuf support.
 
@@ -142,7 +142,7 @@ If you want to use SockJS you must also import SockJS client before centrifuge.j
 
 ```html
 <script src="https://cdn.jsdelivr.net/npm/sockjs-client@1/dist/sockjs.min.js" type="text/javascript"></script>
-<script src="https://unpkg.com/centrifuge@4.0.0/dist/centrifuge.js" type="text/javascript"></script>
+<script src="https://unpkg.com/centrifuge@5.0.0/dist/centrifuge.js" type="text/javascript"></script>
 ```
 
 Or provide it explicitly as a dependency:
@@ -243,7 +243,7 @@ centrifuge.publish("channel", {"input": "hello"}).then(function(res) {
 
 #### send method
 
-This is only valid for Centrifuge library and does not work for Centrifugo server at the moment. `send` method allows sending asynchronous message from a client to a server.
+This is only valid for Centrifuge server library for Go and does not work for Centrifugo server at the moment. `send` method allows sending asynchronous message from a client to a server.
 
 ```javascript
 centrifuge.send({"input": "hello"}).then(function(res) {
@@ -342,6 +342,8 @@ If the token sets connection expiration then the client SDK will keep the token 
 An example of possible `getToken` function implementation:
 
 ```javascript
+import { Centrifuge, UnauthorizedError } from 'centrifuge';
+
 async function getToken() {
     if (!loggedIn) {
         return "";
@@ -350,7 +352,7 @@ async function getToken() {
     if (!res.ok) {
         if (res.status === 403) {
             // Return special error to not proceed with token refreshes, client will be disconnected.
-            throw new Centrifuge.UnauthorizedError();
+            throw new UnauthorizedError();
         }
         // Any other error thrown will result into token refresh re-attempts.
         throw new Error(`Unexpected status code ${res.status}`);
@@ -548,6 +550,8 @@ If token sets subscription expiration client SDK will keep token refreshed. It d
 An example:
 
 ```javascript
+import { Centrifuge, UnauthorizedError } from 'centrifuge';
+
 async function getToken(ctx) {
     // ctx argument has a channel.
     const res = await fetch('/centrifuge/subscription_token', {
@@ -558,7 +562,7 @@ async function getToken(ctx) {
     if (!res.ok) {
         if (res.status === 403) {
             // Return special error to not proceed with token refreshes, subscription will be unsubscribed.
-            throw new Centrifuge.UnauthorizedError();
+            throw new UnauthorizedError();
         }
         // Any other error thrown will result into token refresh re-attempts.
         throw new Error(`Unexpected status code ${res.status}`);
@@ -626,7 +630,51 @@ This call will flush all collected commands to a network.
 
 ## Server-side subscriptions
 
-TODO.
+We encourage using client-side subscriptions where possible as they provide a better control and isolation from connection. But in some cases you may want to use [server-side subscriptions](https://centrifugal.dev/docs/server/server_subs) (i.e. subscriptions created by server upon connection establishment).
+
+Technically, client SDK keeps server-side subscriptions in internal registry (similar to client-side subscriptions but without possibility to control them).
+
+To listen for server-side subscription events use callbacks as shown in example below:
+
+```javascript
+const client = new Centrifuge('ws://localhost:8000/connection/websocket', {});
+
+client.on('subscribed', function(ctx) {
+    // Called when subscribed to a server-side channel upon Client moving to
+    // connected state or during connection lifetime if server sends Subscribe
+    // push message.
+    console.log('subscribed to server-side channel', ctx.channel);
+});
+
+client.on('subscribing', function(ctx) {
+    // Called when existing connection lost (Client reconnects) or Client
+    // explicitly disconnected. Client continue keeping server-side subscription
+    // registry with stream position information where applicable.
+    console.log('subscribing to server-side channel', ctx.channel);
+});
+
+client.on('unsubscribed', function(ctx) {
+    // Called when server sent unsubscribe push or server-side subscription
+    // previously existed in SDK registry disappeared upon Client reconnect.
+    console.log('unsubscribed from server-side channel', ctx.channel);
+});
+
+client.on('publication', function(ctx) {
+    // Called when server sends Publication over server-side subscription.
+    console.log('publication receive from server-side channel', ctx.channel, ctx.data);
+});
+
+client.connect();
+```
+
+Server-side subscription events mostly mimic events of client-side subscriptions. But again – they do not provide control to the client and managed entirely by a server side.
+
+Additionally, Client has several top-level methods to call with server-side subscription related operations:
+
+* `publish(channel, data)`
+* `history(channel, options)`
+* `presence(channel)`
+* `presenceStats(channel)`
 
 ## Configuration options
 
@@ -651,10 +699,6 @@ When client disconnected from a server it will automatically try to reconnect us
 ### maxServerPingDelay
 
 `maxServerPingDelay` sets the maximum delay of server pings after which connection is considered broken and client reconnects. In milliseconds. Default is `10000`.
-
-### protocol
-
-By default, client works using `json` protocol. If you want to use binary transfer with Protobuf-based protocol this option must be set to `protobuf`. See more details about Protobuf communication in a special chapter.
 
 ### token
 
@@ -690,29 +734,21 @@ Timeout for operations in milliseconds.
 
 ## Protobuf support
 
-To import client with Protobuf protocol support:
+To import client which uses Protobuf protocol under the hood:
 
 ```html
-<script src="https://unpkg.com/centrifuge@4.0.0/dist/centrifuge.protobuf.js"></script>
+<script src="https://unpkg.com/centrifuge@5.0.0/dist/centrifuge.protobuf.js"></script>
 ```
 
 Or if you are developing with npm:
 
 ```javascript
-import Centrifuge from 'centrifuge/build/protobuf';
+import { Centrifuge } from 'centrifuge/build/esm/protobuf';
 ```
 
 This client uses [protobuf.js](https://github.com/dcodeIO/ProtoBuf.js/) under the hood.
 
-To enable binary websocket add `protocol: 'protobuf'` option to Centrifuge configuration options:
-
-```javascript
-const centrifuge = new Centrifuge('ws://centrifuge.example.com/connection/websocket", {
-    protocol: 'protobuf'
-});
-```
-
-When running with Protobuf protocol, you can send and receive any binary data as `Uint8Array`. Make sure data is properly encoded when calling methods of Centrifuge Protobuf-based instance. For example, you can not just send JSON-like objects like in JSON protocol case, you need to encode data to `Uint8Array` first:
+When running with Protobuf-based client, you can send and receive any binary data as `Uint8Array`. Make sure data is properly encoded when calling methods of Centrifuge Protobuf-based instance. For example, you can not just send JSON-like objects like in JSON protocol case, you need to encode data to `Uint8Array` first:
 
 ```javascript
 const data = new TextEncoder("utf-8").encode(JSON.stringify({"any": "data"})); 
@@ -732,8 +768,8 @@ npm install ws
 At this point you have 2 options. Explicitly pass WebSocket object to Centrifuge.
 
 ```javascript
-const { Centrifuge } = require('centrifuge');
-const WebSocket = require('ws');
+import { Centrifuge } from 'centrifuge';
+import WebSocket from 'ws';
 
 var centrifuge = new Centrifuge('ws://localhost:8000/connection/websocket', {
     websocket: WebSocket
@@ -743,8 +779,10 @@ var centrifuge = new Centrifuge('ws://localhost:8000/connection/websocket', {
 Or define it globally:
 
 ```javascript
-const { Centrifuge } = require('centrifuge');
-global.WebSocket = require('ws'); 
+import { Centrifuge } from 'centrifuge';
+import WebSocket from 'ws';
+
+global.WebSocket = WebSocket;
 
 const centrifuge = new Centrifuge('ws://localhost:8000/connection/websocket');
 ```

@@ -1,7 +1,7 @@
 5.0.0
 =====
 
-In v5 release we are moving to Rollup to bundle the library. For `centrifuge-js` this means both ESM and CommonJS support. Unfortunately the migration required some changes in how we provide Protobuf version of Centrifuge client regarding imports. That's why we decided to create a new major v5 release.
+In v5 release we are moving to Rollup to build the library. For `centrifuge-js` this means both ESM and CommonJS support. Unfortunately, the migration required some changes in how we provide Protobuf version of Centrifuge client regarding imports. That's why we decided to create a new major v5 release.
 
 For users which work with JSON-based Centrifuge client (default behaviour) the migration to v5 should be smooth and require no code changes.
 

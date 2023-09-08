@@ -1,3 +1,30 @@
+5.0.0
+=====
+
+In v5 release we are moving to Rollup to bundle the library. For `centrifuge-js` this means both ESM and CommonJS support. Unfortunately the migration required some changes in how we provide Protobuf version of Centrifuge client regarding imports. That's why we decided to create a new major v5 release.
+
+For users which work with JSON-based Centrifuge client (default behaviour) the migration to v5 should be smooth and require no code changes.
+
+Users of Protobuf version of the client need to change how they import `Centrifuge` when using the library. Also, we removed `protocol` option of Centrifuge instance config object. So previously, when using Protobuf version of Centrifuge client, you have to import Protobuf client and then provide an option to constructor:
+
+```javascript
+import Centrifuge from 'centrifuge/build/protobuf';
+
+const centrifuge = new Centrifuge('ws://centrifuge.example.com/connection/websocket", {
+    protocol: 'protobuf'
+});
+```
+
+Now this simplifies to:
+
+```javascript
+import { Centrifuge } from 'centrifuge/build/esm/protobuf';
+
+const centrifuge = new Centrifuge('ws://centrifuge.example.com/connection/websocket", {});
+```
+
+Note - changed import and no need to pass `protocol: 'protobuf'`.
+
 4.1.0
 =====
 

@@ -20,9 +20,13 @@ export interface TypedEventEmitter<Events extends EventMap> {
 
 /** Client events which can be emitted. */
 export type ClientEvents = {
+  /** called when client state changes */
   state: (ctx: StateContext) => void;
+  /** called when client goes to connecting state */
   connecting: (ctx: ConnectingContext) => void;
+  /** called when client goes to connected state */
   connected: (ctx: ConnectedContext) => void;
+  /** called when client goes to disconnected state */
   disconnected: (ctx: DisconnectedContext) => void;
 
   // Async message coming from a server.
@@ -48,16 +52,23 @@ export enum State {
 
 /** Events of Subscription. */
 export type SubscriptionEvents = {
+  /** called when subscription state changes */
   state: (ctx: SubscriptionStateContext) => void;
+  /** called when subscription state goes to subscribing */
   subscribing: (ctx: SubscribingContext) => void;
+  /** called when subscription state goes to subscribed */
   subscribed: (ctx: SubscribedContext) => void;
+  /** called when subscription state goes to unsubscribed */
   unsubscribed: (ctx: UnsubscribedContext) => void;
 
+  /** called when publication from channel received */
   publication: (ctx: PublicationContext) => void;
+  /** called when join event from channel received */
   join: (ctx: JoinContext) => void;
+  /** called when leave event from channel received */
   leave: (ctx: LeaveContext) => void;
 
-  // listen to errors happening internally. 
+  /** listen to subscription errors happening internally */
   error: (ctx: SubscriptionErrorContext) => void;
 }
 

@@ -5,6 +5,18 @@
   "main": "build/index.js",
   "types": "build/index.d.ts",
   "module": "build/index.mjs",
+  "exports": {
+    ".": {
+      "import": "./build/index.mjs",
+      "require": "./build/index.js",
+      "types": "./build/index.d.ts"
+    },
+    "./build/protobuf": {
+      "import": "./build/protobuf/index.mjs",
+      "require": "./build/protobuf/index.js",
+      "types": "./build/protobuf/index.d.ts"
+    }
+  },
   "files": [
     "dist/**",
     "build/**"
@@ -13,7 +25,7 @@
     "events": "events"
   },
   "scripts": {
-    "build": "rollup -c",
+    "build": "rollup -c && ./fixup.sh",
     "prepare": "npm run build-all",
     "lint": "eslint src/ --ext .js,.jsx,.ts,.tsx",
     "test": "jest --detectOpenHandles --verbose",

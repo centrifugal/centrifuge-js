@@ -46,27 +46,22 @@ export default [
       commonjs(),
       del({
         targets: [
-          'build/cjs/index.d.ts',
-          'build/esm/index.d.ts',
-          'build/cjs/transport_*.d.ts',
-          'build/esm/transport_*.d.ts',
-          'build/cjs/protobuf.codec.d.ts',
-          'build/esm/protobuf.codec.d.ts',
-          'build/cjs/json.d.ts',
-          'build/cjs/utils.d.ts',
-          'build/esm/json.d.ts',
-          'build/esm/utils.d.ts',
+          'build/protobuf/protobuf.d.ts',
+          'build/protobuf/transport_*.d.ts',
+          'build/protobuf/protobuf.codec.d.ts',
+          'build/protobuf/json.d.ts',
+          'build/protobuf/utils.d.ts',
         ],
         hook: 'writeBundle'
       }),
     ],
     output: [
       {
-        file: 'build/cjs/protobuf.js',
+        file: 'build/protobuf/index.js',
         format: 'cjs',
       },
       {
-        file: 'build/esm/protobuf.js',
+        file: 'build/protobuf/index.mjs',
         format: 'es',
       }
     ]

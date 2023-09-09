@@ -743,7 +743,7 @@ To import client which uses Protobuf protocol under the hood:
 Or if you are developing with npm:
 
 ```javascript
-import { Centrifuge } from 'centrifuge/build/esm/protobuf';
+import { Centrifuge } from 'centrifuge/build/protobuf';
 ```
 
 This client uses [protobuf.js](https://github.com/dcodeIO/ProtoBuf.js/) under the hood.

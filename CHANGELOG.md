@@ -18,7 +18,7 @@ const centrifuge = new Centrifuge('ws://centrifuge.example.com/connection/websoc
 Now this simplifies to:
 
 ```javascript
-import { Centrifuge } from 'centrifuge/build/esm/protobuf';
+import { Centrifuge } from 'centrifuge/build/protobuf';
 
 const centrifuge = new Centrifuge('ws://centrifuge.example.com/connection/websocket", {});
 ```

@@ -5,6 +5,7 @@ This SDK provides a client to connect to [Centrifugo](https://github.com/centrif
 
 The features implemented by this SDK can be found in [SDK feature matrix](https://centrifugal.dev/docs/transports/client_sdk#sdk-feature-matrix).
 
+> [!WARNING]
 > **`centrifuge-js` v5.x is compatible with [Centrifugo](https://github.com/centrifugal/centrifugo) server v4 and v5 and [Centrifuge](https://github.com/centrifugal/centrifuge) >= 0.25.0. For Centrifugo v2, Centrifugo v3 and Centrifuge < 0.25.0 you should use `centrifuge-js` v2.x.**
 
 * [Install](#install)

@@ -31,7 +31,7 @@
     "test": "jest --detectOpenHandles --verbose",
     "clean": "rm -rf dist build package",
     "ts-node": "ts-node",
-    "docs": "typedoc --exclude '**/transport_*.ts' --exclude '**/*.test.ts' --exclude '**/*+(utils|json|codes|browser).ts' --excludePrivate --excludeInternal --entryPoints src/*.ts",
+    "docs": "typedoc --exclude '**/transport_*.ts' --exclude '**/*.test.ts' --exclude '**/*+(utils|json|protobuf.codec|codes|browser).ts' --excludePrivate --excludeInternal --entryPoints src/*.ts",
     "build-all": "yarn clean && yarn build && yarn build-browser && yarn build-browser-protobuf",
     "build-browser": "esbuild src/browser.ts --bundle --minify --sourcemap --outfile=dist/centrifuge.js",
     "dev": "esbuild src/browser.ts --bundle --outfile=dist/centrifuge.js --servedir=dist/ --serve=2000",

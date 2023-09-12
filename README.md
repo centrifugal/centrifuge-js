@@ -130,8 +130,8 @@ Supported transports are:
 * `websocket`
 * `http_stream`
 * `sse`
-* `sockjs` (SockJS can also be used as a fallback, but sticky session must be used on the backend in distributed case, SockJS is currently in DEPRECATED status in Centrifugal ecosystem).
-* `webtransport` (experimental, see details below)
+* `sockjs` - SockJS can also be used as a fallback, SockJS is currently in DEPRECATED status in Centrifugal ecosystem. Also, sticky sessions must be used on the backend in distributed case with it. See more details below
+* `webtransport` - this SDK also supports WebTransport in experimental form. See details below
 
 If you want to use sticky sessions on a load balancer level as an optimimization for Centrifugal bidirectional emulation layer keep in mind that we currently use `same-origin` credentials policy for emulation requests in `http_stream` and `sse` transport cases. So cookies will only be passed in same-origin case. Please open an issue in case you need to configure more relaxed credentials. Though in most cases stickyness based on client's IP may be sufficient enough.
 
@@ -168,7 +168,7 @@ Note, that in SockJS case endpoint starts with `http://`, not with `ws://` as we
 
 WebTransport is experimental and is only supported by Centrifugo at the moment (i.e. it's not available in Centrifuge library for Go out of the box).
 
-See information about it in [Centrifugo WebTransport docs](https://centrifugal.dev/docs/transports/webtransport).
+Server must be additionally configured to work with WebTransport connections – see information in [Centrifugo WebTransport docs](https://centrifugal.dev/docs/transports/webtransport).
 
 ## Client API
 

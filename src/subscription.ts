@@ -463,6 +463,9 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
 
   private _resolvePromises() {
     for (const id in this._promises) {
+      if (!this._promises.hasOwnProperty(id)) {
+        continue;
+      }
       if (this._promises[id].timeout) {
         clearTimeout(this._promises[id].timeout);
       }
@@ -473,6 +476,9 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
 
   private _rejectPromises(err: any) {
     for (const id in this._promises) {
+      if (!this._promises.hasOwnProperty(id)) {
+        continue;
+      }
       if (this._promises[id].timeout) {
         clearTimeout(this._promises[id].timeout);
       }

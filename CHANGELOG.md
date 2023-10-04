@@ -1,3 +1,8 @@
+5.0.1
+=====
+
+* Add missing `.hasOwnProperty` check when iterating over arrays
+
 5.0.0
 =====
 

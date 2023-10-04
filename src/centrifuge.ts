@@ -454,7 +454,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
       this._transports = this._endpoint;
       this._emulation = true;
       for (const i in this._transports) {
-        if(this._transport.hasOwnProperty(i)) {
+        if (this._transport.hasOwnProperty(i)) {
           const transportConfig = this._transports[i];
           if (!transportConfig.endpoint || !transportConfig.transport) {
             throw new Error('malformed transport configuration');
@@ -779,7 +779,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
       if (optimistic) {
         const subscribeCommands: any[] = self._sendSubscribeCommands(true, true);
         for (const i in subscribeCommands) {
-          if(subscribeCommands.hasOwnProperty(i)) {
+          if (subscribeCommands.hasOwnProperty(i)) {
             initialCommands.push(subscribeCommands[i]);
           }
         }

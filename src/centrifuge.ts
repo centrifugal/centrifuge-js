@@ -454,13 +454,15 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
       this._transports = this._endpoint;
       this._emulation = true;
       for (const i in this._transports) {
-        const transportConfig = this._transports[i];
-        if (!transportConfig.endpoint || !transportConfig.transport) {
-          throw new Error('malformed transport configuration');
-        }
-        const transportName = transportConfig.transport;
-        if (['websocket', 'http_stream', 'sse', 'sockjs', 'webtransport'].indexOf(transportName) < 0) {
-          throw new Error('unsupported transport name: ' + transportName);
+        if(this._transport.hasOwnProperty(i)) {
+          const transportConfig = this._transports[i];
+          if (!transportConfig.endpoint || !transportConfig.transport) {
+            throw new Error('malformed transport configuration');
+          }
+          const transportName = transportConfig.transport;
+          if (['websocket', 'http_stream', 'sse', 'sockjs', 'webtransport'].indexOf(transportName) < 0) {
+            throw new Error('unsupported transport name: ' + transportName);
+          }
         }
       }
     } else {
@@ -777,7 +779,9 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
       if (optimistic) {
         const subscribeCommands: any[] = self._sendSubscribeCommands(true, true);
         for (const i in subscribeCommands) {
-          initialCommands.push(subscribeCommands[i]);
+          if(subscribeCommands.hasOwnProperty(i)) {
+            initialCommands.push(subscribeCommands[i]);
+          }
         }
       }
     }

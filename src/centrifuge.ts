@@ -408,6 +408,11 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
       })
     })
   }
+  
+  /** get socket id */
+  getClientId() {
+    return this._client;
+  }
 
   private _debug(...args: any[]) {
     if (!this._debugEnabled) {

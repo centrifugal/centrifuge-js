@@ -70,7 +70,7 @@ export default [
       {
         file: 'build/protobuf/index.mjs',
         format: 'es',
-      },
+      }
     ]
   }
 ];

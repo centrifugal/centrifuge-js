@@ -32,6 +32,13 @@ export default [
       {
         file: 'build/index.mjs',
         format: 'es',
+      },
+      {
+        file: 'build/index.iife.js',
+        format: 'iife',
+        name: 'centrifugal',
+        extend: true,
+        intro: 'var self = typeof window !== "undefined" ? window : typeof self !== "undefined" ? self : this;',
       }
     ]
   },
@@ -63,7 +70,7 @@ export default [
       {
         file: 'build/protobuf/index.mjs',
         format: 'es',
-      }
+      },
     ]
   }
 ];

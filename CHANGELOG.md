@@ -1,3 +1,10 @@
+5.0.2 and higher
+================
+
+Since centrifuge-js 5.0.2 we do not maintain CHANGELOG.md file.
+
+All changes may be found on [releases page](https://github.com/centrifugal/centrifuge-js/releases) on Github.
+
 5.0.1
 =====
 

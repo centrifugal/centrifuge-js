@@ -12,4 +12,4 @@ export default class CentrifugeProtobuf extends Centrifuge {
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-(window as any).Centrifuge = CentrifugeProtobuf
+(globalThis as any).Centrifuge = CentrifugeProtobuf

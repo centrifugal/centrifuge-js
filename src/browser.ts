@@ -4,4 +4,4 @@
 import { Centrifuge } from './centrifuge'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-(window as any).Centrifuge = Centrifuge
+(globalThis as any).Centrifuge = Centrifuge

@@ -71,6 +71,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
   private _currentTransportIndex: number;
   private _triedAllTransports: boolean;
   private _transportWasOpen: boolean;
+  private _sentOptimisticCommands: boolean;
   private _transport?: any;
   private _transportId: number;
   private _deviceWentOffline: boolean;
@@ -117,6 +118,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     this._currentTransportIndex = 0;
     this._triedAllTransports = false;
     this._transportWasOpen = false;
+    this._sentOptimisticCommands = false;
     this._transport = null;
     this._transportId = 0;
     this._deviceWentOffline = false;
@@ -817,7 +819,8 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
         self.startBatching();
         self._sendConnect(false);
         if (optimistic) {
-          self._sendSubscribeCommands(true, false);
+          const commands = self._sendSubscribeCommands(true, false);
+          self._sentOptimisticCommands = commands.length !== 0;
         }
         self.stopBatching();
       },
@@ -839,6 +842,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
         }
         self._debug(transport.subName(), 'transport closed');
         self._transportClosed = true;
+        self._sentOptimisticCommands = false;
 
         let reason = 'connection closed';
         let needReconnect = true;
@@ -1379,7 +1383,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
   }
 
   protected _unsubscribe(sub: Subscription) {
-    if (!this._isConnected()) {
+    if (!this._isConnected() && !this._sentOptimisticCommands) {
       return;
     }
     const req = {
@@ -1441,6 +1445,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     this._transportWasOpen = true;
     this._reconnectAttempts = 0;
     this._refreshRequired = false;
+    this._sentOptimisticCommands = false;
 
     if (this._isConnected()) {
       return;

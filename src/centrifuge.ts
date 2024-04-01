@@ -1379,9 +1379,16 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
   }
 
   protected _unsubscribe(sub: Subscription) {
-    if (!this._isConnected()) {
+    // Optimistic subscription could be sent together with connect command in one frame, so
+    // Centrifuge can be in the connecting state – but we still need to send unsubscribe frame
+    // to the server.
+    // @ts-ignore – we are hiding some symbols from public API autocompletion.
+    const isSubOptimisticallySent = this._isConnecting() && sub._inflight;
+
+    if (!this._isConnected() && !isSubOptimisticallySent) {
       return;
     }
+
     const req = {
       channel: sub.channel
     };

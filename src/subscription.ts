@@ -26,6 +26,8 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
   private _epoch: string | null;
   private _resubscribeAttempts: number;
   private _promiseId: number;
+  // @ts-ignore - this is used by a client in centrifuge.ts.
+  private _optimisticallySent: boolean;
 
   private _token: string;
   private _data: any | null;
@@ -60,6 +62,7 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
     this._promiseId = 0;
     this._inflight = false;
     this._refreshTimeout = null;
+    this._optimisticallySent = false;
     this._setOptions(options);
     // @ts-ignore – we are hiding some symbols from public API autocompletion.
     if (this._centrifuge._debugEnabled) {
@@ -284,6 +287,9 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
         })
         return null;
       } else {
+        if (optimistic) {
+          self._optimisticallySent = true;
+        }
         return self._sendSubscribe(self._token, skipSending);
       }
     }
@@ -377,6 +383,7 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
     // @ts-ignore – we are hiding some symbols from public API autocompletion.
     this._centrifuge._call(cmd, skipSending).then(resolveCtx => {
       this._inflight = false;
+      this._optimisticallySent = false;
       // @ts-ignore - improve later.
       const result = resolveCtx.reply.subscribe;
       this._handleSubscribeResponse(
@@ -389,6 +396,7 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
       }
     }, rejectCtx => {
       this._inflight = false;
+      this._optimisticallySent = false;
       this._handleSubscribeError(rejectCtx.error);
       if (rejectCtx.next) {
         rejectCtx.next();
@@ -438,6 +446,7 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
       this.emit('unsubscribed', { channel: this.channel, code: code, reason: reason });
     }
     this._rejectPromises({ code: errorCodes.subscriptionUnsubscribed, message: this.state });
+    this._optimisticallySent = false;
   }
 
   private _handlePublication(pub: any) {

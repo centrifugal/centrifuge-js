@@ -71,7 +71,6 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
   private _currentTransportIndex: number;
   private _triedAllTransports: boolean;
   private _transportWasOpen: boolean;
-  private _sentOptimisticCommands: boolean;
   private _transport?: any;
   private _transportId: number;
   private _deviceWentOffline: boolean;
@@ -118,7 +117,6 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     this._currentTransportIndex = 0;
     this._triedAllTransports = false;
     this._transportWasOpen = false;
-    this._sentOptimisticCommands = false;
     this._transport = null;
     this._transportId = 0;
     this._deviceWentOffline = false;
@@ -766,10 +764,15 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     let wasOpen = false;
 
     let optimistic = true;
-    if (this._transport.name() === 'sse') {
-      // Avoid using optimistic subscriptions with SSE/EventSource as we are sending
-      // initial data in URL params. URL is recommended to be 2048 chars max – so adding
-      // subscription data may be risky.
+    if (this._transport.emulation()) {
+      // Avoid using optimistic subscriptions for emulation transport because calling
+      // unsubscribe before receiving node identifier in the connect reply results into
+      // "node not found" error on the server side. It's theoretically possible to still
+      // have optimistic subscriptions in emulation scenario – but in this case we need
+      // to delay unsubscribe frames till we get the node identifier.
+      // Another reason to avoid using optimistic subscriptions with SSE/EventSource as 
+      // we are sending initial data in URL params. URL is recommended to be 2048 chars
+      // max – so adding subscription data may be risky.
       optimistic = false;
     }
 
@@ -819,10 +822,11 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
         self.startBatching();
         self._sendConnect(false);
         if (optimistic) {
-          const commands = self._sendSubscribeCommands(true, false);
-          self._sentOptimisticCommands = commands.length !== 0;
+          self._sendSubscribeCommands(true, false);
         }
         self.stopBatching();
+        //@ts-ignore only for debug and test purposes.
+        self.emit('__centrifuge_debug:connect_frame_sent', {})
       },
       onError: function (e: any) {
         if (self._transportId != transportId) {
@@ -842,7 +846,6 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
         }
         self._debug(transport.subName(), 'transport closed');
         self._transportClosed = true;
-        self._sentOptimisticCommands = false;
 
         let reason = 'connection closed';
         let needReconnect = true;
@@ -1383,7 +1386,9 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
   }
 
   protected _unsubscribe(sub: Subscription) {
-    if (!this._isConnected() && !this._sentOptimisticCommands) {
+    // @ts-ignore we need to get _optimisticallySent but it's not part of public API.
+    const isOptimisticallySent = sub._optimisticallySent;
+    if (!this._isConnected() && !isOptimisticallySent) {
       return;
     }
     const req = {
@@ -1445,7 +1450,6 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     this._transportWasOpen = true;
     this._reconnectAttempts = 0;
     this._refreshRequired = false;
-    this._sentOptimisticCommands = false;
 
     if (this._isConnected()) {
       return;

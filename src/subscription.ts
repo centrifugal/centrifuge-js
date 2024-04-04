@@ -35,6 +35,8 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
   private _joinLeave: boolean;
   // @ts-ignore – this is used by a client in centrifuge.ts.
   private _inflight: boolean;
+  // @ts-ignore - this is used by a client in centrifuge.ts.
+  private _optimisticallySent: boolean;
 
   /** Subscription constructor should not be used directly, create subscriptions using Client method. */
   constructor(centrifuge: Centrifuge, channel: string, options?: Partial<SubscriptionOptions>) {
@@ -59,6 +61,7 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
     this._promises = {};
     this._promiseId = 0;
     this._inflight = false;
+    this._optimisticallySent = false;
     this._refreshTimeout = null;
     this._setOptions(options);
     // @ts-ignore – we are hiding some symbols from public API autocompletion.
@@ -284,6 +287,9 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
         })
         return null;
       } else {
+        if (optimistic) {
+          self._optimisticallySent = true;
+        }
         return self._sendSubscribe(self._token, skipSending);
       }
     }
@@ -377,6 +383,7 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
     // @ts-ignore – we are hiding some symbols from public API autocompletion.
     this._centrifuge._call(cmd, skipSending).then(resolveCtx => {
       this._inflight = false;
+      this._optimisticallySent = false;
       // @ts-ignore - improve later.
       const result = resolveCtx.reply.subscribe;
       this._handleSubscribeResponse(
@@ -389,6 +396,7 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
       }
     }, rejectCtx => {
       this._inflight = false;
+      this._optimisticallySent = false;
       this._handleSubscribeError(rejectCtx.error);
       if (rejectCtx.next) {
         rejectCtx.next();
@@ -437,6 +445,7 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
     if (this._setState(SubscriptionState.Unsubscribed)) {
       this.emit('unsubscribed', { channel: this.channel, code: code, reason: reason });
     }
+    this._optimisticallySent = false;
     this._rejectPromises({ code: errorCodes.subscriptionUnsubscribed, message: this.state });
   }
 

@@ -254,14 +254,16 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
     if (this._setState(SubscriptionState.Subscribing)) {
       this.emit('subscribing', { channel: this.channel, code: code, reason: reason });
     }
-    this._subscribe(false, false);
+    this._subscribe();
   }
 
-  private _subscribe(optimistic: boolean, skipSending: boolean): any {
+  private _subscribe(): any {
     // @ts-ignore – we are hiding some symbols from public API autocompletion.
     this._centrifuge._debug('subscribing on', this.channel);
 
-    if (this._centrifuge.state !== State.Connected && !optimistic) {
+    // need to check transport readiness here, because there's no point for calling getData or getToken
+    // if transport is not ready yet
+    if (!this._centrifuge.isTransportOpen()) {
       // @ts-ignore – we are hiding some symbols from public API autocompletion.
       this._centrifuge._debug('delay subscribe on', this.channel, 'till connected');
       // subscribe will be called later automatically.
@@ -280,16 +282,14 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
             return;
           }
           self._data = data;
-          self._sendSubscribe(self._token, false);
+          self._sendSubscribe(self._token);
         })
         return null;
       } else {
-        return self._sendSubscribe(self._token, skipSending);
+        return self._sendSubscribe(self._token);
       }
     }
-    if (optimistic) {
-      return null;
-    }
+
     this._getSubscriptionToken().then(function (token) {
       if (!self._isSubscribing()) {
         return;
@@ -305,10 +305,10 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
             return;
           }
           self._data = data;
-          self._sendSubscribe(token, false);
+          self._sendSubscribe(token);
         })
       } else {
-        self._sendSubscribe(token, false);
+        self._sendSubscribe(token);
       }
     }).catch(function (e) {
       if (!self._isSubscribing()) {
@@ -331,7 +331,12 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
     return null;
   }
 
-  private _sendSubscribe(token: string, skipSending: boolean): any {
+  private _sendSubscribe(token: string): any {
+    // we also need to check for transport state before sending subscription
+    // because it may change for subscription with side effects (getData, getToken options)
+    if (!this._centrifuge.isTransportOpen()) {
+      return null;
+    }
     const channel = this.channel;
 
     const req: any = {
@@ -375,7 +380,7 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
     this._inflight = true;
 
     // @ts-ignore – we are hiding some symbols from public API autocompletion.
-    this._centrifuge._call(cmd, skipSending).then(resolveCtx => {
+    this._centrifuge._call(cmd).then(resolveCtx => {
       this._inflight = false;
       // @ts-ignore - improve later.
       const result = resolveCtx.reply.subscribe;
@@ -492,7 +497,7 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
     const delay = this._getResubscribeDelay();
     this._resubscribeTimeout = setTimeout(function () {
       if (self._isSubscribing()) {
-        self._subscribe(false, false);
+        self._subscribe();
       }
     }, delay);
   }

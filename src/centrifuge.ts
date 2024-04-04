@@ -65,6 +65,7 @@ export class UnauthorizedError extends Error {
 /** Centrifuge is a Centrifuge/Centrifugo bidirectional client. */
 export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<ClientEvents>) {
   state: State;
+  private _transportIsOpen: boolean;
   private _endpoint: string | Array<TransportEndpoint>;
   private _emulation: boolean;
   private _transports: any[];
@@ -111,6 +112,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
   constructor(endpoint: string | Array<TransportEndpoint>, options?: Partial<Options>) {
     super();
     this.state = State.Disconnected;
+    this._transportIsOpen = false;
     this._endpoint = endpoint;
     this._emulation = false;
     this._transports = [];
@@ -407,6 +409,10 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
         self._flush();
       })
     })
+  }
+
+  isTransportOpen() {
+    return this._transportIsOpen;
   }
 
   private _debug(...args: any[]) {
@@ -762,28 +768,11 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     const transportId = this._nextTransportId();
     self._debug("id of transport", transportId);
     let wasOpen = false;
-
-    let optimistic = true;
-    if (this._transport.name() === 'sse') {
-      // Avoid using optimistic subscriptions with SSE/EventSource as we are sending
-      // initial data in URL params. URL is recommended to be 2048 chars max – so adding
-      // subscription data may be risky.
-      optimistic = false;
-    }
-
     const initialCommands: any[] = [];
 
     if (this._transport.emulation()) {
       const connectCommand = self._sendConnect(true);
       initialCommands.push(connectCommand);
-      if (optimistic) {
-        const subscribeCommands: any[] = self._sendSubscribeCommands(true, true);
-        for (const i in subscribeCommands) {
-          if (subscribeCommands.hasOwnProperty(i)) {
-            initialCommands.push(subscribeCommands[i]);
-          }
-        }
-      }
     }
 
     this._setNetworkEvents();
@@ -810,15 +799,14 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
         }
         wasOpen = true;
         self._debug(transport.subName(), 'transport open');
-        self._transportWasOpen = true;
         if (transport.emulation()) {
           return;
         }
+        self._transportIsOpen = true;
+        self._transportWasOpen = true;
         self.startBatching();
         self._sendConnect(false);
-        if (optimistic) {
-          self._sendSubscribeCommands(true, false);
-        }
+        self._sendSubscribeCommands();
         self.stopBatching();
       },
       onError: function (e: any) {
@@ -839,6 +827,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
         }
         self._debug(transport.subName(), 'transport closed');
         self._transportClosed = true;
+        self._transportIsOpen = false;
 
         let reason = 'connection closed';
         let needReconnect = true;
@@ -1261,6 +1250,9 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
       const transport = this._transport;
       this._transport = null;
       transport.close(); // Close only after setting this._transport to null to avoid recursion when calling transport close().
+      // Need to mark as closed here, because connect call may be sync called after disconnect,
+      // transport onClose callback will not be called yet
+      this._transportIsOpen = false;
       this._transportClosed = true;
       this._nextTransportId();
     } else {
@@ -1379,7 +1371,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
   }
 
   protected _unsubscribe(sub: Subscription) {
-    if (!this._isConnected()) {
+    if (!this.isTransportOpen()) {
       return;
     }
     const req = {
@@ -1415,7 +1407,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     return this._serverSubs[channel] !== undefined;
   }
 
-  private _sendSubscribeCommands(optimistic: boolean, skipSending: boolean): any[] {
+  private _sendSubscribeCommands(): any[] {
     const commands: any[] = [];
     for (const channel in this._subs) {
       if (!this._subs.hasOwnProperty(channel)) {
@@ -1428,7 +1420,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
       }
       if (sub.state === SubscriptionState.Subscribing) {
         // @ts-ignore – we are hiding some symbols from public API autocompletion.
-        const cmd = sub._subscribe(optimistic, skipSending);
+        const cmd = sub._subscribe();
         if (cmd) {
           commands.push(cmd);
         }
@@ -1438,6 +1430,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
   }
 
   private _connectResponse(result: any) {
+    this._transportIsOpen = true;
     this._transportWasOpen = true;
     this._reconnectAttempts = 0;
     this._refreshRequired = false;
@@ -1460,7 +1453,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     this._node = result.node;
 
     this.startBatching();
-    this._sendSubscribeCommands(false, false);
+    this._sendSubscribeCommands();
     this.stopBatching();
 
     const ctx: any = {

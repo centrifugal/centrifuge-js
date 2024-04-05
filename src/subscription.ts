@@ -254,9 +254,7 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
     if (this._setState(SubscriptionState.Subscribing)) {
       this.emit('subscribing', { channel: this.channel, code: code, reason: reason });
     }
-    if (code === subscribingCodes.subscribeCalled) {
-      this._subscribe();
-    }
+    this._subscribe();
   }
 
   private _subscribe(): any {

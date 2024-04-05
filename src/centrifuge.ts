@@ -1207,7 +1207,9 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     if (this._isDisconnected()) {
       return;
     }
-
+    // we mark transport is closed right away, because _clearConnectedState will move subscriptions to subscribing state
+    // if transport will still be open at this time, subscribe frames will be sent to closing transport
+    this._transportIsOpen = false;
     const previousState = this.state;
 
     const ctx = {
@@ -1248,7 +1250,6 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
       transport.close(); // Close only after setting this._transport to null to avoid recursion when calling transport close().
       // Need to mark as closed here, because connect call may be sync called after disconnect,
       // transport onClose callback will not be called yet
-      this._transportIsOpen = false;
       this._transportClosed = true;
       this._nextTransportId();
     } else {

@@ -254,7 +254,9 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
     if (this._setState(SubscriptionState.Subscribing)) {
       this.emit('subscribing', { channel: this.channel, code: code, reason: reason });
     }
-    this._subscribe();
+    if (code === subscribingCodes.subscribeCalled) {
+      this._subscribe();
+    }
   }
 
   private _subscribe(): any {
@@ -263,7 +265,8 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
 
     // need to check transport readiness here, because there's no point for calling getData or getToken
     // if transport is not ready yet
-    if (!this._centrifuge.isTransportOpen()) {
+    // @ts-ignore – we are hiding some symbols from public API autocompletion.
+    if (!this._centrifuge._transportIsOpen) {
       // @ts-ignore – we are hiding some symbols from public API autocompletion.
       this._centrifuge._debug('delay subscribe on', this.channel, 'till connected');
       // subscribe will be called later automatically.
@@ -334,7 +337,8 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
   private _sendSubscribe(token: string): any {
     // we also need to check for transport state before sending subscription
     // because it may change for subscription with side effects (getData, getToken options)
-    if (!this._centrifuge.isTransportOpen()) {
+    // @ts-ignore – we are hiding some symbols from public API autocompletion.
+    if (!this._centrifuge._transportIsOpen) {
       return null;
     }
     const channel = this.channel;

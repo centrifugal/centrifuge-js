@@ -411,10 +411,6 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     })
   }
 
-  isTransportOpen() {
-    return this._transportIsOpen;
-  }
-
   private _debug(...args: any[]) {
     if (!this._debugEnabled) {
       return;
@@ -1371,7 +1367,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
   }
 
   protected _unsubscribe(sub: Subscription) {
-    if (!this.isTransportOpen()) {
+    if (!this._transportIsOpen) {
       return;
     }
     const req = {

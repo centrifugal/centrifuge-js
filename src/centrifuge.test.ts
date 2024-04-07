@@ -1,9 +1,19 @@
 import { Centrifuge } from './centrifuge'
 import {
-  DisconnectedContext, Error as CentrifugeError,
-  PublicationContext, TransportName, UnsubscribedContext, State, SubscriptionState
+  DisconnectedContext,
+  Error as CentrifugeError,
+  PublicationContext,
+  TransportName,
+  UnsubscribedContext,
+  State,
+  SubscriptionState,
+  SubscribedContext,
 } from './types';
-import { disconnectedCodes, unsubscribedCodes, connectingCodes } from './codes';
+import {
+  disconnectedCodes,
+  unsubscribedCodes,
+  connectingCodes,
+} from './codes';
 
 import WebSocket from 'ws';
 import EventSource from 'eventsource';
@@ -15,14 +25,18 @@ test('invalid endpoint', () => {
 });
 
 test('no websocket constructor', async () => {
-  const c = new Centrifuge('ws://localhost:8000/connection/websocket?cf_protocol_version=v2');
+  const c = new Centrifuge('ws://localhost:8000/connection/websocket');
   expect(() => { c.connect() }).toThrowError();
 });
 
 const transportCases = [
-  ['websocket', 'ws://localhost:8000/connection/websocket?cf_protocol_version=v2'],
-  ['http_stream', 'http://localhost:8000/connection/http_stream?cf_protocol_version=v2'],
-  ['sse', 'http://localhost:8000/connection/sse?cf_protocol_version=v2'],
+  ['websocket', 'ws://localhost:8000/connection/websocket'],
+  ['http_stream', 'http://localhost:8000/connection/http_stream'],
+  ['sse', 'http://localhost:8000/connection/sse'],
+]
+
+const websocketOnly = [
+  ['websocket', 'ws://localhost:8000/connection/websocket'],
 ]
 
 test.each(transportCases)("%s: connects and disconnects", async (transport, endpoint) => {
@@ -216,7 +230,7 @@ test.each(transportCases)("%s: handles offline/online events", async (transport,
   expect(c.state).toBe(State.Disconnected);
 });
 
-test.each(transportCases.slice(0, 1))("%s: not connecting on online in disconnected state", async (transport, endpoint) => {
+test.each(transportCases)("%s: not connecting on online in disconnected state", async (transport, endpoint) => {
   const networkEventTarget = new EventTarget();
 
   const c = new Centrifuge([{
@@ -351,6 +365,127 @@ test.each(transportCases)("%s: subscribe and unsubscribe loop", async (transport
   }
   expect(sub.state).toBe(SubscriptionState.Unsubscribed);
   await unsubscribedPromise;
+
+  let disconnectCalled: any;
+  const disconnectedPromise = new Promise<DisconnectedContext>((resolve, _) => {
+    disconnectCalled = resolve;
+  })
+  c.on('disconnected', (ctx) => {
+    disconnectCalled(ctx);
+  })
+
+  c.disconnect();
+  await disconnectedPromise;
+  expect(c.state).toBe(State.Disconnected);
+});
+
+// Make sure we can unsubscribe right after connect called and connect/subscribe
+// frames not sent yet.
+test.each(transportCases)("%s: unsubscribe right after connect", async (transport, endpoint) => {
+  const c = new Centrifuge([{
+    transport: transport as TransportName,
+    endpoint: endpoint,
+  }], {
+    websocket: WebSocket,
+    fetch: fetch,
+    eventsource: EventSource,
+    readableStream: ReadableStream,
+    emulationEndpoint: 'http://localhost:8000/emulation'
+  });
+
+  c.connect();
+  await c.ready(5000);
+
+  const sub = c.newSubscription('test');
+
+  let unsubcribeCalled: any;
+  const unsubscribedPromise = new Promise<UnsubscribedContext>((resolve, _) => {
+    unsubcribeCalled = resolve;
+  })
+  let subcribeCalled: any;
+  const subscribedPromise = new Promise<SubscribedContext>((resolve, _) => {
+    subcribeCalled = resolve;
+  })
+
+  sub.on('subscribed', (ctx) => {
+    subcribeCalled(ctx);
+  })
+  sub.on('unsubscribed', (ctx) => {
+    unsubcribeCalled(ctx);
+  })
+
+  sub.subscribe();
+  c.disconnect();
+  c.connect();
+  sub.unsubscribe();
+
+  expect(sub.state).toBe(SubscriptionState.Unsubscribed);
+  await unsubscribedPromise;
+
+  sub.subscribe();
+  await subscribedPromise;
+
+  let disconnectCalled: any;
+  const disconnectedPromise = new Promise<DisconnectedContext>((resolve, _) => {
+    disconnectCalled = resolve;
+  })
+  c.on('disconnected', (ctx) => {
+    disconnectCalled(ctx);
+  })
+
+  c.disconnect();
+  await disconnectedPromise;
+  expect(c.state).toBe(State.Disconnected);
+});
+
+// Make sure we can unsubscribe right after connect frame sent but reply has not been yet received.
+// This is important to cover bug described in https://github.com/centrifugal/centrifuge-js/pull/274.
+test.each(websocketOnly)("%s: unsubscribe in between connect command and reply", async (transport, endpoint) => {
+  const c = new Centrifuge([{
+    transport: transport as TransportName,
+    endpoint: endpoint,
+  }], {
+    websocket: WebSocket,
+    fetch: fetch,
+    eventsource: EventSource,
+    readableStream: ReadableStream,
+    emulationEndpoint: 'http://localhost:8000/emulation'
+  });
+
+  const sub = c.newSubscription('test');
+
+  let unsubcribeCalled: any;
+  const unsubscribedPromise = new Promise<UnsubscribedContext>((resolve, _) => {
+    unsubcribeCalled = resolve;
+  })
+  let subcribeCalled: any;
+  const subscribedPromise = new Promise<SubscribedContext>((resolve, _) => {
+    subcribeCalled = resolve;
+  })
+
+  // @ts-ignore this is only for test purposes.
+  c.on('__centrifuge_debug:connect_frame_sent', () => {
+    sub.unsubscribe();
+    unsubcribeCalled()
+  })
+
+  sub.on('subscribed', (ctx) => {
+    subcribeCalled(ctx);
+  })
+  sub.on('unsubscribed', (ctx) => {
+    unsubcribeCalled(ctx);
+  })
+
+  sub.subscribe();
+  c.connect();
+
+  await unsubscribedPromise;
+  await c.ready()
+
+  await new Promise(r => setTimeout(r, 2000));
+  sub.subscribe();
+
+  await subscribedPromise;
 
   let disconnectCalled: any;
   const disconnectedPromise = new Promise<DisconnectedContext>((resolve, _) => {

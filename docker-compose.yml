@@ -1,0 +1,14 @@
+version: '3.8'
+
+services:
+  centrifugo:
+    image: centrifugo/centrifugo:v5
+    command:
+      - centrifugo
+    ports:
+      - "8000:8000"
+    environment:
+      - CENTRIFUGO_CLIENT_INSECURE=true
+      - CENTRIFUGO_HTTP_STREAM=true
+      - CENTRIFUGO_SSE=true
+      - CENTRIFUGO_PRESENCE=true

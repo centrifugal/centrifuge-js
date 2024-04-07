@@ -18,7 +18,7 @@ jobs:
       - name: Install dependencies
         run: yarn install
       - name: Start Centrifugo
-        run: docker run -d -p 8000:8000 -e CENTRIFUGO_PRESENCE=true centrifugo/centrifugo:latest centrifugo --client_insecure --http_stream --sse
+        run: docker compose up -d --wait
       - name: Lint
         run: yarn lint
       - name: Test

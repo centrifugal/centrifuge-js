@@ -804,6 +804,8 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
         self._sendConnect(false);
         self._sendSubscribeCommands();
         self.stopBatching();
+        //@ts-ignore must be used only for debug and test purposes. Exposed only for non-emulation transport.
+        self.emit('__centrifuge_debug:connect_frame_sent', {})
       },
       onError: function (e: any) {
         if (self._transportId != transportId) {

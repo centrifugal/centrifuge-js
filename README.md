@@ -27,6 +27,7 @@ The features implemented by this SDK can be found in [SDK feature matrix](https:
 * [Protobuf support](#protobuf-support)
 * [Using with NodeJS](#using-with-nodejs)
 * [Custom WebSocket constructor](#custom-websocket-constructor)
+* [Run tests locally](#run-tests-locally)
 
 ## Install
 
@@ -815,3 +816,17 @@ var centrifuge = new Centrifuge('ws://localhost:8000/connection/websocket', {
 ```
 
 See a basic example with React Native where this technique is used [in this comment](https://github.com/centrifugal/centrifuge-js/issues/224#issuecomment-1538820023).
+
+## Run tests locally
+
+If you want to run `centrifuge-js` tests locally, start test Centrifugo server:
+
+```
+docker compose up
+```
+
+Then:
+
+```
+yarn test
+```

@@ -499,3 +499,43 @@ test.each(websocketOnly)("%s: unsubscribe in between connect command and reply",
   await disconnectedPromise;
   expect(c.state).toBe(State.Disconnected);
 });
+
+// Make sure we can resubscribe when offline event triggered before WebSocket transport open.
+test.each(websocketOnly)("%s: reconnect after close before transport open", async (transport, endpoint) => {
+  const networkEventTarget = new EventTarget();
+
+  const c = new Centrifuge([{
+    transport: transport as TransportName,
+    endpoint: endpoint,
+  }], {
+    websocket: WebSocket,
+    fetch: fetch,
+    eventsource: EventSource,
+    readableStream: ReadableStream,
+    emulationEndpoint: 'http://localhost:8000/emulation',
+    networkEventTarget: networkEventTarget,
+  });
+
+  const offlineEvent = new Event('offline', { bubbles: true });
+
+  // @ts-ignore this is only for test purposes.
+  c.once('__centrifuge_debug:transport_initialized', () => {
+    networkEventTarget.dispatchEvent(offlineEvent);
+  })
+
+  c.connect();
+
+  await c.ready()
+
+  let disconnectCalled: any;
+  const disconnectedPromise = new Promise<DisconnectedContext>((resolve, _) => {
+    disconnectCalled = resolve;
+  })
+  c.on('disconnected', (ctx) => {
+    disconnectCalled(ctx);
+  })
+
+  c.disconnect();
+  await disconnectedPromise;
+  expect(c.state).toBe(State.Disconnected);
+});

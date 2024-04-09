@@ -887,6 +887,8 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
         self._dataReceived(data);
       }
     }, initialData);
+    //@ts-ignore must be used only for debug and test purposes.
+    self.emit('__centrifuge_debug:transport_initialized', {})
   }
 
   private _sendConnect(skipSending: boolean): any {
@@ -1003,7 +1005,6 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
         'error': err
       });
       this._debug('closing transport due to connect error');
-      this._reconnecting = false;
       this._disconnect(err.code, err.message, true);
     } else {
       this._disconnect(err.code, err.message, false);
@@ -1023,6 +1024,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
       delay = 0;
     }
     this._debug('reconnect after ' + delay + ' milliseconds');
+    this._clearReconnectTimeout();
     this._reconnectTimeout = setTimeout(() => {
       this._startReconnecting();
     }, delay);
@@ -1213,6 +1215,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     // if transport will still be open at this time, subscribe frames will be sent to closing transport
     this._transportIsOpen = false;
     const previousState = this.state;
+    this._reconnecting = false;
 
     const ctx = {
       code: code,

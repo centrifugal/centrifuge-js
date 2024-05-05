@@ -26,7 +26,8 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
   private _epoch: string | null;
   private _resubscribeAttempts: number;
   private _promiseId: number;
-
+  private _delta: string;
+  private _delta_negotiated: boolean;
   private _token: string;
   private _data: any | null;
   private _getData: null | ((ctx: SubscriptionDataContext) => Promise<any>);
@@ -35,6 +36,7 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
   private _joinLeave: boolean;
   // @ts-ignore – this is used by a client in centrifuge.ts.
   private _inflight: boolean;
+  private _prevValue: any;
 
   /** Subscription constructor should not be used directly, create subscriptions using Client method. */
   constructor(centrifuge: Centrifuge, channel: string, options?: Partial<SubscriptionOptions>) {
@@ -60,6 +62,9 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
     this._promiseId = 0;
     this._inflight = false;
     this._refreshTimeout = null;
+    this._delta = '';
+    this._delta_negotiated = false;
+    this._prevValue = null;
     this._setOptions(options);
     // @ts-ignore – we are hiding some symbols from public API autocompletion.
     if (this._centrifuge._debugEnabled) {
@@ -222,6 +227,11 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
       this._offset = result.offset || 0;
       this._epoch = result.epoch || '';
     }
+    if (result.delta) {
+      this._delta_negotiated = true;
+    } else {
+      this._delta_negotiated = false;
+    }
 
     this._setState(SubscriptionState.Subscribed);
     // @ts-ignore – we are hiding some methods from public API autocompletion.
@@ -377,6 +387,10 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
       }
     }
 
+    if (this._delta) {
+      req.delta = this._delta;
+    }
+
     const cmd = { subscribe: req };
 
     this._inflight = true;
@@ -448,6 +462,12 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
   }
 
   private _handlePublication(pub: any) {
+    if (this._delta && this._delta_negotiated) {
+      // @ts-ignore – we are hiding some methods from public API autocompletion.
+      const {newData, newPrevValue} = this._centrifuge._codec.applyDeltaIfNeeded(pub, this._prevValue)
+      pub.data = newData;
+      this._prevValue = newPrevValue;
+    }
     // @ts-ignore – we are hiding some methods from public API autocompletion.
     const ctx = this._centrifuge._getPublicationContext(this.channel, pub);
     this.emit('publication', ctx);
@@ -567,6 +587,12 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
     }
     if (options.joinLeave === true) {
       this._joinLeave = true;
+    }
+    if (options.delta) {
+      if (options.delta !== 'fossil') {
+        throw new Error('unsupported delta format');
+      }
+      this._delta = options.delta;
     }
   }
 

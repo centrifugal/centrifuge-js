@@ -119,10 +119,10 @@ function checksum(arr: ByteArray): number {
   }
   sum3 = (((((sum3 + (sum2 << 8)) | 0) + (sum1 << 16)) | 0) + (sum0 << 24)) | 0;
   switch (N) {
-    //@ts-ignore
+    //@ts-ignore fallthrough is needed.
     case 3:
       sum3 = (sum3 + (arr[z + 2] << 8)) | 0; /* falls through */
-    //@ts-ignore
+    //@ts-ignore fallthrough is needed.
     case 2:
       sum3 = (sum3 + (arr[z + 1] << 16)) | 0; /* falls through */
     case 1:
@@ -138,18 +138,17 @@ export function applyDelta<T extends ByteArray>(
   source: T,
   delta: T
 ): T {
-  let limit: number,
-    total = 0;
+  let total = 0;
   const zDelta = new Reader(delta);
   const lenSrc = source.length;
   const lenDelta = delta.length;
 
-  limit = zDelta.getInt();
+  const limit = zDelta.getInt();
   if (zDelta.getChar() !== "\n")
     throw new Error("size integer not terminated by '\\n'");
   const zOut = new Writer();
   while (zDelta.haveBytes()) {
-    let cnt = zDelta.getInt();
+    const cnt = zDelta.getInt();
     let ofst: number;
 
     switch (zDelta.getChar()) {
@@ -177,13 +176,14 @@ export function applyDelta<T extends ByteArray>(
         break;
 
       case ";":
-        const out = zOut.toByteArray(source);
-        if (cnt !== checksum(out))
-          throw new Error("bad checksum");
-        if (total !== limit)
-          throw new Error("generated size does not match predicted size");
-        return out;
-
+        {
+          const out = zOut.toByteArray(source);
+          if (cnt !== checksum(out))
+            throw new Error("bad checksum");
+          if (total !== limit)
+            throw new Error("generated size does not match predicted size");
+          return out;
+        }
       default:
         throw new Error("unknown delta operator");
     }

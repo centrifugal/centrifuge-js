@@ -360,6 +360,8 @@ export interface SubscriptionOptions {
   recoverable: boolean;
   /** ask server to send join/leave messages. */
   joinLeave: boolean;
+  /** delta format to be used */
+  delta: 'fossil';
 }
 
 /** Stream postion describes position of publication inside a stream.  */

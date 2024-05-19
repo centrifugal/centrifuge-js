@@ -1,5 +1,7 @@
 import * as protobuf from 'protobufjs/light'
 import * as protoJSON from './client.proto.json';
+import { applyDelta } from './fossil';
+
 const proto = protobuf.Root.fromJSON(protoJSON);
 
 const Command = proto.lookupType('protocol.Command');
@@ -51,5 +53,20 @@ export class ProtobufCodec {
     return {
       ok: false
     };
+  }
+
+  applyDeltaIfNeeded(pub: any, prevValue: any) {
+    let newData: any, newPrevValue: any;
+    if (pub.delta) {
+      // binary delta.
+      const valueArray = applyDelta(prevValue, pub.data);
+      newData = new Uint8Array(valueArray)
+      newPrevValue = valueArray;
+    } else {
+      // full binary data.
+      newData = pub.data;
+      newPrevValue = pub.data;
+    }
+    return { newData, newPrevValue }
   }
 }

@@ -404,6 +404,10 @@
                     "node": {
                       "type": "string",
                       "id": 10
+                    },
+                    "time": {
+                      "type": "int64",
+                      "id": 11
                     }
                   }
                 },
@@ -502,6 +506,10 @@
                     "node": {
                       "type": "string",
                       "id": 10
+                    },
+                    "time": {
+                      "type": "int64",
+                      "id": 11
                     }
                   }
                 },

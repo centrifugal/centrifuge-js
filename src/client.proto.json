@@ -269,6 +269,10 @@
                     "delta": {
                       "type": "bool",
                       "id": 8
+                    },
+                    "time": {
+                      "type": "int64",
+                      "id": 9
                     }
                   },
                   "reserved": [

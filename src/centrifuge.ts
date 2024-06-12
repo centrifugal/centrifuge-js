@@ -1695,6 +1695,9 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
       channel: channel,
       data: pub.data
     };
+    if (pub.channel) {
+      ctx.channel = pub.channel;
+    }
     if (pub.offset) {
       ctx.offset = pub.offset;
     }

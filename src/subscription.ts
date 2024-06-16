@@ -115,7 +115,9 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
     this._setSubscribing(subscribingCodes.subscribeCalled, 'subscribe called');
     try {
       await this.ready();
-    } catch (e) {}
+    } catch (e) {
+      // do nothing.
+    }
   }
 
   /** unsubscribe from a channel, keeping position state.*/

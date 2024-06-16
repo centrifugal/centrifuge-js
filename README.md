@@ -519,13 +519,15 @@ sub.publish({"input": "hello world"}).then(function() {
 You can call `unsubscribe` method to unsubscribe from a channel:
 
 ```javascript
-sub.unsubscribe();
+await sub.unsubscribe();
 ```
 
-**Important thing to know** is that unsubscribing from subscription does not remove event handlers you already set to that Subscription object. This allows to simply subscribe to channel again later calling `.subscribe()` method of subscription (see below). But there are cases when your code structured in a way that you need to remove event handlers after unsubscribe **to prevent them be executed twice** in the future. To do this remove event listeners explicitly after calling `unsubscribe()`:
+Note, `sub.unsubscribe()` is asynchronous and may be used without `await`, but in some cases it may be very important to await it before calling subscribe again. For example, this becomes important when using HTTP-based fallback transports and quick unsubscribe/subscribe calls – awaiting unsubscribe call allows to properly synchronize unsubscribe and subscribe requests (to avoid subscribe request be processed before unsubscribe request on the server). To WebSocket and Webtransport this does not apply - since requests go through a direct connection to a server instance that holds connection.
+
+**Important thing to mention** is that unsubscribing from subscription does not remove event handlers you already set to that Subscription object. This allows to simply subscribe to channel again later calling `.subscribe()` method of subscription (see below). But there are cases when your code structured in a way that you need to remove event handlers after unsubscribe **to prevent them be executed twice** in the future. To do this remove event listeners explicitly after calling `unsubscribe()`:
 
 ```javascript
-sub.unsubscribe();
+await sub.unsubscribe();
 sub.removeAllListeners();
 ```
 

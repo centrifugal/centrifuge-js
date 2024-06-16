@@ -107,17 +107,20 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
   }
 
   /** subscribe to a channel.*/
-  subscribe() {
+  async subscribe() {
     if (this._isSubscribed()) {
       return;
     }
     this._resubscribeAttempts = 0;
     this._setSubscribing(subscribingCodes.subscribeCalled, 'subscribe called');
+    try {
+      await this.ready();
+    } catch (e) {}
   }
 
   /** unsubscribe from a channel, keeping position state.*/
-  unsubscribe() {
-    this._setUnsubscribed(unsubscribedCodes.unsubscribeCalled, 'unsubscribe called', true);
+  async unsubscribe() {
+    await this._setUnsubscribed(unsubscribedCodes.unsubscribeCalled, 'unsubscribe called', true);
   }
 
   /** publish data to a channel.*/
@@ -437,21 +440,21 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
     this._setSubscribed(result);
   }
 
-  private _setUnsubscribed(code, reason, sendUnsubscribe) {
+  private _setUnsubscribed(code, reason, sendUnsubscribe): Promise<void> {
     if (this._isUnsubscribed()) {
-      return;
+      return Promise.resolve();
     }
+    let promise = Promise.resolve();
     if (this._isSubscribed()) {
       if (sendUnsubscribe) {
         // @ts-ignore – we are hiding some methods from public API autocompletion.
-        this._centrifuge._unsubscribe(this);
+        promise = this._centrifuge._unsubscribe(this);
       }
       this._clearSubscribedState();
-    }
-    if (this._isSubscribing()) {
+    } else if (this._isSubscribing()) {
       if (this._inflight && sendUnsubscribe) {
         // @ts-ignore – we are hiding some methods from public API autocompletion.
-        this._centrifuge._unsubscribe(this);
+        promise = this._centrifuge._unsubscribe(this);
       }
       this._clearSubscribingState();
     }
@@ -459,6 +462,7 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
       this.emit('unsubscribed', { channel: this.channel, code: code, reason: reason });
     }
     this._rejectPromises({ code: errorCodes.subscriptionUnsubscribed, message: this.state });
+    return promise;
   }
 
   private _handlePublication(pub: any) {

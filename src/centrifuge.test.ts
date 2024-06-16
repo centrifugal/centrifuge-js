@@ -360,11 +360,24 @@ test.each(transportCases)("%s: subscribe and unsubscribe loop", async (transport
   })
 
   for (let index = 0; index < 10; index++) {
-    sub.subscribe();
-    sub.unsubscribe();
+    await sub.subscribe();
+    await sub.unsubscribe();
   }
   expect(sub.state).toBe(SubscriptionState.Unsubscribed);
   await unsubscribedPromise;
+
+  await sub.subscribe()
+  const presenceStats = await sub.presenceStats();
+  expect(presenceStats.numClients).toBe(1)
+  expect(presenceStats.numUsers).toBe(1);
+  const presence = await sub.presence();
+  expect(Object.keys(presence.clients).length).toBe(1)
+  await sub.unsubscribe()
+  const presenceStats2 = await c.presenceStats('test');
+  expect(presenceStats2.numClients).toBe(0)
+  expect(presenceStats2.numUsers).toBe(0);
+  const presence2 = await c.presence('test');
+  expect(Object.keys(presence2.clients).length).toBe(0)
 
   let disconnectCalled: any;
   const disconnectedPromise = new Promise<DisconnectedContext>((resolve, _) => {

@@ -1374,7 +1374,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
 
   protected _unsubscribe(sub: Subscription) {
     if (!this._transportIsOpen) {
-      return;
+      return Promise.resolve();
     }
     const req = {
       channel: sub.channel
@@ -1383,18 +1383,24 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
 
     const self = this;
 
-    this._call(cmd, false).then(resolveCtx => {
-      // @ts-ignore - improve later.
-      if (resolveCtx.next) {
+    const unsubscribePromise = new Promise<void>((resolve, _) => {
+      this._call(cmd, false).then(resolveCtx => {
+        resolve()
         // @ts-ignore - improve later.
-        resolveCtx.next();
-      }
-    }, rejectCtx => {
-      if (rejectCtx.next) {
-        rejectCtx.next();
-      }
-      self._disconnect(connectingCodes.unsubscribeError, 'unsubscribe error', true);
+        if (resolveCtx.next) {
+          // @ts-ignore - improve later.
+          resolveCtx.next();
+        }
+      }, rejectCtx => {
+        resolve()
+        if (rejectCtx.next) {
+          rejectCtx.next();
+        }
+        self._disconnect(connectingCodes.unsubscribeError, 'unsubscribe error', true);
+      });
     });
+
+    return unsubscribePromise;
   }
 
   private _getSub(channel: string) {

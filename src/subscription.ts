@@ -266,7 +266,10 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
     if (this._setState(SubscriptionState.Subscribing)) {
       this.emit('subscribing', { channel: this.channel, code: code, reason: reason });
     }
-    await this._unsubPromise;
+    // @ts-ignore – for performance reasons only await _unsubPromise for emulution case where it's required.
+    if (this._centrifuge._transport && this._centrifuge._transport.emulation()) {
+      await this._unsubPromise;
+    }
     if (!this._isSubscribing()) {
       return;
     }

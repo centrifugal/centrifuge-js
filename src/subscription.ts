@@ -118,9 +118,8 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
   }
 
   /** unsubscribe from a channel, keeping position state.*/
-  async unsubscribe() {
+  unsubscribe() {
     this._unsubPromise = this._setUnsubscribed(unsubscribedCodes.unsubscribeCalled, 'unsubscribe called', true);
-    return this._unsubPromise;
   }
 
   /** publish data to a channel.*/

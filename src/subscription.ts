@@ -37,6 +37,7 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
   // @ts-ignore – this is used by a client in centrifuge.ts.
   private _inflight: boolean;
   private _prevValue: any;
+  private _unsubPromise: any;
 
   /** Subscription constructor should not be used directly, create subscriptions using Client method. */
   constructor(centrifuge: Centrifuge, channel: string, options?: Partial<SubscriptionOptions>) {
@@ -65,6 +66,7 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
     this._delta = '';
     this._delta_negotiated = false;
     this._prevValue = null;
+    this._unsubPromise = Promise.resolve();
     this._setOptions(options);
     // @ts-ignore – we are hiding some symbols from public API autocompletion.
     if (this._centrifuge._debugEnabled) {
@@ -107,22 +109,18 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
   }
 
   /** subscribe to a channel.*/
-  async subscribe() {
+  subscribe() {
     if (this._isSubscribed()) {
       return;
     }
     this._resubscribeAttempts = 0;
     this._setSubscribing(subscribingCodes.subscribeCalled, 'subscribe called');
-    try {
-      await this.ready();
-    } catch (e) {
-      // do nothing.
-    }
   }
 
   /** unsubscribe from a channel, keeping position state.*/
   async unsubscribe() {
-    await this._setUnsubscribed(unsubscribedCodes.unsubscribeCalled, 'unsubscribe called', true);
+    this._unsubPromise = this._setUnsubscribed(unsubscribedCodes.unsubscribeCalled, 'unsubscribe called', true);
+    return this._unsubPromise;
   }
 
   /** publish data to a channel.*/
@@ -259,7 +257,7 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
     }
   }
 
-  private _setSubscribing(code: number, reason: string) {
+  private async _setSubscribing(code: number, reason: string) {
     if (this._isSubscribing()) {
       return;
     }
@@ -268,6 +266,10 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
     }
     if (this._setState(SubscriptionState.Subscribing)) {
       this.emit('subscribing', { channel: this.channel, code: code, reason: reason });
+    }
+    await this._unsubPromise;
+    if (!this._isSubscribing()) {
+      return;
     }
     this._subscribe();
   }

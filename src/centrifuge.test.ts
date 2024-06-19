@@ -360,13 +360,13 @@ test.each(transportCases)("%s: subscribe and unsubscribe loop", async (transport
   })
 
   for (let index = 0; index < 10; index++) {
-    await sub.subscribe();
-    await sub.unsubscribe();
+    sub.subscribe();
+    sub.unsubscribe();
   }
   expect(sub.state).toBe(SubscriptionState.Unsubscribed);
   await unsubscribedPromise;
 
-  await sub.subscribe()
+  sub.subscribe()
   const presenceStats = await sub.presenceStats();
   expect(presenceStats.numClients).toBe(1)
   expect(presenceStats.numUsers).toBe(1);

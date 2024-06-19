@@ -37,6 +37,7 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
   // @ts-ignore – this is used by a client in centrifuge.ts.
   private _inflight: boolean;
   private _prevValue: any;
+  private _unsubPromise: any;
 
   /** Subscription constructor should not be used directly, create subscriptions using Client method. */
   constructor(centrifuge: Centrifuge, channel: string, options?: Partial<SubscriptionOptions>) {
@@ -65,6 +66,7 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
     this._delta = '';
     this._delta_negotiated = false;
     this._prevValue = null;
+    this._unsubPromise = Promise.resolve();
     this._setOptions(options);
     // @ts-ignore – we are hiding some symbols from public API autocompletion.
     if (this._centrifuge._debugEnabled) {
@@ -117,7 +119,7 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
 
   /** unsubscribe from a channel, keeping position state.*/
   unsubscribe() {
-    this._setUnsubscribed(unsubscribedCodes.unsubscribeCalled, 'unsubscribe called', true);
+    this._unsubPromise = this._setUnsubscribed(unsubscribedCodes.unsubscribeCalled, 'unsubscribe called', true);
   }
 
   /** publish data to a channel.*/
@@ -254,7 +256,7 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
     }
   }
 
-  private _setSubscribing(code: number, reason: string) {
+  private async _setSubscribing(code: number, reason: string) {
     if (this._isSubscribing()) {
       return;
     }
@@ -263,6 +265,13 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
     }
     if (this._setState(SubscriptionState.Subscribing)) {
       this.emit('subscribing', { channel: this.channel, code: code, reason: reason });
+    }
+    // @ts-ignore – for performance reasons only await _unsubPromise for emulution case where it's required.
+    if (this._centrifuge._transport && this._centrifuge._transport.emulation()) {
+      await this._unsubPromise;
+    }
+    if (!this._isSubscribing()) {
+      return;
     }
     this._subscribe();
   }
@@ -437,21 +446,21 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
     this._setSubscribed(result);
   }
 
-  private _setUnsubscribed(code, reason, sendUnsubscribe) {
+  private _setUnsubscribed(code, reason, sendUnsubscribe): Promise<void> {
     if (this._isUnsubscribed()) {
-      return;
+      return Promise.resolve();
     }
+    let promise = Promise.resolve();
     if (this._isSubscribed()) {
       if (sendUnsubscribe) {
         // @ts-ignore – we are hiding some methods from public API autocompletion.
-        this._centrifuge._unsubscribe(this);
+        promise = this._centrifuge._unsubscribe(this);
       }
       this._clearSubscribedState();
-    }
-    if (this._isSubscribing()) {
+    } else if (this._isSubscribing()) {
       if (this._inflight && sendUnsubscribe) {
         // @ts-ignore – we are hiding some methods from public API autocompletion.
-        this._centrifuge._unsubscribe(this);
+        promise = this._centrifuge._unsubscribe(this);
       }
       this._clearSubscribingState();
     }
@@ -459,6 +468,7 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
       this.emit('unsubscribed', { channel: this.channel, code: code, reason: reason });
     }
     this._rejectPromises({ code: errorCodes.subscriptionUnsubscribed, message: this.state });
+    return promise;
   }
 
   private _handlePublication(pub: any) {

@@ -2,7 +2,7 @@ version: '3.8'
 
 services:
   centrifugo:
-    image: centrifugo/centrifugo:v5
+    image: centrifugo/centrifugo:v5.4.0
     command:
       - centrifugo
     ports:
@@ -12,3 +12,5 @@ services:
       - CENTRIFUGO_HTTP_STREAM=true
       - CENTRIFUGO_SSE=true
       - CENTRIFUGO_PRESENCE=true
+      - CENTRIFUGO_CLIENT_CONCURRENCY=8
+      - CENTRIFUGO_LOG_LEVEL=debug

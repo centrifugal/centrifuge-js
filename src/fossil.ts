@@ -72,7 +72,8 @@ class Writer {
 
   // Copy from array at start to end.
   putArray(a: ByteArray, start: number, end: number) {
-    this.a.push(...a.slice(start, end));
+    // TODO: optimize.
+    for (let i = start; i < end; i++) this.a.push(a[i]);
   }
 }
 

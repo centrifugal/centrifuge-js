@@ -273,6 +273,10 @@
                     "time": {
                       "type": "int64",
                       "id": 9
+                    },
+                    "channel": {
+                      "type": "string",
+                      "id": 10
                     }
                   },
                   "reserved": [

@@ -1699,10 +1699,11 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
   private _getPublicationContext(channel: string, pub: any) {
     const ctx: any = {
       channel: channel,
-      data: pub.data
+      data: pub.data,
+      publicationChannel: channel
     };
     if (pub.channel) {
-      ctx.channel = pub.channel;
+      ctx.publicationChannel = pub.channel;
     }
     if (pub.offset) {
       ctx.offset = pub.offset;

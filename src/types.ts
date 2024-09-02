@@ -190,6 +190,11 @@ export interface PublicationContext {
   offset?: number;
   // tags is an extra key-value attached to publication, tags may be set when calling server publish API. 
   tags?: Record<string, string>;
+  // publicationChannel may be used to find out the real channel of publication, in most cases it
+  // matches channel field, but when wildcard subscriptions are used it may be different and contain
+  // a channel to which publication was published, thus differ from channel field (which is always a
+  // channel to which client subscribed to).
+  publicationChannel: string;
 }
 
 export interface ClientInfo {
@@ -260,7 +265,7 @@ export interface UnsubscribedContext {
 }
 
 export interface ServerPublicationContext {
-  // channel from which publication was received.
+  // subscription channel from which publication was received.
   channel: string;
   // data contains publication payload.
   data: any;
@@ -273,6 +278,11 @@ export interface ServerPublicationContext {
   offset?: number;
   // tags is an extra key-value attached to publication, tags may be set when calling server publish API. 
   tags?: Record<string, string>;
+  // publicationChannel may be used to find out the real channel of publication, in most cases it
+  // matches channel field, but when wildcard subscriptions are used it may be different and contain
+  // a channel to which publication was published, thus differ from channel field (which is always a
+  // channel to which client subscribed to).
+  publicationChannel: string;
 }
 
 export interface ServerJoinContext {

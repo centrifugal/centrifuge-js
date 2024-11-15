@@ -28,6 +28,7 @@ import {
 import EventEmitter from 'events';
 
 const defaults: Options = {
+  headers: {},
   token: '',
   getToken: null,
   data: null,
@@ -248,6 +249,11 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
   /** setToken allows setting connection token. Or resetting used token to be empty.  */
   setToken(token: string) {
     this._token = token;
+  }
+
+  /** setHeaders allows setting connection emulated headers. */
+  setHeaders(headers: {[key: string]: string}) {
+    this._config.headers = headers;
   }
 
   /** send asynchronous data to a server (without any response from a server 
@@ -1044,6 +1050,9 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     }
     if (this._config.version) {
       req.version = this._config.version;
+    }
+    if (Object.keys(this._config.headers).length > 0) {
+      req.headers = this._config.headers;
     }
 
     const subs = {};

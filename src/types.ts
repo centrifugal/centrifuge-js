@@ -94,6 +94,7 @@ export interface Options {
   // provide header emulation, these headers are sent with first protocol message
   // the backend can process those in a customized manner. In case of Centrifugo
   // these headers are then used like real HTTP headers sent from the client.
+  // Requires Centrifugo v6.
   headers: {[key: string]: string};
   /** allows enabling debug mode */
   debug: boolean;

@@ -166,8 +166,8 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     }
   }
 
-  /** newSubscription allocates new Subscription to a channel. Since server only allows 
-   * one subscription per channel per client this method throws if client already has 
+  /** newSubscription allocates new Subscription to a channel. Since server only allows
+   * one subscription per channel per client this method throws if client already has
    * channel subscription in internal registry.
    * */
   newSubscription(channel: string, options?: Partial<SubscriptionOptions>): Subscription {
@@ -179,13 +179,13 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     return sub;
   }
 
-  /** getSubscription returns Subscription if it's registered in the internal 
+  /** getSubscription returns Subscription if it's registered in the internal
    * registry or null. */
   getSubscription(channel: string): Subscription | null {
     return this._getSub(channel);
   }
 
-  /** removeSubscription allows removing Subcription from the internal registry. Subscrption 
+  /** removeSubscription allows removing Subcription from the internal registry. Subscrption
    * must be in unsubscribed state. */
   removeSubscription(sub: Subscription | null) {
     if (!sub) {
@@ -202,7 +202,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     return this._subs;
   }
 
-  /** ready returns a Promise which resolves upon client goes to Connected 
+  /** ready returns a Promise which resolves upon client goes to Connected
    * state and rejects in case of client goes to Disconnected or Failed state.
    * Users can provide optional timeout in milliseconds. */
   ready(timeout?: number): Promise<void> {
@@ -256,7 +256,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     this._config.headers = headers;
   }
 
-  /** send asynchronous data to a server (without any response from a server 
+  /** send asynchronous data to a server (without any response from a server
    * expected, see rpc method if you need response). */
   send(data: any): Promise<void> {
     const cmd = {
@@ -394,7 +394,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     });
   }
 
-  /** start command batching (collect into temporary buffer without sending to a server) 
+  /** start command batching (collect into temporary buffer without sending to a server)
    * until stopBatching called.*/
   startBatching() {
     // start collecting messages without sending them to Centrifuge until flush
@@ -402,7 +402,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     this._batching = true;
   }
 
-  /** stop batching commands and flush collected commands to the 
+  /** stop batching commands and flush collected commands to the
    * network (all in one request/frame).*/
   stopBatching() {
     const self = this;
@@ -449,7 +449,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     this._codec = new JsonCodec();
     this._formatOverride();
 
-    if (this._config.debug === true ||
+    if (this._config.debug ||
       (typeof localStorage !== 'undefined' && localStorage.getItem('centrifuge.debug'))) {
       this._debugEnabled = true;
     }
@@ -458,7 +458,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
 
     if (typeof this._endpoint === 'string') {
       // Single address.
-    } else if (typeof this._endpoint === 'object' && this._endpoint instanceof Array) {
+    } else if (Array.isArray(this._endpoint)) {
       this._transports = this._endpoint;
       this._emulation = true;
       for (const i in this._transports) {
@@ -530,9 +530,9 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
         }
         if (this._deviceWentOffline && !this._transportClosed) {
           // This is a workaround for mobile Safari where close callback may be
-          // not issued upon device going to the flight mode. We know for sure
+          // not issued upon a device going to the flight mode. We know for sure
           // that transport close was called, so we start reconnecting. In this
-          // case if the close callback will be issued for some reason after some
+          // case if the close callback is issued for some reason after some
           // time – it will be ignored due to transport ID mismatch.
           this._deviceWentOffline = false;
           this._transportClosed = true;
@@ -928,7 +928,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
       this._debug('reconnect already in progress, return from reconnect routine');
       return;
     }
-    if (this._transportClosed === false) {
+    if (!this._transportClosed) {
       this._debug('waiting for transport close');
       return;
     }
@@ -1220,8 +1220,8 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     if (this._isDisconnected()) {
       return;
     }
-    // we mark transport is closed right away, because _clearConnectedState will move subscriptions to subscribing state
-    // if transport will still be open at this time, subscribe frames will be sent to closing transport
+    // we mark transport is closed right away, because _clearConnectedState will move subscriptions to the subscribing state
+    // if transport still is open at this time, subscribe frames will be sent to closing transport
     this._transportIsOpen = false;
     const previousState = this.state;
     this._reconnecting = false;
@@ -1231,7 +1231,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
       reason: reason
     };
 
-    let needEvent = false;
+    let needEvent: boolean;
 
     if (reconnect) {
       needEvent = this._setState(State.Connecting);
@@ -1432,7 +1432,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
       }
       const sub = this._subs[channel];
       // @ts-ignore – we are hiding some symbols from public API autocompletion.
-      if (sub._inflight === true) {
+      if (sub._inflight) {
         continue;
       }
       if (sub.state === SubscriptionState.Subscribing) {
@@ -1760,6 +1760,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     if (this._sendPong) {
       const cmd = {};
       this._transportSendCommands([cmd]);
+      this.emit('pong');
     }
     next();
   }

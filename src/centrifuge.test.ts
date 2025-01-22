@@ -592,7 +592,7 @@ test.each(transportCases)("%s: subscribes and unsubscribes from many subs", asyn
     // Keep an array of promises so that we can wait for each subscription's 'unsubscribed' event.
     const unsubscribedPromises: Promise<UnsubscribedContext>[] = [];
 
-    let channels = [
+    const channels = [
       'test1',
       'test2',
       'test3',
@@ -601,7 +601,7 @@ test.each(transportCases)("%s: subscribes and unsubscribes from many subs", asyn
     ];
 
     // Subscription tokens for anonymous users without ttl. Using an HMAC secret key used in tests ("secret").
-    let testTokens = {
+    const testTokens = {
       'test1': "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpYXQiOjE3Mzc1MzIzNDgsImNoYW5uZWwiOiJ0ZXN0MSJ9.eqPQxbBtyYxL8Hvbkm-P6aH7chUsSG_EMWe-rTwF_HI",
       'test2': "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpYXQiOjE3Mzc1MzIzODcsImNoYW5uZWwiOiJ0ZXN0MiJ9.tTJB3uSa8XpEmCvfkmrSKclijofnJ5RkQk6L2SaGtUE",
       'test3': "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpYXQiOjE3Mzc1MzIzOTgsImNoYW5uZWwiOiJ0ZXN0MyJ9.nyLcMrIot441CszOKska7kQIjo2sEm8pSxV1XWfNCsI",
@@ -613,7 +613,7 @@ test.each(transportCases)("%s: subscribes and unsubscribes from many subs", asyn
 
     const subscriptions: any[] = [];
 
-    for (let channel of channels) {
+    for (const channel of channels) {
       const sub = c.newSubscription(channel, {
         getToken: async function () {
           // Sleep for a random time between 0 and 100 milliseconds to emulate network.

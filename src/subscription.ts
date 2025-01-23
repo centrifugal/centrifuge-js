@@ -355,9 +355,11 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
     // we also need to check for transport state before sending subscription
     // because it may change for subscription with side effects (getData, getToken options)
     // @ts-ignore – we are hiding some symbols from public API autocompletion.
-    if (!this._centrifuge._transportIsOpen) {
+    if (!this._centrifuge._transportIsOpen || this._inflight) {
       return null;
     }
+    this._inflight = true;
+
     const channel = this.channel;
 
     const req: any = {
@@ -401,8 +403,6 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
     }
 
     const cmd = { subscribe: req };
-
-    this._inflight = true;
 
     // @ts-ignore – we are hiding some symbols from public API autocompletion.
     this._centrifuge._call(cmd).then(resolveCtx => {
@@ -464,6 +464,7 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
       }
       this._clearSubscribingState();
     }
+    this._inflight = false;
     if (this._setState(SubscriptionState.Unsubscribed)) {
       this.emit('unsubscribed', { channel: this.channel, code: code, reason: reason });
     }

@@ -39,6 +39,44 @@ const websocketOnly = [
   ['websocket', 'ws://localhost:8000/connection/websocket'],
 ]
 
+test.each(transportCases)("%s: subscription:getToken should be called once", async (transport, endpoint) => {
+  const c = new Centrifuge([{
+    transport: transport as TransportName,
+    endpoint: endpoint,
+  }], {
+
+    // @ts-ignore unused param
+     getToken: async function (ctx: any): Promise<string> {
+       const sleep = (ms: any) => new Promise(resolve => setTimeout(resolve, ms));
+       await sleep(Math.random() * 100);
+       return "";
+     },
+      websocket: WebSocket,
+      fetch: fetch,
+      eventsource: EventSource,
+      readableStream: ReadableStream,
+      emulationEndpoint: 'http://localhost:8000/emulation',
+      debug: false
+    });
+
+  c.connect();
+
+  const sleep = (ms: any) => new Promise(resolve => setTimeout(resolve, ms));
+  let counter = 0;
+  const token = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpYXQiOjE3Mzc1MzIzNDgsImNoYW5uZWwiOiJ0ZXN0MSJ9.eqPQxbBtyYxL8Hvbkm-P6aH7chUsSG_EMWe-rTwF_HI";
+  const sub = c.newSubscription('test1', {
+    getToken: async function () {
+      counter++;
+      await sleep(Math.random() * 40);
+      return token;
+    }
+  });
+
+  sub.subscribe();
+  await sub.ready(200);
+  expect(counter).toEqual(1);
+});
+
 test.each(transportCases)("%s: connects and disconnects", async (transport, endpoint) => {
   const c = new Centrifuge([{
     transport: transport as TransportName,

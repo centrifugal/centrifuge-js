@@ -289,6 +289,18 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
       // subscribe will be called later automatically.
       return null;
     }
+    // @ts-ignore – we are hiding some symbols from public API autocompletion.
+    if (this._inflight) {
+      return null;
+    }
+    this._inflight = true;
+
+    function stackTrace() {
+      var err = new Error();
+      return err.stack;
+    }
+    // @ts-ignore – we are hiding some symbols from public API autocompletion.
+    this._centrifuge._debug(stackTrace());
 
     const self = this;
     const getDataCtx = {
@@ -299,6 +311,7 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
       if (self._getData) {
         self._getData(getDataCtx).then(function (data: any) {
           if (!self._isSubscribing()) {
+            self._inflight = false;
             return;
           }
           self._data = data;
@@ -312,9 +325,11 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
 
     this._getSubscriptionToken().then(function (token) {
       if (!self._isSubscribing()) {
+        self._inflight = false;
         return;
       }
       if (!token) {
+        self._inflight = false;
         self._failUnauthorized();
         return;
       }
@@ -322,6 +337,7 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
       if (self._getData) {
         self._getData(getDataCtx).then(function (data: any) {
           if (!self._isSubscribing()) {
+            self._inflight = false;
             return;
           }
           self._data = data;
@@ -332,9 +348,11 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
       }
     }).catch(function (e) {
       if (!self._isSubscribing()) {
+        self._inflight = false;
         return;
       }
       if (e instanceof UnauthorizedError) {
+        self._inflight = false;
         self._failUnauthorized();
         return;
       }
@@ -346,6 +364,7 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
           message: e !== undefined ? e.toString() : ''
         }
       });
+      self._inflight = false;
       self._scheduleResubscribe();
     });
     return null;
@@ -355,10 +374,9 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
     // we also need to check for transport state before sending subscription
     // because it may change for subscription with side effects (getData, getToken options)
     // @ts-ignore – we are hiding some symbols from public API autocompletion.
-    if (!this._centrifuge._transportIsOpen || this._inflight) {
+    if (!this._centrifuge._transportIsOpen) {
       return null;
     }
-    this._inflight = true;
 
     const channel = this.channel;
 

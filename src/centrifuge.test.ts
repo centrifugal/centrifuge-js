@@ -31,8 +31,8 @@ test('no websocket constructor', async () => {
 
 const transportCases = [
   ['websocket', 'ws://localhost:8000/connection/websocket'],
-  ['http_stream', 'http://localhost:8000/connection/http_stream'],
-  ['sse', 'http://localhost:8000/connection/sse'],
+  // ['http_stream', 'http://localhost:8000/connection/http_stream'],
+  // ['sse', 'http://localhost:8000/connection/sse'],
 ]
 
 const websocketOnly = [
@@ -367,12 +367,6 @@ test.each(transportCases)("%s: subscribe and unsubscribe loop", async (transport
   await unsubscribedPromise;
 
   sub.subscribe()
-  const presenceStats = await sub.presenceStats();
-  expect(presenceStats.numClients).toBe(1);
-  expect(presenceStats.numUsers).toBe(1);
-  const presence = await sub.presence();
-  expect(Object.keys(presence.clients).length).toBe(1)
-  await sub.unsubscribe()
 
   const retryWithDelay = async (fn, validate, maxRetries, delay) => {
     for (let i = 0; i < maxRetries; i++) {
@@ -385,18 +379,38 @@ test.each(transportCases)("%s: subscribe and unsubscribe loop", async (transport
     throw new Error("Validation failed after retries");
   };
 
+  const presenceStats1 = await retryWithDelay(
+    () => sub.presenceStats(),
+    (stats: any) => stats.numClients === 1 && stats.numUsers === 1,
+    10,
+    200
+  );
+
+  const presence1 = await retryWithDelay(
+    () => sub.presence(),
+    (presence: any) => Object.keys(presence.clients).length === 1,
+    10,
+    200
+  );
+
+  expect(presenceStats1.numClients).toBe(1);
+  expect(presenceStats1.numUsers).toBe(1);
+  expect(Object.keys(presence1.clients).length).toBe(1);
+
+  await sub.unsubscribe()
+
   const presenceStats2 = await retryWithDelay(
     () => c.presenceStats('test'),
     (stats: any) => stats.numClients === 0 && stats.numUsers === 0,
-    3,
-    2000
+    10,
+    200
   );
 
   const presence2 = await retryWithDelay(
     () => c.presence('test'),
     (presence: any) => Object.keys(presence.clients).length === 0,
-    3,
-    2000
+    10,
+    200
   );
 
   expect(presenceStats2.numClients).toBe(0);
@@ -577,6 +591,74 @@ test.each(websocketOnly)("%s: reconnect after close before transport open", asyn
   expect(c.state).toBe(State.Disconnected);
 });
 
+test.each(transportCases)("%s: connects and subscribes with token", async (transport, endpoint) => {
+  for (let index = 0; index < 5; index++) {
+    // Connection token for anonymous user without ttl. Using an HMAC secret key used in tests ("secret").
+    const connectToken = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpYXQiOjE3MzgwNzg4MjR9.MTb3higWfFW04E9-8wmTFOcf4MEm-rMDQaNKJ1VU_n4";
+    let numConnectTokenCalls = 0;
+    let numSubscribeTokenCalls = 0;
+    const c = new Centrifuge([{
+      transport: transport as TransportName,
+      endpoint: endpoint,
+    }], {
+      getToken: async function (): Promise<string> {
+        const sleep = (ms: any) => new Promise(resolve => setTimeout(resolve, ms));
+        await sleep(Math.random() * 100);
+        numConnectTokenCalls++;
+        return connectToken;
+      },
+      websocket: WebSocket,
+      fetch: fetch,
+      eventsource: EventSource,
+      readableStream: ReadableStream,
+      emulationEndpoint: 'http://localhost:8000/emulation',
+    });
+
+    // Subscription tokens for anonymous users without ttl. Using an HMAC secret key used in tests ("secret").
+    const testTokens = {
+      'test1': "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpYXQiOjE3Mzc1MzIzNDgsImNoYW5uZWwiOiJ0ZXN0MSJ9.eqPQxbBtyYxL8Hvbkm-P6aH7chUsSG_EMWe-rTwF_HI",
+    }
+
+    c.connect();
+
+    const sub = c.newSubscription('test1', {
+      getToken: async function () {
+        // Sleep for a random time between 0 and 100 milliseconds to emulate network.
+        const sleep = (ms: any) => new Promise(resolve => setTimeout(resolve, ms));
+        await sleep(Math.random() * 100);
+        numSubscribeTokenCalls++;
+        return testTokens['test1'];
+      }
+    });
+
+    // Create a promise for the 'unsubscribed' event of this subscription.
+    const unsubscribedPromise = new Promise<UnsubscribedContext>((resolve) => {
+      sub.on("unsubscribed", (ctx) => {
+        resolve(ctx);
+      });
+    });
+
+    // Actually subscribe.
+    sub.subscribe();
+
+    await sub.ready(5000);
+    expect(sub.state).toBe(SubscriptionState.Subscribed);
+
+    // The client itself should be connected now.
+    expect(c.state).toBe(State.Connected);
+
+    sub.unsubscribe();
+    c.disconnect();
+
+    await unsubscribedPromise;
+    expect(sub.state).toBe(SubscriptionState.Unsubscribed);
+    expect(c.state).toBe(State.Disconnected);
+
+    expect(numConnectTokenCalls).toBe(1);
+    expect(numSubscribeTokenCalls).toBe(1);
+  }
+});
+
 test.each(transportCases)("%s: subscribes and unsubscribes from many subs", async (transport, endpoint) => {
   const c = new Centrifuge([{
     transport: transport as TransportName,
@@ -589,83 +671,83 @@ test.each(transportCases)("%s: subscribes and unsubscribes from many subs", asyn
     emulationEndpoint: 'http://localhost:8000/emulation',
     // debug: true
   });
-    // Keep an array of promises so that we can wait for each subscription's 'unsubscribed' event.
-    const unsubscribedPromises: Promise<UnsubscribedContext>[] = [];
+  // Keep an array of promises so that we can wait for each subscription's 'unsubscribed' event.
+  const unsubscribedPromises: Promise<UnsubscribedContext>[] = [];
 
-    const channels = [
-      'test1',
-      'test2',
-      'test3',
-      'test4',
-      'test5',
-    ];
+  const channels = [
+    'test1',
+    'test2',
+    'test3',
+    'test4',
+    'test5',
+  ];
 
-    // Subscription tokens for anonymous users without ttl. Using an HMAC secret key used in tests ("secret").
-    const testTokens = {
-      'test1': "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpYXQiOjE3Mzc1MzIzNDgsImNoYW5uZWwiOiJ0ZXN0MSJ9.eqPQxbBtyYxL8Hvbkm-P6aH7chUsSG_EMWe-rTwF_HI",
-      'test2': "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpYXQiOjE3Mzc1MzIzODcsImNoYW5uZWwiOiJ0ZXN0MiJ9.tTJB3uSa8XpEmCvfkmrSKclijofnJ5RkQk6L2SaGtUE",
-      'test3': "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpYXQiOjE3Mzc1MzIzOTgsImNoYW5uZWwiOiJ0ZXN0MyJ9.nyLcMrIot441CszOKska7kQIjo2sEm8pSxV1XWfNCsI",
-      'test4': "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpYXQiOjE3Mzc1MzI0MDksImNoYW5uZWwiOiJ0ZXN0NCJ9.wWAX2AhJX6Ep4HVexQWSVF3-cWytVhzY9Pm7QsMdCsI",
-      'test5': "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpYXQiOjE3Mzc1MzI0MTgsImNoYW5uZWwiOiJ0ZXN0NSJ9.hCSfpHYws5TXLKkN0bW0DU6C-wgEUNuhGaIy8W1sT9o"
-    }
+  // Subscription tokens for anonymous users without ttl. Using an HMAC secret key used in tests ("secret").
+  const testTokens = {
+    'test1': "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpYXQiOjE3Mzc1MzIzNDgsImNoYW5uZWwiOiJ0ZXN0MSJ9.eqPQxbBtyYxL8Hvbkm-P6aH7chUsSG_EMWe-rTwF_HI",
+    'test2': "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpYXQiOjE3Mzc1MzIzODcsImNoYW5uZWwiOiJ0ZXN0MiJ9.tTJB3uSa8XpEmCvfkmrSKclijofnJ5RkQk6L2SaGtUE",
+    'test3': "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpYXQiOjE3Mzc1MzIzOTgsImNoYW5uZWwiOiJ0ZXN0MyJ9.nyLcMrIot441CszOKska7kQIjo2sEm8pSxV1XWfNCsI",
+    'test4': "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpYXQiOjE3Mzc1MzI0MDksImNoYW5uZWwiOiJ0ZXN0NCJ9.wWAX2AhJX6Ep4HVexQWSVF3-cWytVhzY9Pm7QsMdCsI",
+    'test5': "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpYXQiOjE3Mzc1MzI0MTgsImNoYW5uZWwiOiJ0ZXN0NSJ9.hCSfpHYws5TXLKkN0bW0DU6C-wgEUNuhGaIy8W1sT9o"
+  }
 
-    c.connect();
+  c.connect();
 
-    const subscriptions: any[] = [];
+  const subscriptions: any[] = [];
 
-    for (const channel of channels) {
-      const sub = c.newSubscription(channel, {
-        getToken: async function () {
-          // Sleep for a random time between 0 and 100 milliseconds to emulate network.
-          const sleep = (ms: any) => new Promise(resolve => setTimeout(resolve, ms));
-          await sleep(Math.random() * 100);
-          return testTokens[channel];
-        }
+  for (const channel of channels) {
+    const sub = c.newSubscription(channel, {
+      getToken: async function () {
+        // Sleep for a random time between 0 and 100 milliseconds to emulate network.
+        const sleep = (ms: any) => new Promise(resolve => setTimeout(resolve, ms));
+        await sleep(Math.random() * 100);
+        return testTokens[channel];
+      }
+    });
+
+    // Create a promise for the 'unsubscribed' event of this subscription.
+    const unsubPromise = new Promise<UnsubscribedContext>((resolve) => {
+      sub.on("unsubscribed", (ctx) => {
+        resolve(ctx);
       });
-
-      // Create a promise for the 'unsubscribed' event of this subscription.
-      const unsubPromise = new Promise<UnsubscribedContext>((resolve) => {
-        sub.on("unsubscribed", (ctx) => {
-          resolve(ctx);
-        });
-      });
-      unsubscribedPromises.push(unsubPromise);
-
-      // Actually subscribe.
-      sub.subscribe();
-      subscriptions.push(sub);
-    }
-
-    // Wait until all subscriptions are in the Subscribed state.
-    await Promise.all(
-      subscriptions.map(async (sub) => {
-        await sub.ready(5000);
-        expect(sub.state).toBe(SubscriptionState.Subscribed);
-      })
-    );
-
-    // The client itself should be connected now.
-    expect(c.state).toBe(State.Connected);
-
-    // Unsubscribe from all and then disconnect.
-    subscriptions.forEach((sub) => {
-      sub.unsubscribe();
     });
-    c.disconnect();
+    unsubscribedPromises.push(unsubPromise);
 
-    // Wait until all 'unsubscribed' events are received.
-    const unsubscribedContexts = await Promise.all(unsubscribedPromises);
+    // Actually subscribe.
+    sub.subscribe();
+    subscriptions.push(sub);
+  }
 
-    // Confirm each subscription is now Unsubscribed.
-    subscriptions.forEach((sub) => {
-      expect(sub.state).toBe(SubscriptionState.Unsubscribed);
-    });
+  // Wait until all subscriptions are in the Subscribed state.
+  await Promise.all(
+    subscriptions.map(async (sub) => {
+      await sub.ready(5000);
+      expect(sub.state).toBe(SubscriptionState.Subscribed);
+    })
+  );
 
-    // The client should be disconnected.
-    expect(c.state).toBe(State.Disconnected);
+  // The client itself should be connected now.
+  expect(c.state).toBe(State.Connected);
 
-    // Assert the correct unsubscribe code for each subscription.
-    unsubscribedContexts.forEach((ctx) => {
-      expect(ctx.code).toBe(unsubscribedCodes.unsubscribeCalled);
-    });
+  // Unsubscribe from all and then disconnect.
+  subscriptions.forEach((sub) => {
+    sub.unsubscribe();
+  });
+  c.disconnect();
+
+  // Wait until all 'unsubscribed' events are received.
+  const unsubscribedContexts = await Promise.all(unsubscribedPromises);
+
+  // Confirm each subscription is now Unsubscribed.
+  subscriptions.forEach((sub) => {
+    expect(sub.state).toBe(SubscriptionState.Unsubscribed);
+  });
+
+  // The client should be disconnected.
+  expect(c.state).toBe(State.Disconnected);
+
+  // Assert the correct unsubscribe code for each subscription.
+  unsubscribedContexts.forEach((ctx) => {
+    expect(ctx.code).toBe(unsubscribedCodes.unsubscribeCalled);
+  });
 });

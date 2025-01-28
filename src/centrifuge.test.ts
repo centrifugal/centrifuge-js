@@ -249,17 +249,7 @@ test.each(transportCases)("%s: not connecting on online in disconnected state", 
   await c.ready(5000);
   expect(c.state).toBe(State.Connected);
 
-  let disconnectCalled: any;
-  const disconnectedPromise = new Promise<DisconnectedContext>((resolve, _) => {
-    disconnectCalled = resolve;
-  })
-  c.on('disconnected', (ctx) => {
-    disconnectCalled(ctx);
-  })
-
-  c.disconnect();
-  await disconnectedPromise;
-  expect(c.state).toBe(State.Disconnected);
+  await disconnectClient(c);
 
   const onlineEvent = new Event('online', { bubbles: true });
   networkEventTarget.dispatchEvent(onlineEvent);
@@ -294,17 +284,7 @@ test.each(transportCases)("%s: subscribe and presence", async (transport, endpoi
   expect(presenceStats.numClients).toBeGreaterThan(0)
   expect(presenceStats.numUsers).toBeGreaterThan(0);
 
-  let disconnectCalled: any;
-  const disconnectedPromise = new Promise<DisconnectedContext>((resolve, _) => {
-    disconnectCalled = resolve;
-  })
-  c.on('disconnected', (ctx) => {
-    disconnectCalled(ctx);
-  })
-
-  c.disconnect();
-  await disconnectedPromise;
-  expect(c.state).toBe(State.Disconnected);
+  await disconnectClient(c);
 });
 
 test.each(transportCases)("%s: connect disconnect loop", async (transport, endpoint) => {
@@ -417,17 +397,7 @@ test.each(transportCases)("%s: subscribe and unsubscribe loop", async (transport
   expect(presenceStats2.numUsers).toBe(0);
   expect(Object.keys(presence2.clients).length).toBe(0);
 
-  let disconnectCalled: any;
-  const disconnectedPromise = new Promise<DisconnectedContext>((resolve, _) => {
-    disconnectCalled = resolve;
-  })
-  c.on('disconnected', (ctx) => {
-    disconnectCalled(ctx);
-  })
-
-  c.disconnect();
-  await disconnectedPromise;
-  expect(c.state).toBe(State.Disconnected);
+  await disconnectClient(c);
 });
 
 // Make sure we can unsubscribe right after connect called and connect/subscribe
@@ -476,17 +446,7 @@ test.each(transportCases)("%s: unsubscribe right after connect", async (transpor
   sub.subscribe();
   await subscribedPromise;
 
-  let disconnectCalled: any;
-  const disconnectedPromise = new Promise<DisconnectedContext>((resolve, _) => {
-    disconnectCalled = resolve;
-  })
-  c.on('disconnected', (ctx) => {
-    disconnectCalled(ctx);
-  })
-
-  c.disconnect();
-  await disconnectedPromise;
-  expect(c.state).toBe(State.Disconnected);
+  await disconnectClient(c);
 });
 
 // Make sure we can unsubscribe right after connect frame sent but reply has not been yet received.
@@ -538,17 +498,7 @@ test.each(websocketOnly)("%s: unsubscribe in between connect command and reply",
 
   await subscribedPromise;
 
-  let disconnectCalled: any;
-  const disconnectedPromise = new Promise<DisconnectedContext>((resolve, _) => {
-    disconnectCalled = resolve;
-  })
-  c.on('disconnected', (ctx) => {
-    disconnectCalled(ctx);
-  })
-
-  c.disconnect();
-  await disconnectedPromise;
-  expect(c.state).toBe(State.Disconnected);
+  await disconnectClient(c);
 });
 
 // Make sure we can resubscribe when offline event triggered before WebSocket transport open.
@@ -575,21 +525,23 @@ test.each(websocketOnly)("%s: reconnect after close before transport open", asyn
   })
 
   c.connect();
+  await c.ready();
+  await disconnectClient(c);
+});
 
-  await c.ready()
-
+async function disconnectClient(c: Centrifuge): Promise<void> {
   let disconnectCalled: any;
-  const disconnectedPromise = new Promise<DisconnectedContext>((resolve, _) => {
+  const disconnectedPromise = new Promise<DisconnectedContext>((resolve) => {
     disconnectCalled = resolve;
-  })
+  });
   c.on('disconnected', (ctx) => {
     disconnectCalled(ctx);
-  })
-
+  });
   c.disconnect();
-  await disconnectedPromise;
-  expect(c.state).toBe(State.Disconnected);
-});
+  return disconnectedPromise.then(() => {
+    expect(c.state).toBe(State.Disconnected);
+  });
+}
 
 test.each(transportCases)("%s: connects and subscribes with token", async (transport, endpoint) => {
   for (let index = 0; index < 5; index++) {
@@ -752,4 +704,82 @@ test.each(transportCases)("%s: subscribes and unsubscribes from many subs", asyn
       expect(ctx.code).toBe(unsubscribedCodes.unsubscribeCalled);
     });
   }
+});
+
+test.each(transportCases)("%s: retries connection getToken error", async (transport, endpoint) => {
+  let shouldThrowConnectError = true;
+  const connectToken = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpYXQiOjE3MzgwNzg4MjR9.MTb3higWfFW04E9-8wmTFOcf4MEm-rMDQaNKJ1VU_n4";
+  let numConnectTokenCalls = 0;
+
+  const c = new Centrifuge([{
+    transport: transport as TransportName,
+    endpoint: endpoint,
+  }], {
+    getToken: async function (): Promise<string> {
+      numConnectTokenCalls++;
+      if (shouldThrowConnectError) {
+        shouldThrowConnectError = false;
+        throw new Error("Connection token error");
+      }
+      return connectToken;
+    },
+    websocket: WebSocket,
+    fetch: fetch,
+    eventsource: EventSource,
+    readableStream: ReadableStream,
+    emulationEndpoint: 'http://localhost:8000/emulation',
+    minReconnectDelay: 1,
+  });
+
+  c.connect();
+  await c.ready(5000);
+
+  expect(c.state).toBe(State.Connected);
+  expect(numConnectTokenCalls).toBe(2); // Ensure getToken was retried.
+
+  await disconnectClient(c);
+});
+
+test.each(transportCases)("%s: retries subscription getToken error", async (transport, endpoint) => {
+  const connectToken = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpYXQiOjE3MzgwNzg4MjR9.MTb3higWfFW04E9-8wmTFOcf4MEm-rMDQaNKJ1VU_n4";
+  const testTokens = {
+    'test1': "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpYXQiOjE3Mzc1MzIzNDgsImNoYW5uZWwiOiJ0ZXN0MSJ9.eqPQxbBtyYxL8Hvbkm-P6aH7chUsSG_EMWe-rTwF_HI",
+  };
+
+  let shouldThrowSubscriptionError = true;
+  let numSubscribeTokenCalls = 0;
+
+  const c = new Centrifuge([{
+    transport: transport as TransportName,
+    endpoint: endpoint,
+  }], {
+    getToken: async function (): Promise<string> {
+      return connectToken;
+    },
+    websocket: WebSocket,
+    fetch: fetch,
+    eventsource: EventSource,
+    readableStream: ReadableStream,
+    emulationEndpoint: 'http://localhost:8000/emulation',
+  });
+
+  const sub = c.newSubscription('test1', {
+    getToken: async function () {
+      numSubscribeTokenCalls++;
+      if (shouldThrowSubscriptionError) {
+        shouldThrowSubscriptionError = false;
+        throw new Error("Subscription token error");
+      }
+      return testTokens['test1'];
+    },
+    minResubscribeDelay: 1,
+  });
+
+  c.connect();
+  sub.subscribe();
+
+  await sub.ready(5000);
+  expect(sub.state).toBe(SubscriptionState.Subscribed);
+  expect(numSubscribeTokenCalls).toBe(2); // Ensure getToken was retried.
+  await disconnectClient(c);
 });

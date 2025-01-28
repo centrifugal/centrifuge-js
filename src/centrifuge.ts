@@ -252,7 +252,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
   }
 
   /** setHeaders allows setting connection emulated headers. */
-  setHeaders(headers: {[key: string]: string}) {
+  setHeaders(headers: { [key: string]: string }) {
     this._config.headers = headers;
   }
 

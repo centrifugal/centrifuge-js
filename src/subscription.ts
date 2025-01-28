@@ -295,13 +295,6 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
     }
     this._inflight = true;
 
-    function stackTrace() {
-      var err = new Error();
-      return err.stack;
-    }
-    // @ts-ignore – we are hiding some symbols from public API autocompletion.
-    this._centrifuge._debug(stackTrace());
-
     const self = this;
     const getDataCtx = {
       channel: self.channel
@@ -375,6 +368,7 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
     // because it may change for subscription with side effects (getData, getToken options)
     // @ts-ignore – we are hiding some symbols from public API autocompletion.
     if (!this._centrifuge._transportIsOpen) {
+      this._inflight = false;
       return null;
     }
 

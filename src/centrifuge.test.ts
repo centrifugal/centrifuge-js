@@ -31,8 +31,8 @@ test('no websocket constructor', async () => {
 
 const transportCases = [
   ['websocket', 'ws://localhost:8000/connection/websocket'],
-  // ['http_stream', 'http://localhost:8000/connection/http_stream'],
-  // ['sse', 'http://localhost:8000/connection/sse'],
+  ['http_stream', 'http://localhost:8000/connection/http_stream'],
+  ['sse', 'http://localhost:8000/connection/sse'],
 ]
 
 const websocketOnly = [

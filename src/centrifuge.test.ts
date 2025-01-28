@@ -47,7 +47,7 @@ test.each(transportCases)("%s: subscription:getToken should be called once", asy
   }], {
      // @ts-ignore unused param
      getToken: async function (ctx: any): Promise<string> {
-       await sleep(Math.random() * 100);
+       await sleep(100);
        return "";
      },
       websocket: WebSocket,
@@ -65,7 +65,7 @@ test.each(transportCases)("%s: subscription:getToken should be called once", asy
   const sub = c.newSubscription('test1', {
     getToken: async function () {
       counter++;
-      await sleep(Math.random() * 40);
+      await sleep(40);
       return token;
     }
   });

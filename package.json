@@ -1,6 +1,6 @@
 {
   "name": "centrifuge",
-  "version": "5.3.1",
+  "version": "5.3.2",
   "description": "JavaScript client SDK for bidirectional communication with Centrifugo and Centrifuge-based server from browser, NodeJS and React Native",
   "main": "build/index.js",
   "types": "build/index.d.ts",

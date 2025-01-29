@@ -71,12 +71,10 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
     // @ts-ignore – we are hiding some symbols from public API autocompletion.
     if (this._centrifuge._debugEnabled) {
       this.on('state', (ctx) => {
-        // @ts-ignore – we are hiding some symbols from public API autocompletion.
-        this._centrifuge._debug('subscription state', channel, ctx.oldState, '->', ctx.newState);
+        this._debug('subscription state', channel, ctx.oldState, '->', ctx.newState);
       });
       this.on('error', (ctx) => {
-        // @ts-ignore – we are hiding some symbols from public API autocompletion.
-        this._centrifuge._debug('subscription error', channel, ctx);
+        this._debug('subscription error', channel, ctx);
       });
     } else {
       // Avoid unhandled exception in EventEmitter for non-set error handler.
@@ -311,14 +309,14 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
 
   private _subscribeWithoutToken(): any {
     if (this._getData) {
-      this._fetchDataAndSubscribe(this._token);
+      this._getDataAndSubscribe(this._token);
       return null;
     } else {
       return this._sendSubscribe(this._token);
     }
   }
 
-  private _fetchDataAndSubscribe(token: string): void {
+  private _getDataAndSubscribe(token: string): void {
     if (!this._getData) {
       this._inflight = false;
       return;
@@ -333,10 +331,10 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
         this._data = data;
         this._sendSubscribe(token);
       })
-      .catch(e => this._handleDataFetchError(e));
+      .catch(e => this._handleGetDataError(e));
   }
 
-  private _handleDataFetchError(error: any): void {
+  private _handleGetDataError(error: any): void {
     if (!this._isSubscribing()) {
       this._inflight = false;
       return;
@@ -349,10 +347,10 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
     }
 
     this.emit('error', {
-      type: 'getData',
+      type: 'subscribeData',
       channel: this.channel,
       error: {
-        code: errorCodes.subscriptionData,
+        code: errorCodes.badConfiguration,
         message: error?.toString() || ''
       }
     });
@@ -376,7 +374,7 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
     this._token = token;
 
     if (this._getData) {
-      this._fetchDataAndSubscribe(token);
+      this._getDataAndSubscribe(token);
     } else {
       this._sendSubscribe(token);
     }
@@ -564,6 +562,10 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
   }
 
   private _scheduleResubscribe() {
+    if (!this._isSubscribing()) {
+      this._debug('not in subscribing state, skip resubscribe scheduling', this.channel);
+      return;
+    }
     const self = this;
     const delay = this._getResubscribeDelay();
     this._resubscribeTimeout = setTimeout(function () {
@@ -571,6 +573,7 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
         self._subscribe();
       }
     }, delay);
+    this._debug('resubscribe scheduled after ' + delay, this.channel);
   }
 
   private _subscribeError(err: any) {
@@ -676,8 +679,7 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
   }
 
   private _getSubscriptionToken() {
-    // @ts-ignore – we are hiding some methods from public API autocompletion.
-    this._centrifuge._debug('get subscription token for channel', this.channel);
+    this._debug('get subscription token for channel', this.channel);
     const ctx = {
       channel: this.channel
     };
@@ -752,8 +754,7 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
     if (!this._isSubscribed()) {
       return;
     }
-    // @ts-ignore – we are hiding some methods from public API autocompletion.
-    this._centrifuge._debug('subscription token refreshed, channel', this.channel);
+    this._debug('subscription token refreshed, channel', this.channel);
     this._clearRefreshTimeout();
     if (result.expires === true) {
       this._refreshTimeout = setTimeout(() => this._refresh(), ttlMilliseconds(result.ttl));

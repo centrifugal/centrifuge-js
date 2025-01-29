@@ -740,6 +740,39 @@ test.each(transportCases)("%s: retries connection getToken error", async (transp
   await disconnectClient(c);
 });
 
+test.each(transportCases)("%s: retries connection getData error", async (transport, endpoint) => {
+  let shouldThrowGetDataError = true;
+  let numGetDataCalls = 0;
+
+  const c = new Centrifuge([{
+    transport: transport as TransportName,
+    endpoint: endpoint,
+  }], {
+    getData: async function (): Promise<any> {
+      numGetDataCalls++;
+      if (shouldThrowGetDataError) {
+        shouldThrowGetDataError = false;
+        throw new Error("getData token error");
+      }
+      return {};
+    },
+    websocket: WebSocket,
+    fetch: fetch,
+    eventsource: EventSource,
+    readableStream: ReadableStream,
+    emulationEndpoint: 'http://localhost:8000/emulation',
+    minReconnectDelay: 1,
+  });
+
+  c.connect();
+  await c.ready(5000);
+
+  expect(c.state).toBe(State.Connected);
+  expect(numGetDataCalls).toBe(2); // Ensure getData was retried.
+
+  await disconnectClient(c);
+});
+
 test.each(transportCases)("%s: retries subscription getToken error", async (transport, endpoint) => {
   const connectToken = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpYXQiOjE3MzgwNzg4MjR9.MTb3higWfFW04E9-8wmTFOcf4MEm-rMDQaNKJ1VU_n4";
   const testTokens = {
@@ -781,5 +814,48 @@ test.each(transportCases)("%s: retries subscription getToken error", async (tran
   await sub.ready(5000);
   expect(sub.state).toBe(SubscriptionState.Subscribed);
   expect(numSubscribeTokenCalls).toBe(2); // Ensure getToken was retried.
+  await disconnectClient(c);
+});
+
+test.each(transportCases)("%s: retries subscription getData error", async (transport, endpoint) => {
+  const testTokens = {
+    'test1': "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpYXQiOjE3Mzc1MzIzNDgsImNoYW5uZWwiOiJ0ZXN0MSJ9.eqPQxbBtyYxL8Hvbkm-P6aH7chUsSG_EMWe-rTwF_HI",
+  };
+
+  let shouldThrowGetDataError = true;
+  let numGetDataCalls = 0;
+
+  const c = new Centrifuge([{
+    transport: transport as TransportName,
+    endpoint: endpoint,
+  }], {
+    websocket: WebSocket,
+    fetch: fetch,
+    eventsource: EventSource,
+    readableStream: ReadableStream,
+    emulationEndpoint: 'http://localhost:8000/emulation',
+  });
+
+  const sub = c.newSubscription('test1', {
+    getToken: async function () {
+      return testTokens['test1'];
+    },
+    getData: async function (): Promise<any> {
+      numGetDataCalls++;
+      if (shouldThrowGetDataError) {
+        shouldThrowGetDataError = false;
+        throw new Error("getData token error");
+      }
+      return {};
+    },
+    minResubscribeDelay: 1,
+  });
+
+  c.connect();
+  sub.subscribe();
+
+  await sub.ready(5000);
+  expect(sub.state).toBe(SubscriptionState.Subscribed);
+  expect(numGetDataCalls).toBe(2); // Ensure getToken was retried.
   await disconnectClient(c);
 });

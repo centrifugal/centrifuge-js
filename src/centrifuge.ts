@@ -252,7 +252,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
   }
 
   /** setHeaders allows setting connection emulated headers. */
-  setHeaders(headers: {[key: string]: string}) {
+  setHeaders(headers: { [key: string]: string }) {
     this._config.headers = headers;
   }
 
@@ -934,24 +934,25 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     }
 
     this._reconnecting = true;
-    const self = this;
     const emptyToken = this._token === '';
     const needTokenRefresh = this._refreshRequired || (emptyToken && this._config.getToken !== null);
     if (!needTokenRefresh) {
       if (this._config.getData) {
-        this._config.getData().then(function (data: any) {
-          if (!self._isConnecting()) {
+        this._config.getData().then(data => {
+          if (!this._isConnecting()) {
             return;
           }
-          self._data = data;
-          self._initializeTransport();
+          this._data = data;
+          this._initializeTransport();
         })
+        .catch(e => this._handleGetDataError(e));
       } else {
         this._initializeTransport();
       }
       return;
     }
 
+    const self = this;
     this._getToken().then(function (token: string) {
       if (!self._isConnecting()) {
         return;
@@ -970,6 +971,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
           self._data = data;
           self._initializeTransport();
         })
+        .catch(e => self._handleGetDataError(e));
       } else {
         self._initializeTransport();
       }
@@ -989,12 +991,32 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
         }
       });
       const delay = self._getReconnectDelay();
-      self._debug('error on connection token refresh, reconnect after ' + delay + ' milliseconds', e);
+      self._debug('error on getting connection token, reconnect after ' + delay + ' milliseconds', e);
       self._reconnecting = false;
       self._reconnectTimeout = setTimeout(() => {
         self._startReconnecting();
       }, delay);
     });
+  }
+
+  private _handleGetDataError(e: any): void {
+    if (e instanceof UnauthorizedError) {
+      this._failUnauthorized();
+      return;
+    }
+    this.emit('error', {
+      type: 'connectData',
+      error: {
+        code: errorCodes.badConfiguration,
+        message: e?.toString() || ''
+      }
+    });
+    const delay = this._getReconnectDelay();
+    this._debug('error on getting connect data, reconnect after ' + delay + ' milliseconds', e);
+    this._reconnecting = false;
+    this._reconnectTimeout = setTimeout(() => {
+      this._startReconnecting();
+    }, delay);
   }
 
   private _connectError(err: any) {

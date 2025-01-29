@@ -71,12 +71,10 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
     // @ts-ignore – we are hiding some symbols from public API autocompletion.
     if (this._centrifuge._debugEnabled) {
       this.on('state', (ctx) => {
-        // @ts-ignore – we are hiding some symbols from public API autocompletion.
-        this._centrifuge._debug('subscription state', channel, ctx.oldState, '->', ctx.newState);
+        this._debug('subscription state', channel, ctx.oldState, '->', ctx.newState);
       });
       this.on('error', (ctx) => {
-        // @ts-ignore – we are hiding some symbols from public API autocompletion.
-        this._centrifuge._debug('subscription error', channel, ctx);
+        this._debug('subscription error', channel, ctx);
       });
     } else {
       // Avoid unhandled exception in EventEmitter for non-set error handler.
@@ -205,7 +203,7 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
     return false;
   }
 
-  private _usesToken() {
+  private _usesToken(): boolean {
     return this._token !== '' || this._getToken !== null;
   }
 
@@ -277,141 +275,150 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
   }
 
   private _subscribe(): any {
-    // @ts-ignore – we are hiding some symbols from public API autocompletion.
-    this._centrifuge._debug('subscribing on', this.channel);
+    this._debug('subscribing on', this.channel);
 
-    // need to check transport readiness here, because there's no point for calling getData or getToken
-    // if transport is not ready yet
-    // @ts-ignore – we are hiding some symbols from public API autocompletion.
-    if (!this._centrifuge._transportIsOpen) {
-      // @ts-ignore – we are hiding some symbols from public API autocompletion.
-      this._centrifuge._debug('delay subscribe on', this.channel, 'till connected');
-      // subscribe will be called later automatically.
+    if (!this._isTransportOpen()) {
+      this._debug('delay subscribe on', this.channel, 'till connected');
       return null;
     }
 
-    const self = this;
-    const getDataCtx = {
-      channel: self.channel
-    };
-
-    if (!this._usesToken() || this._token) {
-      if (self._getData) {
-        self._getData(getDataCtx).then(function (data: any) {
-          if (!self._isSubscribing()) {
-            return;
-          }
-          self._data = data;
-          self._sendSubscribe(self._token);
-        })
-        return null;
-      } else {
-        return self._sendSubscribe(self._token);
-      }
-    }
-
-    this._getSubscriptionToken().then(function (token) {
-      if (!self._isSubscribing()) {
-        return;
-      }
-      if (!token) {
-        self._failUnauthorized();
-        return;
-      }
-      self._token = token;
-      if (self._getData) {
-        self._getData(getDataCtx).then(function (data: any) {
-          if (!self._isSubscribing()) {
-            return;
-          }
-          self._data = data;
-          self._sendSubscribe(token);
-        })
-      } else {
-        self._sendSubscribe(token);
-      }
-    }).catch(function (e) {
-      if (!self._isSubscribing()) {
-        return;
-      }
-      if (e instanceof UnauthorizedError) {
-        self._failUnauthorized();
-        return;
-      }
-      self.emit('error', {
-        type: 'subscribeToken',
-        channel: self.channel,
-        error: {
-          code: errorCodes.subscriptionSubscribeToken,
-          message: e !== undefined ? e.toString() : ''
-        }
-      });
-      self._scheduleResubscribe();
-    });
-    return null;
-  }
-
-  private _sendSubscribe(token: string): any {
-    // we also need to check for transport state before sending subscription
-    // because it may change for subscription with side effects (getData, getToken options)
-    // @ts-ignore – we are hiding some symbols from public API autocompletion.
-    if (!this._centrifuge._transportIsOpen || this._inflight) {
+    if (this._inflight) {
       return null;
     }
     this._inflight = true;
 
-    const channel = this.channel;
-
-    const req: any = {
-      channel: channel
-    };
-
-    if (token) {
-      req.token = token;
+    if (this._canSubscribeWithoutGettingToken()) {
+      return this._subscribeWithoutToken();
     }
 
-    if (this._data) {
-      req.data = this._data;
+    this._getSubscriptionToken()
+      .then(token => this._handleTokenResponse(token))
+      .catch(e => this._handleTokenError(e));
+
+    return null;
+  }
+
+  private _isTransportOpen(): boolean {
+    // @ts-ignore – we are hiding some symbols from public API autocompletion.
+    return this._centrifuge._transportIsOpen;
+  }
+
+  private _canSubscribeWithoutGettingToken(): boolean {
+    return !this._usesToken() || !!this._token;
+  }
+
+  private _subscribeWithoutToken(): any {
+    if (this._getData) {
+      this._getDataAndSubscribe(this._token);
+      return null;
+    } else {
+      return this._sendSubscribe(this._token);
+    }
+  }
+
+  private _getDataAndSubscribe(token: string): void {
+    if (!this._getData) {
+      this._inflight = false;
+      return;
     }
 
-    if (this._positioned) {
-      req.positioned = true;
+    this._getData({ channel: this.channel })
+      .then(data => {
+        if (!this._isSubscribing()) {
+          this._inflight = false;
+          return;
+        }
+        this._data = data;
+        this._sendSubscribe(token);
+      })
+      .catch(e => this._handleGetDataError(e));
+  }
+
+  private _handleGetDataError(error: any): void {
+    if (!this._isSubscribing()) {
+      this._inflight = false;
+      return;
     }
 
-    if (this._recoverable) {
-      req.recoverable = true;
+    if (error instanceof UnauthorizedError) {
+      this._inflight = false;
+      this._failUnauthorized();
+      return;
     }
 
-    if (this._joinLeave) {
-      req.join_leave = true;
-    }
-
-    if (this._needRecover()) {
-      req.recover = true;
-      const offset = this._getOffset();
-      if (offset) {
-        req.offset = offset;
+    this.emit('error', {
+      type: 'subscribeData',
+      channel: this.channel,
+      error: {
+        code: errorCodes.badConfiguration,
+        message: error?.toString() || ''
       }
-      const epoch = this._getEpoch();
-      if (epoch) {
-        req.epoch = epoch;
+    });
+
+    this._inflight = false;
+    this._scheduleResubscribe();
+  }
+
+  private _handleTokenResponse(token: string | null): void {
+    if (!this._isSubscribing()) {
+      this._inflight = false;
+      return;
+    }
+
+    if (!token) {
+      this._inflight = false;
+      this._failUnauthorized();
+      return;
+    }
+
+    this._token = token;
+
+    if (this._getData) {
+      this._getDataAndSubscribe(token);
+    } else {
+      this._sendSubscribe(token);
+    }
+  }
+
+  private _handleTokenError(error: any): void {
+    if (!this._isSubscribing()) {
+      this._inflight = false;
+      return;
+    }
+
+    if (error instanceof UnauthorizedError) {
+      this._inflight = false;
+      this._failUnauthorized();
+      return;
+    }
+
+    this.emit('error', {
+      type: 'subscribeToken',
+      channel: this.channel,
+      error: {
+        code: errorCodes.subscriptionSubscribeToken,
+        message: error?.toString() || ''
       }
+    });
+
+    this._inflight = false;
+    this._scheduleResubscribe();
+  }
+
+  private _sendSubscribe(token: string): any {
+    if (!this._isTransportOpen()) {
+      this._inflight = false;
+      return null;
     }
 
-    if (this._delta) {
-      req.delta = this._delta;
-    }
-
-    const cmd = { subscribe: req };
+    const cmd = this._buildSubscribeCommand(token);
 
     // @ts-ignore – we are hiding some symbols from public API autocompletion.
     this._centrifuge._call(cmd).then(resolveCtx => {
       this._inflight = false;
       // @ts-ignore - improve later.
       const result = resolveCtx.reply.subscribe;
-      this._handleSubscribeResponse(
-        result
-      );
+      this._handleSubscribeResponse(result);
       // @ts-ignore - improve later.
       if (resolveCtx.next) {
         // @ts-ignore - improve later.
@@ -420,11 +427,40 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
     }, rejectCtx => {
       this._inflight = false;
       this._handleSubscribeError(rejectCtx.error);
+
       if (rejectCtx.next) {
         rejectCtx.next();
       }
     });
+
     return cmd;
+  }
+
+  private _buildSubscribeCommand(token: string): any {
+    const req: any = { channel: this.channel };
+
+    if (token) req.token = token;
+    if (this._data) req.data = this._data;
+    if (this._positioned) req.positioned = true;
+    if (this._recoverable) req.recoverable = true;
+    if (this._joinLeave) req.join_leave = true;
+
+    if (this._needRecover()) {
+      req.recover = true;
+      const offset = this._getOffset();
+      if (offset) req.offset = offset;
+      const epoch = this._getEpoch();
+      if (epoch) req.epoch = epoch;
+    }
+
+    if (this._delta) req.delta = this._delta;
+
+    return { subscribe: req };
+  }
+
+  private _debug(...args: any[]): void {
+    // @ts-ignore – we are hiding some symbols from public API autocompletion.
+    this._centrifuge._debug(...args);
   }
 
   private _handleSubscribeError(error) {
@@ -475,7 +511,7 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
   private _handlePublication(pub: any) {
     if (this._delta && this._delta_negotiated) {
       // @ts-ignore – we are hiding some methods from public API autocompletion.
-      const {newData, newPrevValue} = this._centrifuge._codec.applyDeltaIfNeeded(pub, this._prevValue)
+      const { newData, newPrevValue } = this._centrifuge._codec.applyDeltaIfNeeded(pub, this._prevValue)
       pub.data = newData;
       this._prevValue = newPrevValue;
     }
@@ -526,6 +562,10 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
   }
 
   private _scheduleResubscribe() {
+    if (!this._isSubscribing()) {
+      this._debug('not in subscribing state, skip resubscribe scheduling', this.channel);
+      return;
+    }
     const self = this;
     const delay = this._getResubscribeDelay();
     this._resubscribeTimeout = setTimeout(function () {
@@ -533,6 +573,7 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
         self._subscribe();
       }
     }, delay);
+    this._debug('resubscribe scheduled after ' + delay, this.channel);
   }
 
   private _subscribeError(err: any) {
@@ -638,8 +679,7 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
   }
 
   private _getSubscriptionToken() {
-    // @ts-ignore – we are hiding some methods from public API autocompletion.
-    this._centrifuge._debug('get subscription token for channel', this.channel);
+    this._debug('get subscription token for channel', this.channel);
     const ctx = {
       channel: this.channel
     };
@@ -714,8 +754,7 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
     if (!this._isSubscribed()) {
       return;
     }
-    // @ts-ignore – we are hiding some methods from public API autocompletion.
-    this._centrifuge._debug('subscription token refreshed, channel', this.channel);
+    this._debug('subscription token refreshed, channel', this.channel);
     this._clearRefreshTimeout();
     if (result.expires === true) {
       this._refreshTimeout = setTimeout(() => this._refresh(), ttlMilliseconds(result.ttl));

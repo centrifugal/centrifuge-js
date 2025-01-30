@@ -27,6 +27,7 @@ The features implemented by this SDK can be found in [SDK feature matrix](https:
 * [Protobuf support](#protobuf-support)
 * [Using with NodeJS](#using-with-nodejs)
 * [Custom WebSocket constructor](#custom-websocket-constructor)
+* [Using with React Native on Android](#using-with-react-native-on-android)
 * [Run tests locally](#run-tests-locally)
 
 ## Install
@@ -816,6 +817,10 @@ var centrifuge = new Centrifuge('ws://localhost:8000/connection/websocket', {
 ```
 
 See a basic example with React Native where this technique is used [in this comment](https://github.com/centrifugal/centrifuge-js/issues/224#issuecomment-1538820023).
+
+## Using with React Native on Android
+
+If you have issues with the connection on Android when using React Native – [check out this comment](https://github.com/centrifugal/centrifuge-js/issues/242#issuecomment-2569474401) – you probably using non-secure endpoint schemes and need to explicitly allow it.
 
 ## Run tests locally
 

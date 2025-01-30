@@ -820,7 +820,7 @@ See a basic example with React Native where this technique is used [in this comm
 
 ## Using with React Native on Android
 
-If you have issues with the connection on Android when using React Native – [check out this comment](https://github.com/centrifugal/centrifuge-js/issues/242#issuecomment-2569474401) – you probably using non-secure endpoint schemes and need to explicitly allow it.
+If you have issues with the connection on Android when using React Native – [check out this comment](https://github.com/centrifugal/centrifuge-js/issues/242#issuecomment-2569474401) – you may be using non-secure endpoint schemes and need to explicitly allow it.
 
 ## Run tests locally
 

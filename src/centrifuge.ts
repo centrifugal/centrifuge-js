@@ -677,7 +677,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
           websocket: websocket
         });
         if (!this._transport.supported()) {
-          throw new Error('WebSocket not available');
+          throw new Error('WebSocket constructor not found, make sure it is available globally or passed as a dependency in Centrifuge options');
         }
       }
     } else {

@@ -1,4 +1,4 @@
-import { Centrifuge } from './centrifuge'
+import { Centrifuge, UnauthorizedError } from './centrifuge'
 import {
   DisconnectedContext,
   Error as CentrifugeError,
@@ -858,4 +858,86 @@ test.each(transportCases)("%s: retries subscription getData error", async (trans
   expect(sub.state).toBe(SubscriptionState.Subscribed);
   expect(numGetDataCalls).toBe(2); // Ensure getToken was retried.
   await disconnectClient(c);
+});
+
+test.each(transportCases)("%s: disconnected with unauthorized", async (transport, endpoint) => {
+  const c = new Centrifuge([{
+    transport: transport as TransportName,
+    endpoint: endpoint,
+  }], {
+    getToken: async function (): Promise<string> {
+      throw new UnauthorizedError('');
+    },
+    websocket: WebSocket,
+    fetch: fetch,
+    eventsource: EventSource,
+    readableStream: ReadableStream,
+    emulationEndpoint: 'http://localhost:8000/emulation',
+  });
+
+  let disconnectCalled: any;
+  const p = new Promise<DisconnectedContext>((resolve, _) => {
+    disconnectCalled = resolve;
+  })
+
+  c.on('disconnected', (ctx) => {
+    disconnectCalled(ctx);
+  })
+
+  c.connect();
+
+  const ctx = await p;
+  expect(c.state).toBe(State.Disconnected);
+  expect(ctx.code).toBe(disconnectedCodes.unauthorized);
+});
+
+test.each(transportCases)("%s: unsubscribed with unauthorized", async (transport, endpoint) => {
+  const c = new Centrifuge([{
+    transport: transport as TransportName,
+    endpoint: endpoint,
+  }], {
+    websocket: WebSocket,
+    fetch: fetch,
+    eventsource: EventSource,
+    readableStream: ReadableStream,
+    emulationEndpoint: 'http://localhost:8000/emulation',
+  });
+
+  let unsubscribeCalled: any;
+  const up = new Promise<UnsubscribedContext>((resolve, _) => {
+    unsubscribeCalled = resolve;
+  })
+
+  let disconnectCalled: any;
+  const dp = new Promise<DisconnectedContext>((resolve, _) => {
+    disconnectCalled = resolve;
+  })
+
+  c.on('disconnected', (ctx) => {
+    disconnectCalled(ctx);
+  })
+
+  const sub = c.newSubscription('test', {
+    getToken: async function (): Promise<string> {
+      throw new UnauthorizedError('');
+    },
+  });
+  sub.on('unsubscribed', (ctx: UnsubscribedContext) => {
+    unsubscribeCalled(ctx);
+  });
+
+  c.connect();
+  sub.subscribe()
+  await c.ready(5000);
+  expect(c.state).toBe(State.Connected);
+
+  const unsubCtx = await up;
+
+  expect(sub.state).toBe(SubscriptionState.Unsubscribed);
+  expect(unsubCtx.code).toBe(unsubscribedCodes.unauthorized)
+
+  c.disconnect();
+  const ctx = await dp;
+  expect(c.state).toBe(State.Disconnected);
+  expect(ctx.code).toBe(disconnectedCodes.disconnectCalled);
 });

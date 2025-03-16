@@ -1309,6 +1309,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
         }
       });
       throw new UnauthorizedError('');
+      // return Promise.reject(new UnauthorizedError(''));
     }
     return this._config.getToken({});
   }

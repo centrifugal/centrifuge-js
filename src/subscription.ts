@@ -693,7 +693,7 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
           message: 'provide a function to get channel subscription token'
         }
       });
-      throw new UnauthorizedError('');
+      return Promise.reject(new UnauthorizedError(''));
     }
     return getToken(ctx);
   }

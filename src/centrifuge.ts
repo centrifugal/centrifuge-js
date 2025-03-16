@@ -1308,8 +1308,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
           message: 'token expired but no getToken function set in the configuration'
         }
       });
-      throw new UnauthorizedError('');
-      // return Promise.reject(new UnauthorizedError(''));
+      return Promise.reject(new UnauthorizedError(''));
     }
     return this._config.getToken({});
   }

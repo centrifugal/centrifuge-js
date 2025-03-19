@@ -31,7 +31,7 @@ export type ClientEvents = {
 
   // Async message coming from a server.
   message: (ctx: MessageContext) => void;
-  // Listen to errors happening internally. 
+  // Listen to errors happening internally.
   error: (ctx: ErrorContext) => void;
 
   // Listen for server-side subscription events.
@@ -41,6 +41,8 @@ export type ClientEvents = {
   publication: (ctx: ServerPublicationContext) => void;
   join: (ctx: ServerJoinContext) => void;
   leave: (ctx: ServerLeaveContext) => void;
+  // Listen to pong messages from the server.
+  pong: () => void;
 }
 
 /** State of client. */
@@ -134,7 +136,7 @@ export interface Options {
   sockjsOptions: SockjsOptions;
   /** which emulation endpoint to use */
   emulationEndpoint: string;
-  /** EventTarget for network online/offline events, in browser environment 
+  /** EventTarget for network online/offline events, in browser environment
    * Centrifuge uses global window online/offline events automatically
    * by default. */
   networkEventTarget: EventTarget | null;
@@ -191,9 +193,9 @@ export interface PublicationContext {
   // this info object is missing as we don't have publisher client context in that case.
   info?: ClientInfo;
   // offset may be set for channels where history Centrifugo feature is on. In this case it's an
-  // incremental number assigned to publication by server broker (upon adding to history stream).   
+  // incremental number assigned to publication by server broker (upon adding to history stream).
   offset?: number;
-  // tags is an extra key-value attached to publication, tags may be set when calling server publish API. 
+  // tags is an extra key-value attached to publication, tags may be set when calling server publish API.
   tags?: Record<string, string>;
 }
 
@@ -274,9 +276,9 @@ export interface ServerPublicationContext {
   // this info object is missing as we don't have publisher client context in that case.
   info?: ClientInfo;
   // offset may be set for channels where history Centrifugo feature is on. In this case it's an
-  // incremental number assigned to publication by server broker (upon adding to history stream).   
+  // incremental number assigned to publication by server broker (upon adding to history stream).
   offset?: number;
-  // tags is an extra key-value attached to publication, tags may be set when calling server publish API. 
+  // tags is an extra key-value attached to publication, tags may be set when calling server publish API.
   tags?: Record<string, string>;
 }
 

@@ -605,7 +605,7 @@ getSubscription returns `Subscription` if it's registered in the internal regist
 
 `removeSubscription(sub: Subscription | null)`
 
-removeSubscription allows removing Subcription from the internal registry. Subscrption must be in unsubscribed state.
+removeSubscription allows removing Subcription from the internal registry.
 
 ### subscriptions
 

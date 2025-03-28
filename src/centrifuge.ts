@@ -185,8 +185,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     return this._getSub(channel);
   }
 
-  /** removeSubscription allows removing Subcription from the internal registry. Subscrption 
-   * must be in unsubscribed state. */
+  /** removeSubscription allows removing Subcription from the internal registry. */
   removeSubscription(sub: Subscription | null) {
     if (!sub) {
       return;

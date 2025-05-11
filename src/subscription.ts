@@ -609,8 +609,8 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
       return;
     }
     if (options.since) {
-      this._offset = options.since.offset;
-      this._epoch = options.since.epoch;
+      this._offset = options.since.offset || 0;
+      this._epoch = options.since.epoch || '';
       this._recover = true;
     }
     if (options.data) {

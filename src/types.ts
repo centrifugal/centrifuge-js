@@ -354,7 +354,7 @@ export interface SubscriptionOptions {
   /** allows setting function to get/renew subscription data */
   getData: null | ((ctx: SubscriptionDataContext) => Promise<any>);
   /** force recovery on first subscribe from a provided StreamPosition. */
-  since: StreamPosition | null;
+  since: Partial<StreamPosition> | null;
   /** min delay between resubscribe attempts. */
   minResubscribeDelay: number;
   /** max delay between resubscribe attempts. */

@@ -28,6 +28,7 @@ The features implemented by this SDK can be found in [SDK feature matrix](https:
 * [Using with NodeJS](#using-with-nodejs)
 * [Custom WebSocket constructor](#custom-websocket-constructor)
 * [Using with React Native on Android](#using-with-react-native-on-android)
+* [Errors in callbacks](#errors-in-callbacks)
 * [Run tests locally](#run-tests-locally)
 
 ## Install
@@ -821,6 +822,10 @@ See a basic example with React Native where this technique is used [in this comm
 ## Using with React Native on Android
 
 If you have issues with the connection on Android when using React Native – [check out this comment](https://github.com/centrifugal/centrifuge-js/issues/242#issuecomment-2569474401) – you may be using non-secure endpoint schemes and need to explicitly allow it.
+
+## Errors in callbacks
+
+There is currently no built-in error handling in the SDK for exceptions happening in application-level callbacks, which means you must catch any error that could be thrown in a listener. Not doing that may corrupt a state of SDK making it unusable.
 
 ## Run tests locally
 

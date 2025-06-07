@@ -801,7 +801,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
       transport.close();
     }, this._config.timeout);
 
-    this._transport.initialize(this._codec.name(), {
+    this._transport.initialize(this._codecName(), {
       onOpen: function () {
         if (connectTimeout) {
           clearTimeout(connectTimeout);

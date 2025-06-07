@@ -1,6 +1,7 @@
 import { create, toBinary, fromBinary } from "@bufbuild/protobuf";
 import {
-  sizeDelimitedEncode,
+  BinaryWriter,
+  BinaryReader,
   sizeDelimitedPeek,
 } from "@bufbuild/protobuf/wire";
 import {
@@ -31,36 +32,37 @@ export class ProtobufCodec {
    * Encode an array of Commands, each length-delimited with a varint prefix.
    */
   encodeCommands(
-    inits: Array<Parameters<typeof create>[1]>  // MessageInit<Command>[]
+    inits: Parameters<typeof create>[1][]
   ): Uint8Array {
-    const chunks = inits.map(init => {
-      const cmd = create(CommandSchema, init);
-      return sizeDelimitedEncode(CommandSchema, cmd);
-    });
-    return ProtobufCodec.concatUint8Arrays(chunks);
+    const writer = new BinaryWriter();
+    for (const init of inits) {
+      const cmdBytes = toBinary(
+        CommandSchema,
+        create(CommandSchema, init)
+      );
+      writer.uint32(cmdBytes.length);
+      writer.raw(cmdBytes);
+    }
+    return writer.finish();
   }
 
   /**
    * Decode all length-delimited Reply messages from the buffer.
    */
   decodeReplies(data: Uint8Array | ArrayBuffer): Reply[] {
-    const bytes = data instanceof Uint8Array ? data : new Uint8Array(data);
+    const bytes = data instanceof Uint8Array
+      ? data
+      : new Uint8Array(data);
     const replies: Reply[] = [];
-    let offset = 0;
+    const reader = new BinaryReader(bytes);
 
-    while (offset < bytes.byteLength) {
-      const slice = bytes.subarray(offset);
-      const { size, offset: headerLen, eof } = sizeDelimitedPeek(slice);
-
-      if (eof || headerLen == null || size == null) break;
-
-      const start = offset + headerLen;
-      const end = start + size;
-      const msgBytes = bytes.subarray(start, end);
-      replies.push(fromBinary(ReplySchema, msgBytes));
-      offset = end;
+    while (reader.pos < reader.len) {
+      const length = reader.uint32();
+      const start = reader.pos;
+      reader.pos += length;
+      const slice = bytes.subarray(start, reader.pos);
+      replies.push(fromBinary(ReplySchema, slice));
     }
-
     return replies;
   }
 
@@ -96,17 +98,5 @@ export class ProtobufCodec {
     } else {
       return { newData: pub.data, newPrevValue: pub.data };
     }
-  }
-
-  private static concatUint8Arrays(arrays: Uint8Array[]): Uint8Array {
-    let total = 0;
-    for (const a of arrays) total += a.length;
-    const result = new Uint8Array(total);
-    let pos = 0;
-    for (const a of arrays) {
-      result.set(a, pos);
-      pos += a.length;
-    }
-    return result;
   }
 }

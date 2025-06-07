@@ -1609,7 +1609,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     if (result.recoverable) {
       ctx.recoverable = true;
     }
-    if (result.was_recovering || result.wasRecovering) {
+    if (result.was_recovering) {
       ctx.wasRecovering = true;
     }
     let epoch = '';
@@ -1743,11 +1743,11 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
       client: clientInfo.client,
       user: clientInfo.user
     };
-    const connInfo = this._codec.name() === 'protobuf' ? clientInfo['connInfo'] : clientInfo['conn_info'];
+    const connInfo = clientInfo['conn_info'];
     if (connInfo) {
       info.connInfo = connInfo;
     }
-    const chanInfo = this._codec.name() === 'protobuf' ? clientInfo['chanInfo'] : clientInfo['chan_info'];
+    const chanInfo = clientInfo['chan_info'];
     if (chanInfo) {
       info.chanInfo = chanInfo;
     }

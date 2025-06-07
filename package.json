@@ -40,6 +40,8 @@
     "proto": "./make-proto"
   },
   "devDependencies": {
+    "@bufbuild/buf": "^1.54.0",
+    "@bufbuild/protoc-gen-es": "^2.5.2",
     "@rollup/plugin-commonjs": "^25.0.4",
     "@rollup/plugin-json": "^6.0.0",
     "@rollup/plugin-node-resolve": "^15.2.1",
@@ -51,7 +53,6 @@
     "eslint": "^8.49.0",
     "eventsource": "^2.0.2",
     "jest": "^29.7.0",
-    "protobufjs-cli": "^1.1.2",
     "rollup": "^3.29.1",
     "rollup-plugin-delete": "^2.0.0",
     "rollup-plugin-typescript2": "^0.35.0",
@@ -84,7 +85,7 @@
   },
   "homepage": "https://github.com/centrifugal/centrifuge-js",
   "dependencies": {
-    "events": "^3.3.0",
-    "protobufjs": "^7.2.5"
+    "@bufbuild/protobuf": "^2.5.2",
+    "events": "^3.3.0"
   }
 }

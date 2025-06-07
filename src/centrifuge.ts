@@ -355,8 +355,8 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
         const clients = reply.presence.presence;
         for (const clientId in clients) {
           if (clients.hasOwnProperty(clientId)) {
-            const connInfo = clients[clientId]['conn_info'];
-            const chanInfo = clients[clientId]['chan_info'];
+            const connInfo = self._codec.name() === 'protobuf' ? clients[clientId]['connInfo'] : clients[clientId]['conn_info'];
+            const chanInfo = self._codec.name() === 'protobuf' ? clients[clientId]['chanInfo'] : clients[clientId]['chan_info'];
             if (connInfo) {
               clients[clientId].connInfo = connInfo;
             }
@@ -374,20 +374,30 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
 
   /** presence stats for a channel. */
   presenceStats(channel: string): Promise<PresenceStatsResult> {
-    const cmd = {
-      'presence_stats': {
+    const cmd = {};
+    if (this._codec.name() === 'protobuf') {
+      cmd['presenceStats'] = {
         channel: channel
       }
-    };
+    } else {
+      cmd['presence_stats'] = {
+        channel: channel
+      }
+    }
 
     const self = this;
 
     return this._methodCall().then(function () {
       return self._callPromise(cmd, function (reply: any) {
-        const result = reply.presence_stats;
+        let result: { numUsers: any; num_users: any; numClients: any; num_clients: any; };
+        if (self._codec.name() === 'protobuf') {
+          result = reply.presenceStats;
+        } else {
+          result = reply.presence_stats;
+        }
         return {
-          'numUsers': result.num_users,
-          'numClients': result.num_clients
+          'numUsers': self._codec.name() === 'protobuf' ? result.numUsers : result.num_users,
+          'numClients': self._codec.name() === 'protobuf' ? result.numClients : result.num_clients
         };
       });
     });
@@ -1614,7 +1624,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     if (result.recoverable) {
       ctx.recoverable = true;
     }
-    if (result.was_recovering) {
+    if (result.was_recovering || result.wasRecovering) {
       ctx.wasRecovering = true;
     }
     let epoch = '';
@@ -1748,11 +1758,13 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
       client: clientInfo.client,
       user: clientInfo.user
     };
-    if (clientInfo.conn_info) {
-      info.connInfo = clientInfo.conn_info;
+    const connInfo = this._codec.name() === 'protobuf' ? clientInfo['connInfo'] : clientInfo['conn_info'];
+    if (connInfo) {
+      info.connInfo = connInfo;
     }
-    if (clientInfo.chan_info) {
-      info.chanInfo = clientInfo.chan_info;
+    const chanInfo = this._codec.name() === 'protobuf' ? clientInfo['chanInfo'] : clientInfo['chan_info'];
+    if (chanInfo) {
+      info.chanInfo = chanInfo;
     }
     return info;
   }

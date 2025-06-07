@@ -134,7 +134,6 @@ test.each(transportCases)("%s (Protobuf): subscribe and presence", async (transp
 
   const presence = await sub.presence();
   expect(Object.keys(presence.clients).length).toBeGreaterThan(0);
-
   const presenceStats = await sub.presenceStats();
   expect(presenceStats.numClients).toBeGreaterThan(0)
   expect(presenceStats.numUsers).toBeGreaterThan(0);

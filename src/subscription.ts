@@ -443,7 +443,14 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
     if (this._data) req.data = this._data;
     if (this._positioned) req.positioned = true;
     if (this._recoverable) req.recoverable = true;
-    if (this._joinLeave) req.join_leave = true;
+    if (this._joinLeave) {
+      // @ts-ignore - need access.
+      if (this._centrifuge._codecName() == 'protobuf') {
+        req.joinLeave = true;
+      } else {
+        req.join_leave = true;
+      }
+    }
 
     if (this._needRecover()) {
       req.recover = true;
@@ -714,13 +721,24 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
         channel: self.channel,
         token: token
       };
-      const msg = {
-        'sub_refresh': req
-      };
+      const msg = {};
+      // @ts-ignore need access.
+      if (self._centrifuge._codecName === 'protobuf') {
+        msg['subRefresh'] = req
+      } else {
+        msg['sub_refresh'] = req;
+      }
       // @ts-ignore – we are hiding some symbols from public API autocompletion.
       self._centrifuge._call(msg).then(resolveCtx => {
-        // @ts-ignore - improve later.
-        const result = resolveCtx.reply.sub_refresh;
+        let result
+        // @ts-ignore need access.
+        if (self._centrifuge._codecName() === 'protobuf') {
+          // @ts-ignore - improve later.
+          result = resolveCtx.reply.subRefresh;
+        } else {
+          // @ts-ignore - improve later.
+          result = resolveCtx.reply.sub_refresh;
+        }
         self._refreshResponse(result);
         // @ts-ignore - improve later.
         if (resolveCtx.next) {

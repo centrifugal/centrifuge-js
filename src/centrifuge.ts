@@ -433,6 +433,10 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     log('debug', args);
   }
 
+  private _codecName(): string {
+    return this._codec.name()
+  }
+
   /** @internal */
   protected _formatOverride() {
     return;
@@ -1669,7 +1673,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
         next();
         return;
       }
-      const error = reply.error;
+      const error = {code: reply.error.code, message: reply.error.message || '', temporary: reply.error.temporary || false}
       errback({ error, next });
     }
   }

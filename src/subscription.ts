@@ -121,54 +121,54 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
   }
 
   /** publish data to a channel.*/
-  publish(data: any): Promise<PublishResult> {
-    const self = this;
-    return this._methodCall().then(function () {
-      return self._centrifuge.publish(self.channel, data);
-    });
+  async publish(data: any): Promise<PublishResult> {
+    await this._methodCall();
+    return this._centrifuge.publish(this.channel, data);
   }
 
   /** get online presence for a channel.*/
-  presence(): Promise<PresenceResult> {
-    const self = this;
-    return this._methodCall().then(function () {
-      return self._centrifuge.presence(self.channel);
-    });
+  async presence(): Promise<PresenceResult> {
+    await this._methodCall();
+    return this._centrifuge.presence(this.channel);
   }
 
   /** presence stats for a channel (num clients and unique users).*/
-  presenceStats(): Promise<PresenceStatsResult> {
-    const self = this;
-    return this._methodCall().then(function () {
-      return self._centrifuge.presenceStats(self.channel);
-    });
+  async presenceStats(): Promise<PresenceStatsResult> {
+    await this._methodCall();
+    return this._centrifuge.presenceStats(this.channel);
   }
 
   /** history for a channel. By default it does not return publications (only current
    *  StreamPosition data) – provide an explicit limit > 0 to load publications.*/
-  history(opts: HistoryOptions): Promise<HistoryResult> {
-    const self = this;
-    return this._methodCall().then(function () {
-      return self._centrifuge.history(self.channel, opts);
-    });
+  async history(opts: HistoryOptions): Promise<HistoryResult> {
+    await this._methodCall();
+    return this._centrifuge.history(this.channel, opts);
   }
 
-  private _methodCall(): any {
+  private _methodCall(): Promise<void> {
     if (this._isSubscribed()) {
       return Promise.resolve();
     }
+
     if (this._isUnsubscribed()) {
-      return Promise.reject({ code: errorCodes.subscriptionUnsubscribed, message: this.state });
+      return Promise.reject({
+        code: errorCodes.subscriptionUnsubscribed,
+        message: this.state
+      });
     }
-    return new Promise((res, rej) => {
-      const timeout = setTimeout(function () {
-        rej({ code: errorCodes.timeout, message: 'timeout' });
-        // @ts-ignore – we are hiding some symbols from public API autocompletion.
-      }, this._centrifuge._config.timeout);
+
+    return new Promise((resolve, reject) => {
+      // @ts-ignore – we are hiding some symbols from public API autocompletion.
+      const timeoutDuration = this._centrifuge._config.timeout;
+
+      const timeout = setTimeout(() => {
+        reject({ code: errorCodes.timeout, message: 'timeout' });
+      }, timeoutDuration);
+
       this._promises[this._nextPromiseId()] = {
-        timeout: timeout,
-        resolve: res,
-        reject: rej
+        timeout,
+        resolve,
+        reject
       };
     });
   }
@@ -416,12 +416,9 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
     // @ts-ignore – we are hiding some symbols from public API autocompletion.
     this._centrifuge._call(cmd).then(resolveCtx => {
       this._inflight = false;
-      // @ts-ignore - improve later.
       const result = resolveCtx.reply.subscribe;
       this._handleSubscribeResponse(result);
-      // @ts-ignore - improve later.
       if (resolveCtx.next) {
-        // @ts-ignore - improve later.
         resolveCtx.next();
       }
     }, rejectCtx => {
@@ -730,19 +727,15 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
       }
       // @ts-ignore – we are hiding some symbols from public API autocompletion.
       self._centrifuge._call(msg).then(resolveCtx => {
-        let result
+        let result: any;
         // @ts-ignore need access.
         if (self._centrifuge._codecName() === 'protobuf') {
-          // @ts-ignore - improve later.
           result = resolveCtx.reply.subRefresh;
         } else {
-          // @ts-ignore - improve later.
           result = resolveCtx.reply.sub_refresh;
         }
         self._refreshResponse(result);
-        // @ts-ignore - improve later.
         if (resolveCtx.next) {
-          // @ts-ignore - improve later.
           resolveCtx.next();
         }
       }, rejectCtx => {

@@ -29,6 +29,7 @@
     "prepare": "npm run build-all",
     "lint": "eslint src/ --ext .js,.jsx,.ts,.tsx",
     "test": "jest --detectOpenHandles --verbose",
+    "bench": "jest src/codec.bench.test.ts",
     "clean": "rm -rf dist build package",
     "ts-node": "ts-node",
     "docs": "typedoc --exclude '**/transport_*.ts' --exclude '**/*.test.ts' --exclude '**/*+(utils|json|protobuf.codec|codes|browser).ts' --excludePrivate --excludeInternal --entryPoints src/*.ts",

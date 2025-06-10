@@ -56,6 +56,9 @@ interface serverSubscription {
   recoverable: boolean;
 }
 
+type CallResolveContext = { reply: any; next?: () => void };
+type CallRejectContext = { error: any; next?: () => void };
+
 export class UnauthorizedError extends Error {
   constructor(message: any) {
     super(message);
@@ -205,24 +208,26 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
    * state and rejects in case of client goes to Disconnected or Failed state.
    * Users can provide optional timeout in milliseconds. */
   ready(timeout?: number): Promise<void> {
-    if (this.state === State.Disconnected) {
-      return Promise.reject({ code: errorCodes.clientDisconnected, message: 'client disconnected' });
+    switch (this.state) {
+      case State.Disconnected:
+        return Promise.reject({ code: errorCodes.clientDisconnected, message: 'client disconnected' });
+
+      case State.Connected:
+        return Promise.resolve();
+
+      default:
+        return new Promise((resolve, reject) => {
+          const ctx: any = { resolve, reject };
+
+          if (timeout) {
+            ctx.timeout = setTimeout(() => {
+              reject({ code: errorCodes.timeout, message: 'timeout' });
+            }, timeout);
+          }
+
+          this._promises[this._nextPromiseId()] = ctx;
+        });
     }
-    if (this.state === State.Connected) {
-      return Promise.resolve();
-    }
-    return new Promise((res, rej) => {
-      const ctx: any = {
-        resolve: res,
-        reject: rej
-      };
-      if (timeout) {
-        ctx.timeout = setTimeout(function () {
-          rej({ code: errorCodes.timeout, message: 'timeout' });
-        }, timeout);
-      }
-      this._promises[this._nextPromiseId()] = ctx;
-    });
   }
 
   /** connect to a server. */
@@ -257,140 +262,128 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
 
   /** send asynchronous data to a server (without any response from a server 
    * expected, see rpc method if you need response). */
-  send(data: any): Promise<void> {
+  async send(data: any): Promise<void> {
     const cmd = {
       send: {
-        data: data
+        data
       }
     };
 
-    const self = this;
+    await this._methodCall();
 
-    return this._methodCall().then(function () {
-      const sent = self._transportSendCommands([cmd]); // can send message to server without id set
-      if (!sent) {
-        return Promise.reject(self._createErrorObject(errorCodes.transportWriteError, 'transport write error'));
-      }
-      return Promise.resolve();
-    });
+    const sent = this._transportSendCommands([cmd]); // can send message to server without id set
+
+    if (!sent) {
+      throw this._createErrorObject(
+        errorCodes.transportWriteError,
+        'transport write error'
+      );
+    }
   }
 
   /** rpc to a server - i.e. a call which waits for a response with data. */
-  rpc(method: string, data: any): Promise<RpcResult> {
+  async rpc(method: string, data: any): Promise<RpcResult> {
     const cmd = {
       rpc: {
-        method: method,
-        data: data
+        method,
+        data
       }
     };
 
-    const self = this;
-
-    return this._methodCall().then(function () {
-      return self._callPromise(cmd, function (reply: any) {
-        return {
-          'data': reply.rpc.data
-        };
-      });
-    });
+    await this._methodCall();
+    const result = await this._callPromise(cmd, (reply: any) => reply.rpc);
+    return {
+      data: result.data
+    };
   }
 
   /** publish data to a channel. */
-  publish(channel: string, data: any): Promise<PublishResult> {
+  async publish(channel: string, data: any): Promise<PublishResult> {
     const cmd = {
       publish: {
-        channel: channel,
-        data: data
+        channel,
+        data
       }
     };
 
-    const self = this;
-
-    return this._methodCall().then(function () {
-      return self._callPromise(cmd, function () {
-        return {};
-      });
-    });
+    await this._methodCall();
+    await this._callPromise(cmd, () => ({}));
+    return {};
   }
 
   /** history for a channel. By default it does not return publications (only current
    *  StreamPosition data) – provide an explicit limit > 0 to load publications.*/
-  history(channel: string, options?: HistoryOptions): Promise<HistoryResult> {
+  async history(channel: string, options?: HistoryOptions): Promise<HistoryResult> {
     const cmd = {
       history: this._getHistoryRequest(channel, options)
     };
 
-    const self = this;
+    await this._methodCall();
 
-    return this._methodCall().then(function () {
-      return self._callPromise(cmd, function (reply: any) {
-        const result = reply.history;
-        const publications: any[] = [];
-        if (result.publications) {
-          for (let i = 0; i < result.publications.length; i++) {
-            publications.push(self._getPublicationContext(channel, result.publications[i]));
-          }
-        }
-        return {
-          'publications': publications,
-          'epoch': result.epoch || '',
-          'offset': result.offset || 0
-        };
-      });
-    });
+    const result = await this._callPromise(cmd, (reply: any) => reply.history);
+
+    const publications: any[] = [];
+
+    if (result.publications) {
+      for (let i = 0; i < result.publications.length; i++) {
+        publications.push(this._getPublicationContext(channel, result.publications[i]));
+      }
+    }
+
+    return {
+      publications,
+      epoch: result.epoch || '',
+      offset: result.offset || 0
+    };
   }
 
   /** presence for a channel. */
-  presence(channel: string): Promise<PresenceResult> {
+  async presence(channel: string): Promise<PresenceResult> {
     const cmd = {
       presence: {
-        channel: channel
+        channel
       }
     };
 
-    const self = this;
+    await this._methodCall();
+    const result = await this._callPromise(cmd, (reply: any) => reply.presence);
 
-    return this._methodCall().then(function () {
-      return self._callPromise(cmd, function (reply: any) {
-        const clients = reply.presence.presence;
-        for (const clientId in clients) {
-          if (clients.hasOwnProperty(clientId)) {
-            const connInfo = clients[clientId]['conn_info'];
-            const chanInfo = clients[clientId]['chan_info'];
-            if (connInfo) {
-              clients[clientId].connInfo = connInfo;
-            }
-            if (chanInfo) {
-              clients[clientId].chanInfo = chanInfo;
-            }
-          }
+    const clients = result.presence;
+
+    for (const clientId in clients) {
+      if (Object.prototype.hasOwnProperty.call(clients, clientId)) {
+        const rawClient = clients[clientId];
+        const connInfo = rawClient['conn_info'];
+        const chanInfo = rawClient['chan_info'];
+        if (connInfo) {
+          rawClient.connInfo = connInfo;
         }
-        return {
-          'clients': clients
-        };
-      });
-    });
+        if (chanInfo) {
+          rawClient.chanInfo = chanInfo;
+        }
+      }
+    }
+
+    return { clients };
   }
 
-  /** presence stats for a channel. */
-  presenceStats(channel: string): Promise<PresenceStatsResult> {
-    const cmd = {
+  async presenceStats(channel: string): Promise<PresenceStatsResult> {
+    const cmd: any = {
       'presence_stats': {
-        channel: channel
+        channel
       }
     };
 
-    const self = this;
+    await this._methodCall();
 
-    return this._methodCall().then(function () {
-      return self._callPromise(cmd, function (reply: any) {
-        const result = reply.presence_stats;
-        return {
-          'numUsers': result.num_users,
-          'numClients': result.num_clients
-        };
-      });
+    const result = await this._callPromise(cmd, (reply: any) => {
+      return reply.presence_stats;
     });
+
+    return {
+      numUsers: result.num_users,
+      numClients: result.num_clients
+    };
   }
 
   /** start command batching (collect into temporary buffer without sending to a server) 
@@ -421,6 +414,10 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
       return;
     }
     log('debug', args);
+  }
+
+  private _codecName(): string {
+    return this._codec.name()
   }
 
   /** @internal */
@@ -787,7 +784,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
       transport.close();
     }, this._config.timeout);
 
-    this._transport.initialize(this._codec.name(), {
+    this._transport.initialize(this._codecName(), {
       onOpen: function () {
         if (connectTimeout) {
           clearTimeout(connectTimeout);
@@ -900,12 +897,9 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     const connectCommand = this._constructConnectCommand();
     const self = this;
     this._call(connectCommand, skipSending).then(resolveCtx => {
-      // @ts-ignore = improve later.
       const result = resolveCtx.reply.connect;
       self._connectResponse(result);
-      // @ts-ignore - improve later.
       if (resolveCtx.next) {
-        // @ts-ignore - improve later.
         resolveCtx.next();
       }
     }, rejectCtx => {
@@ -1140,22 +1134,22 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     });
   }
 
-  private _callPromise(cmd: any, resultCB: any): any {
+  private _callPromise<T = any>(
+    cmd: any,
+    resultCB: (reply: any) => T
+  ): Promise<T> {
     return new Promise((resolve, reject) => {
-      this._call(cmd, false).then(resolveCtx => {
-        // @ts-ignore - improve later.
-        resolve(resultCB(resolveCtx.reply));
-        // @ts-ignore - improve later.
-        if (resolveCtx.next) {
-          // @ts-ignore - improve later.
-          resolveCtx.next();
+      this._call(cmd, false).then(
+        (resolveCtx: { reply: any; next?: () => void }) => {
+          const result = resultCB(resolveCtx.reply);
+          resolve(result);
+          resolveCtx.next?.();
+        },
+        (rejectCtx: { error: any; next?: () => void }) => {
+          reject(rejectCtx.error);
+          rejectCtx.next?.();
         }
-      }, rejectCtx => {
-        reject(rejectCtx.error);
-        if (rejectCtx.next) {
-          rejectCtx.next();
-        }
-      });
+      );
     });
   }
 
@@ -1218,10 +1212,16 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     return p;
   }
 
-  private _call(cmd: any, skipSending: boolean) {
+  private _call(cmd: any, skipSending: boolean): Promise<CallResolveContext> {
     return new Promise((resolve, reject) => {
       cmd.id = this._nextCommandId();
-      this._registerCall(cmd.id, resolve, reject);
+
+      this._registerCall(
+        cmd.id,
+        resolve as (value: CallResolveContext) => void,
+        reject as (reason: CallRejectContext) => void
+      );
+
       if (!skipSending) {
         this._addCommand(cmd);
       }
@@ -1335,12 +1335,9 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
       };
 
       self._call(cmd, false).then(resolveCtx => {
-        // @ts-ignore - improve later.
         const result = resolveCtx.reply.refresh;
         self._refreshResponse(result);
-        // @ts-ignore - improve later.
         if (resolveCtx.next) {
-          // @ts-ignore - improve later.
           resolveCtx.next();
         }
       }, rejectCtx => {
@@ -1416,9 +1413,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     const unsubscribePromise = new Promise<void>((resolve, _) => {
       this._call(cmd, false).then(resolveCtx => {
         resolve()
-        // @ts-ignore - improve later.
         if (resolveCtx.next) {
-          // @ts-ignore - improve later.
           resolveCtx.next();
         }
       }, rejectCtx => {
@@ -1659,7 +1654,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
         next();
         return;
       }
-      const error = reply.error;
+      const error = {code: reply.error.code, message: reply.error.message || '', temporary: reply.error.temporary || false}
       errback({ error, next });
     }
   }
@@ -1748,11 +1743,13 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
       client: clientInfo.client,
       user: clientInfo.user
     };
-    if (clientInfo.conn_info) {
-      info.connInfo = clientInfo.conn_info;
+    const connInfo = clientInfo['conn_info'];
+    if (connInfo) {
+      info.connInfo = connInfo;
     }
-    if (clientInfo.chan_info) {
-      info.chanInfo = clientInfo.chan_info;
+    const chanInfo = clientInfo['chan_info'];
+    if (chanInfo) {
+      info.chanInfo = chanInfo;
     }
     return info;
   }

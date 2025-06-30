@@ -1,39 +1,35 @@
-import * as protobuf from 'protobufjs/light'
-import * as protoJSON from './client.proto.json';
+import { Writer, Reader } from 'protobufjs/minimal'
+import { centrifugal } from './client_proto';
 import { applyDelta } from './fossil';
 
-const proto = protobuf.Root.fromJSON(protoJSON);
-
-const Command = proto.lookupType('protocol.Command');
-const Reply = proto.lookupType('protocol.Reply');
-const EmulationRequest = proto.lookupType('protocol.EmulationRequest');
+const Command = centrifugal.centrifuge.protocol.Command;
+const Reply = centrifugal.centrifuge.protocol.Reply;
+const EmulationRequest = centrifugal.centrifuge.protocol.EmulationRequest;
 
 /** @internal */
 export class ProtobufCodec {
-  name() {
+  name(): string {
     return 'protobuf';
   }
 
-  encodeEmulationRequest(req: any) {
-    const writer = protobuf.Writer.create();
+  encodeEmulationRequest(req: centrifugal.centrifuge.protocol.IEmulationRequest): Uint8Array {
+    const writer = Writer.create();
     EmulationRequest.encode(req, writer);
     return writer.finish();
   }
 
-  encodeCommands(commands: any[]) {
-    const writer = protobuf.Writer.create();
-    for (const i in commands) {
-      if (commands.hasOwnProperty(i)) {
-        const command = Object.assign({}, commands[i]);
-        Command.encodeDelimited(command, writer);
-      }
+  encodeCommands(commands: centrifugal.centrifuge.protocol.ICommand[]): Uint8Array {
+    const writer = Writer.create();
+    for (const command of commands) {
+      writer.fork();
+      Command.encodeDelimited(command, writer);
     }
     return writer.finish();
   }
 
-  decodeReplies(data: any) {
-    const replies: any[] = [];
-    const reader = protobuf.Reader.create(new Uint8Array(data));
+  decodeReplies(data: ArrayBuffer | Uint8Array): centrifugal.centrifuge.protocol.Reply[] {
+    const replies: centrifugal.centrifuge.protocol.Reply[] = [];
+    const reader = Reader.create(new Uint8Array(data));
     while (reader.pos < reader.len) {
       const reply = Reply.decodeDelimited(reader);
       replies.push(reply);
@@ -41,8 +37,8 @@ export class ProtobufCodec {
     return replies;
   }
 
-  decodeReply(data: any) {
-    const reader = protobuf.Reader.create(new Uint8Array(data));
+  decodeReply(data: ArrayBuffer | Uint8Array): { ok: true; pos: number } | { ok: false } {
+    const reader = Reader.create(new Uint8Array(data));
     while (reader.pos < reader.len) {
       Reply.decodeDelimited(reader);
       return {
@@ -55,17 +51,17 @@ export class ProtobufCodec {
     };
   }
 
-  applyDeltaIfNeeded(pub: any, prevValue: any) {
-    let newData: any, newPrevValue: any;
+  applyDeltaIfNeeded(pub: centrifugal.centrifuge.protocol.IPublication, prevValue: Uint8Array): { newData: Uint8Array; newPrevValue: Uint8Array } {
+    let newData: Uint8Array, newPrevValue: Uint8Array;
     if (pub.delta) {
       // binary delta.
-      const valueArray = applyDelta(prevValue, pub.data);
+      const valueArray = applyDelta(prevValue, pub.data!);
       newData = new Uint8Array(valueArray)
       newPrevValue = valueArray;
     } else {
       // full binary data.
-      newData = pub.data;
-      newPrevValue = pub.data;
+      newData = pub.data!;
+      newPrevValue = pub.data!;
     }
     return { newData, newPrevValue }
   }

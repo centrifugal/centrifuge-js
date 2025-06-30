@@ -1,3 +1,5 @@
 #!/usr/bin/env bash
 wget https://raw.githubusercontent.com/centrifugal/protocol/master/definitions/client.proto -O /tmp/client.proto
-./node_modules/.bin/pbjs -t json --keep-case /tmp/client.proto > ./src/client.proto.json
+
+./node_modules/.bin/pbjs -t static-module -w es6 --es6 --lint eslint-disable --keep-case --no-create --no-convert --no-service -o ./src/client_proto.js /tmp/client.proto
+./node_modules/.bin/pbts -o ./src/client_proto.d.ts ./src/client_proto.js

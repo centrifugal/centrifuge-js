@@ -249,6 +249,10 @@ export interface SubscribedContext {
   streamPosition?: StreamPosition;
   wasRecovering: boolean;
   recovered: boolean;
+  // whether or not successfully recovered subscription has received missed publications
+  // warning: must be used for metrics/logs purposes only
+  // since publications are processed after 'subscribed' event
+  hasRecoveredPublications: boolean;
   data?: any;
 }
 

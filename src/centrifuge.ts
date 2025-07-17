@@ -1598,7 +1598,8 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
       positioned: false,
       recoverable: false,
       wasRecovering: false,
-      recovered: false
+      recovered: false,
+      hasRecoveredPublications: false,
     };
     if (result.recovered) {
       ctx.recovered = true;
@@ -1625,6 +1626,9 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
         'offset': offset,
         'epoch': epoch
       };
+    }
+    if (Array.isArray(result.publications) && result.publications.length > 0) {
+      ctx.hasRecoveredPublications = true;
     }
     if (result.data) {
       ctx.data = result.data;

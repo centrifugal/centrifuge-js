@@ -27,6 +27,15 @@ export class ProtobufCodec {
     return writer.finish();
   }
 
+  encodeReplies(replies: centrifugal.centrifuge.protocol.IReply[]): Uint8Array {
+    const writer = Writer.create();
+    for (const reply of replies) {
+      writer.fork();
+      Reply.encodeDelimited(reply, writer);
+    }
+    return writer.finish();
+  }
+
   decodeReplies(data: ArrayBuffer | Uint8Array): centrifugal.centrifuge.protocol.Reply[] {
     const replies: centrifugal.centrifuge.protocol.Reply[] = [];
     const reader = Reader.create(new Uint8Array(data));
@@ -35,6 +44,16 @@ export class ProtobufCodec {
       replies.push(reply);
     }
     return replies;
+  }
+
+  decodeCommands(data: ArrayBuffer | Uint8Array): centrifugal.centrifuge.protocol.Command[] {
+    const commands: centrifugal.centrifuge.protocol.Command[] = [];
+    const reader = Reader.create(new Uint8Array(data));
+    while (reader.pos < reader.len) {
+      const reply = Command.decodeDelimited(reader);
+      commands.push(reply);
+    }
+    return commands;
   }
 
   decodeReply(data: ArrayBuffer | Uint8Array): { ok: true; pos: number } | { ok: false } {

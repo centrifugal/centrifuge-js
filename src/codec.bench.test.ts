@@ -50,7 +50,7 @@ describe('Codec benchmark (Protobuf vs JSON)', () => {
     const codec = new ProtobufCodec();
     let encoded: Uint8Array;
     let decoded: any[];
-    let encodedReplies = codec.encodeReplies(replies);
+    const encodedReplies = codec.encodeReplies(replies);
 
     it(`encodeCommands – ${N} runs`, () => {
       const { totalMs, avgMicro } = runNIterations(N, () => {
@@ -73,7 +73,7 @@ describe('Codec benchmark (Protobuf vs JSON)', () => {
     const codec = new JsonCodec();
     let encoded: string;
     let decoded: any;
-    let encodedReplies = JSON.stringify(replies);
+    const encodedReplies = JSON.stringify(replies);
 
     it(`encodeCommands – ${N} runs`, () => {
       const { totalMs, avgMicro } = runNIterations(N, () => {

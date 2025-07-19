@@ -228,9 +228,9 @@ export interface SubscriptionStateContext {
 export interface ServerSubscribedContext {
   /** channel of Subscription. */
   channel: string;
-  /** Subscription is recoverable – i.e. can automatically recover missed messages */
+  /** subscription is recoverable – i.e. can automatically recover missed messages */
   recoverable: boolean;
-  /** Subscription is positioned – i.e. server tracks message loss on the way from PUB/SUB broker */
+  /** subscription is positioned – i.e. server tracks message loss on the way from PUB/SUB broker */
   positioned: boolean;
   /** streamPosition set when Subscription is recoverable or positioned. */
   streamPosition?: StreamPosition;
@@ -238,21 +238,32 @@ export interface ServerSubscribedContext {
   wasRecovering: boolean;
   /** whether or not missed publications may be successfully recovered.  */
   recovered: boolean;
+  /** whether or not successfully recovered subscription has received missed publications.
+  Warning: must be used for metrics/logs purposes only.
+  Recovered publications are processed after 'subscribed' event. **/
+  hasRecoveredPublications: boolean;
   /** custom data for Subscription returned from server. */
   data?: any;
 }
 
 export interface SubscribedContext {
+  /** channel of Subscription. */
   channel: string;
+  /** subscription is recoverable – i.e. can automatically recover missed messages */
   recoverable: boolean;
+  /** subscription is positioned – i.e. server tracks message loss on the way from PUB/SUB broker */
   positioned: boolean;
+  /** streamPosition is set when Subscription is recoverable or positioned. */
   streamPosition?: StreamPosition;
+  /** wasRecovering is true when recovery was used in subscribe request. */
   wasRecovering: boolean;
+  /** whether or not missed publications may be successfully recovered.  */
   recovered: boolean;
-  // whether or not successfully recovered subscription has received missed publications
-  // warning: must be used for metrics/logs purposes only
-  // since publications are processed after 'subscribed' event
+  /** whether or not successfully recovered subscription has received missed publications.
+  Warning: must be used for metrics/logs purposes only.
+  Recovered publications are processed after 'subscribed' event. **/
   hasRecoveredPublications: boolean;
+  /** custom data for Subscription returned from server. */
   data?: any;
 }
 

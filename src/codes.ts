@@ -38,3 +38,7 @@ export enum unsubscribedCodes {
   unauthorized = 1,
   clientClosed = 2
 }
+
+export enum subscriptionFlags {
+  channelCompression = 1
+}

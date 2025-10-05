@@ -1729,7 +1729,6 @@ export const centrifugal = $root.centrifugal = (() => {
                  * @property {boolean|null} [delta] Publication delta
                  * @property {number|Long|null} [time] Publication time
                  * @property {string|null} [channel] Publication channel
-                 * @property {Uint8Array|null} [meta] Publication meta
                  */
 
                 /**
@@ -1805,14 +1804,6 @@ export const centrifugal = $root.centrifugal = (() => {
                 Publication.prototype.channel = "";
 
                 /**
-                 * Publication meta.
-                 * @member {Uint8Array} meta
-                 * @memberof centrifugal.centrifuge.protocol.Publication
-                 * @instance
-                 */
-                Publication.prototype.meta = $util.newBuffer([]);
-
-                /**
                  * Encodes the specified Publication message. Does not implicitly {@link centrifugal.centrifuge.protocol.Publication.verify|verify} messages.
                  * @function encode
                  * @memberof centrifugal.centrifuge.protocol.Publication
@@ -1839,8 +1830,6 @@ export const centrifugal = $root.centrifugal = (() => {
                         writer.uint32(/* id 9, wireType 0 =*/72).int64(message.time);
                     if (message.channel != null && Object.hasOwnProperty.call(message, "channel"))
                         writer.uint32(/* id 10, wireType 2 =*/82).string(message.channel);
-                    if (message.meta != null && Object.hasOwnProperty.call(message, "meta"))
-                        writer.uint32(/* id 11, wireType 2 =*/90).bytes(message.meta);
                     return writer;
                 };
 
@@ -1922,10 +1911,6 @@ export const centrifugal = $root.centrifugal = (() => {
                                 message.channel = reader.string();
                                 break;
                             }
-                        case 11: {
-                                message.meta = reader.bytes();
-                                break;
-                            }
                         default:
                             reader.skipType(tag & 7);
                             break;
@@ -1989,9 +1974,6 @@ export const centrifugal = $root.centrifugal = (() => {
                     if (message.channel != null && message.hasOwnProperty("channel"))
                         if (!$util.isString(message.channel))
                             return "channel: string expected";
-                    if (message.meta != null && message.hasOwnProperty("meta"))
-                        if (!(message.meta && typeof message.meta.length === "number" || $util.isString(message.meta)))
-                            return "meta: buffer expected";
                     return null;
                 };
 
@@ -4531,7 +4513,7 @@ export const centrifugal = $root.centrifugal = (() => {
                  * @property {boolean|null} [recoverable] SubscribeRequest recoverable
                  * @property {boolean|null} [join_leave] SubscribeRequest join_leave
                  * @property {string|null} [delta] SubscribeRequest delta
-                 * @property {string|null} [filter] SubscribeRequest filter
+                 * @property {centrifugal.centrifuge.protocol.IFilterNode|null} [tf] SubscribeRequest tf
                  * @property {number|Long|null} [flag] SubscribeRequest flag
                  */
 
@@ -4631,12 +4613,12 @@ export const centrifugal = $root.centrifugal = (() => {
                 SubscribeRequest.prototype.delta = "";
 
                 /**
-                 * SubscribeRequest filter.
-                 * @member {string} filter
+                 * SubscribeRequest tf.
+                 * @member {centrifugal.centrifuge.protocol.IFilterNode|null|undefined} tf
                  * @memberof centrifugal.centrifuge.protocol.SubscribeRequest
                  * @instance
                  */
-                SubscribeRequest.prototype.filter = "";
+                SubscribeRequest.prototype.tf = null;
 
                 /**
                  * SubscribeRequest flag.
@@ -4678,8 +4660,8 @@ export const centrifugal = $root.centrifugal = (() => {
                         writer.uint32(/* id 11, wireType 0 =*/88).bool(message.join_leave);
                     if (message.delta != null && Object.hasOwnProperty.call(message, "delta"))
                         writer.uint32(/* id 12, wireType 2 =*/98).string(message.delta);
-                    if (message.filter != null && Object.hasOwnProperty.call(message, "filter"))
-                        writer.uint32(/* id 13, wireType 2 =*/106).string(message.filter);
+                    if (message.tf != null && Object.hasOwnProperty.call(message, "tf"))
+                        $root.centrifugal.centrifuge.protocol.FilterNode.encode(message.tf, writer.uint32(/* id 13, wireType 2 =*/106).fork()).ldelim();
                     if (message.flag != null && Object.hasOwnProperty.call(message, "flag"))
                         writer.uint32(/* id 14, wireType 0 =*/112).int64(message.flag);
                     return writer;
@@ -4757,7 +4739,7 @@ export const centrifugal = $root.centrifugal = (() => {
                                 break;
                             }
                         case 13: {
-                                message.filter = reader.string();
+                                message.tf = $root.centrifugal.centrifuge.protocol.FilterNode.decode(reader, reader.uint32());
                                 break;
                             }
                         case 14: {
@@ -4829,9 +4811,11 @@ export const centrifugal = $root.centrifugal = (() => {
                     if (message.delta != null && message.hasOwnProperty("delta"))
                         if (!$util.isString(message.delta))
                             return "delta: string expected";
-                    if (message.filter != null && message.hasOwnProperty("filter"))
-                        if (!$util.isString(message.filter))
-                            return "filter: string expected";
+                    if (message.tf != null && message.hasOwnProperty("tf")) {
+                        let error = $root.centrifugal.centrifuge.protocol.FilterNode.verify(message.tf);
+                        if (error)
+                            return "tf." + error;
+                    }
                     if (message.flag != null && message.hasOwnProperty("flag"))
                         if (!$util.isInteger(message.flag) && !(message.flag && $util.isInteger(message.flag.low) && $util.isInteger(message.flag.high)))
                             return "flag: integer|Long expected";
@@ -7947,6 +7931,257 @@ export const centrifugal = $root.centrifugal = (() => {
                 };
 
                 return SendRequest;
+            })();
+
+            protocol.FilterNode = (function() {
+
+                /**
+                 * Properties of a FilterNode.
+                 * @memberof centrifugal.centrifuge.protocol
+                 * @interface IFilterNode
+                 * @property {string|null} [op] FilterNode op
+                 * @property {string|null} [key] FilterNode key
+                 * @property {string|null} [cmp] FilterNode cmp
+                 * @property {string|null} [val] FilterNode val
+                 * @property {Array.<string>|null} [vals] FilterNode vals
+                 * @property {Array.<centrifugal.centrifuge.protocol.IFilterNode>|null} [nodes] FilterNode nodes
+                 */
+
+                /**
+                 * Constructs a new FilterNode.
+                 * @memberof centrifugal.centrifuge.protocol
+                 * @classdesc Represents a FilterNode.
+                 * @implements IFilterNode
+                 * @constructor
+                 * @param {centrifugal.centrifuge.protocol.IFilterNode=} [properties] Properties to set
+                 */
+                function FilterNode(properties) {
+                    this.vals = [];
+                    this.nodes = [];
+                    if (properties)
+                        for (let keys = Object.keys(properties), i = 0; i < keys.length; ++i)
+                            if (properties[keys[i]] != null)
+                                this[keys[i]] = properties[keys[i]];
+                }
+
+                /**
+                 * FilterNode op.
+                 * @member {string} op
+                 * @memberof centrifugal.centrifuge.protocol.FilterNode
+                 * @instance
+                 */
+                FilterNode.prototype.op = "";
+
+                /**
+                 * FilterNode key.
+                 * @member {string} key
+                 * @memberof centrifugal.centrifuge.protocol.FilterNode
+                 * @instance
+                 */
+                FilterNode.prototype.key = "";
+
+                /**
+                 * FilterNode cmp.
+                 * @member {string} cmp
+                 * @memberof centrifugal.centrifuge.protocol.FilterNode
+                 * @instance
+                 */
+                FilterNode.prototype.cmp = "";
+
+                /**
+                 * FilterNode val.
+                 * @member {string} val
+                 * @memberof centrifugal.centrifuge.protocol.FilterNode
+                 * @instance
+                 */
+                FilterNode.prototype.val = "";
+
+                /**
+                 * FilterNode vals.
+                 * @member {Array.<string>} vals
+                 * @memberof centrifugal.centrifuge.protocol.FilterNode
+                 * @instance
+                 */
+                FilterNode.prototype.vals = $util.emptyArray;
+
+                /**
+                 * FilterNode nodes.
+                 * @member {Array.<centrifugal.centrifuge.protocol.IFilterNode>} nodes
+                 * @memberof centrifugal.centrifuge.protocol.FilterNode
+                 * @instance
+                 */
+                FilterNode.prototype.nodes = $util.emptyArray;
+
+                /**
+                 * Encodes the specified FilterNode message. Does not implicitly {@link centrifugal.centrifuge.protocol.FilterNode.verify|verify} messages.
+                 * @function encode
+                 * @memberof centrifugal.centrifuge.protocol.FilterNode
+                 * @static
+                 * @param {centrifugal.centrifuge.protocol.IFilterNode} message FilterNode message or plain object to encode
+                 * @param {$protobuf.Writer} [writer] Writer to encode to
+                 * @returns {$protobuf.Writer} Writer
+                 */
+                FilterNode.encode = function encode(message, writer) {
+                    if (!writer)
+                        writer = $Writer.create();
+                    if (message.op != null && Object.hasOwnProperty.call(message, "op"))
+                        writer.uint32(/* id 1, wireType 2 =*/10).string(message.op);
+                    if (message.key != null && Object.hasOwnProperty.call(message, "key"))
+                        writer.uint32(/* id 2, wireType 2 =*/18).string(message.key);
+                    if (message.cmp != null && Object.hasOwnProperty.call(message, "cmp"))
+                        writer.uint32(/* id 3, wireType 2 =*/26).string(message.cmp);
+                    if (message.val != null && Object.hasOwnProperty.call(message, "val"))
+                        writer.uint32(/* id 4, wireType 2 =*/34).string(message.val);
+                    if (message.vals != null && message.vals.length)
+                        for (let i = 0; i < message.vals.length; ++i)
+                            writer.uint32(/* id 5, wireType 2 =*/42).string(message.vals[i]);
+                    if (message.nodes != null && message.nodes.length)
+                        for (let i = 0; i < message.nodes.length; ++i)
+                            $root.centrifugal.centrifuge.protocol.FilterNode.encode(message.nodes[i], writer.uint32(/* id 6, wireType 2 =*/50).fork()).ldelim();
+                    return writer;
+                };
+
+                /**
+                 * Encodes the specified FilterNode message, length delimited. Does not implicitly {@link centrifugal.centrifuge.protocol.FilterNode.verify|verify} messages.
+                 * @function encodeDelimited
+                 * @memberof centrifugal.centrifuge.protocol.FilterNode
+                 * @static
+                 * @param {centrifugal.centrifuge.protocol.IFilterNode} message FilterNode message or plain object to encode
+                 * @param {$protobuf.Writer} [writer] Writer to encode to
+                 * @returns {$protobuf.Writer} Writer
+                 */
+                FilterNode.encodeDelimited = function encodeDelimited(message, writer) {
+                    return this.encode(message, writer).ldelim();
+                };
+
+                /**
+                 * Decodes a FilterNode message from the specified reader or buffer.
+                 * @function decode
+                 * @memberof centrifugal.centrifuge.protocol.FilterNode
+                 * @static
+                 * @param {$protobuf.Reader|Uint8Array} reader Reader or buffer to decode from
+                 * @param {number} [length] Message length if known beforehand
+                 * @returns {centrifugal.centrifuge.protocol.FilterNode} FilterNode
+                 * @throws {Error} If the payload is not a reader or valid buffer
+                 * @throws {$protobuf.util.ProtocolError} If required fields are missing
+                 */
+                FilterNode.decode = function decode(reader, length) {
+                    if (!(reader instanceof $Reader))
+                        reader = $Reader.create(reader);
+                    let end = length === undefined ? reader.len : reader.pos + length, message = new $root.centrifugal.centrifuge.protocol.FilterNode();
+                    while (reader.pos < end) {
+                        let tag = reader.uint32();
+                        switch (tag >>> 3) {
+                        case 1: {
+                                message.op = reader.string();
+                                break;
+                            }
+                        case 2: {
+                                message.key = reader.string();
+                                break;
+                            }
+                        case 3: {
+                                message.cmp = reader.string();
+                                break;
+                            }
+                        case 4: {
+                                message.val = reader.string();
+                                break;
+                            }
+                        case 5: {
+                                if (!(message.vals && message.vals.length))
+                                    message.vals = [];
+                                message.vals.push(reader.string());
+                                break;
+                            }
+                        case 6: {
+                                if (!(message.nodes && message.nodes.length))
+                                    message.nodes = [];
+                                message.nodes.push($root.centrifugal.centrifuge.protocol.FilterNode.decode(reader, reader.uint32()));
+                                break;
+                            }
+                        default:
+                            reader.skipType(tag & 7);
+                            break;
+                        }
+                    }
+                    return message;
+                };
+
+                /**
+                 * Decodes a FilterNode message from the specified reader or buffer, length delimited.
+                 * @function decodeDelimited
+                 * @memberof centrifugal.centrifuge.protocol.FilterNode
+                 * @static
+                 * @param {$protobuf.Reader|Uint8Array} reader Reader or buffer to decode from
+                 * @returns {centrifugal.centrifuge.protocol.FilterNode} FilterNode
+                 * @throws {Error} If the payload is not a reader or valid buffer
+                 * @throws {$protobuf.util.ProtocolError} If required fields are missing
+                 */
+                FilterNode.decodeDelimited = function decodeDelimited(reader) {
+                    if (!(reader instanceof $Reader))
+                        reader = new $Reader(reader);
+                    return this.decode(reader, reader.uint32());
+                };
+
+                /**
+                 * Verifies a FilterNode message.
+                 * @function verify
+                 * @memberof centrifugal.centrifuge.protocol.FilterNode
+                 * @static
+                 * @param {Object.<string,*>} message Plain object to verify
+                 * @returns {string|null} `null` if valid, otherwise the reason why it is not
+                 */
+                FilterNode.verify = function verify(message) {
+                    if (typeof message !== "object" || message === null)
+                        return "object expected";
+                    if (message.op != null && message.hasOwnProperty("op"))
+                        if (!$util.isString(message.op))
+                            return "op: string expected";
+                    if (message.key != null && message.hasOwnProperty("key"))
+                        if (!$util.isString(message.key))
+                            return "key: string expected";
+                    if (message.cmp != null && message.hasOwnProperty("cmp"))
+                        if (!$util.isString(message.cmp))
+                            return "cmp: string expected";
+                    if (message.val != null && message.hasOwnProperty("val"))
+                        if (!$util.isString(message.val))
+                            return "val: string expected";
+                    if (message.vals != null && message.hasOwnProperty("vals")) {
+                        if (!Array.isArray(message.vals))
+                            return "vals: array expected";
+                        for (let i = 0; i < message.vals.length; ++i)
+                            if (!$util.isString(message.vals[i]))
+                                return "vals: string[] expected";
+                    }
+                    if (message.nodes != null && message.hasOwnProperty("nodes")) {
+                        if (!Array.isArray(message.nodes))
+                            return "nodes: array expected";
+                        for (let i = 0; i < message.nodes.length; ++i) {
+                            let error = $root.centrifugal.centrifuge.protocol.FilterNode.verify(message.nodes[i]);
+                            if (error)
+                                return "nodes." + error;
+                        }
+                    }
+                    return null;
+                };
+
+                /**
+                 * Gets the default type url for FilterNode
+                 * @function getTypeUrl
+                 * @memberof centrifugal.centrifuge.protocol.FilterNode
+                 * @static
+                 * @param {string} [typeUrlPrefix] your custom typeUrlPrefix(default "type.googleapis.com")
+                 * @returns {string} The default type url
+                 */
+                FilterNode.getTypeUrl = function getTypeUrl(typeUrlPrefix) {
+                    if (typeUrlPrefix === undefined) {
+                        typeUrlPrefix = "type.googleapis.com";
+                    }
+                    return typeUrlPrefix + "/centrifugal.centrifuge.protocol.FilterNode";
+                };
+
+                return FilterNode;
             })();
 
             return protocol;

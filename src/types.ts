@@ -382,6 +382,8 @@ export interface SubscriptionOptions {
   joinLeave: boolean;
   /** delta format to be used */
   delta: 'fossil';
+  /** server-side tagsFilter to apply for publications in channel */
+  tagsFilter: any;
 }
 
 /** Stream postion describes position of publication inside a stream.  */

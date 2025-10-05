@@ -30,6 +30,7 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
   private _promiseId: number;
   private _delta: string;
   private _delta_negotiated: boolean;
+  private _tagsFilter: any | null;
   private _token: string;
   private _data: any | null;
   private _getData: null | ((ctx: SubscriptionDataContext) => Promise<any>);
@@ -68,6 +69,7 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
     this._refreshTimeout = null;
     this._delta = '';
     this._delta_negotiated = false;
+    this._tagsFilter = null;
     this._prevValue = null;
     this._unsubPromise = Promise.resolve();
     this._setOptions(options);
@@ -146,6 +148,13 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
   async history(opts: HistoryOptions): Promise<HistoryResult> {
     await this._methodCall();
     return this._centrifuge.history(this.channel, opts);
+  }
+
+  setTagsFilter(tagsFilter: string) {
+    if (tagsFilter && this._delta) {
+      throw new Error('can not use delta and tagsFilter together');
+    }
+    this._tagsFilter = tagsFilter;
   }
 
   private _methodCall(): Promise<void> {
@@ -459,6 +468,7 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
     }
 
     if (this._delta) req.delta = this._delta;
+    if (this._tagsFilter) req.tf = this._tagsFilter;
 
     return { subscribe: req };
   }
@@ -650,6 +660,12 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
         throw new Error('unsupported delta format');
       }
       this._delta = options.delta;
+    }
+    if (options.tagsFilter) {
+      this._tagsFilter = options.tagsFilter;
+    }
+    if (this._tagsFilter && this._delta) {
+      throw new Error('can not use delta and tagsFilter together');
     }
   }
 

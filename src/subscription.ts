@@ -447,7 +447,7 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
     if (this._positioned) req.positioned = true;
     if (this._recoverable) req.recoverable = true;
     if (this._joinLeave) req.join_leave = true;
-    req.flag = 1;
+    req.flag = subscriptionFlags.channelCompaction;
 
     if (this._needRecover()) {
       req.recover = true;

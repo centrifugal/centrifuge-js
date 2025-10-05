@@ -40,5 +40,5 @@ export enum unsubscribedCodes {
 }
 
 export enum subscriptionFlags {
-  channelCompression = 1
+  channelCompaction = 1
 }

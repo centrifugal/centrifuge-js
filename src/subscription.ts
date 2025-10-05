@@ -24,6 +24,7 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
   private _recover: boolean;
   private _offset: number | null;
   private _epoch: string | null;
+  // @ts-ignore – this is used by a client in centrifuge.ts.
   private _id: number;
   private _resubscribeAttempts: number;
   private _promiseId: number;

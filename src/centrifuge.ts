@@ -207,13 +207,13 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
   /** ready returns a Promise which resolves upon client goes to Connected 
    * state and rejects in case of client goes to Disconnected or Failed state.
    * Users can provide optional timeout in milliseconds. */
-  ready(timeout?: number): Promise<void> {
+  async ready(timeout?: number): Promise<void> {
     switch (this.state) {
       case State.Disconnected:
-        return Promise.reject({ code: errorCodes.clientDisconnected, message: 'client disconnected' });
+        throw { code: errorCodes.clientDisconnected, message: 'client disconnected' };
 
       case State.Connected:
-        return Promise.resolve();
+        return;
 
       default:
         return new Promise((resolve, reject) => {
@@ -1670,7 +1670,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
         next();
         return;
       }
-      const error = {code: reply.error.code, message: reply.error.message || '', temporary: reply.error.temporary || false}
+      const error = {code: reply.error.code, message: reply.error.message || '', temporary: reply.error.temporary || false};
       errback({ error, next });
     }
   }

@@ -1,6 +1,6 @@
 import EventEmitter from 'events';
 import { Centrifuge, UnauthorizedError } from './centrifuge';
-import { errorCodes, unsubscribedCodes, subscribingCodes, connectingCodes } from './codes';
+import { errorCodes, unsubscribedCodes, subscribingCodes, connectingCodes, subscriptionFlags } from './codes';
 import {
   HistoryOptions, HistoryResult, PresenceResult, PresenceStatsResult,
   PublishResult, State, SubscriptionEvents, SubscriptionOptions,
@@ -24,6 +24,8 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
   private _recover: boolean;
   private _offset: number | null;
   private _epoch: string | null;
+  // @ts-ignore – this is used by a client in centrifuge.ts.
+  private _id: number;
   private _resubscribeAttempts: number;
   private _promiseId: number;
   private _delta: string;
@@ -52,6 +54,7 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
     this._recover = false;
     this._offset = null;
     this._epoch = null;
+    this._id = 0;
     this._recoverable = false;
     this._positioned = false;
     this._joinLeave = false;
@@ -221,6 +224,10 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
       return;
     }
     this._clearSubscribingState();
+
+    if (result.id) {
+      this._id = result.id;
+    }
 
     if (result.recoverable) {
       this._recover = true;
@@ -441,6 +448,7 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
     if (this._positioned) req.positioned = true;
     if (this._recoverable) req.recoverable = true;
     if (this._joinLeave) req.join_leave = true;
+    req.flag = subscriptionFlags.channelCompaction;
 
     if (this._needRecover()) {
       req.recover = true;

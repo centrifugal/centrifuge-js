@@ -462,6 +462,9 @@ export namespace centrifugal {
             /** Properties of a Push. */
             interface IPush {
 
+                /** Push id */
+                id?: (number|Long|null);
+
                 /** Push channel */
                 channel?: (string|null);
 
@@ -501,6 +504,9 @@ export namespace centrifugal {
                  * @param [properties] Properties to set
                  */
                 constructor(properties?: centrifugal.centrifuge.protocol.IPush);
+
+                /** Push id. */
+                public id: (number|Long);
 
                 /** Push channel. */
                 public channel: string;
@@ -692,6 +698,9 @@ export namespace centrifugal {
 
                 /** Publication channel */
                 channel?: (string|null);
+
+                /** Publication meta */
+                meta?: (Uint8Array|null);
             }
 
             /** Represents a Publication. */
@@ -723,6 +732,9 @@ export namespace centrifugal {
 
                 /** Publication channel. */
                 public channel: string;
+
+                /** Publication meta. */
+                public meta: Uint8Array;
 
                 /**
                  * Encodes the specified Publication message. Does not implicitly {@link centrifugal.centrifuge.protocol.Publication.verify|verify} messages.
@@ -1454,6 +1466,9 @@ export namespace centrifugal {
 
                 /** ConnectRequest headers */
                 headers?: ({ [k: string]: string }|null);
+
+                /** ConnectRequest flag */
+                flag?: (number|Long|null);
             }
 
             /** Represents a ConnectRequest. */
@@ -1482,6 +1497,9 @@ export namespace centrifugal {
 
                 /** ConnectRequest headers. */
                 public headers: { [k: string]: string };
+
+                /** ConnectRequest flag. */
+                public flag: (number|Long);
 
                 /**
                  * Encodes the specified ConnectRequest message. Does not implicitly {@link centrifugal.centrifuge.protocol.ConnectRequest.verify|verify} messages.
@@ -1850,6 +1868,12 @@ export namespace centrifugal {
 
                 /** SubscribeRequest delta */
                 delta?: (string|null);
+
+                /** SubscribeRequest filter */
+                filter?: (string|null);
+
+                /** SubscribeRequest flag */
+                flag?: (number|Long|null);
             }
 
             /** Represents a SubscribeRequest. */
@@ -1890,6 +1914,12 @@ export namespace centrifugal {
 
                 /** SubscribeRequest delta. */
                 public delta: string;
+
+                /** SubscribeRequest filter. */
+                public filter: string;
+
+                /** SubscribeRequest flag. */
+                public flag: (number|Long);
 
                 /**
                  * Encodes the specified SubscribeRequest message. Does not implicitly {@link centrifugal.centrifuge.protocol.SubscribeRequest.verify|verify} messages.
@@ -1976,6 +2006,9 @@ export namespace centrifugal {
 
                 /** SubscribeResult delta */
                 delta?: (boolean|null);
+
+                /** SubscribeResult id */
+                id?: (number|Long|null);
             }
 
             /** Represents a SubscribeResult. */
@@ -2019,6 +2052,9 @@ export namespace centrifugal {
 
                 /** SubscribeResult delta. */
                 public delta: boolean;
+
+                /** SubscribeResult id. */
+                public id: (number|Long);
 
                 /**
                  * Encodes the specified SubscribeResult message. Does not implicitly {@link centrifugal.centrifuge.protocol.SubscribeResult.verify|verify} messages.

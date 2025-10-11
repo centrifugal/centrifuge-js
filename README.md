@@ -16,14 +16,15 @@ The features implemented by this SDK can be found in [SDK feature matrix](https:
     * [WebTransport (experimental)](#webtransport-experimental)
 * [Client API](#client-api)
     * [Client methods and events](#client-methods-and-events)
+    * [Client options](#client-options)
     * [Connection token](#connection-token)
 * [Subscription API](#subscription-api)
     * [Subscription methods and events](#subscription-methods-and-events)
     * [Subscription token](#subscription-token)
+    * [Subscription options](#subscription-options)
 * [Subscription management API](#subscription-management-api)
 * [Message batching](#message-batching)
 * [Server-side subscriptions](#server-side-subscriptions)
-* [Configuration options](#configuration-options)
 * [Protobuf support](#protobuf-support)
 * [Using with NodeJS](#using-with-nodejs)
 * [Custom WebSocket constructor](#custom-websocket-constructor)
@@ -223,6 +224,16 @@ centrifuge.on('disconnected', function(ctx) {
 });
 ```
 
+#### state event
+
+`state` event is fired when client state changes. It provides both old and new state.
+
+```javascript
+centrifuge.on('state', function(ctx) {
+    console.log('state changed from', ctx.oldState, 'to', ctx.newState);
+});
+```
+
 #### disconnect method
 
 In some cases you may need to disconnect your client from server, use `.disconnect()` method to do this:
@@ -313,6 +324,22 @@ Returns a Promise which will be resolved upon connection establishement (i.e. wh
 
 `setToken` may be useful to dynamically change the connection token. For example when you need to implement login/logout workflow. See an example in [blog post](https://centrifugal.dev/blog/2023/06/29/centrifugo-v5-released#token-behaviour-adjustments-in-sdks).
 
+#### setData method
+
+`setData` (since v5.5.0) allows setting connection data (some extra payload to deliver to the backend with connection request). This only affects the next connection attempt, not the current one. Note that if `getData` callback is configured, it will override this value during reconnects.
+
+```javascript
+centrifuge.setData({ 'name': 'Maria' });
+```
+
+#### setHeaders method
+
+`setHeaders` allows setting connection [emulated headers](https://centrifugal.dev/blog/2025/01/16/centrifugo-v6-released#headers-emulation). These headers will be sent with the next connection attempt. **Requires Centrifugo v6**.
+
+```javascript
+centrifuge.setHeaders({ 'Authorization': 'XXX' });
+```
+
 #### error event
 
 To listen asynchronous error happening internally while Centrifuge client works you can set an `error` handler:
@@ -326,6 +353,121 @@ centrifuge.on('error', function(ctx) {
 ```
 
 This can help you to log failed connection attempts, or token refresh errors, etc.
+
+### Client options
+
+Let's look at available configuration parameters when initializing `Centrifuge` object instance.
+
+#### token
+
+Set initial connection token (JWT). See [Connection Token](#connection-token) section for more details.
+
+#### getToken
+
+Set function for getting connection token. This may be used for initial token loading and token refresh mechanism (when initial token is going to expire). See [Connection Token](#connection-token) section for more details.
+
+#### data
+
+Set custom data to send to a server within every connect command.
+
+#### getData
+
+Set function for getting/renewing connection data. This callback is called upon reconnects to get fresh connection data. In many cases you may prefer using `setData` method of Centrifuge Client instead.
+
+```javascript
+const centrifuge = new Centrifuge('ws://localhost:8000/connection/websocket', {
+    getData: async () => {
+        // Return fresh data on each reconnect
+        return { 'timestamp': Date.now() };
+    }
+});
+```
+
+#### name
+
+Set custom client name. By default, it's set to `js`. This is useful for analytics and semantically must identify an environment from which client establishes a connection.
+
+#### version
+
+Version of your application - useful for analytics.
+
+#### headers
+
+Provide header emulation - these headers are sent with first protocol message. The backend can process those in a customized manner. In case of Centrifugo these headers are then used like real HTTP headers sent from the client. **Requires Centrifugo v6**.
+
+```javascript
+const centrifuge = new Centrifuge('ws://localhost:8000/connection/websocket', {
+    headers: {
+        'X-Custom-Header': 'value',
+        'Authorization': 'Bearer token'
+    }
+});
+```
+
+#### debug
+
+`debug` is a boolean option which is `false` by default. When enabled lots of various debug
+messages will be logged into javascript console. Mostly useful for development or
+troubleshooting.
+
+#### minReconnectDelay
+
+When client disconnected from a server it will automatically try to reconnect using a backoff algorithm with jitter. `minReconnectDelay` option sets minimal interval value in milliseconds before first reconnect attempt. Default is `500` milliseconds.
+
+#### maxReconnectDelay
+
+`maxReconnectDelay` sets an upper reconnect delay value. Default is `20000` milliseconds - i.e. clients won't have delays between reconnect attempts which are larger than 20 seconds.
+
+#### maxServerPingDelay
+
+`maxServerPingDelay` sets the maximum delay of server pings after which connection is considered broken and client reconnects. In milliseconds. Default is `10000`.
+
+#### timeout
+
+Timeout for operations in milliseconds. Default is `5000`.
+
+#### websocket
+
+`websocket` option allows to explicitly provide custom WebSocket client to use. By default centrifuge-js will try to use global WebSocket object, so if you are in web browser – it will just use native WebSocket implementation. See notes about using `centrifuge-js` with NodeJS below.
+
+#### fetch
+
+Provide shim for fetch implementation. Useful when working in environments where fetch is not available globally.
+
+#### readableStream
+
+Provide shim for ReadableStream. Useful when working in environments where ReadableStream is not available globally.
+
+#### eventsource
+
+Provide shim for EventSource object. Useful when working in environments where EventSource is not available globally.
+
+#### emulationEndpoint
+
+Which emulation endpoint to use for bidirectional emulation transports. Default is `/emulation`.
+
+#### sockjs
+
+`sockjs` option allows to explicitly provide SockJS client object to Centrifuge client.
+
+#### sockjsOptions
+
+`sockjsOptions` allows modifying options passed to SockJS constructor. For example:
+
+```javascript
+const centrifuge = new Centrifuge(transports, {
+    sockjs: SockJS,
+    sockjsOptions: {
+        transports: ['websocket', 'xhr-streaming'],
+        timeout: 10000
+    }
+});
+```
+
+#### networkEventTarget
+
+EventTarget for network online/offline events. In browser environment Centrifuge uses global window online/offline events automatically by default. This option allows providing a custom EventTarget for handling network state changes in other environments.
+
 
 ### Connection Token
 
@@ -535,6 +677,25 @@ sub.removeAllListeners();
 
 Returns a Promise which will be resolved upon subscription success (i.e. when Subscription goes to `subscribed` state).
 
+#### setData method of subscription
+
+`setData` (since v5.5.0) allows setting subscription data (some extra payload to deliver to the backend with subscription request). This only applies on the next subscription attempt. Note that if `getData` callback is configured, it will override this value during resubscriptions.
+
+#### setTagsFilter method of subscription
+
+`setTagsFilter` (since v5.5.0) allows setting tags filter for the subscription. Cannot be used together with `delta` option.
+
+See Centrifugo [Channel publication filtering](https://centrifugal.dev/docs/server/publication_filtering) docs.
+
+```javascript
+const tagsFilter = {
+    key: "ticker",
+    cmp: "eq",
+    val: ticker
+};
+sub.setTagsFilter(tagsFilter);
+```
+
 ### Subscription token
 
 You may want to provide subscription token:
@@ -585,6 +746,81 @@ sub.subscribe();
 ```
 
 > If initial token is not provided, but `getToken` is specified – then SDK assumes that developer wants to use token authorization for a channel subscription. In this case SDK attempts to get a subscription token before initial subscribe.
+
+### Subscription Options
+
+When creating a new subscription using `centrifuge.newSubscription(channel, options)`, you can provide various options to customize subscription behavior:
+
+#### token
+
+Allows setting initial subscription token (JWT). See [Subscription token](#subscription-token) section for more details.
+
+#### getToken
+
+Allows setting function to get/refresh subscription token. This will only be called when new token needed, not on every resubscribe. See [Subscription token](#subscription-token) section for more details.
+
+#### data
+
+Data to send to a server with subscribe command.
+
+#### getData
+
+Allows setting function to get/renew subscription data during resubscriptions. In many cases you may prefer using `setData` method of Subscription instead.
+
+```javascript
+const sub = centrifuge.newSubscription("news", {
+    getData: async (ctx) => {
+        // ctx.channel contains channel name
+        return { 'timestamp': Date.now() };
+    }
+});
+```
+
+#### since
+
+Force recovery on first subscribe from a provided `StreamPosition`. This is useful when you want to recover messages from a specific point during initial Subscription initialization.
+
+```javascript
+const sub = centrifuge.newSubscription("news", {
+    since: { offset: 100, epoch: 'xyz' }
+});
+```
+
+#### minResubscribeDelay
+
+Min delay between resubscribe attempts in milliseconds. Default is `500`.
+
+#### maxResubscribeDelay
+
+Max delay between resubscribe attempts in milliseconds. Default is `20000`.
+
+#### delta
+
+Delta format to be used for differential updates. Currently only `'fossil'` is supported. Cannot be used together with `tagsFilter`.
+
+```javascript
+const sub = centrifuge.newSubscription("news", {
+    delta: 'fossil'
+});
+```
+
+#### tagsFilter
+
+Server-side tags filter to apply for publications in channel. Cannot be used together with `delta`.
+
+See Centrifugo [Channel publication filtering](https://centrifugal.dev/docs/server/publication_filtering) docs.
+
+```javascript
+const tagsFilter = {
+    key: "ticker",
+    cmp: "eq",
+    val: ticker
+};
+
+const sub = centrifuge.newSubscription("tickers", {
+    tagsFilter: tagsFilter
+});
+```
 
 ## Subscription management API
 
@@ -679,62 +915,6 @@ Additionally, Client has several top-level methods to call with server-side subs
 * `history(channel, options)`
 * `presence(channel)`
 * `presenceStats(channel)`
-
-## Configuration options
-
-You can check out all available options with description [in source code](https://github.com/centrifugal/centrifuge-js/blob/master/src/types.ts#L82).
-
-Let's look at available configuration parameters when initializing `Centrifuge` object instance.
-
-### debug
-
-`debug` is a boolean option which is `false` by default. When enabled lots of various debug
-messages will be logged into javascript console. Mostly useful for development or
-troubleshooting.
-
-### minReconnectDelay
-
-When client disconnected from a server it will automatically try to reconnect using a backoff algorithm with jitter. `minReconnectDelay` option sets minimal interval value in milliseconds before first reconnect attempt. Default is `500` milliseconds.
-
-### maxReconnectDelay
-
-`maxReconnectDelay` sets an upper reconnect delay value. Default is `20000` milliseconds - i.e. clients won't have delays between reconnect attempts which are larger than 20 seconds.
-
-### maxServerPingDelay
-
-`maxServerPingDelay` sets the maximum delay of server pings after which connection is considered broken and client reconnects. In milliseconds. Default is `10000`.
-
-### token
-
-Set initial connection token.
-
-### getToken
-
-Set function for getting connection token. This may be used for initial token loading and token refresh mechanism (when initial token is going to expire).
-
-### data
-
-Set custom data to send to a server withing every connect command.
-
-### name
-
-Set custom client name. By default, it's set to `js`. This is useful for analitycs and semantically must identify an environment from which client establishes a connection.
-
-### version
-
-Version of your application - useful for analitycs.
-
-### timeout
-
-Timeout for operations in milliseconds.
-
-### websocket
-
-`websocket` option allows to explicitly provide custom WebSocket client to use. By default centrifuge-js will try to use global WebSocket object, so if you are in web browser – it will just use native WebSocket implementation. See notes about using `centrifuge-js` with NodeJS below.
-
-### sockjs
-
-`sockjs` option allows to explicitly provide SockJS client object to Centrifuge client.
 
 ## Protobuf support
 

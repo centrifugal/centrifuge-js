@@ -207,13 +207,13 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
   /** ready returns a Promise which resolves upon client goes to Connected 
    * state and rejects in case of client goes to Disconnected or Failed state.
    * Users can provide optional timeout in milliseconds. */
-  ready(timeout?: number): Promise<void> {
+  async ready(timeout?: number): Promise<void> {
     switch (this.state) {
       case State.Disconnected:
-        return Promise.reject({ code: errorCodes.clientDisconnected, message: 'client disconnected' });
+        throw { code: errorCodes.clientDisconnected, message: 'client disconnected' };
 
       case State.Connected:
-        return Promise.resolve();
+        return;
 
       default:
         return new Promise((resolve, reject) => {
@@ -253,6 +253,13 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
   /** setToken allows setting connection token. Or resetting used token to be empty.  */
   setToken(token: string) {
     this._token = token;
+  }
+
+  /** setData allows setting connection data. This only affects the next connection attempt,
+   * not the current one. Note that if getData callback is configured, it will override
+   * this value during reconnects. */
+  setData(data: any) {
+    this._data = data;
   }
 
   /** setHeaders allows setting connection emulated headers. */
@@ -1428,7 +1435,19 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     return unsubscribePromise;
   }
 
-  private _getSub(channel: string) {
+  private _getSub(channel: string, id?: number) {
+    if (id && id > 0) {
+      for (const ch in this._subs) {
+        if (this._subs.hasOwnProperty(ch)) {
+          const sub = this._subs[ch];
+          // @ts-ignore – we are accessing private property for internal use
+          if (sub._id === id) {
+            return sub;
+          }
+        }
+      }
+      return null;
+    }
     const sub = this._subs[channel];
     if (!sub) {
       return null;
@@ -1436,7 +1455,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     return sub;
   }
 
-  private _isServerSub(channel: string) {
+  private _isServerSub(channel: string): boolean {
     return this._serverSubs[channel] !== undefined;
   }
 
@@ -1658,14 +1677,14 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
         next();
         return;
       }
-      const error = {code: reply.error.code, message: reply.error.message || '', temporary: reply.error.temporary || false}
+      const error = {code: reply.error.code, message: reply.error.message || '', temporary: reply.error.temporary || false};
       errback({ error, next });
     }
   }
 
-  private _handleJoin(channel: string, join: any) {
-    const sub = this._getSub(channel);
-    if (!sub) {
+  private _handleJoin(channel: string, join: any, id?: number) {
+    const sub = this._getSub(channel, id);
+    if (!sub && channel) {
       if (this._isServerSub(channel)) {
         const ctx = { channel: channel, info: this._getJoinLeaveContext(join.info) };
         this.emit('join', ctx);
@@ -1676,9 +1695,9 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     sub._handleJoin(join);
   }
 
-  private _handleLeave(channel: string, leave: any) {
-    const sub = this._getSub(channel);
-    if (!sub) {
+  private _handleLeave(channel: string, leave: any, id?: number) {
+    const sub = this._getSub(channel, id);
+    if (!sub && channel) {
       if (this._isServerSub(channel)) {
         const ctx = { channel: channel, info: this._getJoinLeaveContext(leave.info) };
         this.emit('leave', ctx);
@@ -1690,8 +1709,8 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
   }
 
   private _handleUnsubscribe(channel: string, unsubscribe: any) {
-    const sub = this._getSub(channel);
-    if (!sub) {
+    const sub = this._getSub(channel, 0);
+    if (!sub && channel) {
       if (this._isServerSub(channel)) {
         delete this._serverSubs[channel];
         this.emit('unsubscribed', { channel: channel });
@@ -1758,9 +1777,9 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     return info;
   }
 
-  private _handlePublication(channel: string, pub: any) {
-    const sub = this._getSub(channel);
-    if (!sub) {
+  private _handlePublication(channel: string, pub: any, id?: number) {
+    const sub = this._getSub(channel, id);
+    if (!sub && channel) {
       if (this._isServerSub(channel)) {
         const ctx = this._getPublicationContext(channel, pub);
         this.emit('publication', ctx);
@@ -1788,14 +1807,15 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
 
   private _handlePush(data: any, next: any) {
     const channel = data.channel;
+    const id = data.id;
     if (data.pub) {
-      this._handlePublication(channel, data.pub);
+      this._handlePublication(channel, data.pub, id);
     } else if (data.message) {
       this._handleMessage(data.message);
     } else if (data.join) {
-      this._handleJoin(channel, data.join);
+      this._handleJoin(channel, data.join, id);
     } else if (data.leave) {
-      this._handleLeave(channel, data.leave);
+      this._handleLeave(channel, data.leave, id);
     } else if (data.unsubscribe) {
       this._handleUnsubscribe(channel, data.unsubscribe);
     } else if (data.subscribe) {

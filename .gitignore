@@ -30,6 +30,8 @@ node_modules
 .idea
 .vscode
 
+*.orig
+
 .DS_Store
 
 build/

@@ -462,6 +462,9 @@ export namespace centrifugal {
             /** Properties of a Push. */
             interface IPush {
 
+                /** Push id */
+                id?: (number|Long|null);
+
                 /** Push channel */
                 channel?: (string|null);
 
@@ -501,6 +504,9 @@ export namespace centrifugal {
                  * @param [properties] Properties to set
                  */
                 constructor(properties?: centrifugal.centrifuge.protocol.IPush);
+
+                /** Push id. */
+                public id: (number|Long);
 
                 /** Push channel. */
                 public channel: string;
@@ -1454,6 +1460,9 @@ export namespace centrifugal {
 
                 /** ConnectRequest headers */
                 headers?: ({ [k: string]: string }|null);
+
+                /** ConnectRequest flag */
+                flag?: (number|Long|null);
             }
 
             /** Represents a ConnectRequest. */
@@ -1482,6 +1491,9 @@ export namespace centrifugal {
 
                 /** ConnectRequest headers. */
                 public headers: { [k: string]: string };
+
+                /** ConnectRequest flag. */
+                public flag: (number|Long);
 
                 /**
                  * Encodes the specified ConnectRequest message. Does not implicitly {@link centrifugal.centrifuge.protocol.ConnectRequest.verify|verify} messages.
@@ -1850,6 +1862,12 @@ export namespace centrifugal {
 
                 /** SubscribeRequest delta */
                 delta?: (string|null);
+
+                /** SubscribeRequest tf */
+                tf?: (centrifugal.centrifuge.protocol.IFilterNode|null);
+
+                /** SubscribeRequest flag */
+                flag?: (number|Long|null);
             }
 
             /** Represents a SubscribeRequest. */
@@ -1890,6 +1908,12 @@ export namespace centrifugal {
 
                 /** SubscribeRequest delta. */
                 public delta: string;
+
+                /** SubscribeRequest tf. */
+                public tf?: (centrifugal.centrifuge.protocol.IFilterNode|null);
+
+                /** SubscribeRequest flag. */
+                public flag: (number|Long);
 
                 /**
                  * Encodes the specified SubscribeRequest message. Does not implicitly {@link centrifugal.centrifuge.protocol.SubscribeRequest.verify|verify} messages.
@@ -1976,6 +2000,9 @@ export namespace centrifugal {
 
                 /** SubscribeResult delta */
                 delta?: (boolean|null);
+
+                /** SubscribeResult id */
+                id?: (number|Long|null);
             }
 
             /** Represents a SubscribeResult. */
@@ -2019,6 +2046,9 @@ export namespace centrifugal {
 
                 /** SubscribeResult delta. */
                 public delta: boolean;
+
+                /** SubscribeResult id. */
+                public id: (number|Long);
 
                 /**
                  * Encodes the specified SubscribeResult message. Does not implicitly {@link centrifugal.centrifuge.protocol.SubscribeResult.verify|verify} messages.
@@ -3348,6 +3378,105 @@ export namespace centrifugal {
 
                 /**
                  * Gets the default type url for SendRequest
+                 * @param [typeUrlPrefix] your custom typeUrlPrefix(default "type.googleapis.com")
+                 * @returns The default type url
+                 */
+                public static getTypeUrl(typeUrlPrefix?: string): string;
+            }
+
+            /** Properties of a FilterNode. */
+            interface IFilterNode {
+
+                /** FilterNode op */
+                op?: (string|null);
+
+                /** FilterNode key */
+                key?: (string|null);
+
+                /** FilterNode cmp */
+                cmp?: (string|null);
+
+                /** FilterNode val */
+                val?: (string|null);
+
+                /** FilterNode vals */
+                vals?: (string[]|null);
+
+                /** FilterNode nodes */
+                nodes?: (centrifugal.centrifuge.protocol.IFilterNode[]|null);
+            }
+
+            /** Represents a FilterNode. */
+            class FilterNode implements IFilterNode {
+
+                /**
+                 * Constructs a new FilterNode.
+                 * @param [properties] Properties to set
+                 */
+                constructor(properties?: centrifugal.centrifuge.protocol.IFilterNode);
+
+                /** FilterNode op. */
+                public op: string;
+
+                /** FilterNode key. */
+                public key: string;
+
+                /** FilterNode cmp. */
+                public cmp: string;
+
+                /** FilterNode val. */
+                public val: string;
+
+                /** FilterNode vals. */
+                public vals: string[];
+
+                /** FilterNode nodes. */
+                public nodes: centrifugal.centrifuge.protocol.IFilterNode[];
+
+                /**
+                 * Encodes the specified FilterNode message. Does not implicitly {@link centrifugal.centrifuge.protocol.FilterNode.verify|verify} messages.
+                 * @param message FilterNode message or plain object to encode
+                 * @param [writer] Writer to encode to
+                 * @returns Writer
+                 */
+                public static encode(message: centrifugal.centrifuge.protocol.IFilterNode, writer?: $protobuf.Writer): $protobuf.Writer;
+
+                /**
+                 * Encodes the specified FilterNode message, length delimited. Does not implicitly {@link centrifugal.centrifuge.protocol.FilterNode.verify|verify} messages.
+                 * @param message FilterNode message or plain object to encode
+                 * @param [writer] Writer to encode to
+                 * @returns Writer
+                 */
+                public static encodeDelimited(message: centrifugal.centrifuge.protocol.IFilterNode, writer?: $protobuf.Writer): $protobuf.Writer;
+
+                /**
+                 * Decodes a FilterNode message from the specified reader or buffer.
+                 * @param reader Reader or buffer to decode from
+                 * @param [length] Message length if known beforehand
+                 * @returns FilterNode
+                 * @throws {Error} If the payload is not a reader or valid buffer
+                 * @throws {$protobuf.util.ProtocolError} If required fields are missing
+                 */
+                public static decode(reader: ($protobuf.Reader|Uint8Array), length?: number): centrifugal.centrifuge.protocol.FilterNode;
+
+                /**
+                 * Decodes a FilterNode message from the specified reader or buffer, length delimited.
+                 * @param reader Reader or buffer to decode from
+                 * @returns FilterNode
+                 * @throws {Error} If the payload is not a reader or valid buffer
+                 * @throws {$protobuf.util.ProtocolError} If required fields are missing
+                 */
+                public static decodeDelimited(reader: ($protobuf.Reader|Uint8Array)): centrifugal.centrifuge.protocol.FilterNode;
+
+                /**
+                 * Verifies a FilterNode message.
+                 * @param message Plain object to verify
+                 * @returns `null` if valid, otherwise the reason why it is not
+                 */
+                public static verify(message: { [k: string]: any }): (string|null);
+
+                /**
+                 * Gets the default type url for FilterNode
                  * @param [typeUrlPrefix] your custom typeUrlPrefix(default "type.googleapis.com")
                  * @returns The default type url
                  */

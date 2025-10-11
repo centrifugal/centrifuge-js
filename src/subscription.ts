@@ -157,6 +157,12 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
     this._tagsFilter = tagsFilter;
   }
 
+  /** setData allows setting subscription data. This only applied on the next subscription attempt,
+   * Note that if getData callback is configured, it will override this value during resubscriptions. */
+  setData(data: any) {
+    this._data = data;
+  }
+
   private _methodCall(): Promise<void> {
     if (this._isSubscribed()) {
       return Promise.resolve();

@@ -255,6 +255,13 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     this._token = token;
   }
 
+  /** setData allows setting connection data. This only affects the next connection attempt,
+   * not the current one. Note that if getData callback is configured, it will override
+   * this value during reconnects. */
+  setData(data: any) {
+    this._data = data;
+  }
+
   /** setHeaders allows setting connection emulated headers. */
   setHeaders(headers: { [key: string]: string }) {
     this._config.headers = headers;

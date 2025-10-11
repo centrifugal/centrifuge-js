@@ -100,11 +100,13 @@ export interface Options {
   debug: boolean;
   /** allows setting initial connection token (JWT) */
   token: string;
-  /** allows setting function to get/refresh connection token */
+  /** allows setting function to get/refresh connection token,
+   * this will only be called when new token needed, not on every reconnect. */
   getToken: null | ((ctx: ConnectionTokenContext) => Promise<string>);
   /** data to send to a server with connect command */
   data: any | null;
-  /** allows setting function to get/renew connection data */
+  /** allows setting function to get/renew connection data (called upon reconnects).
+   * In many cases you may prefer using setData method of Centrifuge Client instead. */
   getData: null | (() => Promise<any>);
   /** name of client - it's not a unique name of each connection, it's sth to identify
    * from where client connected */
@@ -362,11 +364,13 @@ export interface HistoryOptions {
 export interface SubscriptionOptions {
   /** allows setting initial subscription token (JWT) */
   token: string;
-  /** allows setting function to get/refresh subscription token */
+  /** allows setting function to get/refresh subscription token,
+   * this will only be called when new token needed, not on every resubscribe. */
   getToken: null | ((ctx: SubscriptionTokenContext) => Promise<string>);
   /** data to send to a server with subscribe command */
   data: any | null;
-  /** allows setting function to get/renew subscription data */
+  /** allows setting function to get/renew subscription data (during resubscriptions).
+   * In many cases you may prefer using setData method of Subscription instead. */
   getData: null | ((ctx: SubscriptionDataContext) => Promise<any>);
   /** force recovery on first subscribe from a provided StreamPosition. */
   since: Partial<StreamPosition> | null;

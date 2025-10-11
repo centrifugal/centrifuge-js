@@ -150,7 +150,7 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
     return this._centrifuge.history(this.channel, opts);
   }
 
-  setTagsFilter(tagsFilter: string) {
+  setTagsFilter(tagsFilter: any) {
     if (tagsFilter && this._delta) {
       throw new Error('can not use delta and tagsFilter together');
     }

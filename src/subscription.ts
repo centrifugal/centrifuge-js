@@ -5,7 +5,7 @@ import {
   HistoryOptions, HistoryResult, PresenceResult, PresenceStatsResult,
   PublishResult, State, SubscriptionEvents, SubscriptionOptions,
   SubscriptionState, SubscriptionTokenContext, TypedEventEmitter,
-  SubscriptionDataContext
+  SubscriptionDataContext, FilterNode
 } from './types';
 import { ttlMilliseconds, backoff } from './utils';
 
@@ -30,7 +30,7 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
   private _promiseId: number;
   private _delta: string;
   private _delta_negotiated: boolean;
-  private _tagsFilter: any | null;
+  private _tagsFilter: FilterNode | null;
   private _token: string;
   private _data: any | null;
   private _getData: null | ((ctx: SubscriptionDataContext) => Promise<any>);
@@ -150,9 +150,49 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
     return this._centrifuge.history(this.channel, opts);
   }
 
-  setTagsFilter(tagsFilter: any) {
+  /**
+   * Sets server-side tags filter for the subscription.
+   * This only applies on the next subscription attempt, not the current one.
+   * Cannot be used together with delta option.
+   *
+   * @param tagsFilter - Filter configuration object or null to remove filter
+   * @throws {Error} If both delta and tagsFilter are configured
+   *
+   * @example
+   * ```typescript
+   * // Simple equality filter
+   * sub.setTagsFilter({
+   *   key: 'ticker',
+   *   cmp: 'eq',
+   *   val: 'BTC'
+   * });
+   * ```
+   *
+   * @example
+   * ```typescript
+   * // Complex filter with logical operators
+   * sub.setTagsFilter({
+   *   op: 'and',
+   *   nodes: [
+   *     { key: 'ticker', cmp: 'eq', val: 'BTC' },
+   *     { key: 'price', cmp: 'gt', val: '50000' }
+   *   ]
+   * });
+   * ```
+   *
+   * @example
+   * ```typescript
+   * // Filter with IN operator
+   * sub.setTagsFilter({
+   *   key: 'ticker',
+   *   cmp: 'in',
+   *   vals: ['BTC', 'ETH', 'SOL']
+   * });
+   * ```
+   */
+  setTagsFilter(tagsFilter: FilterNode | null): void {
     if (tagsFilter && this._delta) {
-      throw new Error('can not use delta and tagsFilter together');
+      throw new Error('cannot use delta and tagsFilter together');
     }
     this._tagsFilter = tagsFilter;
   }
@@ -671,7 +711,7 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
       this._tagsFilter = options.tagsFilter;
     }
     if (this._tagsFilter && this._delta) {
-      throw new Error('can not use delta and tagsFilter together');
+      throw new Error('cannot use delta and tagsFilter together');
     }
   }
 

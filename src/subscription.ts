@@ -1,11 +1,11 @@
 import EventEmitter from 'events';
 import { Centrifuge, UnauthorizedError } from './centrifuge';
-import { errorCodes, unsubscribedCodes, subscribingCodes, connectingCodes } from './codes';
+import { errorCodes, unsubscribedCodes, subscribingCodes, connectingCodes, subscriptionFlags } from './codes';
 import {
   HistoryOptions, HistoryResult, PresenceResult, PresenceStatsResult,
   PublishResult, State, SubscriptionEvents, SubscriptionOptions,
   SubscriptionState, SubscriptionTokenContext, TypedEventEmitter,
-  SubscriptionDataContext
+  SubscriptionDataContext, FilterNode
 } from './types';
 import { ttlMilliseconds, backoff } from './utils';
 
@@ -24,10 +24,13 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
   private _recover: boolean;
   private _offset: number | null;
   private _epoch: string | null;
+  // @ts-ignore – this is used by a client in centrifuge.ts.
+  private _id: number;
   private _resubscribeAttempts: number;
   private _promiseId: number;
   private _delta: string;
   private _delta_negotiated: boolean;
+  private _tagsFilter: FilterNode | null;
   private _token: string;
   private _data: any | null;
   private _getData: null | ((ctx: SubscriptionDataContext) => Promise<any>);
@@ -52,6 +55,7 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
     this._recover = false;
     this._offset = null;
     this._epoch = null;
+    this._id = 0;
     this._recoverable = false;
     this._positioned = false;
     this._joinLeave = false;
@@ -65,6 +69,7 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
     this._refreshTimeout = null;
     this._delta = '';
     this._delta_negotiated = false;
+    this._tagsFilter = null;
     this._prevValue = null;
     this._unsubPromise = Promise.resolve();
     this._setOptions(options);
@@ -145,6 +150,59 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
     return this._centrifuge.history(this.channel, opts);
   }
 
+  /**
+   * Sets server-side tags filter for the subscription.
+   * This only applies on the next subscription attempt, not the current one.
+   * Cannot be used together with delta option.
+   *
+   * @param tagsFilter - Filter configuration object or null to remove filter
+   * @throws {Error} If both delta and tagsFilter are configured
+   *
+   * @example
+   * ```typescript
+   * // Simple equality filter
+   * sub.setTagsFilter({
+   *   key: 'ticker',
+   *   cmp: 'eq',
+   *   val: 'BTC'
+   * });
+   * ```
+   *
+   * @example
+   * ```typescript
+   * // Complex filter with logical operators
+   * sub.setTagsFilter({
+   *   op: 'and',
+   *   nodes: [
+   *     { key: 'ticker', cmp: 'eq', val: 'BTC' },
+   *     { key: 'price', cmp: 'gt', val: '50000' }
+   *   ]
+   * });
+   * ```
+   *
+   * @example
+   * ```typescript
+   * // Filter with IN operator
+   * sub.setTagsFilter({
+   *   key: 'ticker',
+   *   cmp: 'in',
+   *   vals: ['BTC', 'ETH', 'SOL']
+   * });
+   * ```
+   */
+  setTagsFilter(tagsFilter: FilterNode | null): void {
+    if (tagsFilter && this._delta) {
+      throw new Error('cannot use delta and tagsFilter together');
+    }
+    this._tagsFilter = tagsFilter;
+  }
+
+  /** setData allows setting subscription data. This only applied on the next subscription attempt,
+   * Note that if getData callback is configured, it will override this value during resubscriptions. */
+  setData(data: any) {
+    this._data = data;
+  }
+
   private _methodCall(): Promise<void> {
     if (this._isSubscribed()) {
       return Promise.resolve();
@@ -221,6 +279,10 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
       return;
     }
     this._clearSubscribingState();
+
+    if (result.id) {
+      this._id = result.id;
+    }
 
     if (result.recoverable) {
       this._recover = true;
@@ -441,6 +503,7 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
     if (this._positioned) req.positioned = true;
     if (this._recoverable) req.recoverable = true;
     if (this._joinLeave) req.join_leave = true;
+    req.flag = subscriptionFlags.channelCompaction;
 
     if (this._needRecover()) {
       req.recover = true;
@@ -451,6 +514,7 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
     }
 
     if (this._delta) req.delta = this._delta;
+    if (this._tagsFilter) req.tf = this._tagsFilter;
 
     return { subscribe: req };
   }
@@ -642,6 +706,12 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
         throw new Error('unsupported delta format');
       }
       this._delta = options.delta;
+    }
+    if (options.tagsFilter) {
+      this._tagsFilter = options.tagsFilter;
+    }
+    if (this._tagsFilter && this._delta) {
+      throw new Error('cannot use delta and tagsFilter together');
     }
   }
 

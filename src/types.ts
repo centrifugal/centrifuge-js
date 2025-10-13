@@ -482,9 +482,9 @@ export interface SubscriptionOptions {
   recoverable: boolean;
   /** ask server to send join/leave messages. */
   joinLeave: boolean;
-  /** delta format to be used */
+  /** delta format to be used. Delta usage must be allowed on server-side. */
   delta: 'fossil';
-  /** server-side tagsFilter to apply for publications in channel */
+  /** server-side tagsFilter to apply for publications in channel. Tags filter support must be allowed on server-side. */
   tagsFilter: FilterNode | null;
 }
 

@@ -108,8 +108,8 @@ export interface Options {
   /** allows setting function to get/renew connection data (called upon reconnects).
    * In many cases you may prefer using setData method of Centrifuge Client instead. */
   getData: null | (() => Promise<any>);
-  /** name of client - it's not a unique name of each connection, it's sth to identify
-   * from where client connected */
+  /** name of client - it's not a unique name for each connection, it's something to identify
+   * where the client connected from */
   name: string;
   /** version of client */
   version: string;
@@ -134,9 +134,9 @@ export interface Options {
   sockjs: any | null;
   /** allows modifying options passed to SockJS constructor */
   sockjsOptions: SockjsOptions;
-  /** which emulation endpoint to use */
+  /** emulation endpoint to use */
   emulationEndpoint: string;
-  /** EventTarget for network online/offline events, in browser environment 
+  /** EventTarget for network online/offline events. In a browser environment,
    * Centrifuge uses global window online/offline events automatically
    * by default. */
   networkEventTarget: EventTarget | null;
@@ -188,21 +188,21 @@ export interface PublicationContext {
   channel: string;
   // data contains publication payload.
   data: any;
-  // info is an optional ClientInfo object. It's appended to publication only if publication was
-  // sent using client SDK's publish method. If publication was sent over server publish API
-  // this info object is missing as we don't have publisher client context in that case.
+  // info is an optional ClientInfo object. It's appended to a publication only if the publication was
+  // sent using the client SDK's publish method. If the publication was sent over the server publish API,
+  // this info object is missing as we don't have the publisher client context in that case.
   info?: ClientInfo;
-  // offset may be set for channels where history Centrifugo feature is on. In this case it's an
-  // incremental number assigned to publication by server broker (upon adding to history stream).   
+  // offset may be set for channels where the history Centrifugo feature is enabled. In this case, it's an
+  // incremental number assigned to the publication by the server broker (upon adding to the history stream).   
   offset?: number;
-  // tags is an extra key-value attached to publication, tags may be set when calling server publish API. 
+  // tags is an extra key-value map attached to a publication. Tags may be set when calling the server publish API. 
   tags?: Record<string, string>;
 }
 
 export interface ClientInfo {
-  // client is a globally unique identifier which server allocates for every connection.
+  // client is a globally unique identifier that the server allocates for every connection.
   client: string;
-  // user contains ID of authenticated user. Empty user means anonymous user. One user can have
+  // user contains the ID of the authenticated user. An empty user means an anonymous user. One user can have
   // many client connections.
   user: string;
   // connInfo is optional information attached to connection (during connection authentication).
@@ -234,15 +234,15 @@ export interface ServerSubscribedContext {
   recoverable: boolean;
   /** subscription is positioned – i.e. server tracks message loss on the way from PUB/SUB broker */
   positioned: boolean;
-  /** streamPosition set when Subscription is recoverable or positioned. */
+  /** streamPosition is set when Subscription is recoverable or positioned. */
   streamPosition?: StreamPosition;
-  /** wasRecovering is true when recovery was used in subscribe request. */
+  /** wasRecovering is true when recovery was used in the subscribe request. */
   wasRecovering: boolean;
-  /** whether or not missed publications may be successfully recovered.  */
+  /** whether or not missed publications were successfully recovered.  */
   recovered: boolean;
-  /** whether or not successfully recovered subscription has received missed publications.
+  /** whether or not a successfully recovered subscription has received missed publications.
   Warning: must be used for metrics/logs purposes only.
-  Recovered publications are processed after 'subscribed' event. **/
+  Recovered publications are processed after the 'subscribed' event. **/
   hasRecoveredPublications: boolean;
   /** custom data for Subscription returned from server. */
   data?: any;
@@ -257,13 +257,13 @@ export interface SubscribedContext {
   positioned: boolean;
   /** streamPosition is set when Subscription is recoverable or positioned. */
   streamPosition?: StreamPosition;
-  /** wasRecovering is true when recovery was used in subscribe request. */
+  /** wasRecovering is true when recovery was used in the subscribe request. */
   wasRecovering: boolean;
-  /** whether or not missed publications may be successfully recovered.  */
+  /** whether or not missed publications were successfully recovered.  */
   recovered: boolean;
-  /** whether or not successfully recovered subscription has received missed publications.
+  /** whether or not a successfully recovered subscription has received missed publications.
   Warning: must be used for metrics/logs purposes only.
-  Recovered publications are processed after 'subscribed' event. **/
+  Recovered publications are processed after the 'subscribed' event. **/
   hasRecoveredPublications: boolean;
   /** custom data for Subscription returned from server. */
   data?: any;
@@ -286,14 +286,14 @@ export interface ServerPublicationContext {
   channel: string;
   // data contains publication payload.
   data: any;
-  // info is an optional ClientInfo object. It's appended to publication only if publication was
-  // sent using client SDK's publish method. If publication was sent over server publish API
-  // this info object is missing as we don't have publisher client context in that case.
+  // info is an optional ClientInfo object. It's appended to a publication only if the publication was
+  // sent using the client SDK's publish method. If the publication was sent over the server publish API,
+  // this info object is missing as we don't have the publisher client context in that case.
   info?: ClientInfo;
-  // offset may be set for channels where history Centrifugo feature is on. In this case it's an
-  // incremental number assigned to publication by server broker (upon adding to history stream).   
+  // offset may be set for channels where the history Centrifugo feature is enabled. In this case, it's an
+  // incremental number assigned to the publication by the server broker (upon adding to the history stream).   
   offset?: number;
-  // tags is an extra key-value attached to publication, tags may be set when calling server publish API. 
+  // tags is an extra key-value map attached to a publication. Tags may be set when calling the server publish API. 
   tags?: Record<string, string>;
 }
 
@@ -482,13 +482,13 @@ export interface SubscriptionOptions {
   recoverable: boolean;
   /** ask server to send join/leave messages. */
   joinLeave: boolean;
-  /** delta format to be used. Delta usage must be allowed on server-side. */
+  /** delta format to be used. Delta usage must be allowed on the server side. */
   delta: 'fossil';
-  /** server-side tagsFilter to apply for publications in channel. Tags filter support must be allowed on server-side. */
+  /** server-side tagsFilter to apply for publications in channel. Tags filter support must be allowed on the server side. */
   tagsFilter: FilterNode | null;
 }
 
-/** Stream postion describes position of publication inside a stream.  */
+/** Stream position describes the position of a publication inside a stream.  */
 export interface StreamPosition {
   offset: number;
   epoch: string;

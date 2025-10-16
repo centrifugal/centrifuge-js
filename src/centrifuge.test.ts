@@ -24,7 +24,7 @@ test('invalid endpoint', () => {
   expect(() => { new Centrifuge('') }).toThrowError();
 });
 
-test('no websocket constructor', async () => {
+(typeof globalThis.WebSocket !== 'undefined' ? test.skip : test)('no websocket constructor', async () => {
   const c = new Centrifuge('ws://localhost:8000/connection/websocket');
   expect(() => { c.connect() }).toThrowError();
 });

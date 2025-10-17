@@ -461,7 +461,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
 
     if (typeof this._endpoint === 'string') {
       // Single address.
-    } else if (typeof this._endpoint === 'object' && this._endpoint instanceof Array) {
+    } else if (Array.isArray(this._endpoint)) {
       this._transports = this._endpoint;
       this._emulation = true;
       for (const i in this._transports) {

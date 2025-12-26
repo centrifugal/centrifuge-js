@@ -46,13 +46,13 @@ And then in your project:
 import { Centrifuge } from 'centrifuge';
 ```
 
-In browser, you can import SDK from CDN (replace `5.0.0` with a concrete version number you want to use, see [releases](https://github.com/centrifugal/centrifuge-js/releases)):
+In browser, you can import SDK from [unpkg](https://app.unpkg.com/centrifuge@latest) CDN (replace `5.0.0` with a concrete version number you want to use, see [releases](https://github.com/centrifugal/centrifuge-js/releases)):
 
 ```html
 <script src="https://unpkg.com/centrifuge@5.0.0/dist/centrifuge.js"></script>
 ```
 
-See also [centrifuge-js on cdnjs](https://cdnjs.com/libraries/centrifuge). Note that `centrifuge-js` browser builds target [ES6](https://caniuse.com/es6).
+See also [centrifuge-js on jsdelivr](https://www.jsdelivr.com/package/npm/centrifuge). Note that `centrifuge-js` browser builds target [ES6](https://caniuse.com/es6).
 
 **By default, library works with JSON only**, if you want to send binary payloads go to [Protobuf support](#protobuf-support) section to see how to import client with Protobuf support.
 

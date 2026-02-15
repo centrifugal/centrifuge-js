@@ -20,6 +20,7 @@ import {
 import {
   State, Options, SubscriptionState, ClientEvents,
   TypedEventEmitter, RpcResult, SubscriptionOptions,
+  MapSubscriptionOptions,
   HistoryOptions, HistoryResult, PublishResult,
   PresenceResult, PresenceStatsResult, SubscribedContext,
   TransportEndpoint,
@@ -169,8 +170,8 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     }
   }
 
-  /** newSubscription allocates new Subscription to a channel. Since server only allows 
-   * one subscription per channel per client this method throws if client already has 
+  /** newSubscription allocates new Subscription to a channel. Since server only allows
+   * one subscription per channel per client this method throws if client already has
    * channel subscription in internal registry.
    * */
   newSubscription(channel: string, options?: Partial<SubscriptionOptions>): Subscription {
@@ -178,6 +179,88 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
       throw new Error('Subscription to the channel ' + channel + ' already exists');
     }
     const sub = new Subscription(this, channel, options);
+    this._subs[channel] = sub;
+    return sub;
+  }
+
+  /** newMapSubscription allocates new map Subscription to a channel. Since server only allows
+   * one subscription per channel per client this method throws if client already has
+   * channel subscription in internal registry. */
+  newMapSubscription(channel: string, options?: Partial<MapSubscriptionOptions>): Subscription {
+    if (this.getSubscription(channel) !== null) {
+      throw new Error('Subscription to the channel ' + channel + ' already exists');
+    }
+    const sub = new Subscription(this, channel, {
+      token: options?.token,
+      getToken: options?.getToken,
+      data: options?.data,
+      getData: options?.getData,
+      minResubscribeDelay: options?.minResubscribeDelay,
+      maxResubscribeDelay: options?.maxResubscribeDelay,
+      delta: options?.delta,
+      map: true,
+      mapLimit: options?.limit,
+
+      mapUnrecoverableStrategy: options?.unrecoverableStrategy,
+      mapImmediateJoin: options?.immediateJoin,
+      mapStateTooLargeFallback: options?.stateTooLargeFallback,
+    });
+    this._subs[channel] = sub;
+    return sub;
+  }
+
+  /** Create a map subscription for observing individual connections (clients presence).
+   * Each entry has key=clientId and contains full ClientInfo.
+   * Use this to track connections per channel.
+   * The channel should be the full presence channel name (e.g., "$clients:games"). */
+  newMapClientsSubscription(channel: string, options?: Partial<MapSubscriptionOptions>): Subscription {
+    if (this.getSubscription(channel) !== null) {
+      throw new Error('Subscription to the channel ' + channel + ' already exists');
+    }
+    const sub = new Subscription(this, channel, {
+      token: options?.token,
+      getToken: options?.getToken,
+      data: options?.data,
+      getData: options?.getData,
+      minResubscribeDelay: options?.minResubscribeDelay,
+      maxResubscribeDelay: options?.maxResubscribeDelay,
+      delta: options?.delta,
+      map: true,
+      mapPresenceType: 2, // MAP_CLIENTS_PRESENCE
+      mapLimit: options?.limit,
+
+      mapUnrecoverableStrategy: options?.unrecoverableStrategy,
+      mapImmediateJoin: options?.immediateJoin,
+      mapStateTooLargeFallback: options?.stateTooLargeFallback,
+    });
+    this._subs[channel] = sub;
+    return sub;
+  }
+
+  /** Create a map subscription for observing unique users (users presence).
+   * Each entry has key=userId (no ClientInfo stored).
+   * User entries expire via TTL, providing debounce for quick reconnects.
+   * The channel should be the full presence channel name (e.g., "$users:games"). */
+  newMapUsersSubscription(channel: string, options?: Partial<MapSubscriptionOptions>): Subscription {
+    if (this.getSubscription(channel) !== null) {
+      throw new Error('Subscription to the channel ' + channel + ' already exists');
+    }
+    const sub = new Subscription(this, channel, {
+      token: options?.token,
+      getToken: options?.getToken,
+      data: options?.data,
+      getData: options?.getData,
+      minResubscribeDelay: options?.minResubscribeDelay,
+      maxResubscribeDelay: options?.maxResubscribeDelay,
+      delta: options?.delta,
+      map: true,
+      mapPresenceType: 3, // MAP_USERS_PRESENCE
+      mapLimit: options?.limit,
+
+      mapUnrecoverableStrategy: options?.unrecoverableStrategy,
+      mapImmediateJoin: options?.immediateJoin,
+      mapStateTooLargeFallback: options?.stateTooLargeFallback,
+    });
     this._subs[channel] = sub;
     return sub;
   }
@@ -313,6 +396,26 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
       }
     };
 
+    await this._methodCall();
+    await this._callPromise(cmd, () => ({}));
+    return {};
+  }
+
+  /** Publish data to a key in a map channel. */
+  async mapPublish(channel: string, key: string, data: any): Promise<PublishResult> {
+    const cmd = {
+      publish: { channel, type: 1, key, data }
+    };
+    await this._methodCall();
+    await this._callPromise(cmd, () => ({}));
+    return {};
+  }
+
+  /** Remove a key from a map channel. */
+  async mapRemove(channel: string, key: string): Promise<PublishResult> {
+    const cmd = {
+      publish: { channel, type: 1, key, removed: true }
+    };
     await this._methodCall();
     await this._callPromise(cmd, () => ({}));
     return {};

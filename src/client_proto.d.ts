@@ -698,6 +698,18 @@ export namespace centrifugal {
 
                 /** Publication channel */
                 channel?: (string|null);
+
+                /** Publication key */
+                key?: (string|null);
+
+                /** Publication removed */
+                removed?: (boolean|null);
+
+                /** Publication score */
+                score?: (number|Long|null);
+
+                /** Publication epoch */
+                epoch?: (string|null);
             }
 
             /** Represents a Publication. */
@@ -729,6 +741,18 @@ export namespace centrifugal {
 
                 /** Publication channel. */
                 public channel: string;
+
+                /** Publication key. */
+                public key: string;
+
+                /** Publication removed. */
+                public removed: boolean;
+
+                /** Publication score. */
+                public score: (number|Long);
+
+                /** Publication epoch. */
+                public epoch: string;
 
                 /**
                  * Encodes the specified Publication message. Does not implicitly {@link centrifugal.centrifuge.protocol.Publication.verify|verify} messages.
@@ -1868,6 +1892,21 @@ export namespace centrifugal {
 
                 /** SubscribeRequest flag */
                 flag?: (number|Long|null);
+
+                /** SubscribeRequest type */
+                type?: (number|null);
+
+                /** SubscribeRequest phase */
+                phase?: (number|null);
+
+                /** SubscribeRequest cursor */
+                cursor?: (string|null);
+
+                /** SubscribeRequest limit */
+                limit?: (number|null);
+
+                /** SubscribeRequest ordered */
+                ordered?: (boolean|null);
             }
 
             /** Represents a SubscribeRequest. */
@@ -1914,6 +1953,21 @@ export namespace centrifugal {
 
                 /** SubscribeRequest flag. */
                 public flag: (number|Long);
+
+                /** SubscribeRequest type. */
+                public type: number;
+
+                /** SubscribeRequest phase. */
+                public phase: number;
+
+                /** SubscribeRequest cursor. */
+                public cursor: string;
+
+                /** SubscribeRequest limit. */
+                public limit: number;
+
+                /** SubscribeRequest ordered. */
+                public ordered: boolean;
 
                 /**
                  * Encodes the specified SubscribeRequest message. Does not implicitly {@link centrifugal.centrifuge.protocol.SubscribeRequest.verify|verify} messages.
@@ -2003,6 +2057,18 @@ export namespace centrifugal {
 
                 /** SubscribeResult id */
                 id?: (number|Long|null);
+
+                /** SubscribeResult type */
+                type?: (number|null);
+
+                /** SubscribeResult phase */
+                phase?: (number|null);
+
+                /** SubscribeResult cursor */
+                cursor?: (string|null);
+
+                /** SubscribeResult state */
+                state?: (centrifugal.centrifuge.protocol.IPublication[]|null);
             }
 
             /** Represents a SubscribeResult. */
@@ -2049,6 +2115,18 @@ export namespace centrifugal {
 
                 /** SubscribeResult id. */
                 public id: (number|Long);
+
+                /** SubscribeResult type. */
+                public type: number;
+
+                /** SubscribeResult phase. */
+                public phase: number;
+
+                /** SubscribeResult cursor. */
+                public cursor: string;
+
+                /** SubscribeResult state. */
+                public state: centrifugal.centrifuge.protocol.IPublication[];
 
                 /**
                  * Encodes the specified SubscribeResult message. Does not implicitly {@link centrifugal.centrifuge.protocol.SubscribeResult.verify|verify} messages.
@@ -2390,6 +2468,15 @@ export namespace centrifugal {
 
                 /** PublishRequest data */
                 data?: (Uint8Array|null);
+
+                /** PublishRequest type */
+                type?: (number|null);
+
+                /** PublishRequest key */
+                key?: (string|null);
+
+                /** PublishRequest removed */
+                removed?: (boolean|null);
             }
 
             /** Represents a PublishRequest. */
@@ -2406,6 +2493,15 @@ export namespace centrifugal {
 
                 /** PublishRequest data. */
                 public data: Uint8Array;
+
+                /** PublishRequest type. */
+                public type: number;
+
+                /** PublishRequest key. */
+                public key: string;
+
+                /** PublishRequest removed. */
+                public removed: boolean;
 
                 /**
                  * Encodes the specified PublishRequest message. Does not implicitly {@link centrifugal.centrifuge.protocol.PublishRequest.verify|verify} messages.

@@ -6,5 +6,8 @@ export * from "./codes";
 export {
     Centrifuge,
     UnauthorizedError,
-    Subscription
+    Subscription,
 }
+
+// Re-export MapPhase enum explicitly for convenience
+export { MapPhase } from './types';

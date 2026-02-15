@@ -1729,6 +1729,10 @@ export const centrifugal = $root.centrifugal = (() => {
                  * @property {boolean|null} [delta] Publication delta
                  * @property {number|Long|null} [time] Publication time
                  * @property {string|null} [channel] Publication channel
+                 * @property {string|null} [key] Publication key
+                 * @property {boolean|null} [removed] Publication removed
+                 * @property {number|Long|null} [score] Publication score
+                 * @property {string|null} [epoch] Publication epoch
                  */
 
                 /**
@@ -1804,6 +1808,38 @@ export const centrifugal = $root.centrifugal = (() => {
                 Publication.prototype.channel = "";
 
                 /**
+                 * Publication key.
+                 * @member {string} key
+                 * @memberof centrifugal.centrifuge.protocol.Publication
+                 * @instance
+                 */
+                Publication.prototype.key = "";
+
+                /**
+                 * Publication removed.
+                 * @member {boolean} removed
+                 * @memberof centrifugal.centrifuge.protocol.Publication
+                 * @instance
+                 */
+                Publication.prototype.removed = false;
+
+                /**
+                 * Publication score.
+                 * @member {number|Long} score
+                 * @memberof centrifugal.centrifuge.protocol.Publication
+                 * @instance
+                 */
+                Publication.prototype.score = $util.Long ? $util.Long.fromBits(0,0,false) : 0;
+
+                /**
+                 * Publication epoch.
+                 * @member {string} epoch
+                 * @memberof centrifugal.centrifuge.protocol.Publication
+                 * @instance
+                 */
+                Publication.prototype.epoch = "";
+
+                /**
                  * Encodes the specified Publication message. Does not implicitly {@link centrifugal.centrifuge.protocol.Publication.verify|verify} messages.
                  * @function encode
                  * @memberof centrifugal.centrifuge.protocol.Publication
@@ -1830,6 +1866,14 @@ export const centrifugal = $root.centrifugal = (() => {
                         writer.uint32(/* id 9, wireType 0 =*/72).int64(message.time);
                     if (message.channel != null && Object.hasOwnProperty.call(message, "channel"))
                         writer.uint32(/* id 10, wireType 2 =*/82).string(message.channel);
+                    if (message.key != null && Object.hasOwnProperty.call(message, "key"))
+                        writer.uint32(/* id 11, wireType 2 =*/90).string(message.key);
+                    if (message.removed != null && Object.hasOwnProperty.call(message, "removed"))
+                        writer.uint32(/* id 12, wireType 0 =*/96).bool(message.removed);
+                    if (message.score != null && Object.hasOwnProperty.call(message, "score"))
+                        writer.uint32(/* id 13, wireType 0 =*/104).sint64(message.score);
+                    if (message.epoch != null && Object.hasOwnProperty.call(message, "epoch"))
+                        writer.uint32(/* id 14, wireType 2 =*/114).string(message.epoch);
                     return writer;
                 };
 
@@ -1911,6 +1955,22 @@ export const centrifugal = $root.centrifugal = (() => {
                                 message.channel = reader.string();
                                 break;
                             }
+                        case 11: {
+                                message.key = reader.string();
+                                break;
+                            }
+                        case 12: {
+                                message.removed = reader.bool();
+                                break;
+                            }
+                        case 13: {
+                                message.score = reader.sint64();
+                                break;
+                            }
+                        case 14: {
+                                message.epoch = reader.string();
+                                break;
+                            }
                         default:
                             reader.skipType(tag & 7);
                             break;
@@ -1974,6 +2034,18 @@ export const centrifugal = $root.centrifugal = (() => {
                     if (message.channel != null && message.hasOwnProperty("channel"))
                         if (!$util.isString(message.channel))
                             return "channel: string expected";
+                    if (message.key != null && message.hasOwnProperty("key"))
+                        if (!$util.isString(message.key))
+                            return "key: string expected";
+                    if (message.removed != null && message.hasOwnProperty("removed"))
+                        if (typeof message.removed !== "boolean")
+                            return "removed: boolean expected";
+                    if (message.score != null && message.hasOwnProperty("score"))
+                        if (!$util.isInteger(message.score) && !(message.score && $util.isInteger(message.score.low) && $util.isInteger(message.score.high)))
+                            return "score: integer|Long expected";
+                    if (message.epoch != null && message.hasOwnProperty("epoch"))
+                        if (!$util.isString(message.epoch))
+                            return "epoch: string expected";
                     return null;
                 };
 
@@ -4515,6 +4587,11 @@ export const centrifugal = $root.centrifugal = (() => {
                  * @property {string|null} [delta] SubscribeRequest delta
                  * @property {centrifugal.centrifuge.protocol.IFilterNode|null} [tf] SubscribeRequest tf
                  * @property {number|Long|null} [flag] SubscribeRequest flag
+                 * @property {number|null} [type] SubscribeRequest type
+                 * @property {number|null} [phase] SubscribeRequest phase
+                 * @property {string|null} [cursor] SubscribeRequest cursor
+                 * @property {number|null} [limit] SubscribeRequest limit
+                 * @property {boolean|null} [ordered] SubscribeRequest ordered
                  */
 
                 /**
@@ -4629,6 +4706,46 @@ export const centrifugal = $root.centrifugal = (() => {
                 SubscribeRequest.prototype.flag = $util.Long ? $util.Long.fromBits(0,0,false) : 0;
 
                 /**
+                 * SubscribeRequest type.
+                 * @member {number} type
+                 * @memberof centrifugal.centrifuge.protocol.SubscribeRequest
+                 * @instance
+                 */
+                SubscribeRequest.prototype.type = 0;
+
+                /**
+                 * SubscribeRequest phase.
+                 * @member {number} phase
+                 * @memberof centrifugal.centrifuge.protocol.SubscribeRequest
+                 * @instance
+                 */
+                SubscribeRequest.prototype.phase = 0;
+
+                /**
+                 * SubscribeRequest cursor.
+                 * @member {string} cursor
+                 * @memberof centrifugal.centrifuge.protocol.SubscribeRequest
+                 * @instance
+                 */
+                SubscribeRequest.prototype.cursor = "";
+
+                /**
+                 * SubscribeRequest limit.
+                 * @member {number} limit
+                 * @memberof centrifugal.centrifuge.protocol.SubscribeRequest
+                 * @instance
+                 */
+                SubscribeRequest.prototype.limit = 0;
+
+                /**
+                 * SubscribeRequest ordered.
+                 * @member {boolean} ordered
+                 * @memberof centrifugal.centrifuge.protocol.SubscribeRequest
+                 * @instance
+                 */
+                SubscribeRequest.prototype.ordered = false;
+
+                /**
                  * Encodes the specified SubscribeRequest message. Does not implicitly {@link centrifugal.centrifuge.protocol.SubscribeRequest.verify|verify} messages.
                  * @function encode
                  * @memberof centrifugal.centrifuge.protocol.SubscribeRequest
@@ -4664,6 +4781,16 @@ export const centrifugal = $root.centrifugal = (() => {
                         $root.centrifugal.centrifuge.protocol.FilterNode.encode(message.tf, writer.uint32(/* id 13, wireType 2 =*/106).fork()).ldelim();
                     if (message.flag != null && Object.hasOwnProperty.call(message, "flag"))
                         writer.uint32(/* id 14, wireType 0 =*/112).int64(message.flag);
+                    if (message.type != null && Object.hasOwnProperty.call(message, "type"))
+                        writer.uint32(/* id 15, wireType 0 =*/120).int32(message.type);
+                    if (message.phase != null && Object.hasOwnProperty.call(message, "phase"))
+                        writer.uint32(/* id 16, wireType 0 =*/128).int32(message.phase);
+                    if (message.cursor != null && Object.hasOwnProperty.call(message, "cursor"))
+                        writer.uint32(/* id 17, wireType 2 =*/138).string(message.cursor);
+                    if (message.limit != null && Object.hasOwnProperty.call(message, "limit"))
+                        writer.uint32(/* id 18, wireType 0 =*/144).int32(message.limit);
+                    if (message.ordered != null && Object.hasOwnProperty.call(message, "ordered"))
+                        writer.uint32(/* id 29, wireType 0 =*/232).bool(message.ordered);
                     return writer;
                 };
 
@@ -4746,6 +4873,26 @@ export const centrifugal = $root.centrifugal = (() => {
                                 message.flag = reader.int64();
                                 break;
                             }
+                        case 15: {
+                                message.type = reader.int32();
+                                break;
+                            }
+                        case 16: {
+                                message.phase = reader.int32();
+                                break;
+                            }
+                        case 17: {
+                                message.cursor = reader.string();
+                                break;
+                            }
+                        case 18: {
+                                message.limit = reader.int32();
+                                break;
+                            }
+                        case 29: {
+                                message.ordered = reader.bool();
+                                break;
+                            }
                         default:
                             reader.skipType(tag & 7);
                             break;
@@ -4819,6 +4966,21 @@ export const centrifugal = $root.centrifugal = (() => {
                     if (message.flag != null && message.hasOwnProperty("flag"))
                         if (!$util.isInteger(message.flag) && !(message.flag && $util.isInteger(message.flag.low) && $util.isInteger(message.flag.high)))
                             return "flag: integer|Long expected";
+                    if (message.type != null && message.hasOwnProperty("type"))
+                        if (!$util.isInteger(message.type))
+                            return "type: integer expected";
+                    if (message.phase != null && message.hasOwnProperty("phase"))
+                        if (!$util.isInteger(message.phase))
+                            return "phase: integer expected";
+                    if (message.cursor != null && message.hasOwnProperty("cursor"))
+                        if (!$util.isString(message.cursor))
+                            return "cursor: string expected";
+                    if (message.limit != null && message.hasOwnProperty("limit"))
+                        if (!$util.isInteger(message.limit))
+                            return "limit: integer expected";
+                    if (message.ordered != null && message.hasOwnProperty("ordered"))
+                        if (typeof message.ordered !== "boolean")
+                            return "ordered: boolean expected";
                     return null;
                 };
 
@@ -4858,6 +5020,10 @@ export const centrifugal = $root.centrifugal = (() => {
                  * @property {boolean|null} [was_recovering] SubscribeResult was_recovering
                  * @property {boolean|null} [delta] SubscribeResult delta
                  * @property {number|Long|null} [id] SubscribeResult id
+                 * @property {number|null} [type] SubscribeResult type
+                 * @property {number|null} [phase] SubscribeResult phase
+                 * @property {string|null} [cursor] SubscribeResult cursor
+                 * @property {Array.<centrifugal.centrifuge.protocol.IPublication>|null} [state] SubscribeResult state
                  */
 
                 /**
@@ -4870,6 +5036,7 @@ export const centrifugal = $root.centrifugal = (() => {
                  */
                 function SubscribeResult(properties) {
                     this.publications = [];
+                    this.state = [];
                     if (properties)
                         for (let keys = Object.keys(properties), i = 0; i < keys.length; ++i)
                             if (properties[keys[i]] != null)
@@ -4973,6 +5140,38 @@ export const centrifugal = $root.centrifugal = (() => {
                 SubscribeResult.prototype.id = $util.Long ? $util.Long.fromBits(0,0,false) : 0;
 
                 /**
+                 * SubscribeResult type.
+                 * @member {number} type
+                 * @memberof centrifugal.centrifuge.protocol.SubscribeResult
+                 * @instance
+                 */
+                SubscribeResult.prototype.type = 0;
+
+                /**
+                 * SubscribeResult phase.
+                 * @member {number} phase
+                 * @memberof centrifugal.centrifuge.protocol.SubscribeResult
+                 * @instance
+                 */
+                SubscribeResult.prototype.phase = 0;
+
+                /**
+                 * SubscribeResult cursor.
+                 * @member {string} cursor
+                 * @memberof centrifugal.centrifuge.protocol.SubscribeResult
+                 * @instance
+                 */
+                SubscribeResult.prototype.cursor = "";
+
+                /**
+                 * SubscribeResult state.
+                 * @member {Array.<centrifugal.centrifuge.protocol.IPublication>} state
+                 * @memberof centrifugal.centrifuge.protocol.SubscribeResult
+                 * @instance
+                 */
+                SubscribeResult.prototype.state = $util.emptyArray;
+
+                /**
                  * Encodes the specified SubscribeResult message. Does not implicitly {@link centrifugal.centrifuge.protocol.SubscribeResult.verify|verify} messages.
                  * @function encode
                  * @memberof centrifugal.centrifuge.protocol.SubscribeResult
@@ -5009,6 +5208,15 @@ export const centrifugal = $root.centrifugal = (() => {
                         writer.uint32(/* id 13, wireType 0 =*/104).bool(message.delta);
                     if (message.id != null && Object.hasOwnProperty.call(message, "id"))
                         writer.uint32(/* id 14, wireType 0 =*/112).int64(message.id);
+                    if (message.type != null && Object.hasOwnProperty.call(message, "type"))
+                        writer.uint32(/* id 15, wireType 0 =*/120).int32(message.type);
+                    if (message.phase != null && Object.hasOwnProperty.call(message, "phase"))
+                        writer.uint32(/* id 16, wireType 0 =*/128).int32(message.phase);
+                    if (message.cursor != null && Object.hasOwnProperty.call(message, "cursor"))
+                        writer.uint32(/* id 17, wireType 2 =*/138).string(message.cursor);
+                    if (message.state != null && message.state.length)
+                        for (let i = 0; i < message.state.length; ++i)
+                            $root.centrifugal.centrifuge.protocol.Publication.encode(message.state[i], writer.uint32(/* id 18, wireType 2 =*/146).fork()).ldelim();
                     return writer;
                 };
 
@@ -5093,6 +5301,24 @@ export const centrifugal = $root.centrifugal = (() => {
                                 message.id = reader.int64();
                                 break;
                             }
+                        case 15: {
+                                message.type = reader.int32();
+                                break;
+                            }
+                        case 16: {
+                                message.phase = reader.int32();
+                                break;
+                            }
+                        case 17: {
+                                message.cursor = reader.string();
+                                break;
+                            }
+                        case 18: {
+                                if (!(message.state && message.state.length))
+                                    message.state = [];
+                                message.state.push($root.centrifugal.centrifuge.protocol.Publication.decode(reader, reader.uint32()));
+                                break;
+                            }
                         default:
                             reader.skipType(tag & 7);
                             break;
@@ -5170,6 +5396,24 @@ export const centrifugal = $root.centrifugal = (() => {
                     if (message.id != null && message.hasOwnProperty("id"))
                         if (!$util.isInteger(message.id) && !(message.id && $util.isInteger(message.id.low) && $util.isInteger(message.id.high)))
                             return "id: integer|Long expected";
+                    if (message.type != null && message.hasOwnProperty("type"))
+                        if (!$util.isInteger(message.type))
+                            return "type: integer expected";
+                    if (message.phase != null && message.hasOwnProperty("phase"))
+                        if (!$util.isInteger(message.phase))
+                            return "phase: integer expected";
+                    if (message.cursor != null && message.hasOwnProperty("cursor"))
+                        if (!$util.isString(message.cursor))
+                            return "cursor: string expected";
+                    if (message.state != null && message.hasOwnProperty("state")) {
+                        if (!Array.isArray(message.state))
+                            return "state: array expected";
+                        for (let i = 0; i < message.state.length; ++i) {
+                            let error = $root.centrifugal.centrifuge.protocol.Publication.verify(message.state[i]);
+                            if (error)
+                                return "state." + error;
+                        }
+                    }
                     return null;
                 };
 
@@ -5789,6 +6033,9 @@ export const centrifugal = $root.centrifugal = (() => {
                  * @interface IPublishRequest
                  * @property {string|null} [channel] PublishRequest channel
                  * @property {Uint8Array|null} [data] PublishRequest data
+                 * @property {number|null} [type] PublishRequest type
+                 * @property {string|null} [key] PublishRequest key
+                 * @property {boolean|null} [removed] PublishRequest removed
                  */
 
                 /**
@@ -5823,6 +6070,30 @@ export const centrifugal = $root.centrifugal = (() => {
                 PublishRequest.prototype.data = $util.newBuffer([]);
 
                 /**
+                 * PublishRequest type.
+                 * @member {number} type
+                 * @memberof centrifugal.centrifuge.protocol.PublishRequest
+                 * @instance
+                 */
+                PublishRequest.prototype.type = 0;
+
+                /**
+                 * PublishRequest key.
+                 * @member {string} key
+                 * @memberof centrifugal.centrifuge.protocol.PublishRequest
+                 * @instance
+                 */
+                PublishRequest.prototype.key = "";
+
+                /**
+                 * PublishRequest removed.
+                 * @member {boolean} removed
+                 * @memberof centrifugal.centrifuge.protocol.PublishRequest
+                 * @instance
+                 */
+                PublishRequest.prototype.removed = false;
+
+                /**
                  * Encodes the specified PublishRequest message. Does not implicitly {@link centrifugal.centrifuge.protocol.PublishRequest.verify|verify} messages.
                  * @function encode
                  * @memberof centrifugal.centrifuge.protocol.PublishRequest
@@ -5838,6 +6109,12 @@ export const centrifugal = $root.centrifugal = (() => {
                         writer.uint32(/* id 1, wireType 2 =*/10).string(message.channel);
                     if (message.data != null && Object.hasOwnProperty.call(message, "data"))
                         writer.uint32(/* id 2, wireType 2 =*/18).bytes(message.data);
+                    if (message.type != null && Object.hasOwnProperty.call(message, "type"))
+                        writer.uint32(/* id 3, wireType 0 =*/24).int32(message.type);
+                    if (message.key != null && Object.hasOwnProperty.call(message, "key"))
+                        writer.uint32(/* id 4, wireType 2 =*/34).string(message.key);
+                    if (message.removed != null && Object.hasOwnProperty.call(message, "removed"))
+                        writer.uint32(/* id 5, wireType 0 =*/40).bool(message.removed);
                     return writer;
                 };
 
@@ -5878,6 +6155,18 @@ export const centrifugal = $root.centrifugal = (() => {
                             }
                         case 2: {
                                 message.data = reader.bytes();
+                                break;
+                            }
+                        case 3: {
+                                message.type = reader.int32();
+                                break;
+                            }
+                        case 4: {
+                                message.key = reader.string();
+                                break;
+                            }
+                        case 5: {
+                                message.removed = reader.bool();
                                 break;
                             }
                         default:
@@ -5921,6 +6210,15 @@ export const centrifugal = $root.centrifugal = (() => {
                     if (message.data != null && message.hasOwnProperty("data"))
                         if (!(message.data && typeof message.data.length === "number" || $util.isString(message.data)))
                             return "data: buffer expected";
+                    if (message.type != null && message.hasOwnProperty("type"))
+                        if (!$util.isInteger(message.type))
+                            return "type: integer expected";
+                    if (message.key != null && message.hasOwnProperty("key"))
+                        if (!$util.isString(message.key))
+                            return "key: string expected";
+                    if (message.removed != null && message.hasOwnProperty("removed"))
+                        if (typeof message.removed !== "boolean")
+                            return "removed: boolean expected";
                     return null;
                 };
 

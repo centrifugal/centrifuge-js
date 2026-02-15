@@ -267,6 +267,8 @@ export interface SubscribedContext {
   hasRecoveredPublications: boolean;
   /** custom data for Subscription returned from server. */
   data?: any;
+  /** State entries for map subscriptions (from state pagination or immediate join) */
+  state?: MapPublicationContext[];
 }
 
 export interface SubscriptionErrorContext {
@@ -458,7 +460,7 @@ export interface FilterNode {
   nodes?: FilterNode[];
 }
 
-/** SubscriptionOptions can customize Subscription. */
+/** SubscriptionOptions can customize regular (non-map) Subscription. */
 export interface SubscriptionOptions {
   /** allows setting initial subscription token (JWT) */
   token: string;
@@ -488,8 +490,76 @@ export interface SubscriptionOptions {
   tagsFilter: FilterNode | null;
 }
 
+/** MapSubscriptionOptions can customize map Subscription. */
+export interface MapSubscriptionOptions {
+  /** allows setting initial subscription token (JWT) */
+  token: string;
+  /** allows setting function to get/refresh subscription token,
+   * this will only be called when new token needed, not on every resubscribe. */
+  getToken: null | ((ctx: SubscriptionTokenContext) => Promise<string>);
+  /** data to send to a server with subscribe command */
+  data: any | null;
+  /** allows setting function to get/renew subscription data (during resubscriptions).
+   * In many cases you may prefer using setData method of Subscription instead. */
+  getData: null | ((ctx: SubscriptionDataContext) => Promise<any>);
+  /** min delay between resubscribe attempts. */
+  minResubscribeDelay: number;
+  /** max delay between resubscribe attempts. */
+  maxResubscribeDelay: number;
+  /** Page size for map state/stream pagination (default: 100) */
+  limit: number;
+  /** Strategy for handling unrecoverable position errors (code 112) in map subscriptions.
+   * - 'from_scratch': (default) auto-recover by resubscribing from snapshot
+   * - 'fatal': go to unsubscribed state, let user handle */
+  unrecoverableStrategy: MapUnrecoverableStrategy;
+  /** Immediate join mode (Scenario B): Skip pagination, get full state + stream in one request.
+   * If state is too large, server returns error 114 (state too large) - see stateTooLargeFallback. */
+  immediateJoin: boolean;
+  /** Strategy for handling ErrorStateTooLarge (code 114) when immediate join fails.
+   * - 'fatal': (default) go to error state, let user handle
+   * - 'paginate': automatically fall back to paginated join */
+  stateTooLargeFallback: MapStateTooLargeFallback;
+  /** Delta compression format (currently only 'fossil' supported).
+   * When set, the server may send delta-encoded publications for bandwidth savings. */
+  delta: 'fossil';
+}
+
+/** Internal options interface used by Subscription class.
+ * Extends SubscriptionOptions with map-specific options using internal naming. */
+export interface InternalSubscriptionOptions extends SubscriptionOptions {
+  map?: boolean;
+  mapLimit?: number;
+  mapUnrecoverableStrategy?: MapUnrecoverableStrategy;
+  mapPresenceType?: number; // 1=MAP (default), 2=MAP_CLIENTS, 3=MAP_USERS
+  mapImmediateJoin?: boolean; // Immediate join mode (Scenario B)
+  mapStateTooLargeFallback?: MapStateTooLargeFallback; // Fallback strategy for ErrorStateTooLarge
+}
+
+/** Strategy for handling unrecoverable position errors in map subscriptions */
+export type MapUnrecoverableStrategy = 'from_scratch' | 'fatal';
+
+/** Strategy for handling ErrorStateTooLarge (code 114) when immediate join fails */
+export type MapStateTooLargeFallback = 'fatal' | 'paginate';
+
 /** Stream position describes the position of a publication inside a stream.  */
 export interface StreamPosition {
   offset: number;
   epoch: string;
+}
+
+/** Phase constants for map subscriptions */
+export enum MapPhase {
+  Live = 0,    // Join live pub/sub (default)
+  Stream = 1,  // Paginating over stream (history catch-up)
+  State = 2,   // Paginating over state (map state)
+}
+
+/** Map publication with key and removed flag */
+export interface MapPublicationContext extends PublicationContext {
+  /** The key identifying this entry */
+  key?: string;
+  /** True if this publication represents a removal */
+  removed?: boolean;
+  /** Score associated with this entry */
+  score: number;
 }

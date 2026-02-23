@@ -603,7 +603,9 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
 
   private _handlePublication(pub: any) {
     if (this._delta && this._delta_negotiated) {
-      const deltaKey = pub.key || '';
+      // For map subs, delta is per-key (broker tracks per-key prevPub).
+      // For non-map subs, delta is a single chain regardless of pub.key.
+      const deltaKey = this._map ? (pub.key || '') : '';
       // @ts-ignore – we are hiding some methods from public API autocompletion.
       const { newData, newPrevValue } = this._centrifuge._codec.applyDeltaIfNeeded(pub, this._prevValueMap.get(deltaKey))
       pub.data = newData;
@@ -623,8 +625,14 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
       ctx = this._centrifuge._getPublicationContext(this.channel, pub);
     }
     this.emit('publication', ctx);
+    if (this._map) {
+      this.emit('update', ctx);
+    }
     if (pub.offset) {
       this._offset = pub.offset;
+    }
+    if (pub.epoch) {
+      this._epoch = pub.epoch;
     }
   }
 
@@ -949,7 +957,12 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
     this._mapStateBuffer = [];
     this._mapStreamBuffer = [];
     this._mapCursor = '';
-    this._prevValueMap = new Map();
+    // Preserve _prevValueMap when recovering — the server will send deltas
+    // against the values the client already has from the previous session.
+    // Only clear when starting from scratch (no recovery position).
+    if (!(this._recover && this._offset !== null && this._epoch !== null)) {
+      this._prevValueMap = new Map();
+    }
 
     // Immediate join mode: Skip pagination, go directly to live.
     // Server returns state + stream in one response.
@@ -1265,13 +1278,9 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
       }
     }
 
-    // Update final offset
-    if (result.offset !== undefined) {
-      this._offset = result.offset;
-    }
-    if (result.epoch) {
-      this._epoch = result.epoch;
-    }
+    // Update final offset/epoch — use || 0/'' to handle zero values omitted by JSON/protobuf.
+    this._offset = result.offset || 0;
+    this._epoch = result.epoch || '';
 
     // Clear subscribing state
     this._clearSubscribingState();
@@ -1304,9 +1313,17 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
     this.emit('subscribed', ctx);
     this._resolvePromises();
 
-    // Flush stream buffer as publication events
+    // Emit sync event — complete state for simplified state management.
+    // On recovery (no state entries), emit sync with current state from stream buffer
+    // applied on top. On fresh join, emit the state snapshot.
+    if (!ctx.recovered) {
+      this.emit('sync', { entries: this._mapStateBuffer });
+    }
+
+    // Flush stream buffer as publication and update events
     for (const pub of this._mapStreamBuffer) {
       this.emit('publication', pub);
+      this.emit('update', pub);
     }
 
     // Clear buffers

@@ -70,6 +70,13 @@ export type SubscriptionEvents = {
 
   /** listen to subscription errors happening internally */
   error: (ctx: SubscriptionErrorContext) => void;
+
+  /** called for map subscriptions when complete state is available (initial join or full resync).
+   * Use with 'update' event for simplified state management — no need to handle recovered flag. */
+  sync: (ctx: MapSyncContext) => void;
+  /** called for map subscriptions when a single entry is added, updated, or removed.
+   * Same data as 'publication' but paired with 'sync' for simplified state management. */
+  update: (ctx: MapPublicationContext) => void;
 }
 
 /** State of Subscription */
@@ -562,4 +569,10 @@ export interface MapPublicationContext extends PublicationContext {
   removed?: boolean;
   /** Score associated with this entry */
   score: number;
+}
+
+/** Complete state snapshot for map subscriptions (emitted on initial join and full resync) */
+export interface MapSyncContext {
+  /** All current entries, ordered by score for ordered subscriptions */
+  entries: MapPublicationContext[];
 }

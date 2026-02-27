@@ -515,20 +515,20 @@ export interface MapSubscriptionOptions {
   maxResubscribeDelay: number;
   /** Page size for map state/stream pagination (default: 100) */
   limit: number;
+  /** Delta compression format (currently only 'fossil' supported).
+   * When set, the server may send delta-encoded publications for bandwidth savings. */
+  delta: 'fossil';
   /** Strategy for handling unrecoverable position errors (code 112) in map subscriptions.
    * - 'from_scratch': (default) auto-recover by resubscribing from snapshot
    * - 'fatal': go to unsubscribed state, let user handle */
   unrecoverableStrategy: MapUnrecoverableStrategy;
-  /** Immediate join mode (Scenario B): Skip pagination, get full state + stream in one request.
+  /** Immediate join mode: Skip pagination, get full state + stream in one request.
    * If state is too large, server returns error 114 (state too large) - see stateTooLargeFallback. */
   immediateJoin: boolean;
   /** Strategy for handling ErrorStateTooLarge (code 114) when immediate join fails.
-   * - 'fatal': (default) go to error state, let user handle
-   * - 'paginate': automatically fall back to paginated join */
+   * - 'paginate': (default) automatically fall back to paginated join
+   * - 'fatal': go to error state, let user handle */
   stateTooLargeFallback: MapStateTooLargeFallback;
-  /** Delta compression format (currently only 'fossil' supported).
-   * When set, the server may send delta-encoded publications for bandwidth savings. */
-  delta: 'fossil';
 }
 
 /** Internal options interface used by Subscription class.

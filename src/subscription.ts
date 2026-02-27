@@ -6,7 +6,7 @@ import {
   PublishResult, State, SubscriptionEvents, InternalSubscriptionOptions,
   SubscriptionState, SubscriptionTokenContext, TypedEventEmitter,
   SubscriptionDataContext, FilterNode, MapPhase, MapPublicationContext,
-  MapUnrecoverableStrategy
+  MapUnrecoverableStrategy, MapStateTooLargeFallback
 } from './types';
 import { ttlMilliseconds, backoff } from './utils';
 
@@ -54,7 +54,7 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
   private _mapLimit: number = 100;          // Page size
   private _mapUnrecoverableStrategy: MapUnrecoverableStrategy = 'from_scratch';
   private _mapImmediateJoin: boolean = false;  // Immediate join mode (Scenario B)
-  private _mapStateTooLargeFallback: 'fatal' | 'paginate' = 'fatal';  // Fallback for ErrorStateTooLarge
+  private _mapStateTooLargeFallback: MapStateTooLargeFallback = 'paginate';  // Fallback for ErrorStateTooLarge
 
   /** Subscription constructor should not be used directly, create subscriptions using Client method. */
   constructor(centrifuge: Centrifuge, channel: string, options?: Partial<InternalSubscriptionOptions>) {

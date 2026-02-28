@@ -6,7 +6,7 @@ import {
   PublishResult, State, SubscriptionEvents, InternalSubscriptionOptions,
   SubscriptionState, SubscriptionTokenContext, TypedEventEmitter,
   SubscriptionDataContext, FilterNode, MapPhase, MapPublicationContext,
-  MapUnrecoverableStrategy, MapStateTooLargeFallback
+  MapUnrecoverableStrategy, DeltaStats
 } from './types';
 import { ttlMilliseconds, backoff } from './utils';
 
@@ -42,6 +42,11 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
   private _inflight: boolean;
   private _prevValueMap: Map<string, any>;
   private _unsubPromise: any;
+  private _deltaNumPubs: number;
+  private _deltaNumFull: number;
+  private _deltaNumDelta: number;
+  private _deltaBytesReceived: number;
+  private _deltaBytesDecoded: number;
 
   // Map subscription state
   private _map: boolean = false;
@@ -53,8 +58,6 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
   private _mapCursor: string = '';          // Pagination cursor
   private _mapLimit: number = 100;          // Page size
   private _mapUnrecoverableStrategy: MapUnrecoverableStrategy = 'from_scratch';
-  private _mapImmediateJoin: boolean = false;  // Immediate join mode (Scenario B)
-  private _mapStateTooLargeFallback: MapStateTooLargeFallback = 'paginate';  // Fallback for ErrorStateTooLarge
 
   /** Subscription constructor should not be used directly, create subscriptions using Client method. */
   constructor(centrifuge: Centrifuge, channel: string, options?: Partial<InternalSubscriptionOptions>) {
@@ -86,6 +89,11 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
     this._tagsFilter = null;
     this._prevValueMap = new Map();
     this._unsubPromise = Promise.resolve();
+    this._deltaNumPubs = 0;
+    this._deltaNumFull = 0;
+    this._deltaNumDelta = 0;
+    this._deltaBytesReceived = 0;
+    this._deltaBytesDecoded = 0;
     this._setOptions(options);
     // @ts-ignore – we are hiding some symbols from public API autocompletion.
     if (this._centrifuge._debugEnabled) {
@@ -227,6 +235,20 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
    * Note that if getData callback is configured, it will override this value during resubscriptions. */
   setData(data: any) {
     this._data = data;
+  }
+
+  /** deltaStats returns delta compression statistics for this subscription.
+   * Only meaningful when delta compression is enabled (delta: 'fossil'). */
+  deltaStats(): DeltaStats {
+    const bytesDecoded = this._deltaBytesDecoded;
+    return {
+      numPublications: this._deltaNumPubs,
+      numFullPayloads: this._deltaNumFull,
+      numDeltaPayloads: this._deltaNumDelta,
+      bytesReceived: this._deltaBytesReceived,
+      bytesDecoded: bytesDecoded,
+      compressionRatio: bytesDecoded > 0 ? 1 - this._deltaBytesReceived / bytesDecoded : 0,
+    };
   }
 
   private _methodCall(): Promise<void> {
@@ -607,8 +629,16 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
       // For non-map subs, delta is a single chain regardless of pub.key.
       const deltaKey = this._map ? (pub.key || '') : '';
       // @ts-ignore – we are hiding some methods from public API autocompletion.
-      const { newData, newPrevValue } = this._centrifuge._codec.applyDeltaIfNeeded(pub, this._prevValueMap.get(deltaKey))
+      const { newData, newPrevValue, isDelta, wireBytes, fullBytes } = this._centrifuge._codec.applyDeltaIfNeeded(pub, this._prevValueMap.get(deltaKey))
       pub.data = newData;
+      this._deltaNumPubs++;
+      this._deltaBytesReceived += wireBytes;
+      this._deltaBytesDecoded += fullBytes;
+      if (isDelta) {
+        this._deltaNumDelta++;
+      } else {
+        this._deltaNumFull++;
+      }
       if (pub.removed) {
         this._prevValueMap.delete(deltaKey);
       } else {
@@ -650,6 +680,12 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
       } else {
         this._prevValueMap.delete(pub.key);
       }
+      // Count as full payload in delta stats.
+      const byteLen = rawBytes.length;
+      this._deltaNumPubs++;
+      this._deltaNumFull++;
+      this._deltaBytesReceived += byteLen;
+      this._deltaBytesDecoded += byteLen;
       pub.data = JSON.parse(rawBytes);
     } else if (pub.data instanceof Uint8Array) {
       // Protobuf transport.
@@ -658,6 +694,12 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
       } else {
         this._prevValueMap.delete(pub.key);
       }
+      // Count as full payload in delta stats.
+      const byteLen = pub.data.length;
+      this._deltaNumPubs++;
+      this._deltaNumFull++;
+      this._deltaBytesReceived += byteLen;
+      this._deltaBytesDecoded += byteLen;
     }
   }
 
@@ -804,12 +846,6 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
     }
     if (options.mapUnrecoverableStrategy) {
       this._mapUnrecoverableStrategy = options.mapUnrecoverableStrategy;
-    }
-    if (options.mapImmediateJoin === true) {
-      this._mapImmediateJoin = true;
-    }
-    if (options.mapStateTooLargeFallback) {
-      this._mapStateTooLargeFallback = options.mapStateTooLargeFallback;
     }
   }
 
@@ -964,34 +1000,6 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
       this._prevValueMap = new Map();
     }
 
-    // Immediate join mode: Skip pagination, go directly to live.
-    // Server returns state + stream in one response.
-    if (this._mapImmediateJoin) {
-      this._debug('map subscribe: immediate join mode, going directly to live');
-      this._mapPhase = MapPhase.Live;
-      // Get token if needed, then request live
-      if (this._canSubscribeWithoutGettingToken()) {
-        this._requestLive();
-      } else {
-        this._getSubscriptionToken()
-          .then(token => {
-            if (!this._isSubscribing()) {
-              this._inflight = false;
-              return;
-            }
-            if (!token) {
-              this._inflight = false;
-              this._failUnauthorized();
-              return;
-            }
-            this._token = token;
-            this._requestLive();
-          })
-          .catch(e => this._handleTokenError(e));
-      }
-      return;
-    }
-
     this._mapPhase = MapPhase.State;
 
     // If we have a position from `since`, we may skip snapshot and go to stream
@@ -1058,7 +1066,7 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
 
     // Check if server forced LIVE transition during STATE phase.
     // This happens on the last state page when server decides to skip STREAM phase
-    // (streamless mode, or positioned with MapStateToLiveEnabled and stream close enough).
+    // (streamless mode, or positioned mode with stream close enough).
     // Note: phase=0 may be omitted by JSON serializer, so !result.phase handles both 0 and undefined.
     if (!result.phase) {
       this._debug('map subscribe: server forced LIVE transition during state pagination');
@@ -1189,30 +1197,6 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
     this._fetchStream();
   }
 
-  /** Request live phase - final step to join pub/sub */
-  private _requestLive(): void {
-    if (!this._isSubscribing() || !this._isTransportOpen()) {
-      this._inflight = false;
-      return;
-    }
-
-    const cmd = this._buildMapSubscribeCommand(MapPhase.Live);
-    this._debug('map subscribe: requesting live phase');
-
-    // @ts-ignore – we are hiding some symbols from public API autocompletion.
-    this._centrifuge._call(cmd).then(resolveCtx => {
-      const result = resolveCtx.reply.subscribe;
-      this._handleMapLiveResponse(result);
-      if (resolveCtx.next) {
-        resolveCtx.next();
-      }
-    }, rejectCtx => {
-      this._handleMapSubscribeError(rejectCtx.error);
-      if (rejectCtx.next) {
-        rejectCtx.next();
-      }
-    });
-  }
 
   /** Process live response - complete the map subscription */
   private _handleMapLiveResponse(result: any): void {
@@ -1223,7 +1207,7 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
 
     this._inflight = false;
 
-    // Validate epoch one more time (only for paginated join, not immediate join)
+    // Validate epoch one more time
     if (this._epoch && result.epoch && this._epoch !== result.epoch) {
       this._debug('map subscribe: epoch changed during live transition, restarting');
       this._mapStateBuffer = [];
@@ -1232,17 +1216,11 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
       this._epoch = null;
       this._offset = null;
       this._inflight = true;
-      // For immediate join, we can't restart with pagination
-      if (this._mapImmediateJoin) {
-        this._requestLive();
-      } else {
-        this._fetchSnapshot();
-      }
+      this._fetchSnapshot();
       return;
     }
 
-    // Handle state from immediate join (only present on fresh subscription).
-    // For immediate join, server returns full state in result.state.
+    // Handle state from live response (present when state-to-live transition happens).
     if (result.state && result.state.length > 0) {
       for (const pub of result.state) {
         this._seedDeltaTracking(pub);
@@ -1259,8 +1237,16 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
           // Delta negotiated: decode and update tracking in one block.
           const deltaKey = pub.key || '';
           // @ts-ignore – we are hiding some methods from public API autocompletion.
-          const { newData, newPrevValue } = this._centrifuge._codec.applyDeltaIfNeeded(pub, this._prevValueMap.get(deltaKey));
+          const { newData, newPrevValue, isDelta, wireBytes, fullBytes } = this._centrifuge._codec.applyDeltaIfNeeded(pub, this._prevValueMap.get(deltaKey));
           pub.data = newData;
+          this._deltaNumPubs++;
+          this._deltaBytesReceived += wireBytes;
+          this._deltaBytesDecoded += fullBytes;
+          if (isDelta) {
+            this._deltaNumDelta++;
+          } else {
+            this._deltaNumFull++;
+          }
           if (pub.removed) {
             this._prevValueMap.delete(deltaKey);
           } else {
@@ -1371,19 +1357,6 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
       // 'fatal' strategy: fall through to _subscribeError which will unsubscribe
     }
 
-    // Handle state too large error (code 114) for immediate join
-    if (error.code === 114) {
-      if (this._mapStateTooLargeFallback === 'paginate') {
-        // Fall back to paginated join
-        this._debug('map subscribe: state too large, falling back to paginated join');
-        this._mapImmediateJoin = false;  // Disable immediate join
-        this._mapPhase = MapPhase.State;
-        this._scheduleResubscribe();
-        return;
-      }
-      // 'fatal' strategy: fall through to _subscribeError which will unsubscribe
-    }
-
     this._subscribeError(error);
   }
 
@@ -1420,24 +1393,6 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
       // For recovery: tell server we're reconnecting (skip STATE phase authorization)
       if (this._recover) {
         req.recover = true;
-      }
-    }
-
-    // LIVE phase
-    if (phase === MapPhase.Live) {
-      // recover flag tells server if this is fresh subscription or reconnection:
-      // - recover=false (or absent): fresh subscription, server returns state + stream
-      // - recover=true: reconnection, server returns only stream catch-up
-      if (this._recover) {
-        req.recover = true;  // Reconnection - only stream catch-up needed
-      }
-      // recover=false (or absent) means fresh subscription - server returns state (for immediate join)
-
-      if (this._offset !== null) {
-        req.offset = this._offset;
-      }
-      if (this._epoch) {
-        req.epoch = this._epoch;
       }
     }
 

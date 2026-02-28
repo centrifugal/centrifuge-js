@@ -202,8 +202,6 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
       mapLimit: options?.limit,
 
       mapUnrecoverableStrategy: options?.unrecoverableStrategy,
-      mapImmediateJoin: options?.immediateJoin,
-      mapStateTooLargeFallback: options?.stateTooLargeFallback,
     });
     this._subs[channel] = sub;
     return sub;
@@ -230,8 +228,6 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
       mapLimit: options?.limit,
 
       mapUnrecoverableStrategy: options?.unrecoverableStrategy,
-      mapImmediateJoin: options?.immediateJoin,
-      mapStateTooLargeFallback: options?.stateTooLargeFallback,
     });
     this._subs[channel] = sub;
     return sub;
@@ -258,8 +254,6 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
       mapLimit: options?.limit,
 
       mapUnrecoverableStrategy: options?.unrecoverableStrategy,
-      mapImmediateJoin: options?.immediateJoin,
-      mapStateTooLargeFallback: options?.stateTooLargeFallback,
     });
     this._subs[channel] = sub;
     return sub;

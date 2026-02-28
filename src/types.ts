@@ -274,7 +274,7 @@ export interface SubscribedContext {
   hasRecoveredPublications: boolean;
   /** custom data for Subscription returned from server. */
   data?: any;
-  /** State entries for map subscriptions (from state pagination or immediate join) */
+  /** State entries for map subscriptions (from state pagination) */
   state?: MapPublicationContext[];
 }
 
@@ -522,13 +522,6 @@ export interface MapSubscriptionOptions {
    * - 'from_scratch': (default) auto-recover by resubscribing from snapshot
    * - 'fatal': go to unsubscribed state, let user handle */
   unrecoverableStrategy: MapUnrecoverableStrategy;
-  /** Immediate join mode: Skip pagination, get full state + stream in one request.
-   * If state is too large, server returns error 114 (state too large) - see stateTooLargeFallback. */
-  immediateJoin: boolean;
-  /** Strategy for handling ErrorStateTooLarge (code 114) when immediate join fails.
-   * - 'paginate': (default) automatically fall back to paginated join
-   * - 'fatal': go to error state, let user handle */
-  stateTooLargeFallback: MapStateTooLargeFallback;
 }
 
 /** Internal options interface used by Subscription class.
@@ -538,15 +531,10 @@ export interface InternalSubscriptionOptions extends SubscriptionOptions {
   mapLimit?: number;
   mapUnrecoverableStrategy?: MapUnrecoverableStrategy;
   mapPresenceType?: number; // 1=MAP (default), 2=MAP_CLIENTS, 3=MAP_USERS
-  mapImmediateJoin?: boolean; // Immediate join mode (Scenario B)
-  mapStateTooLargeFallback?: MapStateTooLargeFallback; // Fallback strategy for ErrorStateTooLarge
 }
 
 /** Strategy for handling unrecoverable position errors in map subscriptions */
 export type MapUnrecoverableStrategy = 'from_scratch' | 'fatal';
-
-/** Strategy for handling ErrorStateTooLarge (code 114) when immediate join fails */
-export type MapStateTooLargeFallback = 'fatal' | 'paginate';
 
 /** Stream position describes the position of a publication inside a stream.  */
 export interface StreamPosition {
@@ -575,4 +563,20 @@ export interface MapPublicationContext extends PublicationContext {
 export interface MapSyncContext {
   /** All current entries, ordered by score for ordered subscriptions */
   entries: MapPublicationContext[];
+}
+
+/** Delta compression statistics for a subscription. */
+export interface DeltaStats {
+  /** Total number of publications received (full + delta). */
+  numPublications: number;
+  /** Number of publications received as full payloads. */
+  numFullPayloads: number;
+  /** Number of publications received as delta-encoded payloads. */
+  numDeltaPayloads: number;
+  /** Total bytes received on the wire (before delta decoding). */
+  bytesReceived: number;
+  /** Total bytes of full payloads after delta decoding. */
+  bytesDecoded: number;
+  /** Compression ratio: 1 - (bytesReceived / bytesDecoded). 0 when bytesDecoded is 0. */
+  compressionRatio: number;
 }

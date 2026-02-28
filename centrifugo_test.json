@@ -1,0 +1,140 @@
+{
+  "client": {
+    "insecure": true,
+    "concurrency": 8,
+    "map_pagination_min_limit": 1,
+    "token": {
+      "hmac_secret_key": "secret"
+    }
+  },
+  "log_level": "trace",
+  "http_stream": {
+    "enabled": true
+  },
+  "sse": {
+    "enabled": true
+  },
+  "map_broker": {
+    "enabled": true
+  },
+  "http_api": {
+    "key": "test-api-key"
+  },
+  "channel": {
+    "without_namespace": {
+      "presence": true,
+      "allowed_delta_types": ["fossil"],
+      "delta_publish": true,
+      "history_size": 100,
+      "history_ttl": "300s",
+      "force_recovery": true
+    },
+    "namespaces": [
+      {
+        "name": "streamless",
+        "subscription_types": ["map"],
+        "map_sync_mode": "ephemeral",
+        "map_retention_mode": "expiring",
+        "map_key_ttl": "60s",
+        "allow_subscribe_for_client": true,
+        "allow_map_publish_for_client": true,
+        "allow_map_remove_for_client": true
+      },
+      {
+        "name": "positioned",
+        "subscription_types": ["map"],
+        "map_sync_mode": "converging",
+        "map_retention_mode": "permanent",
+        "allow_subscribe_for_client": true,
+        "allow_map_publish_for_client": true,
+        "allow_map_remove_for_client": true
+      },
+      {
+        "name": "smallstream",
+        "subscription_types": ["map"],
+        "map_sync_mode": "converging",
+        "map_retention_mode": "permanent",
+        "map_stream_size": 2,
+        "map_stream_ttl": "60s",
+        "allow_subscribe_for_client": true,
+        "allow_map_publish_for_client": true,
+        "allow_map_remove_for_client": true
+      },
+      {
+        "name": "delta",
+        "allowed_delta_types": ["fossil"],
+        "delta_publish": true,
+        "force_recovery": true,
+        "history_size": 100,
+        "history_ttl": "300s",
+        "allow_subscribe_for_client": true,
+        "allow_publish_for_subscriber": true
+      },
+      {
+        "name": "mapdelta",
+        "subscription_types": ["map"],
+        "map_sync_mode": "converging",
+        "map_retention_mode": "permanent",
+        "allowed_delta_types": ["fossil"],
+        "delta_publish": true,
+        "allow_subscribe_for_client": true,
+        "allow_map_publish_for_client": true,
+        "allow_map_remove_for_client": true
+      },
+      {
+        "name": "recovery",
+        "force_recovery": true,
+        "history_size": 100,
+        "history_ttl": "300s",
+        "allow_subscribe_for_client": true,
+        "allow_publish_for_subscriber": true
+      },
+      {
+        "name": "smallhistory",
+        "force_recovery": true,
+        "history_size": 2,
+        "history_ttl": "300s",
+        "allow_subscribe_for_client": true,
+        "allow_publish_for_subscriber": true
+      },
+      {
+        "name": "shortttl",
+        "subscription_types": ["map"],
+        "map_sync_mode": "ephemeral",
+        "map_retention_mode": "expiring",
+        "map_key_ttl": "3s",
+        "allow_subscribe_for_client": true,
+        "allow_map_publish_for_client": true,
+        "allow_map_remove_for_client": true
+      },
+      {
+        "name": "clientkey",
+        "subscription_types": ["map"],
+        "map_sync_mode": "ephemeral",
+        "map_retention_mode": "expiring",
+        "map_key_ttl": "60s",
+        "map_client_key": "client_id",
+        "allow_subscribe_for_client": true,
+        "allow_map_publish_for_subscriber": true
+      },
+      {
+        "name": "prestest",
+        "subscription_types": ["map"],
+        "map_sync_mode": "ephemeral",
+        "map_retention_mode": "expiring",
+        "map_key_ttl": "60s",
+        "map_client_presence_namespace": "prescli",
+        "allow_subscribe_for_client": true,
+        "allow_map_publish_for_client": true
+      },
+      {
+        "name": "prescli",
+        "subscription_types": ["map_clients"],
+        "map_sync_mode": "ephemeral",
+        "map_retention_mode": "expiring",
+        "map_key_ttl": "60s",
+        "allow_subscribe_for_client": true
+      }
+    ]
+  }
+}

@@ -2,7 +2,7 @@ version: '3.8'
 
 services:
   centrifugo:
-    image: centrifugo/centrifugo:v6
+    image: centrifugo/centrifugo-pro:v6.6.4
     command:
       - centrifugo
     ports:

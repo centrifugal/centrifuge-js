@@ -2,7 +2,7 @@ import { Centrifuge } from './centrifuge';
 import {
   SubscribedContext,
   MapSyncContext,
-  MapPublicationContext,
+  MapUpdateContext,
   PublicationContext,
   TransportName,
   ConnectedContext,
@@ -156,7 +156,7 @@ test('real-time publication after subscribe', async () => {
   const ch = uniqueChannel('streamless');
   const sub = c.newMapSubscription(ch);
 
-  const updateP = waitForEvent<MapPublicationContext>(sub, 'update');
+  const updateP = waitForEvent<MapUpdateContext>(sub, 'update');
 
   sub.subscribe();
   await sub.ready(5000);
@@ -181,7 +181,7 @@ test('real-time removal', async () => {
   const ch = uniqueChannel('streamless');
   const sub = c.newMapSubscription(ch);
 
-  const updates = collectEvents<MapPublicationContext>(sub, 'update', 2);
+  const updates = collectEvents<MapUpdateContext>(sub, 'update', 2);
 
   sub.subscribe();
   await sub.ready(5000);
@@ -207,7 +207,7 @@ test('client mapPublish and mapRemove', async () => {
   const ch = uniqueChannel('streamless');
   const sub = c.newMapSubscription(ch);
 
-  const updates = collectEvents<MapPublicationContext>(sub, 'update', 2);
+  const updates = collectEvents<MapUpdateContext>(sub, 'update', 2);
 
   sub.subscribe();
   await sub.ready(5000);
@@ -303,7 +303,7 @@ test('real-time updates arrive after pagination', async () => {
   await sub.ready(5000);
 
   // Now publish a new entry — should arrive as update event.
-  const updateP = waitForEvent<MapPublicationContext>(sub, 'update');
+  const updateP = waitForEvent<MapUpdateContext>(sub, 'update');
   await apiMapPublish(ch, 'late_key', { late: true });
 
   const updateCtx = await updateP;
@@ -323,7 +323,7 @@ test('recovery after disconnect (positioned)', async () => {
   const sub = c.newMapSubscription(ch);
 
   // Register update listener BEFORE subscribing so we don't miss the event.
-  const firstUpdateP = waitForEvent<MapPublicationContext>(sub, 'update');
+  const firstUpdateP = waitForEvent<MapUpdateContext>(sub, 'update');
 
   sub.subscribe();
   await sub.ready(5000);
@@ -401,7 +401,7 @@ test('two clients see same state', async () => {
   const subA = cA.newMapSubscription(ch);
 
   // Register update collector BEFORE subscribing so we don't miss events.
-  const updatesAP = collectEvents<MapPublicationContext>(subA, 'update', 2);
+  const updatesAP = collectEvents<MapUpdateContext>(subA, 'update', 2);
 
   subA.subscribe();
   await subA.ready(5000);
@@ -426,8 +426,8 @@ test('two clients see same state', async () => {
   expect(keys).toEqual(['shared_1', 'shared_2']);
 
   // ClientA publishes more — both see it.
-  const updateAP = waitForEvent<MapPublicationContext>(subA, 'update');
-  const updateBP = waitForEvent<MapPublicationContext>(subB, 'update');
+  const updateAP = waitForEvent<MapUpdateContext>(subA, 'update');
+  const updateBP = waitForEvent<MapUpdateContext>(subB, 'update');
 
   await subA.mapPublish('shared_3', { from: 'A_more' });
 
@@ -452,7 +452,7 @@ test('map_client_key override', async () => {
   const ch = uniqueChannel('clientkey');
   const sub = c.newMapSubscription(ch);
 
-  const updateP = waitForEvent<MapPublicationContext>(sub, 'update');
+  const updateP = waitForEvent<MapUpdateContext>(sub, 'update');
 
   sub.subscribe();
   await sub.ready(5000);
@@ -475,7 +475,7 @@ test('recovery after unsubscribe and resubscribe (positioned)', async () => {
   const ch = uniqueChannel('positioned');
   const sub = c.newMapSubscription(ch);
 
-  const firstUpdateP = waitForEvent<MapPublicationContext>(sub, 'update');
+  const firstUpdateP = waitForEvent<MapUpdateContext>(sub, 'update');
 
   sub.subscribe();
   await sub.ready(5000);
@@ -517,7 +517,7 @@ test('unrecoverable position recovers from scratch (smallstream)', async () => {
   const ch = uniqueChannel('smallstream');
   const sub = c.newMapSubscription(ch);
 
-  const firstUpdateP = waitForEvent<MapPublicationContext>(sub, 'update');
+  const firstUpdateP = waitForEvent<MapUpdateContext>(sub, 'update');
 
   sub.subscribe();
   await sub.ready(5000);
@@ -572,9 +572,8 @@ test('map client presence: add and remove events', async () => {
   const clientIdB = connBCtx.client;
 
   const ch = uniqueChannel('prestest');
-  // Presence channel: prescli:{rest} where {rest} is the part after the namespace boundary.
-  const rest = ch.substring(ch.indexOf(':') + 1);
-  const presenceCh = 'prescli:' + rest;
+  // Presence channel: prefix + full channel name (server does: ClientPresenceChannelPrefix + e.Channel).
+  const presenceCh = 'prescli:' + ch;
 
   // cA subscribes to presence channel first — should see empty state.
   const presSub = cA.newMapClientsSubscription(presenceCh);
@@ -586,7 +585,7 @@ test('map client presence: add and remove events', async () => {
   expect(syncCtx.entries).toHaveLength(0);
 
   // cA subscribes to main channel → presence add for cA.
-  const addAP = waitForEvent<MapPublicationContext>(presSub, 'update');
+  const addAP = waitForEvent<MapUpdateContext>(presSub, 'update');
   const mainSubA = cA.newMapSubscription(ch);
   mainSubA.subscribe();
   await mainSubA.ready(5000);
@@ -596,7 +595,7 @@ test('map client presence: add and remove events', async () => {
   expect(addACtx.removed).toBeFalsy();
 
   // cB subscribes to main channel → presence add for cB.
-  const addBP = waitForEvent<MapPublicationContext>(presSub, 'update');
+  const addBP = waitForEvent<MapUpdateContext>(presSub, 'update');
   const mainSubB = cB.newMapSubscription(ch);
   mainSubB.subscribe();
   await mainSubB.ready(5000);
@@ -606,7 +605,7 @@ test('map client presence: add and remove events', async () => {
   expect(addBCtx.removed).toBeFalsy();
 
   // cB unsubscribes from main channel → presence removal for cB.
-  const removeBP = waitForEvent<MapPublicationContext>(presSub, 'update');
+  const removeBP = waitForEvent<MapUpdateContext>(presSub, 'update');
   mainSubB.unsubscribe();
 
   const removeBCtx = await removeBP;
@@ -614,7 +613,7 @@ test('map client presence: add and remove events', async () => {
   expect(removeBCtx.removed).toBe(true);
 
   // cA unsubscribes from main channel → presence removal for cA.
-  const removeAP = waitForEvent<MapPublicationContext>(presSub, 'update');
+  const removeAP = waitForEvent<MapUpdateContext>(presSub, 'update');
   mainSubA.unsubscribe();
 
   const removeACtx = await removeAP;

@@ -72,11 +72,13 @@ export type SubscriptionEvents = {
   error: (ctx: SubscriptionErrorContext) => void;
 
   /** called for map subscriptions when complete state is available (initial join or full resync).
-   * Use with 'update' event for simplified state management — no need to handle recovered flag. */
+   * Use with 'update' event for simplified state management — no need to handle recovered flag.
+   * Not emitted for shared poll subscriptions. */
   sync: (ctx: MapSyncContext) => void;
-  /** called for map subscriptions when a single entry is added, updated, or removed.
-   * Same data as 'publication' but paired with 'sync' for simplified state management. */
-  update: (ctx: MapPublicationContext) => void;
+  /** called when a single entry is added, updated, or removed.
+   * Emitted for both map subscriptions (ctx is MapUpdateContext with score) and
+   * shared poll subscriptions (ctx is SharedPollUpdateContext with version). */
+  update: (ctx: MapUpdateContext | SharedPollUpdateContext) => void;
 }
 
 /** State of Subscription */
@@ -275,7 +277,7 @@ export interface SubscribedContext {
   /** custom data for Subscription returned from server. */
   data?: any;
   /** State entries for map subscriptions (from state pagination) */
-  state?: MapPublicationContext[];
+  state?: MapUpdateContext[];
 }
 
 export interface SubscriptionErrorContext {
@@ -470,58 +472,58 @@ export interface FilterNode {
 /** SubscriptionOptions can customize regular (non-map) Subscription. */
 export interface SubscriptionOptions {
   /** allows setting initial subscription token (JWT) */
-  token: string;
+  token?: string;
   /** allows setting function to get/refresh subscription token,
    * this will only be called when new token needed, not on every resubscribe. */
-  getToken: null | ((ctx: SubscriptionTokenContext) => Promise<string>);
+  getToken?: (ctx: SubscriptionTokenContext) => Promise<string>;
   /** data to send to a server with subscribe command */
-  data: any | null;
+  data?: any;
   /** allows setting function to get/renew subscription data (during resubscriptions).
    * In many cases you may prefer using setData method of Subscription instead. */
-  getData: null | ((ctx: SubscriptionDataContext) => Promise<any>);
+  getData?: (ctx: SubscriptionDataContext) => Promise<any>;
   /** force recovery on first subscribe from a provided StreamPosition. */
-  since: Partial<StreamPosition> | null;
+  since?: Partial<StreamPosition>;
   /** min delay between resubscribe attempts. */
-  minResubscribeDelay: number;
+  minResubscribeDelay?: number;
   /** max delay between resubscribe attempts. */
-  maxResubscribeDelay: number;
+  maxResubscribeDelay?: number;
   /** ask server to make subscription positioned. */
-  positioned: boolean;
+  positioned?: boolean;
   /** ask server to make subscription recoverable. */
-  recoverable: boolean;
+  recoverable?: boolean;
   /** ask server to send join/leave messages. */
-  joinLeave: boolean;
+  joinLeave?: boolean;
   /** delta format to be used. Delta usage must be allowed on the server side. */
-  delta: 'fossil';
+  delta?: 'fossil';
   /** server-side tagsFilter to apply for publications in channel. Tags filter support must be allowed on the server side. */
-  tagsFilter: FilterNode | null;
+  tagsFilter?: FilterNode;
 }
 
 /** MapSubscriptionOptions can customize map Subscription. */
 export interface MapSubscriptionOptions {
   /** allows setting initial subscription token (JWT) */
-  token: string;
+  token?: string;
   /** allows setting function to get/refresh subscription token,
    * this will only be called when new token needed, not on every resubscribe. */
-  getToken: null | ((ctx: SubscriptionTokenContext) => Promise<string>);
+  getToken?: (ctx: SubscriptionTokenContext) => Promise<string>;
   /** data to send to a server with subscribe command */
-  data: any | null;
+  data?: any;
   /** allows setting function to get/renew subscription data (during resubscriptions).
    * In many cases you may prefer using setData method of Subscription instead. */
-  getData: null | ((ctx: SubscriptionDataContext) => Promise<any>);
+  getData?: (ctx: SubscriptionDataContext) => Promise<any>;
   /** min delay between resubscribe attempts. */
-  minResubscribeDelay: number;
+  minResubscribeDelay?: number;
   /** max delay between resubscribe attempts. */
-  maxResubscribeDelay: number;
+  maxResubscribeDelay?: number;
   /** Page size for map state/stream pagination (default: 100) */
-  limit: number;
+  limit?: number;
   /** Delta compression format (currently only 'fossil' supported).
    * When set, the server may send delta-encoded publications for bandwidth savings. */
-  delta: 'fossil';
+  delta?: 'fossil';
   /** Strategy for handling unrecoverable position errors (code 112) in map subscriptions.
    * - 'from_scratch': (default) auto-recover by resubscribing from snapshot
    * - 'fatal': go to unsubscribed state, let user handle */
-  unrecoverableStrategy: MapUnrecoverableStrategy;
+  unrecoverableStrategy?: MapUnrecoverableStrategy;
 }
 
 /** Internal options interface used by Subscription class.
@@ -551,22 +553,34 @@ export enum MapPhase {
   State = 2,   // Paginating over state (map state)
 }
 
-/** Map publication with key and removed flag */
-export interface MapPublicationContext extends PublicationContext {
+/** Map update context — emitted via 'update' event for map subscriptions */
+export interface MapUpdateContext extends PublicationContext {
   /** The key identifying this entry */
-  key?: string;
+  key: string;
   /** True if this publication represents a removal */
   removed?: boolean;
   /** Score associated with this entry */
   score: number;
-  /** Entity version (for shared poll subscriptions) */
+}
+
+/** Update context for shared poll subscriptions */
+export interface SharedPollUpdateContext {
+  /** Channel name */
+  channel: string;
+  /** The key identifying this entity */
+  key: string;
+  /** Current entity data (null when removed) */
+  data: any;
+  /** True if this entity was removed */
+  removed?: boolean;
+  /** Entity version */
   version?: number;
 }
 
 /** Complete state snapshot for map subscriptions (emitted on initial join and full resync) */
 export interface MapSyncContext {
   /** All current entries, ordered by score for ordered subscriptions */
-  entries: MapPublicationContext[];
+  entries: MapUpdateContext[];
 }
 
 /** Tracked item for shared poll subscriptions */

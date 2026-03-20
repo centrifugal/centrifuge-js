@@ -3,7 +3,7 @@ import {
   SubscribedContext,
   PublicationContext,
   MapSyncContext,
-  MapPublicationContext,
+  MapUpdateContext,
   TransportName,
   DeltaStats,
 } from './types';
@@ -264,7 +264,7 @@ test('map delta: updates to same key decoded correctly', async () => {
   const ch = uniqueChannel('mapdelta');
   const sub = c.newMapSubscription(ch, { delta: 'fossil' });
 
-  const updates = collectEvents<MapPublicationContext>(sub, 'update', 3);
+  const updates = collectEvents<MapUpdateContext>(sub, 'update', 3);
 
   sub.subscribe();
   await sub.ready(5000);
@@ -301,7 +301,7 @@ test('map delta: different keys have independent delta chains', async () => {
   const ch = uniqueChannel('mapdelta');
   const sub = c.newMapSubscription(ch, { delta: 'fossil' });
 
-  const updates = collectEvents<MapPublicationContext>(sub, 'update', 4);
+  const updates = collectEvents<MapUpdateContext>(sub, 'update', 4);
 
   sub.subscribe();
   await sub.ready(5000);
@@ -341,7 +341,7 @@ test('map delta: recovery after disconnect', async () => {
   const ch = uniqueChannel('mapdelta');
   const sub = c.newMapSubscription(ch, { delta: 'fossil' });
 
-  const firstUpdateP = waitForEvent<MapPublicationContext>(sub, 'update');
+  const firstUpdateP = waitForEvent<MapUpdateContext>(sub, 'update');
 
   sub.subscribe();
   await sub.ready(5000);
@@ -366,7 +366,7 @@ test('map delta: recovery after disconnect', async () => {
 
   // After recovery, the state should contain the latest value.
   // Verify by publishing one more and checking the update event.
-  const nextUpdateP = waitForEvent<MapPublicationContext>(sub, 'update');
+  const nextUpdateP = waitForEvent<MapUpdateContext>(sub, 'update');
   await apiMapPublish(ch, 'k1', { counter: 4, blob: 'aaaaad' });
 
   const updateCtx = await nextUpdateP;
@@ -385,7 +385,7 @@ test('map delta: recovery after unsubscribe/resubscribe', async () => {
   const ch = uniqueChannel('mapdelta');
   const sub = c.newMapSubscription(ch, { delta: 'fossil' });
 
-  const firstUpdateP = waitForEvent<MapPublicationContext>(sub, 'update');
+  const firstUpdateP = waitForEvent<MapUpdateContext>(sub, 'update');
 
   sub.subscribe();
   await sub.ready(5000);
@@ -408,7 +408,7 @@ test('map delta: recovery after unsubscribe/resubscribe', async () => {
   expect(resubCtx.recovered).toBe(true);
 
   // Verify live delta still works after recovery.
-  const liveUpdateP = waitForEvent<MapPublicationContext>(sub, 'update');
+  const liveUpdateP = waitForEvent<MapUpdateContext>(sub, 'update');
   await apiMapPublish(ch, 'item', { state: 'v4', detail: 'long string here!!' });
 
   const liveCtx = await liveUpdateP;
@@ -442,7 +442,7 @@ test('map delta: pre-seeded state then live delta updates', async () => {
   expect(syncCtx.entries).toHaveLength(2);
 
   // Now publish live updates — delta should work from the seeded state.
-  const updates = collectEvents<MapPublicationContext>(sub, 'update', 2);
+  const updates = collectEvents<MapUpdateContext>(sub, 'update', 2);
 
   await apiMapPublish(ch, 'a', { x: 2, filler: fillerZ });
   await apiMapPublish(ch, 'b', { x: 2, filler: fillerY });

@@ -1,7 +1,7 @@
 import { Centrifuge } from './protobuf';
 import {
   MapSyncContext,
-  MapPublicationContext,
+  MapUpdateContext,
   TransportName,
   DeltaStats,
 } from './types';
@@ -96,7 +96,7 @@ test('protobuf map: subscribe, publish, receive update', async () => {
   const sub = c.newMapSubscription(ch);
 
   const syncP = waitForEvent<MapSyncContext>(sub, 'sync');
-  const updateP = waitForEvent<MapPublicationContext>(sub, 'update');
+  const updateP = waitForEvent<MapUpdateContext>(sub, 'update');
 
   sub.subscribe();
   await sub.ready(5000);
@@ -157,7 +157,7 @@ test('protobuf map delta: updates to same key decoded correctly', async () => {
   const ch = uniqueChannel('mapdelta');
   const sub = c.newMapSubscription(ch, { delta: 'fossil' });
 
-  const updates = collectEvents<MapPublicationContext>(sub, 'update', 3);
+  const updates = collectEvents<MapUpdateContext>(sub, 'update', 3);
 
   sub.subscribe();
   await sub.ready(5000);

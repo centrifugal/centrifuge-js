@@ -1,7 +1,7 @@
 import { Centrifuge } from './centrifuge';
 import {
   SubscribedContext,
-  MapPublicationContext,
+  SharedPollUpdateContext,
   TransportName,
   SharedPollSignatureContext,
   SharedPollSignatureResult,
@@ -92,7 +92,7 @@ function makeTrackSignature(
   const keysHash = crypto.createHash('sha256')
     .update(sortedKeys.join('\x00'))
     .digest('hex');
-  const payload = `${channel}:${user}:${keysHash}:${now}:${expiry}`;
+  const payload = `${now}:${expiry}:${user}:${channel}:${keysHash}`;
   const hmac = crypto.createHmac('sha256', secret)
     .update(payload)
     .digest('hex');
@@ -213,13 +213,13 @@ test('track items and receive updates', async () => {
   mockItems.set('k1', { data: { value: 'hello' }, version: 1 });
   mockItems.set('k2', { data: { value: 'world' }, version: 1 });
 
-  const updateP = collectEvents<MapPublicationContext>(sub, 'update', 2);
+  const updateP = collectEvents<SharedPollUpdateContext>(sub, 'update', 2);
 
   const signature = makeTrackSignature(pollSecret, ch, ['k1', 'k2'], '');
   await sub.track([
     { key: 'k1', version: 0 },
     { key: 'k2', version: 0 },
-  ], { signature });
+  ], signature);
 
   // Wait for Centrifugo to poll and deliver updates.
   const updates = await updateP;
@@ -250,14 +250,14 @@ test('track multiple batches', async () => {
 
   // Track batch 1.
   const sig1 = makeTrackSignature(pollSecret, ch, ['a1'], '');
-  await sub.track([{ key: 'a1', version: 0 }], { signature: sig1 });
+  await sub.track([{ key: 'a1', version: 0 }], sig1);
 
   // Track batch 2.
   const sig2 = makeTrackSignature(pollSecret, ch, ['b1'], '');
-  await sub.track([{ key: 'b1', version: 0 }], { signature: sig2 });
+  await sub.track([{ key: 'b1', version: 0 }], sig2);
 
   // Should get updates for both batches.
-  const updates = await collectEvents<MapPublicationContext>(sub, 'update', 2);
+  const updates = await collectEvents<SharedPollUpdateContext>(sub, 'update', 2);
 
   const keys = updates.map(u => u.key).sort();
   expect(keys).toEqual(['a1', 'b1']);
@@ -286,10 +286,10 @@ test('untrack items', async () => {
   await sub.track([
     { key: 'k1', version: 0 },
     { key: 'k2', version: 0 },
-  ], { signature: sig });
+  ], sig);
 
   // Wait for initial updates.
-  await collectEvents<MapPublicationContext>(sub, 'update', 2);
+  await collectEvents<SharedPollUpdateContext>(sub, 'update', 2);
 
   // Untrack k1.
   await sub.untrack(['k1']);
@@ -297,7 +297,7 @@ test('untrack items', async () => {
   // Update k2 version — should still get update for k2.
   mockItems.set('k2', { data: { v: 2 }, version: 2 });
 
-  const laterUpdates = await collectEvents<MapPublicationContext>(sub, 'update', 1);
+  const laterUpdates = await collectEvents<SharedPollUpdateContext>(sub, 'update', 1);
   expect(laterUpdates[0].key).toBe('k2');
   expect(laterUpdates[0].version).toBe(2);
 
@@ -320,7 +320,7 @@ test('track with invalid signature', async () => {
 
   await expect(sub.track(
     [{ key: 'k1', version: 0 }],
-    { signature: 'invalid-signature' }
+    'invalid-signature'
   )).rejects.toBeDefined();
 
   await disconnectClient(c);
@@ -342,10 +342,10 @@ test('update event has correct fields', async () => {
 
   mockItems.set('item1', { data: { score: 42 }, version: 3 });
 
-  const updateP = waitForEvent<MapPublicationContext>(sub, 'update');
+  const updateP = waitForEvent<SharedPollUpdateContext>(sub, 'update');
 
   const sig = makeTrackSignature(pollSecret, ch, ['item1'], '');
-  await sub.track([{ key: 'item1', version: 0 }], { signature: sig });
+  await sub.track([{ key: 'item1', version: 0 }], sig);
 
   const ctx = await updateP;
   expect(ctx.key).toBe('item1');
@@ -375,12 +375,12 @@ test('no update when version unchanged', async () => {
   mockItems.set('k1', { data: { v: 1 }, version: 5 });
 
   const sig = makeTrackSignature(pollSecret, ch, ['k1'], '');
-  await sub.track([{ key: 'k1', version: 5 }], { signature: sig });
+  await sub.track([{ key: 'k1', version: 5 }], sig);
 
   // Immediately bump to version=6 — first delivered update must be 6, proving 5 was filtered.
   mockItems.set('k1', { data: { v: 2 }, version: 6 });
 
-  const update = await waitForEvent<MapPublicationContext>(sub, 'update');
+  const update = await waitForEvent<SharedPollUpdateContext>(sub, 'update');
   expect(update.version).toBe(6);
   expect(update.data).toEqual({ v: 2 });
 
@@ -404,15 +404,15 @@ test('removal event', async () => {
   mockItems.set('k1', { data: { v: 1 }, version: 1 });
 
   const sig = makeTrackSignature(pollSecret, ch, ['k1'], '');
-  await sub.track([{ key: 'k1', version: 0 }], { signature: sig });
+  await sub.track([{ key: 'k1', version: 0 }], sig);
 
   // Wait for initial update.
-  await waitForEvent<MapPublicationContext>(sub, 'update');
+  await waitForEvent<SharedPollUpdateContext>(sub, 'update');
 
   // Mark as removed.
   mockItems.set('k1', { data: null, version: 2, removed: true });
 
-  const removal = await waitForEvent<MapPublicationContext>(sub, 'update');
+  const removal = await waitForEvent<SharedPollUpdateContext>(sub, 'update');
   expect(removal.key).toBe('k1');
   expect(removal.removed).toBe(true);
 
@@ -443,9 +443,9 @@ test('multiple items updated in one cycle', async () => {
     { key: 'x1', version: 0 },
     { key: 'x2', version: 0 },
     { key: 'x3', version: 0 },
-  ], { signature: sig });
+  ], sig);
 
-  const updates = await collectEvents<MapPublicationContext>(sub, 'update', 3);
+  const updates = await collectEvents<SharedPollUpdateContext>(sub, 'update', 3);
   const keys = updates.map(u => u.key).sort();
   expect(keys).toEqual(['x1', 'x2', 'x3']);
 
@@ -477,14 +477,14 @@ test('two clients see same updates', async () => {
 
   mockItems.set('shared', { data: { val: 'test' }, version: 1 });
 
-  const update1P = waitForEvent<MapPublicationContext>(sub1, 'update');
-  const update2P = waitForEvent<MapPublicationContext>(sub2, 'update');
+  const update1P = waitForEvent<SharedPollUpdateContext>(sub1, 'update');
+  const update2P = waitForEvent<SharedPollUpdateContext>(sub2, 'update');
 
   const sig1 = makeTrackSignature(pollSecret, ch, ['shared'], '');
-  await sub1.track([{ key: 'shared', version: 0 }], { signature: sig1 });
+  await sub1.track([{ key: 'shared', version: 0 }], sig1);
 
   const sig2 = makeTrackSignature(pollSecret, ch, ['shared'], '');
-  await sub2.track([{ key: 'shared', version: 0 }], { signature: sig2 });
+  await sub2.track([{ key: 'shared', version: 0 }], sig2);
 
   const [u1, u2] = await Promise.all([update1P, update2P]);
   expect(u1.key).toBe('shared');
@@ -522,14 +522,14 @@ test('clients track different keys', async () => {
   mockItems.set('only1', { data: { for: 'c1' }, version: 1 });
   mockItems.set('only2', { data: { for: 'c2' }, version: 1 });
 
-  const update1P = waitForEvent<MapPublicationContext>(sub1, 'update');
-  const update2P = waitForEvent<MapPublicationContext>(sub2, 'update');
+  const update1P = waitForEvent<SharedPollUpdateContext>(sub1, 'update');
+  const update2P = waitForEvent<SharedPollUpdateContext>(sub2, 'update');
 
   const sig1 = makeTrackSignature(pollSecret, ch, ['only1'], '');
-  await sub1.track([{ key: 'only1', version: 0 }], { signature: sig1 });
+  await sub1.track([{ key: 'only1', version: 0 }], sig1);
 
   const sig2 = makeTrackSignature(pollSecret, ch, ['only2'], '');
-  await sub2.track([{ key: 'only2', version: 0 }], { signature: sig2 });
+  await sub2.track([{ key: 'only2', version: 0 }], sig2);
 
   const [u1, u2] = await Promise.all([update1P, update2P]);
   expect(u1.key).toBe('only1');
@@ -556,10 +556,10 @@ test('unsubscribe cleans up', async () => {
   mockItems.set('k1', { data: { v: 1 }, version: 1 });
 
   const sig = makeTrackSignature(pollSecret, ch, ['k1'], '');
-  await sub.track([{ key: 'k1', version: 0 }], { signature: sig });
+  await sub.track([{ key: 'k1', version: 0 }], sig);
 
   // Wait for update.
-  await waitForEvent<MapPublicationContext>(sub, 'update');
+  await waitForEvent<SharedPollUpdateContext>(sub, 'update');
 
   // Unsubscribe.
   sub.unsubscribe();
@@ -580,8 +580,8 @@ test('unsubscribe cleans up', async () => {
 
   mockItems.set('probe', { data: { v: 1 }, version: 1 });
   const sig2 = makeTrackSignature(pollSecret, ch2, ['probe'], '');
-  await sub2.track([{ key: 'probe', version: 0 }], { signature: sig2 });
-  await waitForEvent<MapPublicationContext>(sub2, 'update');
+  await sub2.track([{ key: 'probe', version: 0 }], sig2);
+  await waitForEvent<SharedPollUpdateContext>(sub2, 'update');
 
   // Old subscription must not have received anything after unsubscribe.
   expect(spuriousCount).toBe(0);
@@ -606,10 +606,10 @@ test('reconnect replays track with current versions', async () => {
   mockItems.set('rk1', { data: { v: 1 }, version: 1 });
 
   const sig = makeTrackSignature(pollSecret, ch, ['rk1'], '');
-  await sub.track([{ key: 'rk1', version: 0 }], { signature: sig });
+  await sub.track([{ key: 'rk1', version: 0 }], sig);
 
   // Wait for initial update (version 1).
-  await waitForEvent<MapPublicationContext>(sub, 'update');
+  await waitForEvent<SharedPollUpdateContext>(sub, 'update');
 
   // Simulate disconnect/reconnect.
   c.disconnect();
@@ -624,9 +624,50 @@ test('reconnect replays track with current versions', async () => {
 
   // After reconnect, getSignature should be called and track replayed.
   // Should get update for version 2.
-  const update = await waitForEvent<MapPublicationContext>(sub, 'update');
+  const update = await waitForEvent<SharedPollUpdateContext>(sub, 'update');
   expect(update.key).toBe('rk1');
   expect(update.version).toBe(2);
 
   await disconnectClient(c);
 });
+
+// 12. trackedKeys returns current tracked keys.
+test('trackedKeys returns tracked and untracked keys', async () => {
+  const c = createClient();
+  c.connect();
+  await c.ready(5000);
+
+  const ch = uniqueChannel('poll');
+  const sub = c.newSharedPollSubscription(ch, {
+    getSignature: makeGetSignature(pollSecret, ch),
+  });
+
+  sub.subscribe();
+  await sub.ready(5000);
+
+  // Initially empty.
+  expect(sub.trackedKeys().size).toBe(0);
+
+  // Track some keys.
+  mockItems.set('tk1', { data: { v: 1 }, version: 1 });
+  mockItems.set('tk2', { data: { v: 2 }, version: 1 });
+  const sig = makeTrackSignature(pollSecret, ch, ['tk1', 'tk2'], '');
+  await sub.track([
+    { key: 'tk1', version: 0 },
+    { key: 'tk2', version: 0 },
+  ], sig);
+
+  const keys1 = sub.trackedKeys();
+  expect(keys1.size).toBe(2);
+  expect(keys1.has('tk1')).toBe(true);
+  expect(keys1.has('tk2')).toBe(true);
+
+  // Untrack one key.
+  await sub.untrack(['tk1']);
+  const keys2 = sub.trackedKeys();
+  expect(keys2.size).toBe(1);
+  expect(keys2.has('tk2')).toBe(true);
+  expect(keys2.has('tk1')).toBe(false);
+
+  await disconnectClient(c);
+}, 15000);

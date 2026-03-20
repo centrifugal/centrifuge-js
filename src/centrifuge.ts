@@ -175,7 +175,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
    * one subscription per channel per client this method throws if client already has
    * channel subscription in internal registry.
    * */
-  newSubscription(channel: string, options?: Partial<SubscriptionOptions>): Subscription {
+  newSubscription(channel: string, options?: SubscriptionOptions): Subscription {
     if (this.getSubscription(channel) !== null) {
       throw new Error('Subscription to the channel ' + channel + ' already exists');
     }
@@ -187,7 +187,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
   /** newMapSubscription allocates new map Subscription to a channel. Since server only allows
    * one subscription per channel per client this method throws if client already has
    * channel subscription in internal registry. */
-  newMapSubscription(channel: string, options?: Partial<MapSubscriptionOptions>): Subscription {
+  newMapSubscription(channel: string, options?: MapSubscriptionOptions): Subscription {
     if (this.getSubscription(channel) !== null) {
       throw new Error('Subscription to the channel ' + channel + ' already exists');
     }
@@ -212,7 +212,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
    * Each entry has key=clientId and contains full ClientInfo.
    * Use this to track connections per channel.
    * The channel should be the full presence channel name (e.g., "$clients:games"). */
-  newMapClientsSubscription(channel: string, options?: Partial<MapSubscriptionOptions>): Subscription {
+  newMapClientsSubscription(channel: string, options?: MapSubscriptionOptions): Subscription {
     if (this.getSubscription(channel) !== null) {
       throw new Error('Subscription to the channel ' + channel + ' already exists');
     }
@@ -238,7 +238,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
    * Each entry has key=userId (no ClientInfo stored).
    * User entries expire via TTL, providing debounce for quick reconnects.
    * The channel should be the full presence channel name (e.g., "$users:games"). */
-  newMapUsersSubscription(channel: string, options?: Partial<MapSubscriptionOptions>): Subscription {
+  newMapUsersSubscription(channel: string, options?: MapSubscriptionOptions): Subscription {
     if (this.getSubscription(channel) !== null) {
       throw new Error('Subscription to the channel ' + channel + ' already exists');
     }
@@ -264,14 +264,14 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
    * Shared poll subscriptions use server-side polling to aggregate interest sets
    * and deliver periodic updates with version tracking. Track items after subscribing
    * using the track() method on the returned Subscription. */
-  newSharedPollSubscription(channel: string, options?: Partial<SharedPollSubscriptionOptions>): Subscription {
+  newSharedPollSubscription(channel: string, options?: SharedPollSubscriptionOptions): Subscription {
     if (this.getSubscription(channel) !== null) {
       throw new Error('Subscription to the channel ' + channel + ' already exists');
     }
     const sub = new Subscription(this, channel, {
       minResubscribeDelay: options?.minResubscribeDelay,
       maxResubscribeDelay: options?.maxResubscribeDelay,
-      delta: options?.delta as 'fossil' | undefined,
+      delta: options?.delta,
       sharedPoll: true,
       sharedPollGetSignature: options?.getSignature,
     });

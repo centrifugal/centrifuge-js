@@ -5,7 +5,7 @@ import {
   HistoryOptions, HistoryResult, PresenceResult, PresenceStatsResult,
   PublishResult, State, SubscriptionEvents, InternalSubscriptionOptions,
   SubscriptionState, SubscriptionTokenContext, TypedEventEmitter,
-  SubscriptionDataContext, FilterNode, MapPhase, MapPublicationContext,
+  SubscriptionDataContext, FilterNode, MapPhase, MapUpdateContext, SharedPollUpdateContext,
   MapUnrecoverableStrategy, DeltaStats,
   SharedPollTrackItem, SharedPollSignatureContext, SharedPollSignatureResult
 } from './types';
@@ -54,8 +54,8 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
   private _mapPresenceType: number = 1;  // 1=MAP, 2=MAP_CLIENTS, 3=MAP_USERS
   // @ts-ignore – this is used for tracking map subscription phase state.
   private _mapPhase: MapPhase | null = null;
-  private _mapStateBuffer: MapPublicationContext[] = [];  // Buffer snapshot entries
-  private _mapStreamBuffer: MapPublicationContext[] = [];    // Buffer stream entries during catch-up
+  private _mapStateBuffer: MapUpdateContext[] = [];  // Buffer snapshot entries
+  private _mapStreamBuffer: MapUpdateContext[] = [];    // Buffer stream entries during catch-up
   private _mapCursor: string = '';          // Pagination cursor
   private _mapLimit: number = 100;          // Page size
   private _mapUnrecoverableStrategy: MapUnrecoverableStrategy = 'from_scratch';
@@ -667,7 +667,6 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
       }
     }
 
-    // Use map publication context for map and shared poll subscriptions
     let ctx: any;
     if (this._sharedPoll) {
       // Update locally tracked versions.
@@ -678,9 +677,9 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
           this._sharedPollTrackedItems.set(pub.key, pub.version);
         }
       }
-      ctx = this._getMapPublicationContext(pub);
+      ctx = this._getSharedPollUpdateContext(pub);
     } else if (this._map) {
-      ctx = this._getMapPublicationContext(pub);
+      ctx = this._getMapUpdateContext(pub);
     } else {
       // @ts-ignore – we are hiding some methods from public API autocompletion.
       ctx = this._centrifuge._getPublicationContext(this.channel, pub);
@@ -1025,7 +1024,7 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
 
   /** Track items in a shared poll subscription. Each item has a key and version.
    * The signature must be an HMAC authenticating the key set. */
-  async track(items: SharedPollTrackItem[], options: { signature: string }): Promise<void> {
+  async track(items: SharedPollTrackItem[], signature: string): Promise<void> {
     if (!this._sharedPoll) {
       throw new Error('track is only available on shared poll subscriptions');
     }
@@ -1034,7 +1033,7 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
     for (const item of items) {
       this._sharedPollTrackedItems.set(item.key, item.version);
     }
-    return this._sendTrackRequest(items, options.signature);
+    return this._sendTrackRequest(items, signature);
   }
 
   /** Stop tracking specific keys in a shared poll subscription. */
@@ -1047,6 +1046,14 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
       this._sharedPollTrackedItems.delete(key);
     }
     return this._sendUntrackRequest(keys);
+  }
+
+  /** Returns the set of currently tracked keys in a shared poll subscription. */
+  trackedKeys(): Set<string> {
+    if (!this._sharedPoll) {
+      throw new Error('trackedKeys is only available on shared poll subscriptions');
+    }
+    return new Set(this._sharedPollTrackedItems.keys());
   }
 
   private _sendTrackRequest(items: { key: string; version: number }[], signature: string): Promise<void> {
@@ -1140,8 +1147,7 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
             key: key,
             data: null,
             removed: true,
-            score: 0,
-          } as MapPublicationContext);
+          } as SharedPollUpdateContext);
         }
       }
 
@@ -1199,8 +1205,7 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
             key: key,
             data: null,
             removed: true,
-            score: 0,
-          } as MapPublicationContext);
+          } as SharedPollUpdateContext);
         }
       }
 
@@ -1349,7 +1354,7 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
     if (result.state && result.state.length > 0) {
       for (const pub of result.state) {
         this._seedDeltaTracking(pub);
-        this._mapStateBuffer.push(this._getMapPublicationContext(pub));
+        this._mapStateBuffer.push(this._getMapUpdateContext(pub));
       }
     }
 
@@ -1432,7 +1437,7 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
     if (result.publications && result.publications.length > 0) {
       for (const pub of result.publications) {
         this._seedDeltaTracking(pub);
-        this._mapStreamBuffer.push(this._getMapPublicationContext(pub));
+        this._mapStreamBuffer.push(this._getMapUpdateContext(pub));
       }
     }
 
@@ -1475,7 +1480,7 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
     if (result.state && result.state.length > 0) {
       for (const pub of result.state) {
         this._seedDeltaTracking(pub);
-        this._mapStateBuffer.push(this._getMapPublicationContext(pub));
+        this._mapStateBuffer.push(this._getMapUpdateContext(pub));
       }
     }
 
@@ -1511,7 +1516,7 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
             this._prevValueMap.set(pub.key, pub.data);
           }
         }
-        this._mapStreamBuffer.push(this._getMapPublicationContext(pub));
+        this._mapStreamBuffer.push(this._getMapUpdateContext(pub));
       }
     }
 
@@ -1650,22 +1655,17 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
     return { subscribe: req };
   }
 
-  /** Convert raw publication to MapPublicationContext */
-  private _getMapPublicationContext(pub: any): MapPublicationContext {
-    const ctx: MapPublicationContext = {
+  /** Convert raw publication to MapUpdateContext */
+  private _getMapUpdateContext(pub: any): MapUpdateContext {
+    const ctx: MapUpdateContext = {
       channel: this.channel,
       data: pub.data,
+      key: pub.key || '',
       score: pub.score || 0,
     };
 
-    if (pub.key !== undefined) {
-      ctx.key = pub.key;
-    }
     if (pub.removed === true) {
       ctx.removed = true;
-    }
-    if (pub.version !== undefined) {
-      ctx.version = pub.version;
     }
     if (pub.offset !== undefined) {
       ctx.offset = pub.offset;
@@ -1678,6 +1678,22 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
       ctx.tags = pub.tags;
     }
 
+    return ctx;
+  }
+
+  /** Convert raw publication to SharedPollUpdateContext */
+  private _getSharedPollUpdateContext(pub: any): SharedPollUpdateContext {
+    const ctx: SharedPollUpdateContext = {
+      channel: this.channel,
+      key: pub.key || '',
+      data: pub.data,
+    };
+    if (pub.removed === true) {
+      ctx.removed = true;
+    }
+    if (pub.version !== undefined) {
+      ctx.version = pub.version;
+    }
     return ctx;
   }
 }

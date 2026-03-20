@@ -2,7 +2,7 @@ import { Centrifuge } from './centrifuge';
 import {
   SubscribedContext,
   PublicationContext,
-  MapPublicationContext,
+  MapUpdateContext,
   TransportName,
 } from './types';
 
@@ -234,7 +234,7 @@ test('map: key removed automatically after TTL expires', async () => {
   const ch = uniqueChannel('shortttl');
   const sub = c.newMapSubscription(ch);
 
-  const addP = waitForEvent<MapPublicationContext>(sub, 'update');
+  const addP = waitForEvent<MapUpdateContext>(sub, 'update');
 
   sub.subscribe();
   await sub.ready(5000);
@@ -248,7 +248,7 @@ test('map: key removed automatically after TTL expires', async () => {
   expect(addCtx.data).toEqual({ value: 'will expire' });
 
   // Wait for TTL to expire + cleanup worker to run.
-  const removalP = waitForEvent<MapPublicationContext>(sub, 'update', 10000);
+  const removalP = waitForEvent<MapUpdateContext>(sub, 'update', 10000);
   const removalCtx = await removalP;
   expect(removalCtx.key).toBe('ephemeral');
   expect(removalCtx.removed).toBe(true);

@@ -531,6 +531,8 @@ export interface InternalSubscriptionOptions extends SubscriptionOptions {
   mapLimit?: number;
   mapUnrecoverableStrategy?: MapUnrecoverableStrategy;
   mapPresenceType?: number; // 1=MAP (default), 2=MAP_CLIENTS, 3=MAP_USERS
+  sharedPoll?: boolean;
+  sharedPollGetSignature?: (ctx: SharedPollSignatureContext) => Promise<SharedPollSignatureResult>;
 }
 
 /** Strategy for handling unrecoverable position errors in map subscriptions */
@@ -557,12 +559,49 @@ export interface MapPublicationContext extends PublicationContext {
   removed?: boolean;
   /** Score associated with this entry */
   score: number;
+  /** Entity version (for shared poll subscriptions) */
+  version?: number;
 }
 
 /** Complete state snapshot for map subscriptions (emitted on initial join and full resync) */
 export interface MapSyncContext {
   /** All current entries, ordered by score for ordered subscriptions */
   entries: MapPublicationContext[];
+}
+
+/** Tracked item for shared poll subscriptions */
+export interface SharedPollTrackItem {
+  /** The key identifying this entity */
+  key: string;
+  /** Current version the client has for this entity (0 = no version known) */
+  version: number;
+}
+
+/** Context passed to the getSignature callback for shared poll subscriptions */
+export interface SharedPollSignatureContext {
+  /** All currently tracked keys that need a signature */
+  keys: string[];
+}
+
+/** Result expected from the getSignature callback */
+export interface SharedPollSignatureResult {
+  /** Keys to track (can be a subset of input keys to revoke removed ones) */
+  keys: string[];
+  /** HMAC signature authorizing these keys */
+  signature: string;
+}
+
+/** Options for shared poll subscriptions */
+export interface SharedPollSubscriptionOptions {
+  /** Callback to get/refresh the HMAC signature for tracked keys.
+   * Called on reconnect (to replay tracked items) and on signature TTL expiry. */
+  getSignature: (ctx: SharedPollSignatureContext) => Promise<SharedPollSignatureResult>;
+  /** Delta compression type (e.g. 'fossil') */
+  delta?: 'fossil';
+  /** min delay between resubscribe attempts */
+  minResubscribeDelay?: number;
+  /** max delay between resubscribe attempts */
+  maxResubscribeDelay?: number;
 }
 
 /** Delta compression statistics for a subscription. */

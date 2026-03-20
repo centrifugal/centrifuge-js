@@ -21,6 +21,7 @@ import {
   State, Options, SubscriptionState, ClientEvents,
   TypedEventEmitter, RpcResult, SubscriptionOptions,
   MapSubscriptionOptions,
+  SharedPollSubscriptionOptions,
   HistoryOptions, HistoryResult, PublishResult,
   PresenceResult, PresenceStatsResult, SubscribedContext,
   TransportEndpoint,
@@ -259,7 +260,26 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     return sub;
   }
 
-  /** getSubscription returns Subscription if it's registered in the internal 
+  /** newSharedPollSubscription allocates a new shared poll Subscription to a channel.
+   * Shared poll subscriptions use server-side polling to aggregate interest sets
+   * and deliver periodic updates with version tracking. Track items after subscribing
+   * using the track() method on the returned Subscription. */
+  newSharedPollSubscription(channel: string, options?: Partial<SharedPollSubscriptionOptions>): Subscription {
+    if (this.getSubscription(channel) !== null) {
+      throw new Error('Subscription to the channel ' + channel + ' already exists');
+    }
+    const sub = new Subscription(this, channel, {
+      minResubscribeDelay: options?.minResubscribeDelay,
+      maxResubscribeDelay: options?.maxResubscribeDelay,
+      delta: options?.delta as 'fossil' | undefined,
+      sharedPoll: true,
+      sharedPollGetSignature: options?.getSignature,
+    });
+    this._subs[channel] = sub;
+    return sub;
+  }
+
+  /** getSubscription returns Subscription if it's registered in the internal
    * registry or null. */
   getSubscription(channel: string): Subscription | null {
     return this._getSub(channel);

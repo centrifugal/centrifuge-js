@@ -710,6 +710,12 @@ export namespace centrifugal {
 
                 /** Publication epoch */
                 epoch?: (string|null);
+
+                /** Publication prev_data */
+                prev_data?: (Uint8Array|null);
+
+                /** Publication version */
+                version?: (number|Long|null);
             }
 
             /** Represents a Publication. */
@@ -753,6 +759,12 @@ export namespace centrifugal {
 
                 /** Publication epoch. */
                 public epoch: string;
+
+                /** Publication prev_data. */
+                public prev_data: Uint8Array;
+
+                /** Publication version. */
+                public version: (number|Long);
 
                 /**
                  * Encodes the specified Publication message. Does not implicitly {@link centrifugal.centrifuge.protocol.Publication.verify|verify} messages.
@@ -1905,8 +1917,8 @@ export namespace centrifugal {
                 /** SubscribeRequest limit */
                 limit?: (number|null);
 
-                /** SubscribeRequest ordered */
-                ordered?: (boolean|null);
+                /** SubscribeRequest asc */
+                asc?: (boolean|null);
             }
 
             /** Represents a SubscribeRequest. */
@@ -1966,8 +1978,8 @@ export namespace centrifugal {
                 /** SubscribeRequest limit. */
                 public limit: number;
 
-                /** SubscribeRequest ordered. */
-                public ordered: boolean;
+                /** SubscribeRequest asc. */
+                public asc: boolean;
 
                 /**
                  * Encodes the specified SubscribeRequest message. Does not implicitly {@link centrifugal.centrifuge.protocol.SubscribeRequest.verify|verify} messages.
@@ -2178,6 +2190,81 @@ export namespace centrifugal {
                 public static getTypeUrl(typeUrlPrefix?: string): string;
             }
 
+            /** Properties of a KeyedItem. */
+            interface IKeyedItem {
+
+                /** KeyedItem key */
+                key?: (string|null);
+
+                /** KeyedItem version */
+                version?: (number|Long|null);
+            }
+
+            /** Represents a KeyedItem. */
+            class KeyedItem implements IKeyedItem {
+
+                /**
+                 * Constructs a new KeyedItem.
+                 * @param [properties] Properties to set
+                 */
+                constructor(properties?: centrifugal.centrifuge.protocol.IKeyedItem);
+
+                /** KeyedItem key. */
+                public key: string;
+
+                /** KeyedItem version. */
+                public version: (number|Long);
+
+                /**
+                 * Encodes the specified KeyedItem message. Does not implicitly {@link centrifugal.centrifuge.protocol.KeyedItem.verify|verify} messages.
+                 * @param message KeyedItem message or plain object to encode
+                 * @param [writer] Writer to encode to
+                 * @returns Writer
+                 */
+                public static encode(message: centrifugal.centrifuge.protocol.IKeyedItem, writer?: $protobuf.Writer): $protobuf.Writer;
+
+                /**
+                 * Encodes the specified KeyedItem message, length delimited. Does not implicitly {@link centrifugal.centrifuge.protocol.KeyedItem.verify|verify} messages.
+                 * @param message KeyedItem message or plain object to encode
+                 * @param [writer] Writer to encode to
+                 * @returns Writer
+                 */
+                public static encodeDelimited(message: centrifugal.centrifuge.protocol.IKeyedItem, writer?: $protobuf.Writer): $protobuf.Writer;
+
+                /**
+                 * Decodes a KeyedItem message from the specified reader or buffer.
+                 * @param reader Reader or buffer to decode from
+                 * @param [length] Message length if known beforehand
+                 * @returns KeyedItem
+                 * @throws {Error} If the payload is not a reader or valid buffer
+                 * @throws {$protobuf.util.ProtocolError} If required fields are missing
+                 */
+                public static decode(reader: ($protobuf.Reader|Uint8Array), length?: number): centrifugal.centrifuge.protocol.KeyedItem;
+
+                /**
+                 * Decodes a KeyedItem message from the specified reader or buffer, length delimited.
+                 * @param reader Reader or buffer to decode from
+                 * @returns KeyedItem
+                 * @throws {Error} If the payload is not a reader or valid buffer
+                 * @throws {$protobuf.util.ProtocolError} If required fields are missing
+                 */
+                public static decodeDelimited(reader: ($protobuf.Reader|Uint8Array)): centrifugal.centrifuge.protocol.KeyedItem;
+
+                /**
+                 * Verifies a KeyedItem message.
+                 * @param message Plain object to verify
+                 * @returns `null` if valid, otherwise the reason why it is not
+                 */
+                public static verify(message: { [k: string]: any }): (string|null);
+
+                /**
+                 * Gets the default type url for KeyedItem
+                 * @param [typeUrlPrefix] your custom typeUrlPrefix(default "type.googleapis.com")
+                 * @returns The default type url
+                 */
+                public static getTypeUrl(typeUrlPrefix?: string): string;
+            }
+
             /** Properties of a SubRefreshRequest. */
             interface ISubRefreshRequest {
 
@@ -2186,6 +2273,18 @@ export namespace centrifugal {
 
                 /** SubRefreshRequest token */
                 token?: (string|null);
+
+                /** SubRefreshRequest items */
+                items?: (centrifugal.centrifuge.protocol.IKeyedItem[]|null);
+
+                /** SubRefreshRequest untrack_keys */
+                untrack_keys?: (string[]|null);
+
+                /** SubRefreshRequest type */
+                type?: (number|null);
+
+                /** SubRefreshRequest signature */
+                signature?: (string|null);
             }
 
             /** Represents a SubRefreshRequest. */
@@ -2202,6 +2301,18 @@ export namespace centrifugal {
 
                 /** SubRefreshRequest token. */
                 public token: string;
+
+                /** SubRefreshRequest items. */
+                public items: centrifugal.centrifuge.protocol.IKeyedItem[];
+
+                /** SubRefreshRequest untrack_keys. */
+                public untrack_keys: string[];
+
+                /** SubRefreshRequest type. */
+                public type: number;
+
+                /** SubRefreshRequest signature. */
+                public signature: string;
 
                 /**
                  * Encodes the specified SubRefreshRequest message. Does not implicitly {@link centrifugal.centrifuge.protocol.SubRefreshRequest.verify|verify} messages.

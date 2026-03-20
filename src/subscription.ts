@@ -6,7 +6,8 @@ import {
   PublishResult, State, SubscriptionEvents, InternalSubscriptionOptions,
   SubscriptionState, SubscriptionTokenContext, TypedEventEmitter,
   SubscriptionDataContext, FilterNode, MapPhase, MapPublicationContext,
-  MapUnrecoverableStrategy, DeltaStats
+  MapUnrecoverableStrategy, DeltaStats,
+  SharedPollTrackItem, SharedPollSignatureContext, SharedPollSignatureResult
 } from './types';
 import { ttlMilliseconds, backoff } from './utils';
 
@@ -58,6 +59,13 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
   private _mapCursor: string = '';          // Pagination cursor
   private _mapLimit: number = 100;          // Page size
   private _mapUnrecoverableStrategy: MapUnrecoverableStrategy = 'from_scratch';
+
+  // Shared poll subscription state
+  private _sharedPoll: boolean = false;
+  private _sharedPollTrackedItems: Map<string, number> = new Map();  // key → version
+  private _sharedPollGetSignature: null | ((ctx: SharedPollSignatureContext) => Promise<SharedPollSignatureResult>) = null;
+  private _sharedPollSignatureRefreshTimeout?: null | ReturnType<typeof setTimeout> = null;
+  private _sharedPollSignatureRefreshAttempts: number = 0;
 
   /** Subscription constructor should not be used directly, create subscriptions using Client method. */
   constructor(centrifuge: Centrifuge, channel: string, options?: Partial<InternalSubscriptionOptions>) {
@@ -320,6 +328,7 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
 
   private _clearSubscribedState() {
     this._clearRefreshTimeout();
+    this._clearSharedPollSignatureRefresh();
   }
 
   private _setSubscribed(result: any) {
@@ -554,6 +563,14 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
 
     if (token) req.token = token;
     if (this._data) req.data = this._data;
+
+    // Shared poll: simple subscribe with type=4, no positioning/recovery fields.
+    if (this._sharedPoll) {
+      req.type = 4;
+      if (this._delta) req.delta = this._delta;
+      return { subscribe: req };
+    }
+
     if (this._positioned) req.positioned = true;
     if (this._recoverable) req.recoverable = true;
     if (this._joinLeave) req.join_leave = true;
@@ -595,6 +612,10 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
       return;
     }
     this._setSubscribed(result);
+    // After shared poll subscribe, replay tracked items if any.
+    if (this._sharedPoll) {
+      this._sharedPollReplayTrack();
+    }
   }
 
   private _setUnsubscribed(code, reason, sendUnsubscribe): Promise<void> {
@@ -625,9 +646,9 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
 
   private _handlePublication(pub: any) {
     if (this._delta && this._delta_negotiated) {
-      // For map subs, delta is per-key (broker tracks per-key prevPub).
+      // For map and shared poll subs, delta is per-key.
       // For non-map subs, delta is a single chain regardless of pub.key.
-      const deltaKey = this._map ? (pub.key || '') : '';
+      const deltaKey = (this._map || this._sharedPoll) ? (pub.key || '') : '';
       // @ts-ignore – we are hiding some methods from public API autocompletion.
       const { newData, newPrevValue, isDelta, wireBytes, fullBytes } = this._centrifuge._codec.applyDeltaIfNeeded(pub, this._prevValueMap.get(deltaKey))
       pub.data = newData;
@@ -646,16 +667,26 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
       }
     }
 
-    // Use map publication context for map subscriptions
+    // Use map publication context for map and shared poll subscriptions
     let ctx: any;
-    if (this._map) {
+    if (this._sharedPoll) {
+      // Update locally tracked versions.
+      if (pub.key) {
+        if (pub.removed) {
+          this._sharedPollTrackedItems.delete(pub.key);
+        } else if (pub.version) {
+          this._sharedPollTrackedItems.set(pub.key, pub.version);
+        }
+      }
+      ctx = this._getMapPublicationContext(pub);
+    } else if (this._map) {
       ctx = this._getMapPublicationContext(pub);
     } else {
       // @ts-ignore – we are hiding some methods from public API autocompletion.
       ctx = this._centrifuge._getPublicationContext(this.channel, pub);
     }
     this.emit('publication', ctx);
-    if (this._map) {
+    if (this._map || this._sharedPoll) {
       this.emit('update', ctx);
     }
     if (pub.offset) {
@@ -847,6 +878,13 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
     if (options.mapUnrecoverableStrategy) {
       this._mapUnrecoverableStrategy = options.mapUnrecoverableStrategy;
     }
+    // Shared poll subscription options
+    if (options.sharedPoll === true) {
+      this._sharedPoll = true;
+    }
+    if (options.sharedPollGetSignature) {
+      this._sharedPollGetSignature = options.sharedPollGetSignature;
+    }
   }
 
   private _getOffset() {
@@ -981,6 +1019,219 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
 
   private _failUnauthorized() {
     this._setUnsubscribed(unsubscribedCodes.unauthorized, 'unauthorized', true);
+  }
+
+  // ============ Shared Poll Methods ============
+
+  /** Track items in a shared poll subscription. Each item has a key and version.
+   * The signature must be an HMAC authenticating the key set. */
+  async track(items: SharedPollTrackItem[], options: { signature: string }): Promise<void> {
+    if (!this._sharedPoll) {
+      throw new Error('track is only available on shared poll subscriptions');
+    }
+    await this._methodCall();
+    // Merge into local tracking state.
+    for (const item of items) {
+      this._sharedPollTrackedItems.set(item.key, item.version);
+    }
+    return this._sendTrackRequest(items, options.signature);
+  }
+
+  /** Stop tracking specific keys in a shared poll subscription. */
+  async untrack(keys: string[]): Promise<void> {
+    if (!this._sharedPoll) {
+      throw new Error('untrack is only available on shared poll subscriptions');
+    }
+    await this._methodCall();
+    for (const key of keys) {
+      this._sharedPollTrackedItems.delete(key);
+    }
+    return this._sendUntrackRequest(keys);
+  }
+
+  private _sendTrackRequest(items: { key: string; version: number }[], signature: string): Promise<void> {
+    return new Promise<void>((resolve, reject) => {
+      const req: any = {
+        channel: this.channel,
+        type: 1,
+        items: items,
+        signature: signature,
+      };
+      const msg = { 'sub_refresh': req };
+      // @ts-ignore – we are hiding some symbols from public API autocompletion.
+      this._centrifuge._call(msg).then(resolveCtx => {
+        const result = resolveCtx.reply.sub_refresh;
+        this._handleTrackResponse(result);
+        if (resolveCtx.next) {
+          resolveCtx.next();
+        }
+        resolve();
+      }, rejectCtx => {
+        if (rejectCtx.next) {
+          rejectCtx.next();
+        }
+        reject(rejectCtx.error);
+      });
+    });
+  }
+
+  private _sendUntrackRequest(keys: string[]): Promise<void> {
+    return new Promise<void>((resolve, reject) => {
+      const req: any = {
+        channel: this.channel,
+        type: 2,
+        untrack_keys: keys,
+      };
+      const msg = { 'sub_refresh': req };
+      // @ts-ignore – we are hiding some symbols from public API autocompletion.
+      this._centrifuge._call(msg).then(resolveCtx => {
+        if (resolveCtx.next) {
+          resolveCtx.next();
+        }
+        resolve();
+      }, rejectCtx => {
+        if (rejectCtx.next) {
+          rejectCtx.next();
+        }
+        reject(rejectCtx.error);
+      });
+    });
+  }
+
+  private _handleTrackResponse(result: any) {
+    this._clearSharedPollSignatureRefresh();
+    if (result.expires === true) {
+      this._sharedPollSignatureRefreshTimeout = setTimeout(
+        () => this._sharedPollRefreshSignature(),
+        ttlMilliseconds(result.ttl)
+      );
+    }
+  }
+
+  private _clearSharedPollSignatureRefresh() {
+    if (this._sharedPollSignatureRefreshTimeout !== null) {
+      clearTimeout(this._sharedPollSignatureRefreshTimeout);
+      this._sharedPollSignatureRefreshTimeout = null;
+    }
+    this._sharedPollSignatureRefreshAttempts = 0;
+  }
+
+  private _sharedPollRefreshSignature() {
+    this._clearSharedPollSignatureRefresh();
+    if (!this._isSubscribed()) return;
+    if (!this._sharedPollGetSignature) return;
+    if (this._sharedPollTrackedItems.size === 0) return;
+
+    const keys = Array.from(this._sharedPollTrackedItems.keys());
+    const self = this;
+
+    this._sharedPollGetSignature({ keys }).then(result => {
+      if (!self._isSubscribed()) return;
+
+      self._sharedPollSignatureRefreshAttempts = 0;
+
+      // Handle revoked keys (keys not in the returned set).
+      const returnedKeys = new Set(result.keys);
+      for (const key of keys) {
+        if (!returnedKeys.has(key)) {
+          self._sharedPollTrackedItems.delete(key);
+          self.emit('update', {
+            channel: self.channel,
+            key: key,
+            data: null,
+            removed: true,
+            score: 0,
+          } as MapPublicationContext);
+        }
+      }
+
+      // Re-track all remaining items with new signature.
+      const items = Array.from(self._sharedPollTrackedItems.entries()).map(([key, version]) => ({
+        key, version
+      }));
+
+      if (items.length === 0) return;
+
+      self._sendTrackRequest(items, result.signature).catch(err => {
+        self.emit('error', {
+          type: 'track',
+          channel: self.channel,
+          error: err,
+        });
+      });
+    }).catch(e => {
+      self.emit('error', {
+        type: 'signatureRefresh',
+        channel: self.channel,
+        error: {
+          code: errorCodes.subscriptionRefreshToken,
+          message: e !== undefined ? e.toString() : ''
+        }
+      });
+      // Retry after delay with exponential backoff.
+      self._sharedPollSignatureRefreshTimeout = setTimeout(
+        () => self._sharedPollRefreshSignature(),
+        backoff(self._sharedPollSignatureRefreshAttempts++, 5000, 30000)
+      );
+    });
+  }
+
+  private _sharedPollReplayTrack() {
+    if (this._sharedPollTrackedItems.size === 0) return;
+    if (!this._sharedPollGetSignature) return;
+    if (!this._isSubscribed()) return;
+
+    const keys = Array.from(this._sharedPollTrackedItems.keys());
+    const self = this;
+
+    this._sharedPollGetSignature({ keys }).then(result => {
+      if (!self._isSubscribed()) return;
+
+      self._sharedPollSignatureRefreshAttempts = 0;
+
+      // Handle revoked keys.
+      const returnedKeys = new Set(result.keys);
+      for (const key of keys) {
+        if (!returnedKeys.has(key)) {
+          self._sharedPollTrackedItems.delete(key);
+          self.emit('update', {
+            channel: self.channel,
+            key: key,
+            data: null,
+            removed: true,
+            score: 0,
+          } as MapPublicationContext);
+        }
+      }
+
+      const items = Array.from(self._sharedPollTrackedItems.entries()).map(([key, version]) => ({
+        key, version
+      }));
+
+      if (items.length === 0) return;
+
+      self._sendTrackRequest(items, result.signature).catch(err => {
+        self.emit('error', {
+          type: 'track',
+          channel: self.channel,
+          error: err,
+        });
+      });
+    }).catch(e => {
+      self.emit('error', {
+        type: 'signatureRefresh',
+        channel: self.channel,
+        error: {
+          code: errorCodes.subscriptionRefreshToken,
+          message: e !== undefined ? e.toString() : ''
+        }
+      });
+      // Retry after delay with exponential backoff.
+      self._sharedPollSignatureRefreshTimeout = setTimeout(
+        () => self._sharedPollReplayTrack(),
+        backoff(self._sharedPollSignatureRefreshAttempts++, 5000, 30000)
+      );
+    });
   }
 
   // ============ Keyed Subscription Methods ============
@@ -1412,6 +1663,9 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
     }
     if (pub.removed === true) {
       ctx.removed = true;
+    }
+    if (pub.version !== undefined) {
+      ctx.version = pub.version;
     }
     if (pub.offset !== undefined) {
       ctx.offset = pub.offset;

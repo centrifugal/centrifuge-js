@@ -7,16 +7,23 @@
       "hmac_secret_key": "secret"
     }
   },
-  "log_level": "trace",
+  "log": {
+    "level": "trace"
+  },
   "http_stream": {
     "enabled": true
   },
   "sse": {
     "enabled": true
   },
-  "map_broker": {
-    "enabled": true
-  },
+  "map_broker": {},
+  "proxies": [
+    {
+      "name": "poll_backend",
+      "endpoint": "http://127.0.0.1:3010/refresh",
+      "timeout": "5s"
+    }
+  ],
   "http_api": {
     "key": "test-api-key"
   },
@@ -32,7 +39,7 @@
     "namespaces": [
       {
         "name": "streamless",
-        "subscription_types": ["map"],
+        "subscription_type": "map",
         "map_sync_mode": "ephemeral",
         "map_retention_mode": "expiring",
         "map_key_ttl": "60s",
@@ -42,7 +49,7 @@
       },
       {
         "name": "positioned",
-        "subscription_types": ["map"],
+        "subscription_type": "map",
         "map_sync_mode": "converging",
         "map_retention_mode": "permanent",
         "allow_subscribe_for_client": true,
@@ -51,7 +58,7 @@
       },
       {
         "name": "smallstream",
-        "subscription_types": ["map"],
+        "subscription_type": "map",
         "map_sync_mode": "converging",
         "map_retention_mode": "permanent",
         "map_stream_size": 2,
@@ -72,7 +79,7 @@
       },
       {
         "name": "mapdelta",
-        "subscription_types": ["map"],
+        "subscription_type": "map",
         "map_sync_mode": "converging",
         "map_retention_mode": "permanent",
         "allowed_delta_types": ["fossil"],
@@ -99,7 +106,7 @@
       },
       {
         "name": "shortttl",
-        "subscription_types": ["map"],
+        "subscription_type": "map",
         "map_sync_mode": "ephemeral",
         "map_retention_mode": "expiring",
         "map_key_ttl": "3s",
@@ -109,7 +116,7 @@
       },
       {
         "name": "clientkey",
-        "subscription_types": ["map"],
+        "subscription_type": "map",
         "map_sync_mode": "ephemeral",
         "map_retention_mode": "expiring",
         "map_key_ttl": "60s",
@@ -119,7 +126,7 @@
       },
       {
         "name": "prestest",
-        "subscription_types": ["map"],
+        "subscription_type": "map",
         "map_sync_mode": "ephemeral",
         "map_retention_mode": "expiring",
         "map_key_ttl": "60s",
@@ -129,10 +136,24 @@
       },
       {
         "name": "prescli",
-        "subscription_types": ["map_clients"],
+        "subscription_type": "map_clients",
         "map_sync_mode": "ephemeral",
         "map_retention_mode": "expiring",
         "map_key_ttl": "60s",
+        "allow_subscribe_for_client": true
+      },
+      {
+        "name": "poll",
+        "subscription_type": "shared_poll",
+        "shared_poll": {
+          "proxy_name": "poll_backend",
+          "refresh_interval": "200ms",
+          "refresh_batch_size": 100,
+          "refresh_concurrency": 1,
+          "token_hmac_secret": "test-poll-secret",
+          "max_tracked_per_connection": 100,
+          "max_consecutive_absences": 2
+        },
         "allow_subscribe_for_client": true
       }
     ]

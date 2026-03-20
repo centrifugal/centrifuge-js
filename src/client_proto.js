@@ -1733,6 +1733,8 @@ export const centrifugal = $root.centrifugal = (() => {
                  * @property {boolean|null} [removed] Publication removed
                  * @property {number|Long|null} [score] Publication score
                  * @property {string|null} [epoch] Publication epoch
+                 * @property {Uint8Array|null} [prev_data] Publication prev_data
+                 * @property {number|Long|null} [version] Publication version
                  */
 
                 /**
@@ -1840,6 +1842,22 @@ export const centrifugal = $root.centrifugal = (() => {
                 Publication.prototype.epoch = "";
 
                 /**
+                 * Publication prev_data.
+                 * @member {Uint8Array} prev_data
+                 * @memberof centrifugal.centrifuge.protocol.Publication
+                 * @instance
+                 */
+                Publication.prototype.prev_data = $util.newBuffer([]);
+
+                /**
+                 * Publication version.
+                 * @member {number|Long} version
+                 * @memberof centrifugal.centrifuge.protocol.Publication
+                 * @instance
+                 */
+                Publication.prototype.version = $util.Long ? $util.Long.fromBits(0,0,true) : 0;
+
+                /**
                  * Encodes the specified Publication message. Does not implicitly {@link centrifugal.centrifuge.protocol.Publication.verify|verify} messages.
                  * @function encode
                  * @memberof centrifugal.centrifuge.protocol.Publication
@@ -1874,6 +1892,10 @@ export const centrifugal = $root.centrifugal = (() => {
                         writer.uint32(/* id 13, wireType 0 =*/104).sint64(message.score);
                     if (message.epoch != null && Object.hasOwnProperty.call(message, "epoch"))
                         writer.uint32(/* id 14, wireType 2 =*/114).string(message.epoch);
+                    if (message.prev_data != null && Object.hasOwnProperty.call(message, "prev_data"))
+                        writer.uint32(/* id 15, wireType 2 =*/122).bytes(message.prev_data);
+                    if (message.version != null && Object.hasOwnProperty.call(message, "version"))
+                        writer.uint32(/* id 16, wireType 0 =*/128).uint64(message.version);
                     return writer;
                 };
 
@@ -1971,6 +1993,14 @@ export const centrifugal = $root.centrifugal = (() => {
                                 message.epoch = reader.string();
                                 break;
                             }
+                        case 15: {
+                                message.prev_data = reader.bytes();
+                                break;
+                            }
+                        case 16: {
+                                message.version = reader.uint64();
+                                break;
+                            }
                         default:
                             reader.skipType(tag & 7);
                             break;
@@ -2046,6 +2076,12 @@ export const centrifugal = $root.centrifugal = (() => {
                     if (message.epoch != null && message.hasOwnProperty("epoch"))
                         if (!$util.isString(message.epoch))
                             return "epoch: string expected";
+                    if (message.prev_data != null && message.hasOwnProperty("prev_data"))
+                        if (!(message.prev_data && typeof message.prev_data.length === "number" || $util.isString(message.prev_data)))
+                            return "prev_data: buffer expected";
+                    if (message.version != null && message.hasOwnProperty("version"))
+                        if (!$util.isInteger(message.version) && !(message.version && $util.isInteger(message.version.low) && $util.isInteger(message.version.high)))
+                            return "version: integer|Long expected";
                     return null;
                 };
 
@@ -4591,7 +4627,7 @@ export const centrifugal = $root.centrifugal = (() => {
                  * @property {number|null} [phase] SubscribeRequest phase
                  * @property {string|null} [cursor] SubscribeRequest cursor
                  * @property {number|null} [limit] SubscribeRequest limit
-                 * @property {boolean|null} [ordered] SubscribeRequest ordered
+                 * @property {boolean|null} [asc] SubscribeRequest asc
                  */
 
                 /**
@@ -4738,12 +4774,12 @@ export const centrifugal = $root.centrifugal = (() => {
                 SubscribeRequest.prototype.limit = 0;
 
                 /**
-                 * SubscribeRequest ordered.
-                 * @member {boolean} ordered
+                 * SubscribeRequest asc.
+                 * @member {boolean} asc
                  * @memberof centrifugal.centrifuge.protocol.SubscribeRequest
                  * @instance
                  */
-                SubscribeRequest.prototype.ordered = false;
+                SubscribeRequest.prototype.asc = false;
 
                 /**
                  * Encodes the specified SubscribeRequest message. Does not implicitly {@link centrifugal.centrifuge.protocol.SubscribeRequest.verify|verify} messages.
@@ -4789,8 +4825,8 @@ export const centrifugal = $root.centrifugal = (() => {
                         writer.uint32(/* id 17, wireType 2 =*/138).string(message.cursor);
                     if (message.limit != null && Object.hasOwnProperty.call(message, "limit"))
                         writer.uint32(/* id 18, wireType 0 =*/144).int32(message.limit);
-                    if (message.ordered != null && Object.hasOwnProperty.call(message, "ordered"))
-                        writer.uint32(/* id 29, wireType 0 =*/232).bool(message.ordered);
+                    if (message.asc != null && Object.hasOwnProperty.call(message, "asc"))
+                        writer.uint32(/* id 19, wireType 0 =*/152).bool(message.asc);
                     return writer;
                 };
 
@@ -4889,8 +4925,8 @@ export const centrifugal = $root.centrifugal = (() => {
                                 message.limit = reader.int32();
                                 break;
                             }
-                        case 29: {
-                                message.ordered = reader.bool();
+                        case 19: {
+                                message.asc = reader.bool();
                                 break;
                             }
                         default:
@@ -4978,9 +5014,9 @@ export const centrifugal = $root.centrifugal = (() => {
                     if (message.limit != null && message.hasOwnProperty("limit"))
                         if (!$util.isInteger(message.limit))
                             return "limit: integer expected";
-                    if (message.ordered != null && message.hasOwnProperty("ordered"))
-                        if (typeof message.ordered !== "boolean")
-                            return "ordered: boolean expected";
+                    if (message.asc != null && message.hasOwnProperty("asc"))
+                        if (typeof message.asc !== "boolean")
+                            return "asc: boolean expected";
                     return null;
                 };
 
@@ -5435,6 +5471,167 @@ export const centrifugal = $root.centrifugal = (() => {
                 return SubscribeResult;
             })();
 
+            protocol.KeyedItem = (function() {
+
+                /**
+                 * Properties of a KeyedItem.
+                 * @memberof centrifugal.centrifuge.protocol
+                 * @interface IKeyedItem
+                 * @property {string|null} [key] KeyedItem key
+                 * @property {number|Long|null} [version] KeyedItem version
+                 */
+
+                /**
+                 * Constructs a new KeyedItem.
+                 * @memberof centrifugal.centrifuge.protocol
+                 * @classdesc Represents a KeyedItem.
+                 * @implements IKeyedItem
+                 * @constructor
+                 * @param {centrifugal.centrifuge.protocol.IKeyedItem=} [properties] Properties to set
+                 */
+                function KeyedItem(properties) {
+                    if (properties)
+                        for (let keys = Object.keys(properties), i = 0; i < keys.length; ++i)
+                            if (properties[keys[i]] != null)
+                                this[keys[i]] = properties[keys[i]];
+                }
+
+                /**
+                 * KeyedItem key.
+                 * @member {string} key
+                 * @memberof centrifugal.centrifuge.protocol.KeyedItem
+                 * @instance
+                 */
+                KeyedItem.prototype.key = "";
+
+                /**
+                 * KeyedItem version.
+                 * @member {number|Long} version
+                 * @memberof centrifugal.centrifuge.protocol.KeyedItem
+                 * @instance
+                 */
+                KeyedItem.prototype.version = $util.Long ? $util.Long.fromBits(0,0,true) : 0;
+
+                /**
+                 * Encodes the specified KeyedItem message. Does not implicitly {@link centrifugal.centrifuge.protocol.KeyedItem.verify|verify} messages.
+                 * @function encode
+                 * @memberof centrifugal.centrifuge.protocol.KeyedItem
+                 * @static
+                 * @param {centrifugal.centrifuge.protocol.IKeyedItem} message KeyedItem message or plain object to encode
+                 * @param {$protobuf.Writer} [writer] Writer to encode to
+                 * @returns {$protobuf.Writer} Writer
+                 */
+                KeyedItem.encode = function encode(message, writer) {
+                    if (!writer)
+                        writer = $Writer.create();
+                    if (message.key != null && Object.hasOwnProperty.call(message, "key"))
+                        writer.uint32(/* id 1, wireType 2 =*/10).string(message.key);
+                    if (message.version != null && Object.hasOwnProperty.call(message, "version"))
+                        writer.uint32(/* id 2, wireType 0 =*/16).uint64(message.version);
+                    return writer;
+                };
+
+                /**
+                 * Encodes the specified KeyedItem message, length delimited. Does not implicitly {@link centrifugal.centrifuge.protocol.KeyedItem.verify|verify} messages.
+                 * @function encodeDelimited
+                 * @memberof centrifugal.centrifuge.protocol.KeyedItem
+                 * @static
+                 * @param {centrifugal.centrifuge.protocol.IKeyedItem} message KeyedItem message or plain object to encode
+                 * @param {$protobuf.Writer} [writer] Writer to encode to
+                 * @returns {$protobuf.Writer} Writer
+                 */
+                KeyedItem.encodeDelimited = function encodeDelimited(message, writer) {
+                    return this.encode(message, writer).ldelim();
+                };
+
+                /**
+                 * Decodes a KeyedItem message from the specified reader or buffer.
+                 * @function decode
+                 * @memberof centrifugal.centrifuge.protocol.KeyedItem
+                 * @static
+                 * @param {$protobuf.Reader|Uint8Array} reader Reader or buffer to decode from
+                 * @param {number} [length] Message length if known beforehand
+                 * @returns {centrifugal.centrifuge.protocol.KeyedItem} KeyedItem
+                 * @throws {Error} If the payload is not a reader or valid buffer
+                 * @throws {$protobuf.util.ProtocolError} If required fields are missing
+                 */
+                KeyedItem.decode = function decode(reader, length) {
+                    if (!(reader instanceof $Reader))
+                        reader = $Reader.create(reader);
+                    let end = length === undefined ? reader.len : reader.pos + length, message = new $root.centrifugal.centrifuge.protocol.KeyedItem();
+                    while (reader.pos < end) {
+                        let tag = reader.uint32();
+                        switch (tag >>> 3) {
+                        case 1: {
+                                message.key = reader.string();
+                                break;
+                            }
+                        case 2: {
+                                message.version = reader.uint64();
+                                break;
+                            }
+                        default:
+                            reader.skipType(tag & 7);
+                            break;
+                        }
+                    }
+                    return message;
+                };
+
+                /**
+                 * Decodes a KeyedItem message from the specified reader or buffer, length delimited.
+                 * @function decodeDelimited
+                 * @memberof centrifugal.centrifuge.protocol.KeyedItem
+                 * @static
+                 * @param {$protobuf.Reader|Uint8Array} reader Reader or buffer to decode from
+                 * @returns {centrifugal.centrifuge.protocol.KeyedItem} KeyedItem
+                 * @throws {Error} If the payload is not a reader or valid buffer
+                 * @throws {$protobuf.util.ProtocolError} If required fields are missing
+                 */
+                KeyedItem.decodeDelimited = function decodeDelimited(reader) {
+                    if (!(reader instanceof $Reader))
+                        reader = new $Reader(reader);
+                    return this.decode(reader, reader.uint32());
+                };
+
+                /**
+                 * Verifies a KeyedItem message.
+                 * @function verify
+                 * @memberof centrifugal.centrifuge.protocol.KeyedItem
+                 * @static
+                 * @param {Object.<string,*>} message Plain object to verify
+                 * @returns {string|null} `null` if valid, otherwise the reason why it is not
+                 */
+                KeyedItem.verify = function verify(message) {
+                    if (typeof message !== "object" || message === null)
+                        return "object expected";
+                    if (message.key != null && message.hasOwnProperty("key"))
+                        if (!$util.isString(message.key))
+                            return "key: string expected";
+                    if (message.version != null && message.hasOwnProperty("version"))
+                        if (!$util.isInteger(message.version) && !(message.version && $util.isInteger(message.version.low) && $util.isInteger(message.version.high)))
+                            return "version: integer|Long expected";
+                    return null;
+                };
+
+                /**
+                 * Gets the default type url for KeyedItem
+                 * @function getTypeUrl
+                 * @memberof centrifugal.centrifuge.protocol.KeyedItem
+                 * @static
+                 * @param {string} [typeUrlPrefix] your custom typeUrlPrefix(default "type.googleapis.com")
+                 * @returns {string} The default type url
+                 */
+                KeyedItem.getTypeUrl = function getTypeUrl(typeUrlPrefix) {
+                    if (typeUrlPrefix === undefined) {
+                        typeUrlPrefix = "type.googleapis.com";
+                    }
+                    return typeUrlPrefix + "/centrifugal.centrifuge.protocol.KeyedItem";
+                };
+
+                return KeyedItem;
+            })();
+
             protocol.SubRefreshRequest = (function() {
 
                 /**
@@ -5443,6 +5640,10 @@ export const centrifugal = $root.centrifugal = (() => {
                  * @interface ISubRefreshRequest
                  * @property {string|null} [channel] SubRefreshRequest channel
                  * @property {string|null} [token] SubRefreshRequest token
+                 * @property {Array.<centrifugal.centrifuge.protocol.IKeyedItem>|null} [items] SubRefreshRequest items
+                 * @property {Array.<string>|null} [untrack_keys] SubRefreshRequest untrack_keys
+                 * @property {number|null} [type] SubRefreshRequest type
+                 * @property {string|null} [signature] SubRefreshRequest signature
                  */
 
                 /**
@@ -5454,6 +5655,8 @@ export const centrifugal = $root.centrifugal = (() => {
                  * @param {centrifugal.centrifuge.protocol.ISubRefreshRequest=} [properties] Properties to set
                  */
                 function SubRefreshRequest(properties) {
+                    this.items = [];
+                    this.untrack_keys = [];
                     if (properties)
                         for (let keys = Object.keys(properties), i = 0; i < keys.length; ++i)
                             if (properties[keys[i]] != null)
@@ -5477,6 +5680,38 @@ export const centrifugal = $root.centrifugal = (() => {
                 SubRefreshRequest.prototype.token = "";
 
                 /**
+                 * SubRefreshRequest items.
+                 * @member {Array.<centrifugal.centrifuge.protocol.IKeyedItem>} items
+                 * @memberof centrifugal.centrifuge.protocol.SubRefreshRequest
+                 * @instance
+                 */
+                SubRefreshRequest.prototype.items = $util.emptyArray;
+
+                /**
+                 * SubRefreshRequest untrack_keys.
+                 * @member {Array.<string>} untrack_keys
+                 * @memberof centrifugal.centrifuge.protocol.SubRefreshRequest
+                 * @instance
+                 */
+                SubRefreshRequest.prototype.untrack_keys = $util.emptyArray;
+
+                /**
+                 * SubRefreshRequest type.
+                 * @member {number} type
+                 * @memberof centrifugal.centrifuge.protocol.SubRefreshRequest
+                 * @instance
+                 */
+                SubRefreshRequest.prototype.type = 0;
+
+                /**
+                 * SubRefreshRequest signature.
+                 * @member {string} signature
+                 * @memberof centrifugal.centrifuge.protocol.SubRefreshRequest
+                 * @instance
+                 */
+                SubRefreshRequest.prototype.signature = "";
+
+                /**
                  * Encodes the specified SubRefreshRequest message. Does not implicitly {@link centrifugal.centrifuge.protocol.SubRefreshRequest.verify|verify} messages.
                  * @function encode
                  * @memberof centrifugal.centrifuge.protocol.SubRefreshRequest
@@ -5492,6 +5727,16 @@ export const centrifugal = $root.centrifugal = (() => {
                         writer.uint32(/* id 1, wireType 2 =*/10).string(message.channel);
                     if (message.token != null && Object.hasOwnProperty.call(message, "token"))
                         writer.uint32(/* id 2, wireType 2 =*/18).string(message.token);
+                    if (message.items != null && message.items.length)
+                        for (let i = 0; i < message.items.length; ++i)
+                            $root.centrifugal.centrifuge.protocol.KeyedItem.encode(message.items[i], writer.uint32(/* id 3, wireType 2 =*/26).fork()).ldelim();
+                    if (message.untrack_keys != null && message.untrack_keys.length)
+                        for (let i = 0; i < message.untrack_keys.length; ++i)
+                            writer.uint32(/* id 4, wireType 2 =*/34).string(message.untrack_keys[i]);
+                    if (message.type != null && Object.hasOwnProperty.call(message, "type"))
+                        writer.uint32(/* id 5, wireType 0 =*/40).int32(message.type);
+                    if (message.signature != null && Object.hasOwnProperty.call(message, "signature"))
+                        writer.uint32(/* id 6, wireType 2 =*/50).string(message.signature);
                     return writer;
                 };
 
@@ -5532,6 +5777,26 @@ export const centrifugal = $root.centrifugal = (() => {
                             }
                         case 2: {
                                 message.token = reader.string();
+                                break;
+                            }
+                        case 3: {
+                                if (!(message.items && message.items.length))
+                                    message.items = [];
+                                message.items.push($root.centrifugal.centrifuge.protocol.KeyedItem.decode(reader, reader.uint32()));
+                                break;
+                            }
+                        case 4: {
+                                if (!(message.untrack_keys && message.untrack_keys.length))
+                                    message.untrack_keys = [];
+                                message.untrack_keys.push(reader.string());
+                                break;
+                            }
+                        case 5: {
+                                message.type = reader.int32();
+                                break;
+                            }
+                        case 6: {
+                                message.signature = reader.string();
                                 break;
                             }
                         default:
@@ -5575,6 +5840,28 @@ export const centrifugal = $root.centrifugal = (() => {
                     if (message.token != null && message.hasOwnProperty("token"))
                         if (!$util.isString(message.token))
                             return "token: string expected";
+                    if (message.items != null && message.hasOwnProperty("items")) {
+                        if (!Array.isArray(message.items))
+                            return "items: array expected";
+                        for (let i = 0; i < message.items.length; ++i) {
+                            let error = $root.centrifugal.centrifuge.protocol.KeyedItem.verify(message.items[i]);
+                            if (error)
+                                return "items." + error;
+                        }
+                    }
+                    if (message.untrack_keys != null && message.hasOwnProperty("untrack_keys")) {
+                        if (!Array.isArray(message.untrack_keys))
+                            return "untrack_keys: array expected";
+                        for (let i = 0; i < message.untrack_keys.length; ++i)
+                            if (!$util.isString(message.untrack_keys[i]))
+                                return "untrack_keys: string[] expected";
+                    }
+                    if (message.type != null && message.hasOwnProperty("type"))
+                        if (!$util.isInteger(message.type))
+                            return "type: integer expected";
+                    if (message.signature != null && message.hasOwnProperty("signature"))
+                        if (!$util.isString(message.signature))
+                            return "signature: string expected";
                     return null;
                 };
 

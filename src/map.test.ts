@@ -572,8 +572,9 @@ test('map client presence: add and remove events', async () => {
   const clientIdB = connBCtx.client;
 
   const ch = uniqueChannel('prestest');
-  // Presence channel: prescli:{channel_rest} where channel_rest = full original channel.
-  const presenceCh = 'prescli:' + ch;
+  // Presence channel: prescli:{rest} where {rest} is the part after the namespace boundary.
+  const rest = ch.substring(ch.indexOf(':') + 1);
+  const presenceCh = 'prescli:' + rest;
 
   // cA subscribes to presence channel first — should see empty state.
   const presSub = cA.newMapClientsSubscription(presenceCh);

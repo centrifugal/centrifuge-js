@@ -475,14 +475,14 @@ export interface SubscriptionOptions {
   token?: string;
   /** allows setting function to get/refresh subscription token,
    * this will only be called when new token needed, not on every resubscribe. */
-  getToken?: (ctx: SubscriptionTokenContext) => Promise<string>;
+  getToken?: null | ((ctx: SubscriptionTokenContext) => Promise<string>);
   /** data to send to a server with subscribe command */
-  data?: any;
+  data?: any | null;
   /** allows setting function to get/renew subscription data (during resubscriptions).
    * In many cases you may prefer using setData method of Subscription instead. */
-  getData?: (ctx: SubscriptionDataContext) => Promise<any>;
+  getData?: null | ((ctx: SubscriptionDataContext) => Promise<any>);
   /** force recovery on first subscribe from a provided StreamPosition. */
-  since?: Partial<StreamPosition>;
+  since?: Partial<StreamPosition> | null;
   /** min delay between resubscribe attempts. */
   minResubscribeDelay?: number;
   /** max delay between resubscribe attempts. */
@@ -496,7 +496,7 @@ export interface SubscriptionOptions {
   /** delta format to be used. Delta usage must be allowed on the server side. */
   delta?: 'fossil';
   /** server-side tagsFilter to apply for publications in channel. Tags filter support must be allowed on the server side. */
-  tagsFilter?: FilterNode;
+  tagsFilter?: FilterNode | null;
 }
 
 /** MapSubscriptionOptions can customize map Subscription. */
@@ -508,9 +508,6 @@ export interface MapSubscriptionOptions {
   getToken?: (ctx: SubscriptionTokenContext) => Promise<string>;
   /** data to send to a server with subscribe command */
   data?: any;
-  /** allows setting function to get/renew subscription data (during resubscriptions).
-   * In many cases you may prefer using setData method of Subscription instead. */
-  getData?: (ctx: SubscriptionDataContext) => Promise<any>;
   /** min delay between resubscribe attempts. */
   minResubscribeDelay?: number;
   /** max delay between resubscribe attempts. */
@@ -608,8 +605,11 @@ export interface SharedPollSignatureResult {
 /** Options for shared poll subscriptions */
 export interface SharedPollSubscriptionOptions {
   /** Callback to get/refresh the HMAC signature for tracked keys.
-   * Called on reconnect (to replay tracked items) and on signature TTL expiry. */
-  getSignature: (ctx: SharedPollSignatureContext) => Promise<SharedPollSignatureResult>;
+   * Called on reconnect (to replay tracked items), on signature TTL expiry,
+   * and when using the simplified `track(keys)` overload.
+   * Required for `track(keys)` and reconnect replay; optional only when
+   * every `track()` call provides an explicit signature. */
+  getSignature?: (ctx: SharedPollSignatureContext) => Promise<SharedPollSignatureResult>;
   /** Delta compression type (e.g. 'fossil') */
   delta?: 'fossil';
   /** min delay between resubscribe attempts */

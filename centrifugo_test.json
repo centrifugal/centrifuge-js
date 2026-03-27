@@ -44,8 +44,7 @@
         "name": "streamless",
         "subscription_type": "map",
         "map": {
-          "sync_mode": "ephemeral",
-          "retention_mode": "expiring",
+          "mode": "ephemeral",
           "key_ttl": "60s",
           "allow_publish_for_client": true,
           "allow_remove_for_client": true
@@ -56,8 +55,7 @@
         "name": "positioned",
         "subscription_type": "map",
         "map": {
-          "sync_mode": "converging",
-          "retention_mode": "permanent",
+          "mode": "persistent",
           "allow_publish_for_client": true,
           "allow_remove_for_client": true
         },
@@ -67,8 +65,7 @@
         "name": "smallstream",
         "subscription_type": "map",
         "map": {
-          "sync_mode": "converging",
-          "retention_mode": "permanent",
+          "mode": "persistent",
           "stream_size": 2,
           "stream_ttl": "60s",
           "allow_publish_for_client": true,
@@ -90,8 +87,7 @@
         "name": "mapdelta",
         "subscription_type": "map",
         "map": {
-          "sync_mode": "converging",
-          "retention_mode": "permanent",
+          "mode": "persistent",
           "allow_publish_for_client": true,
           "allow_remove_for_client": true
         },
@@ -119,8 +115,7 @@
         "name": "shortttl",
         "subscription_type": "map",
         "map": {
-          "sync_mode": "ephemeral",
-          "retention_mode": "expiring",
+          "mode": "ephemeral",
           "key_ttl": "3s",
           "allow_publish_for_client": true,
           "allow_remove_for_client": true
@@ -131,8 +126,7 @@
         "name": "clientkey",
         "subscription_type": "map",
         "map": {
-          "sync_mode": "ephemeral",
-          "retention_mode": "expiring",
+          "mode": "ephemeral",
           "key_ttl": "60s",
           "client_key": "client_id",
           "allow_publish_for_subscriber": true
@@ -142,11 +136,10 @@
       {
         "name": "prestest",
         "subscription_type": "map",
+        "map_clients_presence_channel_prefix": "prescli:",
         "map": {
-          "sync_mode": "ephemeral",
-          "retention_mode": "expiring",
+          "mode": "ephemeral",
           "key_ttl": "60s",
-          "client_presence_channel_prefix": "prescli:",
           "allow_publish_for_client": true
         },
         "allow_subscribe_for_client": true
@@ -155,14 +148,26 @@
         "name": "prescli",
         "subscription_type": "map_clients",
         "map": {
-          "sync_mode": "ephemeral",
-          "retention_mode": "expiring",
+          "mode": "ephemeral",
           "key_ttl": "60s"
         },
         "allow_subscribe_for_client": true
       },
       {
         "name": "poll",
+        "subscription_type": "shared_poll",
+        "shared_poll": {
+          "proxy_name": "poll_backend",
+          "refresh_mode": "versioned",
+          "refresh_interval": "200ms",
+          "refresh_batch_size": 100,
+          "max_keys_per_connection": 100,
+          "max_consecutive_absences": 2
+        },
+        "allow_subscribe_for_client": true
+      },
+      {
+        "name": "pollvl",
         "subscription_type": "shared_poll",
         "shared_poll": {
           "proxy_name": "poll_backend",

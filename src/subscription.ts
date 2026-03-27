@@ -62,10 +62,15 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
 
   // Shared poll subscription state
   private _sharedPoll: boolean = false;
+  private _sharedPollEpoch: string = '';
   private _sharedPollTrackedItems: Map<string, number> = new Map();  // key → version
   private _sharedPollGetSignature: null | ((ctx: SharedPollSignatureContext) => Promise<SharedPollSignatureResult>) = null;
   private _sharedPollSignatureRefreshTimeout?: null | ReturnType<typeof setTimeout> = null;
   private _sharedPollSignatureRefreshAttempts: number = 0;
+  private _sharedPollTrackRetryTimeout?: null | ReturnType<typeof setTimeout> = null;
+  private _sharedPollTrackRetryAttempts: number = 0;
+  private _sharedPollPendingSignature: string | null = null;
+  private _sharedPollPendingItems: SharedPollTrackItem[] | null = null;
 
   /** Subscription constructor should not be used directly, create subscriptions using Client method. */
   constructor(centrifuge: Centrifuge, channel: string, options?: Partial<InternalSubscriptionOptions>) {
@@ -329,6 +334,10 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
   private _clearSubscribedState() {
     this._clearRefreshTimeout();
     this._clearSharedPollSignatureRefresh();
+    this._clearSharedPollTrackRetry();
+    // Discard buffered signature — stale after disconnect/unsubscribe.
+    this._sharedPollPendingSignature = null;
+    this._sharedPollPendingItems = null;
   }
 
   private _setSubscribed(result: any) {
@@ -350,6 +359,18 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
       this._delta_negotiated = true;
     } else {
       this._delta_negotiated = false;
+    }
+
+    if (this._sharedPoll) {
+      const newEpoch = result.epoch || '';
+      if (this._sharedPollEpoch !== '' && this._sharedPollEpoch !== newEpoch) {
+        // Epoch changed (server restart, mode change, node switch) —
+        // stored synthetic versions are invalid, reset to 0.
+        for (const key of this._sharedPollTrackedItems.keys()) {
+          this._sharedPollTrackedItems.set(key, 0);
+        }
+      }
+      this._sharedPollEpoch = newEpoch;
     }
 
     this._setState(SubscriptionState.Subscribed);
@@ -637,6 +658,7 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
       this._clearSubscribingState();
     }
     this._inflight = false;
+    this._sharedPollEpoch = '';
     if (this._setState(SubscriptionState.Unsubscribed)) {
       this.emit('unsubscribed', { channel: this.channel, code: code, reason: reason });
     }
@@ -1022,30 +1044,124 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
 
   // ============ Shared Poll Methods ============
 
-  /** Track items in a shared poll subscription. Each item has a key and version.
-   * The signature must be an HMAC authenticating the key set. */
-  async track(items: SharedPollTrackItem[], signature: string): Promise<void> {
+  /** Track items in a shared poll subscription.
+   *
+   * Overloads:
+   * - `track(keys: string[])` — pass key names only (version defaults to 0).
+   *   Requires `getSignature` callback in subscription options. The SDK
+   *   automatically obtains a signature before sending the track request.
+   * - `track(items: SharedPollTrackItem[], signature: string)` — pass items
+   *   with explicit versions and a pre-computed HMAC signature.
+   *
+   * Items are stored in local state immediately. If subscribed, the track request
+   * is sent right away. If not yet subscribed, items will be sent via replay
+   * (with a fresh signature from getSignature) after subscribe completes. */
+  track(keysOrItems: string[] | SharedPollTrackItem[], signature?: string): void {
     if (!this._sharedPoll) {
       throw new Error('track is only available on shared poll subscriptions');
     }
-    await this._methodCall();
-    // Merge into local tracking state.
+    if (keysOrItems.length === 0) {
+      return; // Nothing to track — avoid wasteful getSignature call.
+    }
+
+    let items: SharedPollTrackItem[];
+    const sig: string | undefined = signature;
+
+    if (typeof keysOrItems[0] === 'string') {
+      const keys = keysOrItems as string[];
+      items = keys.map(k => ({ key: k, version: 0 }));
+    } else {
+      items = keysOrItems as SharedPollTrackItem[];
+    }
+
     for (const item of items) {
       this._sharedPollTrackedItems.set(item.key, item.version);
     }
-    return this._sendTrackRequest(items, signature);
+
+    if (!this._isSubscribed()) {
+      // Buffer signature so _sharedPollReplayTrack can use it instead of
+      // calling getSignature. Replay validates that pending items still
+      // match tracked items before using — falls back to getSignature on mismatch.
+      if (sig !== undefined) {
+        this._sharedPollPendingSignature = sig;
+        this._sharedPollPendingItems = [...items];
+      }
+      return; // Replayed on subscribe via _sharedPollReplayTrack.
+    }
+
+    if (sig !== undefined) {
+      // Existing path: signature provided.
+      this._sendTrackRequest(items, sig).catch(err => {
+        this._handleTrackError(err);
+      });
+    } else {
+      // New path: auto-obtain signature via getSignature.
+      if (!this._sharedPollGetSignature) {
+        this.emit('error', {
+          type: 'track',
+          channel: this.channel,
+          error: { code: 0, message: 'getSignature callback required for track(keys)' },
+        });
+        return;
+      }
+      const keys = items.map(i => i.key);
+      this._sharedPollGetSignature({ keys }).then(result => {
+        if (!this._isSubscribed()) return;
+        // Handle revoked keys.
+        const returnedKeys = new Set(result.keys);
+        for (const key of keys) {
+          if (!returnedKeys.has(key)) {
+            this._sharedPollTrackedItems.delete(key);
+            this.emit('update', {
+              channel: this.channel,
+              key: key,
+              data: null,
+              removed: true,
+            } as SharedPollUpdateContext);
+          }
+        }
+        // Track authorized keys.
+        const authorizedItems: { key: string; version: number }[] = [];
+        for (const key of result.keys) {
+          const version = this._sharedPollTrackedItems.get(key);
+          if (version !== undefined) {
+            authorizedItems.push({ key, version });
+          }
+        }
+        if (authorizedItems.length === 0) return;
+        this._sendTrackRequest(authorizedItems, result.signature).catch(err => {
+          this._handleTrackError(err);
+        });
+      }).catch(e => {
+        this.emit('error', {
+          type: 'track',
+          channel: this.channel,
+          error: { code: 0, message: e !== undefined ? e.toString() : 'getSignature failed' },
+        });
+      });
+    }
   }
 
-  /** Stop tracking specific keys in a shared poll subscription. */
-  async untrack(keys: string[]): Promise<void> {
+  /** Stop tracking specific keys in a shared poll subscription.
+   * Keys are removed from local state immediately. If subscribed, the untrack
+   * request is sent right away. If not yet subscribed, the keys simply won't
+   * be included in the replay after subscribe completes. */
+  untrack(keys: string[]): void {
     if (!this._sharedPoll) {
       throw new Error('untrack is only available on shared poll subscriptions');
     }
-    await this._methodCall();
     for (const key of keys) {
       this._sharedPollTrackedItems.delete(key);
     }
-    return this._sendUntrackRequest(keys);
+    if (this._isSubscribed()) {
+      this._sendUntrackRequest(keys).catch(err => {
+        this.emit('error', {
+          type: 'untrack',
+          channel: this.channel,
+          error: err,
+        });
+      });
+    }
   }
 
   /** Returns the set of currently tracked keys in a shared poll subscription. */
@@ -1061,7 +1177,7 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
       const req: any = {
         channel: this.channel,
         type: 1,
-        items: items,
+        items: items.map(i => i.version > 0 ? i : { key: i.key }),
         signature: signature,
       };
       const msg = { 'sub_refresh': req };
@@ -1106,6 +1222,15 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
   }
 
   private _handleTrackResponse(result: any) {
+    // Track succeeded — reset retry state.
+    this._clearSharedPollTrackRetry();
+    // Process cached items from server.
+    if (result.items && result.items.length > 0) {
+      for (const pub of result.items) {
+        this._handlePublication(pub);
+      }
+    }
+    // Existing TTL handling.
     this._clearSharedPollSignatureRefresh();
     if (result.expires === true) {
       this._sharedPollSignatureRefreshTimeout = setTimeout(
@@ -1121,6 +1246,32 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
       this._sharedPollSignatureRefreshTimeout = null;
     }
     this._sharedPollSignatureRefreshAttempts = 0;
+  }
+
+  private _clearSharedPollTrackRetry() {
+    if (this._sharedPollTrackRetryTimeout !== null) {
+      clearTimeout(this._sharedPollTrackRetryTimeout);
+      this._sharedPollTrackRetryTimeout = null;
+    }
+    this._sharedPollTrackRetryAttempts = 0;
+  }
+
+  private _handleTrackError(err: any) {
+    if (!this._isSubscribed()) {
+      return;
+    }
+    this.emit('error', {
+      type: 'track',
+      channel: this.channel,
+      error: err,
+    });
+    if (err.code < 100 || err.temporary === true) {
+      // Temporary error — retry full track replay with backoff.
+      this._sharedPollTrackRetryTimeout = setTimeout(
+        () => this._sharedPollReplayTrack(),
+        backoff(this._sharedPollTrackRetryAttempts++, 1000, 15000)
+      );
+    }
   }
 
   private _sharedPollRefreshSignature() {
@@ -1151,19 +1302,19 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
         }
       }
 
-      // Re-track all remaining items with new signature.
-      const items = Array.from(self._sharedPollTrackedItems.entries()).map(([key, version]) => ({
-        key, version
-      }));
+      // Re-track only keys covered by the returned signature.
+      const items: { key: string; version: number }[] = [];
+      for (const key of result.keys) {
+        const version = self._sharedPollTrackedItems.get(key);
+        if (version !== undefined) {
+          items.push({ key, version });
+        }
+      }
 
       if (items.length === 0) return;
 
       self._sendTrackRequest(items, result.signature).catch(err => {
-        self.emit('error', {
-          type: 'track',
-          channel: self.channel,
-          error: err,
-        });
+        self._handleTrackError(err);
       });
     }).catch(e => {
       self.emit('error', {
@@ -1184,8 +1335,35 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
 
   private _sharedPollReplayTrack() {
     if (this._sharedPollTrackedItems.size === 0) return;
-    if (!this._sharedPollGetSignature) return;
     if (!this._isSubscribed()) return;
+
+    // If track() was called with an explicit signature before subscribe
+    // completed, use it directly — no need to call getSignature.
+    // But only if the pending items still exactly match the current tracked
+    // items set. They can diverge when: (a) multiple track() calls buffered
+    // different item sets, (b) untrack() removed some keys after track().
+    const pendingSig = this._sharedPollPendingSignature;
+    const pendingItems = this._sharedPollPendingItems;
+    this._sharedPollPendingSignature = null;
+    this._sharedPollPendingItems = null;
+    if (pendingSig !== null && pendingItems !== null && pendingItems.length > 0) {
+      const pendingKeys = new Set(pendingItems.map(i => i.key));
+      let match = pendingKeys.size === this._sharedPollTrackedItems.size;
+      if (match) {
+        for (const key of pendingKeys) {
+          if (!this._sharedPollTrackedItems.has(key)) { match = false; break; }
+        }
+      }
+      if (match) {
+        this._sendTrackRequest(pendingItems, pendingSig).catch(err => {
+          this._handleTrackError(err);
+        });
+        return;
+      }
+      // Mismatch — fall through to getSignature for the current set.
+    }
+
+    if (!this._sharedPollGetSignature) return;
 
     const keys = Array.from(this._sharedPollTrackedItems.keys());
     const self = this;
@@ -1209,18 +1387,19 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
         }
       }
 
-      const items = Array.from(self._sharedPollTrackedItems.entries()).map(([key, version]) => ({
-        key, version
-      }));
+      // Re-track only keys covered by the returned signature.
+      const items: { key: string; version: number }[] = [];
+      for (const key of result.keys) {
+        const version = self._sharedPollTrackedItems.get(key);
+        if (version !== undefined) {
+          items.push({ key, version });
+        }
+      }
 
       if (items.length === 0) return;
 
       self._sendTrackRequest(items, result.signature).catch(err => {
-        self.emit('error', {
-          type: 'track',
-          channel: self.channel,
-          error: err,
-        });
+        self._handleTrackError(err);
       });
     }).catch(e => {
       self.emit('error', {
@@ -1346,6 +1525,7 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
       this._mapCursor = '';
       this._epoch = null;
       this._offset = null;
+      this._prevValueMap = new Map();
       this._fetchSnapshot();
       return;
     }
@@ -1429,6 +1609,7 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
       this._mapPhase = MapPhase.State;
       this._epoch = null;
       this._offset = null;
+      this._prevValueMap = new Map();
       this._fetchSnapshot();
       return;
     }
@@ -1471,6 +1652,7 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
       this._mapPhase = MapPhase.State;
       this._epoch = null;
       this._offset = null;
+      this._prevValueMap = new Map();
       this._inflight = true;
       this._fetchSnapshot();
       return;
@@ -1625,7 +1807,6 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
     };
 
     if (this._token) req.token = this._token;
-    if (this._data) req.data = this._data;
     if (this._tagsFilter) req.tf = this._tagsFilter;
     if (this._delta) req.delta = this._delta;
     req.flag = subscriptionFlags.channelCompaction;
@@ -1638,6 +1819,9 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
       if (this._epoch) {
         req.offset = this._offset;
         req.epoch = this._epoch;
+      } else {
+        // First request of the flow — include custom data.
+        if (this._data) req.data = this._data;
       }
     }
 
@@ -1649,6 +1833,10 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
       // For recovery: tell server we're reconnecting (skip STATE phase authorization)
       if (this._recover) {
         req.recover = true;
+        // First request of recovery flow (skipped STATE) — include custom data.
+        if (this._mapStreamBuffer.length === 0) {
+          if (this._data) req.data = this._data;
+        }
       }
     }
 

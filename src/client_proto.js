@@ -5891,6 +5891,7 @@ export const centrifugal = $root.centrifugal = (() => {
                  * @interface ISubRefreshResult
                  * @property {boolean|null} [expires] SubRefreshResult expires
                  * @property {number|null} [ttl] SubRefreshResult ttl
+                 * @property {Array.<centrifugal.centrifuge.protocol.IPublication>|null} [items] SubRefreshResult items
                  */
 
                 /**
@@ -5902,6 +5903,7 @@ export const centrifugal = $root.centrifugal = (() => {
                  * @param {centrifugal.centrifuge.protocol.ISubRefreshResult=} [properties] Properties to set
                  */
                 function SubRefreshResult(properties) {
+                    this.items = [];
                     if (properties)
                         for (let keys = Object.keys(properties), i = 0; i < keys.length; ++i)
                             if (properties[keys[i]] != null)
@@ -5925,6 +5927,14 @@ export const centrifugal = $root.centrifugal = (() => {
                 SubRefreshResult.prototype.ttl = 0;
 
                 /**
+                 * SubRefreshResult items.
+                 * @member {Array.<centrifugal.centrifuge.protocol.IPublication>} items
+                 * @memberof centrifugal.centrifuge.protocol.SubRefreshResult
+                 * @instance
+                 */
+                SubRefreshResult.prototype.items = $util.emptyArray;
+
+                /**
                  * Encodes the specified SubRefreshResult message. Does not implicitly {@link centrifugal.centrifuge.protocol.SubRefreshResult.verify|verify} messages.
                  * @function encode
                  * @memberof centrifugal.centrifuge.protocol.SubRefreshResult
@@ -5940,6 +5950,9 @@ export const centrifugal = $root.centrifugal = (() => {
                         writer.uint32(/* id 1, wireType 0 =*/8).bool(message.expires);
                     if (message.ttl != null && Object.hasOwnProperty.call(message, "ttl"))
                         writer.uint32(/* id 2, wireType 0 =*/16).uint32(message.ttl);
+                    if (message.items != null && message.items.length)
+                        for (let i = 0; i < message.items.length; ++i)
+                            $root.centrifugal.centrifuge.protocol.Publication.encode(message.items[i], writer.uint32(/* id 3, wireType 2 =*/26).fork()).ldelim();
                     return writer;
                 };
 
@@ -5980,6 +5993,12 @@ export const centrifugal = $root.centrifugal = (() => {
                             }
                         case 2: {
                                 message.ttl = reader.uint32();
+                                break;
+                            }
+                        case 3: {
+                                if (!(message.items && message.items.length))
+                                    message.items = [];
+                                message.items.push($root.centrifugal.centrifuge.protocol.Publication.decode(reader, reader.uint32()));
                                 break;
                             }
                         default:
@@ -6023,6 +6042,15 @@ export const centrifugal = $root.centrifugal = (() => {
                     if (message.ttl != null && message.hasOwnProperty("ttl"))
                         if (!$util.isInteger(message.ttl))
                             return "ttl: integer expected";
+                    if (message.items != null && message.hasOwnProperty("items")) {
+                        if (!Array.isArray(message.items))
+                            return "items: array expected";
+                        for (let i = 0; i < message.items.length; ++i) {
+                            let error = $root.centrifugal.centrifuge.protocol.Publication.verify(message.items[i]);
+                            if (error)
+                                return "items." + error;
+                        }
+                    }
                     return null;
                 };
 

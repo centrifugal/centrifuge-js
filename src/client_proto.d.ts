@@ -2372,6 +2372,9 @@ export namespace centrifugal {
 
                 /** SubRefreshResult ttl */
                 ttl?: (number|null);
+
+                /** SubRefreshResult items */
+                items?: (centrifugal.centrifuge.protocol.IPublication[]|null);
             }
 
             /** Represents a SubRefreshResult. */
@@ -2388,6 +2391,9 @@ export namespace centrifugal {
 
                 /** SubRefreshResult ttl. */
                 public ttl: number;
+
+                /** SubRefreshResult items. */
+                public items: centrifugal.centrifuge.protocol.IPublication[];
 
                 /**
                  * Encodes the specified SubRefreshResult message. Does not implicitly {@link centrifugal.centrifuge.protocol.SubRefreshResult.verify|verify} messages.

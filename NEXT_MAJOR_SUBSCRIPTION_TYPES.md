@@ -2,7 +2,7 @@
 
 This document describes changes to make when the next major version removes backwards-compatibility constraints around subscription types.
 
-## Current state (v6)
+## Current state (v5)
 
 Class hierarchy exists but is partially hidden behind type aliases:
 
@@ -49,14 +49,12 @@ import { BaseSubscription, StreamSubscription, MapSubscription, SharedPollSubscr
 ```typescript
 // index.ts
 export { StreamSubscription, MapSubscription, SharedPollSubscription } from './subscription';
-// Deprecated alias for migration — remove in next-next major
-export { StreamSubscription as Subscription } from './subscription';
 // BaseSubscription exported only if users need it for mixed-type registries
 export { BaseSubscription } from './subscription';
 ```
 
 Centrifuge client methods rename accordingly:
-- `newSubscription()` → `newStreamSubscription()` (keep `newSubscription()` as deprecated alias)
+- `newSubscription()` → `newStreamSubscription()`
 - `getSubscription()` returns `AnySubscription | null` (see step 4)
 - `removeSubscription()` accepts `AnySubscription | null`
 
@@ -159,32 +157,63 @@ TypeScript doesn't allow changing the EventEmitter generic on `extends`. Approac
 
 ## Migration guide for users
 
-| v6 | Next major |
+| v5 | Next major |
 |---|---|
-| `import { Subscription }` | `import { StreamSubscription }` (or `import { Subscription }` — deprecated alias) |
-| `client.newSubscription(ch)` | `client.newStreamSubscription(ch)` (or `newSubscription()` — deprecated alias) |
-| `sub.mapPublish(key, data)` | `sub.publish(key, data)` on `MapSubscription` |
-| `sub.mapRemove(key)` | `sub.remove(key)` on `MapSubscription` |
+| `import { Subscription }` | `import { StreamSubscription }` |
+| `client.newSubscription(ch)` | `client.newStreamSubscription(ch)` |
 | `client.getMapSubscription(ch)` | `client.getSubscription(ch)` + narrow with `sub.type === 'map'` |
+| `client.getSharedPollSubscription(ch)` | `client.getSubscription(ch)` + narrow with `sub.type === 'shared_poll'` |
 | `client.mapSubscriptions()` | Filter `client.subscriptions()` by `sub.type` |
+| `client.sharedPollSubscriptions()` | Filter `client.subscriptions()` by `sub.type` |
+| `client.removeMapSubscription(sub)` | `client.removeSubscription(sub)` |
+| `client.removeSharedPollSubscription(sub)` | `client.removeSubscription(sub)` |
 | `import type { MapSubscription }` | `import { MapSubscription }` — it's a class now, not just a type |
+| `import type { SharedPollSubscription }` | `import { SharedPollSubscription }` — it's a class now, not just a type |
 | `SubscriptionEvents` | `StreamSubscriptionEvents` |
+
+## Lessons from validation
+
+The full refactor was applied and validated (tsc clean, 135 tests pass). Key findings:
+
+### `private` → `protected` is required for moving methods to subclasses
+
+Moving `publish`/`history`/`track`/`untrack` etc. to subclasses requires these BaseSubscription members to become `protected`:
+- `_centrifuge` — subclasses delegate to `this._centrifuge.publish(...)`, `this._centrifuge.mapPublish(...)`, etc.
+- `_methodCall()` — gate for all RPC methods (waits for subscribed state)
+- `_isSubscribed()` — used by track/untrack to decide whether to send immediately or buffer
+- `_sharedPollTrackedItems`, `_sharedPollGetSignature`, `_sharedPollPendingSignature`, `_sharedPollPendingItems` — accessed by SharedPollSubscription.track/untrack
+- `_sendTrackRequest()`, `_sendUntrackRequest()`, `_handleTrackError()` — called by SharedPollSubscription.track
+
+### Steps 6, 5, and "export classes directly" are one domino chain
+
+They cannot be done independently:
+1. **Move state fields to subclasses (step 6)** — the real work. Internal logic (subscribe flow, recovery, publication handling) heavily references `_map*` and `_sharedPoll*` fields. Requires extracting handler methods that subclasses override.
+2. **Eliminate InternalSubscriptionEvents (step 5)** — blocked by step 6. The `emit('sync', ...)` and `emit('update', ...)` calls live in BaseSubscription methods that process publications. Until that logic moves to subclasses, the base class needs the broad event type.
+3. **Export classes directly / remove type aliases (step 1 partial)** — blocked by step 5. Type aliases exist because the class EventEmitter type is `InternalSubscriptionEvents` (too broad). Until each subclass has its own narrowed EventEmitter, the type aliases provide the narrowing.
+
+Everything else in the checklist is independent and works cleanly.
+
+### `removeSubscription` with union param needs internal cast
+
+When `removeSubscription(sub: AnySubscription | null)` replaces separate typed remove methods, the body needs to cast `sub as unknown as _BaseSubscription` before calling internal `_removeSubscription`, since `AnySubscription` is a type alias (not the class).
 
 ## Checklist
 
-- [ ] Rename `Subscription` → `StreamSubscription`, add deprecated `Subscription` alias
-- [ ] Rename `newSubscription()` → `newStreamSubscription()`, add deprecated `newSubscription()` alias
-- [ ] Rename `SubscriptionEvents` → `StreamSubscriptionEvents`, add deprecated alias
+- [ ] Rename `Subscription` → `StreamSubscription` (no deprecated alias — clean break)
+- [ ] Rename `newSubscription()` → `newStreamSubscription()` (no deprecated alias)
+- [ ] Rename `SubscriptionEvents` → `StreamSubscriptionEvents`
 - [ ] Move `publish(data)` and `history()` to `StreamSubscription` class
 - [ ] Move `mapPublish`/`mapRemove` logic into `MapSubscription.publish`/`remove`
 - [ ] Move `track`/`untrack`/`trackedKeys` to `SharedPollSubscription`
-- [ ] Move subscription-type-specific state fields to subclasses (`_map*`, `_sharedPoll*`)
-- [ ] Export classes directly from `index.ts`
-- [ ] Remove `CommonSurface` type, `_`-prefixed imports, `as unknown as` casts
+- [ ] Change `private` → `protected` for `_centrifuge`, `_methodCall`, `_isSubscribed`, `_sharedPoll*`, `_sendTrackRequest`, `_sendUntrackRequest`, `_handleTrackError`
 - [ ] Make `type` a const literal on each class for discriminated union narrowing
-- [ ] Unify `getSubscription`/`removeSubscription`/`subscriptions` return to discriminated union
-- [ ] Remove typed getters (`getMapSubscription`, etc.)
-- [ ] Eliminate or internalize `InternalSubscriptionEvents`
+- [ ] Unify `getSubscription`/`removeSubscription`/`subscriptions` return to `AnySubscription` discriminated union
+- [ ] Remove typed getters (`getMapSubscription`, `removeMapSubscription`, `getSharedPollSubscription`, `removeSharedPollSubscription`, `mapSubscriptions`, `sharedPollSubscriptions`)
 - [ ] Remove `mapPublish`/`mapRemove` method aliases from class
+- [ ] Export `StreamSubscription`, `MapSubscription`, `SharedPollSubscription` classes from `index.ts`
 - [ ] Update tests
 - [ ] Update CHANGELOG with migration notes
+- [ ] **(Domino chain — do together, or defer):**
+  - [ ] Move subscription-type-specific state fields and logic to subclasses (`_map*`, `_sharedPoll*`)
+  - [ ] Eliminate `InternalSubscriptionEvents` — each subclass gets own EventEmitter type
+  - [ ] Remove `CommonSurface` type, `_`-prefixed imports, `as unknown as` casts — export classes directly

@@ -39,7 +39,7 @@ type CommonSurface = Pick<_BaseSubscription,
   'channel' | 'state' | 'type' |
   'subscribe' | 'unsubscribe' | 'ready' |
   'presence' | 'presenceStats' |
-  'setTagsFilter' | 'setData' | 'deltaStats'
+  'setData' | 'deltaStats'
 >;
 
 /** Common subscription surface — use for mixed-type registries. */
@@ -47,6 +47,7 @@ export type BaseSubscription = CommonSurface & TypedEventEmitter<BaseSubscriptio
 
 /** Map subscription: publish/remove + narrowed map events. */
 export type MapSubscription = CommonSurface
+  & Pick<_BaseSubscription, 'setTagsFilter'>
   & { publish(key: string, data: any): Promise<PublishResult>; remove(key: string): Promise<PublishResult>; }
   & TypedEventEmitter<MapSubscriptionEvents>;
 

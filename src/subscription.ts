@@ -6,7 +6,7 @@ import {
   PublishResult, State, SubscriptionEvents, InternalSubscriptionOptions,
   SubscriptionState, SubscriptionTokenContext, TypedEventEmitter,
   SubscriptionDataContext, FilterNode, MapPhase, MapUpdateContext, SharedPollUpdateContext,
-  MapUnrecoverableStrategy, DeltaStats,
+  MapUnrecoverableStrategy, DeltaStats, MapExternalState,
   SharedPollTrackItem, SharedPollSignatureContext, SharedPollSignatureResult
 } from './types';
 import { ttlMilliseconds, backoff } from './utils';
@@ -59,6 +59,7 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
   private _mapCursor: string = '';          // Pagination cursor
   private _mapLimit: number = 100;          // Page size
   private _mapUnrecoverableStrategy: MapUnrecoverableStrategy = 'from_scratch';
+  private _mapGetState: (() => Promise<MapExternalState>) | null = null;
 
   // Shared poll subscription state
   private _sharedPoll: boolean = false;
@@ -899,6 +900,10 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
     if (options.mapUnrecoverableStrategy) {
       this._mapUnrecoverableStrategy = options.mapUnrecoverableStrategy;
     }
+    if (options.mapGetState) {
+      this._mapGetState = options.mapGetState;
+      this._map = true;  // getState implies map subscription
+    }
     // Shared poll subscription options
     if (options.sharedPoll === true) {
       this._sharedPoll = true;
@@ -1445,6 +1450,13 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
       return;
     }
 
+    // External state mode: load state from app, then go directly to stream phase
+    if (this._mapGetState) {
+      this._mapPhase = MapPhase.State; // logically loading state
+      this._loadExternalState();
+      return;
+    }
+
     // Get token if needed, then start fetching snapshot
     if (this._canSubscribeWithoutGettingToken()) {
       this._fetchSnapshot();
@@ -1465,6 +1477,56 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
         })
         .catch(e => this._handleTokenError(e));
     }
+  }
+
+  /** Load state from app's database via getState callback, then transition to stream phase */
+  private _loadExternalState(): void {
+    if (!this._isSubscribing()) { this._inflight = false; return; }
+
+    this._mapGetState!().then(result => {
+      if (!this._isSubscribing()) { this._inflight = false; return; }
+
+      // Store entries in state buffer
+      for (const entry of result.entries) {
+        const ctx: MapUpdateContext = {
+          channel: this.channel,
+          data: entry.data,
+          key: entry.key,
+          score: 0,
+        };
+        this._mapStateBuffer.push(ctx);
+        if (entry.key && entry.data !== undefined) {
+          this._prevValueMap.set(entry.key, entry.data);
+        }
+      }
+
+      // Store stream position from broker
+      this._offset = result.offset;
+      this._epoch = result.epoch;
+
+      // Transition to stream phase
+      this._mapPhase = MapPhase.Stream;
+
+      // Need token before making WebSocket call
+      if (this._canSubscribeWithoutGettingToken()) {
+        this._fetchStream();
+      } else {
+        this._getSubscriptionToken()
+          .then(token => {
+            if (!this._isSubscribing()) { this._inflight = false; return; }
+            if (!token) { this._inflight = false; this._failUnauthorized(); return; }
+            this._token = token;
+            this._fetchStream();
+          })
+          .catch(e => this._handleTokenError(e));
+      }
+    }).catch(e => {
+      if (!this._isSubscribing()) { this._inflight = false; return; }
+      this._handleMapSubscribeError({
+        code: errorCodes.subscriptionGetState,
+        message: e?.toString() || 'getState failed'
+      });
+    });
   }
 
   /** Fetch a page of snapshot data */
@@ -1601,16 +1663,21 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
       return;
     }
 
-    // Validate epoch - if changed, we need to restart from snapshot
+    // Validate epoch - if changed, we need to restart
     if (this._epoch && result.epoch && this._epoch !== result.epoch) {
-      this._debug('map subscribe: epoch changed during stream, restarting from snapshot');
+      this._debug('map subscribe: epoch changed during stream, restarting');
       this._mapStateBuffer = [];
       this._mapStreamBuffer = [];
-      this._mapPhase = MapPhase.State;
       this._epoch = null;
       this._offset = null;
       this._prevValueMap = new Map();
-      this._fetchSnapshot();
+      if (this._mapGetState) {
+        this._mapPhase = MapPhase.State;
+        this._loadExternalState();
+      } else {
+        this._mapPhase = MapPhase.State;
+        this._fetchSnapshot();
+      }
       return;
     }
 
@@ -1649,12 +1716,17 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
       this._debug('map subscribe: epoch changed during live transition, restarting');
       this._mapStateBuffer = [];
       this._mapStreamBuffer = [];
-      this._mapPhase = MapPhase.State;
       this._epoch = null;
       this._offset = null;
       this._prevValueMap = new Map();
       this._inflight = true;
-      this._fetchSnapshot();
+      if (this._mapGetState) {
+        this._mapPhase = MapPhase.State;
+        this._loadExternalState();
+      } else {
+        this._mapPhase = MapPhase.State;
+        this._fetchSnapshot();
+      }
       return;
     }
 
@@ -1738,13 +1810,37 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
     this._resolvePromises();
 
     // Emit sync event — complete state for simplified state management.
-    // On recovery (no state entries), emit sync with current state from stream buffer
-    // applied on top. On fresh join, emit the state snapshot.
-    if (!ctx.recovered) {
+    // On recovery (no state entries from server), skip sync — app already has rendered state,
+    // stream catch-up entries are emitted as individual update events below.
+    // On fresh join or ExternalState initial load, merge stream catch-up into state buffer
+    // first so that sync contains the complete up-to-date state. This prevents stale update
+    // events — e.g. with ExternalState, getState may return newer data than early stream entries.
+    // When ExternalState recovers from saved position (no getState call), state buffer is empty —
+    // treat as regular recovery (skip sync, emit updates).
+    const hasState = this._mapStateBuffer.length > 0;
+    if (!ctx.recovered || (this._mapGetState && hasState)) {
+      // Merge stream buffer into state buffer by key (last value wins).
+      if (this._mapStreamBuffer.length > 0) {
+        const stateMap = new Map<string, MapUpdateContext>();
+        for (const entry of this._mapStateBuffer) {
+          stateMap.set(entry.key, entry);
+        }
+        for (const entry of this._mapStreamBuffer) {
+          if (entry.removed) {
+            stateMap.delete(entry.key);
+          } else {
+            stateMap.set(entry.key, entry);
+          }
+        }
+        this._mapStateBuffer = Array.from(stateMap.values());
+        this._mapStreamBuffer = []; // Already merged — don't emit as updates.
+      }
       this.emit('sync', { entries: this._mapStateBuffer });
     }
 
-    // Flush stream buffer as publication and update events
+    // Flush remaining stream buffer as publication and update events.
+    // This only fires on recovery (sync skipped above) — app already has state
+    // and just needs the incremental changes that happened while disconnected.
     for (const pub of this._mapStreamBuffer) {
       this.emit('publication', pub);
       this.emit('update', pub);
@@ -1808,7 +1904,7 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
 
     if (this._token) req.token = this._token;
     if (this._tagsFilter) req.tf = this._tagsFilter;
-    if (this._delta) req.delta = this._delta;
+    if (this._delta && !this._mapGetState) req.delta = this._delta;
     req.flag = subscriptionFlags.channelCompaction;
 
     // STATE phase
@@ -1830,10 +1926,11 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
       req.limit = this._mapLimit;
       req.offset = this._offset;
       req.epoch = this._epoch;
-      // For recovery: tell server we're reconnecting (skip STATE phase authorization)
-      if (this._recover) {
+      // Both recovery and ExternalState send recover=true — semantically identical:
+      // "I have state + position, catch me up from there."
+      if (this._recover || this._mapGetState) {
         req.recover = true;
-        // First request of recovery flow (skipped STATE) — include custom data.
+        // First request of the flow (skipped STATE) — include custom data for authorization.
         if (this._mapStreamBuffer.length === 0) {
           if (this._data) req.data = this._data;
         }

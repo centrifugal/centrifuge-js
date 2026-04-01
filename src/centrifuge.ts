@@ -200,7 +200,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
       delta: options?.delta,
       map: true,
       mapLimit: options?.limit,
-
+      mapGetState: options?.getState,
       mapUnrecoverableStrategy: options?.unrecoverableStrategy,
     });
     this._subs[channel] = sub;

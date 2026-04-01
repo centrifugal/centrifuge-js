@@ -11,6 +11,7 @@ export enum errorCodes {
   transportWriteError = 10,
   connectionClosed = 11,
   badConfiguration = 12,
+  subscriptionGetState = 13,
 }
 
 export enum connectingCodes {

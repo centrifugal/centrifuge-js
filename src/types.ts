@@ -499,6 +499,19 @@ export interface SubscriptionOptions {
   tagsFilter?: FilterNode | null;
 }
 
+/** Lightweight entry type for app-provided state (no channel/offset/info/removed fields) */
+export interface MapExternalStateEntry {
+  key: string;
+  data: any;
+}
+
+/** Return type for getState callback */
+export interface MapExternalState {
+  entries: MapExternalStateEntry[];
+  offset: number;
+  epoch: string;
+}
+
 /** MapSubscriptionOptions can customize map Subscription. */
 export interface MapSubscriptionOptions {
   /** allows setting initial subscription token (JWT) */
@@ -521,6 +534,10 @@ export interface MapSubscriptionOptions {
    * - 'from_scratch': (default) auto-recover by resubscribing from snapshot
    * - 'fatal': go to unsubscribed state, let user handle */
   unrecoverableStrategy?: MapUnrecoverableStrategy;
+  /** Callback to load state from app's database.
+   * When set, SDK uses external state flow: calls getState(), then subscribes with Phase=Stream.
+   * The app must return entries along with the stream position (offset/epoch) from the broker. */
+  getState?: () => Promise<MapExternalState>;
 }
 
 /** Internal options interface used by Subscription class.
@@ -530,6 +547,7 @@ export interface InternalSubscriptionOptions extends SubscriptionOptions {
   mapLimit?: number;
   mapUnrecoverableStrategy?: MapUnrecoverableStrategy;
   mapPresenceType?: number; // 1=MAP (default), 2=MAP_CLIENTS, 3=MAP_USERS
+  mapGetState?: () => Promise<MapExternalState>;
   sharedPoll?: boolean;
   sharedPollGetSignature?: (ctx: SharedPollSignatureContext) => Promise<SharedPollSignatureResult>;
 }

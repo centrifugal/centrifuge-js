@@ -637,3 +637,195 @@ test('map client presence: add and remove events', async () => {
   await disconnectClient(cB);
   await disconnectClient(cC);
 });
+
+// Helper: read stream position from Centrifugo API.
+async function apiMapReadStream(channel: string, limit: number): Promise<any> {
+  const resp = await fetch(`${apiBase}/map_read_stream`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-API-Key': apiKey,
+    },
+    body: JSON.stringify({ channel, limit }),
+  });
+  if (!resp.ok) {
+    throw new Error(`map_read_stream failed: ${resp.status} ${await resp.text()}`);
+  }
+  return (await resp.json() as any).result;
+}
+
+// 16. External state: stream catch-up entries merged into sync, no stale update events.
+test('external state: catch-up merged into sync', async () => {
+  const c = createClient();
+  c.connect();
+  await c.ready(5000);
+
+  const ch = uniqueChannel('external');
+
+  // Seed entries via API — creates stream entries at offsets 1, 2, 3.
+  await apiMapPublish(ch, 'a', { v: 1 });
+  await apiMapPublish(ch, 'b', { v: 2 });
+  await apiMapPublish(ch, 'a', { v: 3 }); // update 'a' again
+
+  // Get current stream position.
+  const streamResult = await apiMapReadStream(ch, 0);
+  const currentOffset = streamResult.offset;
+  const currentEpoch = streamResult.epoch;
+  expect(currentOffset).toBeGreaterThanOrEqual(3);
+
+  // Subscribe with getState returning entries at offset=0 (before any stream entries).
+  // Stream catch-up from 0 will deliver all 3 mutations as duplicates.
+  const sub = c.newMapSubscription(ch, {
+    getState: async () => ({
+      entries: [
+        { key: 'a', data: { v: 3 } }, // latest value
+        { key: 'b', data: { v: 2 } },
+      ],
+      offset: 0, // intentionally old — forces full stream catch-up
+      epoch: currentEpoch,
+    }),
+  });
+
+  // Track all events.
+  const updates: MapUpdateContext[] = [];
+  sub.on('update', (ctx) => {
+    updates.push(ctx as MapUpdateContext);
+  });
+
+  const syncP = waitForEvent<MapSyncContext>(sub, 'sync');
+
+  sub.subscribe();
+  await sub.ready(5000);
+
+  const syncCtx = await syncP;
+
+  // sync should contain merged state: 'a' and 'b' with latest values.
+  const keys = syncCtx.entries.map((e: MapUpdateContext) => e.key).sort();
+  expect(keys).toEqual(['a', 'b']);
+
+  const entryA = syncCtx.entries.find((e: MapUpdateContext) => e.key === 'a');
+  const entryB = syncCtx.entries.find((e: MapUpdateContext) => e.key === 'b');
+  expect(entryA!.data).toEqual({ v: 3 });
+  expect(entryB!.data).toEqual({ v: 2 });
+
+  // No update events should have fired for catch-up entries.
+  // They were merged into sync.
+  expect(updates).toHaveLength(0);
+
+  // Now publish a new entry — should arrive as a LIVE update event.
+  const liveUpdateP = waitForEvent<MapUpdateContext>(sub, 'update');
+  await apiMapPublish(ch, 'c', { v: 4 });
+
+  const liveCtx = await liveUpdateP;
+  expect(liveCtx.key).toBe('c');
+  expect(liveCtx.data).toEqual({ v: 4 });
+
+  await disconnectClient(c);
+});
+
+// 17. External state: removed entry in stream removes key from sync.
+test('external state: removal in stream removes from sync', async () => {
+  const c = createClient();
+  c.connect();
+  await c.ready(5000);
+
+  const ch = uniqueChannel('external');
+
+  // Seed: publish then remove.
+  await apiMapPublish(ch, 'x', { v: 1 });
+  await apiMapPublish(ch, 'y', { v: 2 });
+  await apiMapRemove(ch, 'x');
+
+  const streamResult = await apiMapReadStream(ch, 0);
+
+  const sub = c.newMapSubscription(ch, {
+    getState: async () => ({
+      entries: [
+        { key: 'x', data: { v: 1 } }, // stale — was removed
+        { key: 'y', data: { v: 2 } },
+      ],
+      offset: 0,
+      epoch: streamResult.epoch,
+    }),
+  });
+
+  const syncP = waitForEvent<MapSyncContext>(sub, 'sync');
+
+  sub.subscribe();
+  await sub.ready(5000);
+
+  const syncCtx = await syncP;
+
+  // 'x' should be removed from sync (stream had a removal).
+  const keys = syncCtx.entries.map((e: MapUpdateContext) => e.key);
+  expect(keys).toEqual(['y']);
+  expect(syncCtx.entries.find((e: MapUpdateContext) => e.key === 'x')).toBeUndefined();
+
+  await disconnectClient(c);
+});
+
+// 18. External state: recovery uses update events, not sync with partial state.
+test('external state: recovery emits updates not sync', async () => {
+  const c = createClient();
+  c.connect();
+  await c.ready(5000);
+
+  const ch = uniqueChannel('external');
+
+  // Seed initial data so stream exists.
+  await apiMapPublish(ch, 'init', { v: 1 });
+
+  const streamResult = await apiMapReadStream(ch, 0);
+
+  // Subscribe with getState — initial load.
+  const sub = c.newMapSubscription(ch, {
+    getState: async () => ({
+      entries: [{ key: 'init', data: { v: 1 } }],
+      offset: streamResult.offset,
+      epoch: streamResult.epoch,
+    }),
+  });
+
+  const syncP = waitForEvent<MapSyncContext>(sub, 'sync');
+  sub.subscribe();
+  await sub.ready(5000);
+
+  const syncCtx = await syncP;
+  expect(syncCtx.entries).toHaveLength(1);
+  expect(syncCtx.entries[0].key).toBe('init');
+
+  // Wait for a LIVE update to confirm we're live.
+  const liveP = waitForEvent<MapUpdateContext>(sub, 'update');
+  await apiMapPublish(ch, 'before_dc', { v: 2 });
+  await liveP;
+
+  // Disconnect and publish while offline.
+  c.disconnect();
+  await apiMapPublish(ch, 'during_dc', { v: 3 });
+
+  // Track events during reconnect.
+  const syncs: MapSyncContext[] = [];
+  const updates: MapUpdateContext[] = [];
+  sub.on('sync', (ctx: MapSyncContext) => { syncs.push(ctx); });
+  sub.on('update', (ctx) => { updates.push(ctx as MapUpdateContext); });
+
+  // Reconnect — should recover from saved offset (no getState call).
+  const resubP = waitForEvent<SubscribedContext>(sub, 'subscribed');
+  c.connect();
+  await c.ready(5000);
+  const resubCtx = await resubP;
+  expect(resubCtx.recovered).toBe(true);
+
+  // Give a moment for any events to flush.
+  await new Promise(resolve => setTimeout(resolve, 200));
+
+  // Recovery should NOT emit sync (app already has rendered state).
+  // Instead, missed entries arrive as update events.
+  expect(syncs).toHaveLength(0);
+  expect(updates.length).toBeGreaterThanOrEqual(1);
+  const dcUpdate = updates.find(u => u.key === 'during_dc');
+  expect(dcUpdate).toBeDefined();
+  expect(dcUpdate!.data).toEqual({ v: 3 });
+
+  await disconnectClient(c);
+});

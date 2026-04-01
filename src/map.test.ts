@@ -212,8 +212,8 @@ test('client mapPublish and mapRemove', async () => {
   sub.subscribe();
   await sub.ready(5000);
 
-  await sub.mapPublish('ck1', { from: 'client' });
-  await sub.mapRemove('ck1');
+  await sub.publish('ck1', { from: 'client' });
+  await sub.remove('ck1');
 
   const [addCtx, rmCtx] = await updates;
   expect(addCtx.key).toBe('ck1');
@@ -406,8 +406,8 @@ test('two clients see same state', async () => {
   subA.subscribe();
   await subA.ready(5000);
 
-  await subA.mapPublish('shared_1', { from: 'A' });
-  await subA.mapPublish('shared_2', { from: 'A' });
+  await subA.publish('shared_1', { from: 'A' });
+  await subA.publish('shared_2', { from: 'A' });
 
   // Wait for clientA to see both entries.
   await updatesAP;
@@ -429,7 +429,7 @@ test('two clients see same state', async () => {
   const updateAP = waitForEvent<MapUpdateContext>(subA, 'update');
   const updateBP = waitForEvent<MapUpdateContext>(subB, 'update');
 
-  await subA.mapPublish('shared_3', { from: 'A_more' });
+  await subA.publish('shared_3', { from: 'A_more' });
 
   const [uA, uB] = await Promise.all([updateAP, updateBP]);
   expect(uA.key).toBe('shared_3');
@@ -458,7 +458,7 @@ test('map_client_key override', async () => {
   await sub.ready(5000);
 
   // Publish with arbitrary key — server should override to client ID.
-  await sub.mapPublish('arbitrary_key', { test: true });
+  await sub.publish('arbitrary_key', { test: true });
 
   const updateCtx = await updateP;
   expect(updateCtx.key).toBe(clientId);
@@ -689,7 +689,7 @@ test('external state: catch-up merged into sync', async () => {
   // Track all events.
   const updates: MapUpdateContext[] = [];
   sub.on('update', (ctx) => {
-    updates.push(ctx as MapUpdateContext);
+    updates.push(ctx);
   });
 
   const syncP = waitForEvent<MapSyncContext>(sub, 'sync');
@@ -807,7 +807,7 @@ test('external state: recovery emits updates not sync', async () => {
   const syncs: MapSyncContext[] = [];
   const updates: MapUpdateContext[] = [];
   sub.on('sync', (ctx: MapSyncContext) => { syncs.push(ctx); });
-  sub.on('update', (ctx) => { updates.push(ctx as MapUpdateContext); });
+  sub.on('update', (ctx) => { updates.push(ctx); });
 
   // Reconnect — should recover from saved offset (no getState call).
   const resubP = waitForEvent<SubscribedContext>(sub, 'subscribed');

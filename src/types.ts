@@ -81,6 +81,20 @@ export type SubscriptionEvents = {
   update: (ctx: MapUpdateContext | SharedPollUpdateContext) => void;
 }
 
+/** Common events shared by all subscription types (no sync/update). */
+export type BaseSubscriptionEvents = Omit<SubscriptionEvents, 'update' | 'sync'>;
+
+/** Events for map subscriptions. */
+export type MapSubscriptionEvents = BaseSubscriptionEvents & {
+  sync: (ctx: MapSyncContext) => void;
+  update: (ctx: MapUpdateContext) => void;
+};
+
+/** Events for shared poll subscriptions (no sync). */
+export type SharedPollSubscriptionEvents = BaseSubscriptionEvents & {
+  update: (ctx: SharedPollUpdateContext) => void;
+};
+
 /** State of Subscription */
 export enum SubscriptionState {
   Unsubscribed = "unsubscribed",

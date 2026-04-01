@@ -11,10 +11,11 @@ import {
 } from './types';
 import { ttlMilliseconds, backoff } from './utils';
 
-/** Subscription to a channel */
-export class Subscription extends (EventEmitter as new () => TypedEventEmitter<SubscriptionEvents>) {
+/** Base subscription to a channel — all subscription logic lives here. */
+export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitter<SubscriptionEvents>) {
   channel: string;
   state: SubscriptionState;
+  readonly type: string;
 
   private _centrifuge: Centrifuge;
   private _promises: Record<number, any>;
@@ -109,6 +110,7 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
     this._deltaBytesReceived = 0;
     this._deltaBytesDecoded = 0;
     this._setOptions(options);
+    this.type = this._sharedPoll ? 'shared_poll' : this._map ? 'map' : 'stream';
     // @ts-ignore – we are hiding some symbols from public API autocompletion.
     if (this._centrifuge._debugEnabled) {
       this.on('state', (ctx) => {
@@ -1982,3 +1984,21 @@ export class Subscription extends (EventEmitter as new () => TypedEventEmitter<S
     return ctx;
   }
 }
+
+/** Backwards-compatible subscription class for stream channels. */
+export class Subscription extends BaseSubscription {}
+
+/** Map subscription with publish/remove methods. */
+export class MapSubscription extends BaseSubscription {
+  /** Publish data to a key. */
+  async publish(key: string, data?: any): Promise<PublishResult> {
+    return this.mapPublish(key, data);
+  }
+  /** Remove a key. */
+  async remove(key: string): Promise<PublishResult> {
+    return this.mapRemove(key);
+  }
+}
+
+/** Shared poll subscription. */
+export class SharedPollSubscription extends BaseSubscription {}

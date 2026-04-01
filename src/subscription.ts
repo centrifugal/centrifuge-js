@@ -3,7 +3,7 @@ import { Centrifuge, UnauthorizedError } from './centrifuge';
 import { errorCodes, unsubscribedCodes, subscribingCodes, connectingCodes, subscriptionFlags } from './codes';
 import {
   HistoryOptions, HistoryResult, PresenceResult, PresenceStatsResult,
-  PublishResult, State, SubscriptionEvents, InternalSubscriptionOptions,
+  PublishResult, State, InternalSubscriptionEvents, InternalSubscriptionOptions,
   SubscriptionState, SubscriptionTokenContext, TypedEventEmitter,
   SubscriptionDataContext, FilterNode, MapPhase, MapUpdateContext, SharedPollUpdateContext,
   MapUnrecoverableStrategy, DeltaStats, MapExternalState,
@@ -12,7 +12,7 @@ import {
 import { ttlMilliseconds, backoff } from './utils';
 
 /** Base subscription to a channel — all subscription logic lives here. */
-export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitter<SubscriptionEvents>) {
+export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitter<InternalSubscriptionEvents>) {
   channel: string;
   state: SubscriptionState;
   readonly type: string;

@@ -70,29 +70,26 @@ export type SubscriptionEvents = {
 
   /** listen to subscription errors happening internally */
   error: (ctx: SubscriptionErrorContext) => void;
-
-  /** called for map subscriptions when complete state is available (initial join or full resync).
-   * Use with 'update' event for simplified state management — no need to handle recovered flag.
-   * Not emitted for shared poll subscriptions. */
-  sync: (ctx: MapSyncContext) => void;
-  /** called when a single entry is added, updated, or removed.
-   * Emitted for both map subscriptions (ctx is MapUpdateContext with score) and
-   * shared poll subscriptions (ctx is SharedPollUpdateContext with version). */
-  update: (ctx: MapUpdateContext | SharedPollUpdateContext) => void;
 }
 
-/** Common events shared by all subscription types (no sync/update). */
-export type BaseSubscriptionEvents = Omit<SubscriptionEvents, 'update' | 'sync'>;
+/** Common events shared by all subscription types. */
+export type BaseSubscriptionEvents = SubscriptionEvents;
 
 /** Events for map subscriptions. */
-export type MapSubscriptionEvents = BaseSubscriptionEvents & {
+export type MapSubscriptionEvents = SubscriptionEvents & {
   sync: (ctx: MapSyncContext) => void;
   update: (ctx: MapUpdateContext) => void;
 };
 
 /** Events for shared poll subscriptions (no sync). */
-export type SharedPollSubscriptionEvents = BaseSubscriptionEvents & {
+export type SharedPollSubscriptionEvents = SubscriptionEvents & {
   update: (ctx: SharedPollUpdateContext) => void;
+};
+
+/** Internal event type used by BaseSubscription class — includes all possible events. */
+export type InternalSubscriptionEvents = SubscriptionEvents & {
+  sync: (ctx: MapSyncContext) => void;
+  update: (ctx: MapUpdateContext | SharedPollUpdateContext) => void;
 };
 
 /** State of Subscription */

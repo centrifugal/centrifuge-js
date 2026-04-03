@@ -24,7 +24,7 @@ interface MockItem {
   removed?: boolean;
 }
 
-let mockItems: Map<string, MockItem> = new Map();
+const mockItems: Map<string, MockItem> = new Map();
 let mockServer: http.Server;
 let mockRequestLog: Array<{ channel: string; items: any[] }> = [];
 

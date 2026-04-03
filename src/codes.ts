@@ -12,6 +12,7 @@ export enum errorCodes {
   connectionClosed = 11,
   badConfiguration = 12,
   subscriptionGetState = 13,
+  sharedPollGetSignature = 14,
 }
 
 export enum connectingCodes {

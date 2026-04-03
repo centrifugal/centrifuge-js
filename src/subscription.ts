@@ -1107,7 +1107,7 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
         this.emit('error', {
           type: 'track',
           channel: this.channel,
-          error: { code: 0, message: 'getSignature callback required for track(keys)' },
+          error: { code: errorCodes.sharedPollGetSignature, message: 'getSignature callback required for track(keys)' },
         });
         return;
       }
@@ -1143,7 +1143,7 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
         this.emit('error', {
           type: 'track',
           channel: this.channel,
-          error: { code: 0, message: e !== undefined ? e.toString() : 'getSignature failed' },
+          error: { code: errorCodes.sharedPollGetSignature, message: e !== undefined ? e.toString() : 'getSignature failed' },
         });
       });
     }

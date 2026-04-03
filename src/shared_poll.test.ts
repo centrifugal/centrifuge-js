@@ -6,6 +6,7 @@ import {
   SharedPollSignatureContext,
   SharedPollSignatureResult,
 } from './types';
+import { errorCodes } from './codes';
 
 import WebSocket from 'ws';
 import { fetch } from 'undici';
@@ -1260,6 +1261,42 @@ test('versionless: version stored from publication', async () => {
   // @ts-ignore – accessing private field for testing.
   const storedVersion = sub._sharedPollTrackedItems.get('store_key');
   expect(storedVersion).toBe(u.version);
+
+  await disconnectClient(c);
+}, 15000);
+
+// 30. getSignature rejection emits error with correct code.
+test('getSignature rejection emits error with sharedPollGetSignature code', async () => {
+  const c = createClient();
+  c.connect();
+  await c.ready(5000);
+
+  const ch = uniqueChannel('poll');
+  const sub = c.newSharedPollSubscription(ch, {
+    getSignature: async () => {
+      throw new Error('signature service unavailable');
+    },
+  });
+
+  sub.subscribe();
+  await sub.ready(5000);
+
+  const errorP = new Promise<any>((resolve) => {
+    sub.on('error', (ctx) => {
+      if (ctx.type === 'track') resolve(ctx);
+    });
+  });
+
+  // Track with string keys — triggers getSignature which rejects.
+  sub.track(['fail_key']);
+
+  const errCtx = await errorP;
+  expect(errCtx.error).toBeDefined();
+  expect(errCtx.error.code).toBe(errorCodes.sharedPollGetSignature);
+  expect(errCtx.error.message).toContain('signature service unavailable');
+
+  // Key should still be in tracked items (local state was set before getSignature).
+  expect(sub.trackedKeys().has('fail_key')).toBe(true);
 
   await disconnectClient(c);
 }, 15000);

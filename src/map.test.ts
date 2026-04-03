@@ -1,6 +1,7 @@
 import { Centrifuge } from './centrifuge';
 import {
   SubscribedContext,
+  UnsubscribedContext,
   MapSyncContext,
   MapUpdateContext,
   PublicationContext,
@@ -829,3 +830,43 @@ test('external state: recovery emits updates not sync', async () => {
 
   await disconnectClient(c);
 });
+
+// 19. Unrecoverable position with 'fatal' strategy moves to unsubscribed.
+test('unrecoverable position with fatal strategy unsubscribes', async () => {
+  const c = createClient();
+  c.connect();
+  await c.ready(5000);
+
+  const ch = uniqueChannel('smallstream');
+  const sub = c.newMapSubscription(ch, {
+    unrecoverableStrategy: 'fatal',
+  });
+
+  const firstUpdateP = waitForEvent<MapUpdateContext>(sub, 'update');
+
+  sub.subscribe();
+  await sub.ready(5000);
+
+  // Publish initial entry and wait for it.
+  await apiMapPublish(ch, 'initial', { v: 0 });
+  await firstUpdateP;
+
+  // Unsubscribe, then overflow the stream (stream size is 2).
+  sub.unsubscribe();
+
+  // Push enough entries to make the stream unrecoverable.
+  for (let i = 1; i <= 5; i++) {
+    await apiMapPublish(ch, `overflow_${i}`, { v: i });
+  }
+
+  // Resubscribe — server returns code 112, fatal strategy should unsubscribe.
+  const unsubscribedP = waitForEvent<UnsubscribedContext>(sub, 'unsubscribed');
+
+  sub.subscribe();
+
+  const unsubCtx = await unsubscribedP;
+  // Code 112 = unrecoverable position, passed through by fatal strategy.
+  expect(unsubCtx.code).toBe(112);
+
+  await disconnectClient(c);
+}, 15000);

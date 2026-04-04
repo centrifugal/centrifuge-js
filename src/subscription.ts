@@ -58,7 +58,7 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
   private _mapStateBuffer: MapUpdateContext[] = [];  // Buffer snapshot entries
   private _mapStreamBuffer: MapUpdateContext[] = [];    // Buffer stream entries during catch-up
   private _mapCursor: string = '';          // Pagination cursor
-  private _mapLimit: number = 0;             // Page size (0 = use server default)
+  private _mapPageSize: number = 0;             // Page size (0 = use server default)
   private _mapUnrecoverableStrategy: MapUnrecoverableStrategy = 'from_scratch';
   private _mapGetState: (() => Promise<MapExternalState>) | null = null;
   private _mapMergeSyncState: boolean = false;
@@ -892,8 +892,8 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
     if (options.map === true) {
       this._map = true;
     }
-    if (options.mapLimit !== undefined) {
-      this._mapLimit = options.mapLimit;
+    if (options.mapPageSize !== undefined) {
+      this._mapPageSize = options.mapPageSize;
     }
     // Presence type for presence subscriptions (2=clients, 3=users)
     if (options.mapPresenceType !== undefined) {
@@ -1915,7 +1915,7 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
 
     // STATE phase
     if (phase === MapPhase.State) {
-      if (this._mapLimit > 0) req.limit = this._mapLimit;
+      if (this._mapPageSize > 0) req.limit = this._mapPageSize;
       if (cursor) req.cursor = cursor;
       // Epoch validation after first page
       if (this._epoch) {
@@ -1929,7 +1929,7 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
 
     // STREAM phase
     if (phase === MapPhase.Stream) {
-      if (this._mapLimit > 0) req.limit = this._mapLimit;
+      if (this._mapPageSize > 0) req.limit = this._mapPageSize;
       req.offset = this._offset;
       req.epoch = this._epoch;
       // Both recovery and ExternalState send recover=true — semantically identical:

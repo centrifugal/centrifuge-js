@@ -537,7 +537,7 @@ export interface MapSubscriptionOptions {
   /** max delay between resubscribe attempts. */
   maxResubscribeDelay?: number;
   /** Page size for map state/stream pagination (default: 100) */
-  limit?: number;
+  pageSize?: number;
   /** Delta compression format (currently only 'fossil' supported).
    * When set, the server may send delta-encoded publications for bandwidth savings. */
   delta?: 'fossil';
@@ -560,7 +560,7 @@ export interface MapSubscriptionOptions {
  * Extends SubscriptionOptions with map-specific options using internal naming. */
 export interface InternalSubscriptionOptions extends SubscriptionOptions {
   map?: boolean;
-  mapLimit?: number;
+  mapPageSize?: number;
   mapUnrecoverableStrategy?: MapUnrecoverableStrategy;
   mapPresenceType?: number; // 1=MAP (default), 2=MAP_CLIENTS, 3=MAP_USERS
   mapGetState?: () => Promise<MapExternalState>;

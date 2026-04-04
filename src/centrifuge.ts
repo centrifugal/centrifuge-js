@@ -226,7 +226,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
       maxResubscribeDelay: options?.maxResubscribeDelay,
       delta: options?.delta,
       map: true,
-      mapLimit: options?.limit,
+      mapPageSize: options?.pageSize,
       mapGetState: options?.getState,
       mapUnrecoverableStrategy: options?.unrecoverableStrategy,
       mapMergeSyncState: options?.mergeSyncState,
@@ -252,7 +252,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
       delta: options?.delta,
       map: true,
       mapPresenceType: 2, // MAP_CLIENTS_PRESENCE
-      mapLimit: options?.limit,
+      mapPageSize: options?.pageSize,
       mapUnrecoverableStrategy: options?.unrecoverableStrategy,
       mapMergeSyncState: options?.mergeSyncState,
     });
@@ -277,7 +277,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
       delta: options?.delta,
       map: true,
       mapPresenceType: 3, // MAP_USERS_PRESENCE
-      mapLimit: options?.limit,
+      mapPageSize: options?.pageSize,
       mapUnrecoverableStrategy: options?.unrecoverableStrategy,
       mapMergeSyncState: options?.mergeSyncState,
     });

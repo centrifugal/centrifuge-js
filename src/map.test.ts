@@ -254,8 +254,8 @@ test('subscribe to positioned map', async () => {
   await disconnectClient(c);
 });
 
-// 7. Pagination with small limit — all entries arrive in sync.
-test('pagination with small limit', async () => {
+// 7. Pagination with small page size — all entries arrive in sync.
+test('pagination with small page size', async () => {
   const c = createClient();
   c.connect();
   await c.ready(5000);
@@ -267,8 +267,8 @@ test('pagination with small limit', async () => {
     await apiMapPublish(ch, `page_${i}`, { i });
   }
 
-  // Use limit=2 — server's map_pagination_min_limit is 1 so this is honoured.
-  const sub = c.newMapSubscription(ch, { limit: 2 });
+  // Use pageSize=2 — server's pagination_min_limit is 1 so this is honoured.
+  const sub = c.newMapSubscription(ch, { pageSize: 2 });
 
   const syncP = waitForEvent<MapSyncContext>(sub, 'sync');
 
@@ -298,7 +298,7 @@ test('real-time updates arrive after pagination', async () => {
     await apiMapPublish(ch, `pre_${i}`, { i });
   }
 
-  const sub = c.newMapSubscription(ch, { limit: 2 });
+  const sub = c.newMapSubscription(ch, { pageSize: 2 });
 
   sub.subscribe();
   await sub.ready(5000);

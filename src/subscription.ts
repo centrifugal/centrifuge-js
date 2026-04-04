@@ -61,6 +61,7 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
   private _mapLimit: number = 0;             // Page size (0 = use server default)
   private _mapUnrecoverableStrategy: MapUnrecoverableStrategy = 'from_scratch';
   private _mapGetState: (() => Promise<MapExternalState>) | null = null;
+  private _mapMergeSyncState: boolean = false;
 
   // Shared poll subscription state
   private _sharedPoll: boolean = false;
@@ -905,6 +906,9 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
     if (options.mapGetState) {
       this._mapGetState = options.mapGetState;
       this._map = true;  // getState implies map subscription
+    }
+    if (options.mapMergeSyncState === true) {
+      this._mapMergeSyncState = true;
     }
     // Shared poll subscription options
     if (options.sharedPoll === true) {
@@ -1814,15 +1818,14 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
     // Emit sync event — complete state for simplified state management.
     // On recovery (no state entries from server), skip sync — app already has rendered state,
     // stream catch-up entries are emitted as individual update events below.
-    // On fresh join or ExternalState initial load, merge stream catch-up into state buffer
-    // first so that sync contains the complete up-to-date state. This prevents stale update
-    // events — e.g. with ExternalState, getState may return newer data than early stream entries.
     // When ExternalState recovers from saved position (no getState call), state buffer is empty —
     // treat as regular recovery (skip sync, emit updates).
     const hasState = this._mapStateBuffer.length > 0;
     if (!ctx.recovered || (this._mapGetState && hasState)) {
-      // Merge stream buffer into state buffer by key (last value wins).
-      if (this._mapStreamBuffer.length > 0) {
+      if (this._mapMergeSyncState && this._mapStreamBuffer.length > 0) {
+        // Opt-in: merge stream buffer into state buffer by key (last value wins).
+        // This produces a single sync snapshot that includes catch-up changes.
+        // Warning: incorrect when stream_data differs from state data.
         const stateMap = new Map<string, MapUpdateContext>();
         for (const entry of this._mapStateBuffer) {
           stateMap.set(entry.key, entry);
@@ -1841,8 +1844,9 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
     }
 
     // Flush remaining stream buffer as publication and update events.
-    // This only fires on recovery (sync skipped above) — app already has state
-    // and just needs the incremental changes that happened while disconnected.
+    // On recovery (sync skipped above) — app already has state and just needs
+    // incremental changes. On fresh join without mergeSyncState — catch-up
+    // entries follow the sync snapshot as individual updates.
     for (const pub of this._mapStreamBuffer) {
       this.emit('publication', pub);
       this.emit('update', pub);

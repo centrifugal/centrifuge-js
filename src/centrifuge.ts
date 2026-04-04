@@ -229,6 +229,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
       mapLimit: options?.limit,
       mapGetState: options?.getState,
       mapUnrecoverableStrategy: options?.unrecoverableStrategy,
+      mapMergeSyncState: options?.mergeSyncState,
     });
     this._subs[channel] = sub;
     return sub as unknown as MapSubscription;
@@ -252,8 +253,8 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
       map: true,
       mapPresenceType: 2, // MAP_CLIENTS_PRESENCE
       mapLimit: options?.limit,
-
       mapUnrecoverableStrategy: options?.unrecoverableStrategy,
+      mapMergeSyncState: options?.mergeSyncState,
     });
     this._subs[channel] = sub;
     return sub as unknown as MapSubscription;
@@ -277,8 +278,8 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
       map: true,
       mapPresenceType: 3, // MAP_USERS_PRESENCE
       mapLimit: options?.limit,
-
       mapUnrecoverableStrategy: options?.unrecoverableStrategy,
+      mapMergeSyncState: options?.mergeSyncState,
     });
     this._subs[channel] = sub;
     return sub as unknown as MapSubscription;

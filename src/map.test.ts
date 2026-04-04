@@ -655,8 +655,8 @@ async function apiMapReadStream(channel: string, limit: number): Promise<any> {
   return (await resp.json() as any).result;
 }
 
-// 16. External state: stream catch-up entries merged into sync, no stale update events.
-test('external state: catch-up merged into sync', async () => {
+// 16. External state: catch-up delivered as update events after sync (default, no merge).
+test('external state: catch-up as updates after sync', async () => {
   const c = createClient();
   c.connect();
   await c.ready(5000);
@@ -675,7 +675,7 @@ test('external state: catch-up merged into sync', async () => {
   expect(currentOffset).toBeGreaterThanOrEqual(3);
 
   // Subscribe with getState returning entries at offset=0 (before any stream entries).
-  // Stream catch-up from 0 will deliver all 3 mutations as duplicates.
+  // Stream catch-up from 0 will deliver all 3 mutations.
   const sub = c.newMapSubscription(ch, {
     getState: async () => ({
       entries: [
@@ -700,32 +700,70 @@ test('external state: catch-up merged into sync', async () => {
 
   const syncCtx = await syncP;
 
-  // sync should contain merged state: 'a' and 'b' with latest values.
+  // sync contains the state snapshot as-is (no merge).
   const keys = syncCtx.entries.map((e: MapUpdateContext) => e.key).sort();
   expect(keys).toEqual(['a', 'b']);
+  expect(syncCtx.entries.find((e: MapUpdateContext) => e.key === 'a')!.data).toEqual({ v: 3 });
+  expect(syncCtx.entries.find((e: MapUpdateContext) => e.key === 'b')!.data).toEqual({ v: 2 });
 
-  const entryA = syncCtx.entries.find((e: MapUpdateContext) => e.key === 'a');
-  const entryB = syncCtx.entries.find((e: MapUpdateContext) => e.key === 'b');
-  expect(entryA!.data).toEqual({ v: 3 });
-  expect(entryB!.data).toEqual({ v: 2 });
-
-  // No update events should have fired for catch-up entries.
-  // They were merged into sync.
-  expect(updates).toHaveLength(0);
-
-  // Now publish a new entry — should arrive as a LIVE update event.
-  const liveUpdateP = waitForEvent<MapUpdateContext>(sub, 'update');
-  await apiMapPublish(ch, 'c', { v: 4 });
-
-  const liveCtx = await liveUpdateP;
-  expect(liveCtx.key).toBe('c');
-  expect(liveCtx.data).toEqual({ v: 4 });
+  // Catch-up entries arrive as individual update events (3 stream publications).
+  expect(updates).toHaveLength(3);
 
   await disconnectClient(c);
 });
 
-// 17. External state: removed entry in stream removes key from sync.
-test('external state: removal in stream removes from sync', async () => {
+// 16b. External state: catch-up merged into sync with mergeSyncState option.
+test('external state: catch-up merged into sync with mergeSyncState', async () => {
+  const c = createClient();
+  c.connect();
+  await c.ready(5000);
+
+  const ch = uniqueChannel('external');
+
+  await apiMapPublish(ch, 'a', { v: 1 });
+  await apiMapPublish(ch, 'b', { v: 2 });
+  await apiMapPublish(ch, 'a', { v: 3 });
+
+  const streamResult = await apiMapReadStream(ch, 0);
+
+  const sub = c.newMapSubscription(ch, {
+    mergeSyncState: true,
+    getState: async () => ({
+      entries: [
+        { key: 'a', data: { v: 3 } },
+        { key: 'b', data: { v: 2 } },
+      ],
+      offset: 0,
+      epoch: streamResult.epoch,
+    }),
+  });
+
+  const updates: MapUpdateContext[] = [];
+  sub.on('update', (ctx) => {
+    updates.push(ctx);
+  });
+
+  const syncP = waitForEvent<MapSyncContext>(sub, 'sync');
+
+  sub.subscribe();
+  await sub.ready(5000);
+
+  const syncCtx = await syncP;
+
+  // With mergeSyncState, sync contains merged state.
+  const keys = syncCtx.entries.map((e: MapUpdateContext) => e.key).sort();
+  expect(keys).toEqual(['a', 'b']);
+  expect(syncCtx.entries.find((e: MapUpdateContext) => e.key === 'a')!.data).toEqual({ v: 3 });
+  expect(syncCtx.entries.find((e: MapUpdateContext) => e.key === 'b')!.data).toEqual({ v: 2 });
+
+  // No update events — they were merged into sync.
+  expect(updates).toHaveLength(0);
+
+  await disconnectClient(c);
+});
+
+// 17. External state: removal in stream arrives as update event after sync (default, no merge).
+test('external state: removal in stream as update after sync', async () => {
   const c = createClient();
   c.connect();
   await c.ready(5000);
@@ -750,6 +788,11 @@ test('external state: removal in stream removes from sync', async () => {
     }),
   });
 
+  const updates: MapUpdateContext[] = [];
+  sub.on('update', (ctx) => {
+    updates.push(ctx);
+  });
+
   const syncP = waitForEvent<MapSyncContext>(sub, 'sync');
 
   sub.subscribe();
@@ -757,7 +800,51 @@ test('external state: removal in stream removes from sync', async () => {
 
   const syncCtx = await syncP;
 
-  // 'x' should be removed from sync (stream had a removal).
+  // sync contains the state snapshot as-is — both 'x' and 'y'.
+  const syncKeys = syncCtx.entries.map((e: MapUpdateContext) => e.key).sort();
+  expect(syncKeys).toEqual(['x', 'y']);
+
+  // Stream catch-up delivers the removal of 'x' as an update event.
+  const removalUpdate = updates.find((u: MapUpdateContext) => u.key === 'x' && u.removed);
+  expect(removalUpdate).toBeDefined();
+
+  await disconnectClient(c);
+});
+
+// 17b. External state: removal in stream removes key from sync with mergeSyncState.
+test('external state: removal merged into sync with mergeSyncState', async () => {
+  const c = createClient();
+  c.connect();
+  await c.ready(5000);
+
+  const ch = uniqueChannel('external');
+
+  await apiMapPublish(ch, 'x', { v: 1 });
+  await apiMapPublish(ch, 'y', { v: 2 });
+  await apiMapRemove(ch, 'x');
+
+  const streamResult = await apiMapReadStream(ch, 0);
+
+  const sub = c.newMapSubscription(ch, {
+    mergeSyncState: true,
+    getState: async () => ({
+      entries: [
+        { key: 'x', data: { v: 1 } },
+        { key: 'y', data: { v: 2 } },
+      ],
+      offset: 0,
+      epoch: streamResult.epoch,
+    }),
+  });
+
+  const syncP = waitForEvent<MapSyncContext>(sub, 'sync');
+
+  sub.subscribe();
+  await sub.ready(5000);
+
+  const syncCtx = await syncP;
+
+  // With mergeSyncState, 'x' is removed from sync.
   const keys = syncCtx.entries.map((e: MapUpdateContext) => e.key);
   expect(keys).toEqual(['y']);
   expect(syncCtx.entries.find((e: MapUpdateContext) => e.key === 'x')).toBeUndefined();

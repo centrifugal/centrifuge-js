@@ -549,6 +549,11 @@ export interface MapSubscriptionOptions {
    * When set, SDK uses external state flow: calls getState(), then subscribes with Phase=Stream.
    * The app must return entries along with the stream position (offset/epoch) from the broker. */
   getState?: () => Promise<MapExternalState>;
+  /** When true, stream catch-up publications are merged into the sync event by key (last value wins).
+   * When false (default), sync contains the state snapshot as-is, and catch-up entries are emitted
+   * as individual update events after sync. Default false is correct for most cases — merging can
+   * produce incorrect results when stream_data differs from state data. */
+  mergeSyncState?: boolean;
 }
 
 /** Internal options interface used by Subscription class.
@@ -559,6 +564,7 @@ export interface InternalSubscriptionOptions extends SubscriptionOptions {
   mapUnrecoverableStrategy?: MapUnrecoverableStrategy;
   mapPresenceType?: number; // 1=MAP (default), 2=MAP_CLIENTS, 3=MAP_USERS
   mapGetState?: () => Promise<MapExternalState>;
+  mapMergeSyncState?: boolean;
   sharedPoll?: boolean;
   sharedPollGetSignature?: (ctx: SharedPollSignatureContext) => Promise<SharedPollSignatureResult>;
 }

@@ -163,6 +163,29 @@
         "allow_subscribe_for_client": true
       },
       {
+        "name": "debounced",
+        "subscription_type": "map",
+        "map": {
+          "mode": "ephemeral",
+          "key_ttl": "60s",
+          "allow_publish_for_client": true,
+          "allow_remove_for_client": true
+        },
+        "allow_subscribe_for_client": true,
+        "client_publish_debounce_interval": "50ms"
+      },
+      {
+        "name": "tagged",
+        "subscription_type": "map",
+        "map": {
+          "mode": "persistent",
+          "allow_publish_for_client": true,
+          "allow_remove_for_client": true
+        },
+        "allow_subscribe_for_client": true,
+        "allow_tags_filter": true
+      },
+      {
         "name": "poll",
         "subscription_type": "shared_poll",
         "shared_poll": {

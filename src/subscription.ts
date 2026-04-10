@@ -63,6 +63,10 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
   private _mapGetState: (() => Promise<MapExternalState>) | null = null;
   private _mapMergeSyncState: boolean = false;
 
+  // Publish debounce state (protocol-level, controlled by server)
+  private _debounceMs: number = 0;
+  private _debouncePending: Map<string, { data: any; dirty: boolean; timer: ReturnType<typeof setTimeout> }> = new Map();
+
   // Shared poll subscription state
   private _sharedPoll: boolean = false;
   private _sharedPollEpoch: string = '';
@@ -167,19 +171,87 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
   /** publish data to a channel.*/
   async publish(data: any): Promise<PublishResult> {
     await this._methodCall();
+    // Debounce per channel (key = "" for stream publishes).
+    if (this._debounceMs > 0) {
+      return this._debouncedPublish('', data, false);
+    }
     return this._centrifuge.publish(this.channel, data);
   }
 
   /** Publish data to a key in a map subscription channel. */
   async mapPublish(key: string, data: any): Promise<PublishResult> {
     await this._methodCall();
+    if (this._debounceMs > 0) {
+      return this._debouncedPublish(key, data, true);
+    }
     return this._centrifuge.mapPublish(this.channel, key, data);
   }
 
   /** Remove a key from a map subscription channel. */
   async mapRemove(key: string): Promise<PublishResult> {
     await this._methodCall();
+    // Cancel any pending debounced publish for this key.
+    this._cancelDebounce(key);
     return this._centrifuge.mapRemove(this.channel, key);
+  }
+
+  private _debouncedPublish(key: string, data: any, isMap: boolean): Promise<PublishResult> {
+    const existing = this._debouncePending.get(key);
+    if (existing) {
+      // Update pending value, mark as dirty, keep existing timer.
+      existing.data = data;
+      existing.dirty = true;
+      return Promise.resolve({});
+    }
+    // First publish for this key — send immediately, start debounce timer.
+    const entry = { data, dirty: false, timer: null as any };
+    entry.timer = setTimeout(() => {
+      const pending = this._debouncePending.get(key);
+      if (!pending || !pending.dirty) {
+        // No new data since last send — just clean up.
+        this._debouncePending.delete(key);
+        return;
+      }
+      // Send the latest pending value, reset dirty flag, restart timer.
+      pending.dirty = false;
+      const sendData = pending.data;
+      const sendFn = isMap
+        ? this._centrifuge.mapPublish(this.channel, key, sendData)
+        : this._centrifuge.publish(this.channel, sendData);
+      sendFn.catch(() => {});
+      // Restart timer for next window.
+      pending.timer = setTimeout(() => {
+        const p = this._debouncePending.get(key);
+        if (!p || !p.dirty) {
+          this._debouncePending.delete(key);
+          return;
+        }
+        // Recursive — but in practice debounce windows are short.
+        this._debouncePending.delete(key);
+        this._debouncedPublish(key, p.data, isMap);
+      }, this._debounceMs);
+    }, this._debounceMs);
+    this._debouncePending.set(key, entry);
+    // Send first publish immediately.
+    const sendFn = isMap
+      ? this._centrifuge.mapPublish(this.channel, key, data)
+      : this._centrifuge.publish(this.channel, data);
+    return sendFn;
+  }
+
+  private _cancelDebounce(key: string) {
+    const existing = this._debouncePending.get(key);
+    if (existing) {
+      clearTimeout(existing.timer);
+      this._debouncePending.delete(key);
+    }
+  }
+
+  private _cancelAllDebounce() {
+    for (const [, entry] of this._debouncePending) {
+      clearTimeout(entry.timer);
+    }
+    this._debouncePending.clear();
   }
 
   /** get online presence for a channel.*/
@@ -246,6 +318,13 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
       throw new Error('cannot use delta and tagsFilter together');
     }
     this._tagsFilter = tagsFilter;
+    // For map subscriptions, changing the filter invalidates the local state —
+    // the next subscribe must go through full STATE phase, not stream recovery.
+    if (this._map) {
+      this._recover = false;
+      this._offset = null;
+      this._epoch = null;
+    }
   }
 
   /** setData allows setting subscription data. This only applied on the next subscription attempt,
@@ -363,6 +442,10 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
       this._delta_negotiated = true;
     } else {
       this._delta_negotiated = false;
+    }
+
+    if (result.publish_debounce) {
+      this._debounceMs = result.publish_debounce;
     }
 
     if (this._sharedPoll) {
@@ -663,6 +746,7 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
     }
     this._inflight = false;
     this._sharedPollEpoch = '';
+    this._cancelAllDebounce();
     if (this._setState(SubscriptionState.Unsubscribed)) {
       this.emit('unsubscribed', { channel: this.channel, code: code, reason: reason });
     }
@@ -1801,6 +1885,11 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
       this._delta_negotiated = true;
     } else {
       this._delta_negotiated = false;
+    }
+
+    // Set publish debounce from subscribe result.
+    if (result.publish_debounce) {
+      this._debounceMs = result.publish_debounce;
     }
 
     // Transition to subscribed state

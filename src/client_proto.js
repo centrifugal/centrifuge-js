@@ -5060,6 +5060,7 @@ export const centrifugal = $root.centrifugal = (() => {
                  * @property {number|null} [phase] SubscribeResult phase
                  * @property {string|null} [cursor] SubscribeResult cursor
                  * @property {Array.<centrifugal.centrifuge.protocol.IPublication>|null} [state] SubscribeResult state
+                 * @property {number|null} [publish_debounce] SubscribeResult publish_debounce
                  */
 
                 /**
@@ -5208,6 +5209,14 @@ export const centrifugal = $root.centrifugal = (() => {
                 SubscribeResult.prototype.state = $util.emptyArray;
 
                 /**
+                 * SubscribeResult publish_debounce.
+                 * @member {number} publish_debounce
+                 * @memberof centrifugal.centrifuge.protocol.SubscribeResult
+                 * @instance
+                 */
+                SubscribeResult.prototype.publish_debounce = 0;
+
+                /**
                  * Encodes the specified SubscribeResult message. Does not implicitly {@link centrifugal.centrifuge.protocol.SubscribeResult.verify|verify} messages.
                  * @function encode
                  * @memberof centrifugal.centrifuge.protocol.SubscribeResult
@@ -5253,6 +5262,8 @@ export const centrifugal = $root.centrifugal = (() => {
                     if (message.state != null && message.state.length)
                         for (let i = 0; i < message.state.length; ++i)
                             $root.centrifugal.centrifuge.protocol.Publication.encode(message.state[i], writer.uint32(/* id 18, wireType 2 =*/146).fork()).ldelim();
+                    if (message.publish_debounce != null && Object.hasOwnProperty.call(message, "publish_debounce"))
+                        writer.uint32(/* id 19, wireType 0 =*/152).uint32(message.publish_debounce);
                     return writer;
                 };
 
@@ -5355,6 +5366,10 @@ export const centrifugal = $root.centrifugal = (() => {
                                 message.state.push($root.centrifugal.centrifuge.protocol.Publication.decode(reader, reader.uint32()));
                                 break;
                             }
+                        case 19: {
+                                message.publish_debounce = reader.uint32();
+                                break;
+                            }
                         default:
                             reader.skipType(tag & 7);
                             break;
@@ -5450,6 +5465,9 @@ export const centrifugal = $root.centrifugal = (() => {
                                 return "state." + error;
                         }
                     }
+                    if (message.publish_debounce != null && message.hasOwnProperty("publish_debounce"))
+                        if (!$util.isInteger(message.publish_debounce))
+                            return "publish_debounce: integer expected";
                     return null;
                 };
 

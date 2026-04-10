@@ -15,14 +15,16 @@ import { fetch } from 'undici';
 const apiBase = 'http://localhost:8000/api';
 const apiKey = 'test-api-key';
 
-async function apiMapPublish(channel: string, key: string, data: any): Promise<void> {
+async function apiMapPublish(channel: string, key: string, data: any, tags?: Record<string, string>): Promise<void> {
+  const body: any = { channel, key, data };
+  if (tags) body.tags = tags;
   const resp = await fetch(`${apiBase}/map_publish`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       'X-API-Key': apiKey,
     },
-    body: JSON.stringify({ channel, key, data }),
+    body: JSON.stringify(body),
   });
   if (!resp.ok) {
     throw new Error(`map_publish failed: ${resp.status} ${await resp.text()}`);
@@ -954,6 +956,50 @@ test('unrecoverable position with fatal strategy unsubscribes', async () => {
   const unsubCtx = await unsubscribedP;
   // Code 112 = unrecoverable position, passed through by fatal strategy.
   expect(unsubCtx.code).toBe(112);
+
+  await disconnectClient(c);
+}, 15000);
+
+// setTagsFilter on map subscription forces full re-sync (no stream recovery).
+test('setTagsFilter forces full state re-sync on map subscription', async () => {
+  const c = createClient();
+  c.connect();
+  await c.ready(5000);
+
+  const ch = uniqueChannel('tagged');
+
+  // Seed entries with different tags.
+  await apiMapPublish(ch, 'eng_item', { v: 1 }, { team: 'eng' });
+  await apiMapPublish(ch, 'sales_item', { v: 2 }, { team: 'sales' });
+  await apiMapPublish(ch, 'both_item', { v: 3 }, { team: 'eng' });
+
+  const sub = c.newMapSubscription(ch);
+
+  // Subscribe with filter: team=eng → should see eng_item and both_item.
+  sub.setTagsFilter({ key: 'team', cmp: 'eq', val: 'eng' });
+
+  const syncP1 = waitForEvent<MapSyncContext>(sub, 'sync');
+  sub.subscribe();
+  await sub.ready(5000);
+
+  const sync1 = await syncP1;
+  const keys1 = sync1.entries.map(e => e.key).sort();
+  expect(keys1).toEqual(['both_item', 'eng_item']);
+
+  // Unsubscribe, change filter to team=sales, resubscribe.
+  sub.unsubscribe();
+
+  sub.setTagsFilter({ key: 'team', cmp: 'eq', val: 'sales' });
+
+  const syncP2 = waitForEvent<MapSyncContext>(sub, 'sync');
+  sub.subscribe();
+  await sub.ready(5000);
+
+  // Must get full state with new filter — only sales_item.
+  // Without the fix, SDK would attempt stream recovery and miss sales_item entirely.
+  const sync2 = await syncP2;
+  const keys2 = sync2.entries.map(e => e.key).sort();
+  expect(keys2).toEqual(['sales_item']);
 
   await disconnectClient(c);
 }, 15000);

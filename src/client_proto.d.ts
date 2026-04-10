@@ -2081,6 +2081,9 @@ export namespace centrifugal {
 
                 /** SubscribeResult state */
                 state?: (centrifugal.centrifuge.protocol.IPublication[]|null);
+
+                /** SubscribeResult publish_debounce */
+                publish_debounce?: (number|null);
             }
 
             /** Represents a SubscribeResult. */
@@ -2139,6 +2142,9 @@ export namespace centrifugal {
 
                 /** SubscribeResult state. */
                 public state: centrifugal.centrifuge.protocol.IPublication[];
+
+                /** SubscribeResult publish_debounce. */
+                public publish_debounce: number;
 
                 /**
                  * Encodes the specified SubscribeResult message. Does not implicitly {@link centrifugal.centrifuge.protocol.SubscribeResult.verify|verify} messages.

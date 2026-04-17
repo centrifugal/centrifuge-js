@@ -508,19 +508,35 @@ export interface SubscriptionOptions {
   delta?: 'fossil';
   /** server-side tagsFilter to apply for publications in channel. Tags filter support must be allowed on the server side. */
   tagsFilter?: FilterNode | null;
-}
-
-/** Lightweight entry type for app-provided state (no channel/offset/info/removed fields) */
-export interface MapExternalStateEntry {
-  key: string;
-  data: any;
-}
-
-/** Return type for getState callback */
-export interface MapExternalState {
-  entries: MapExternalStateEntry[];
-  offset: number;
-  epoch: string;
+  /** Called to load the app's current state and stream position. The SDK calls this:
+   * - On initial subscribe (no saved position)
+   * - On reconnect when recovery fails (recovered: false)
+   *
+   * NOT called on reconnects where the server successfully recovers missed
+   * publications — in that case the recovered publications arrive as events
+   * and getState is skipped.
+   *
+   * The app should load its data from its own source of truth (database, API),
+   * render it, and return the stream position (from cf_stream_top_position or
+   * similar). The SDK subscribes with recovery from the returned position, so
+   * any publications between the state read and the subscribe are delivered as
+   * publication events.
+   *
+   * IMPORTANT: inside getState, read the stream position FIRST, then read your
+   * data. This ensures the position is a lower bound — any data loaded after
+   * the position read is guaranteed to be included. The reverse order can
+   * produce gaps.
+   *
+   * Recovered publications may overlap with data already loaded in getState.
+   * This works correctly when updates are idempotent (applying the same update
+   * twice produces the same result). For non-idempotent updates, the app should
+   * deduplicate by offset. This is the same consideration described in the
+   * "Proper real-time document state synchronization" blog post, but natively
+   * baked into the SDK via this callback.
+   *
+   * On error, the SDK emits an 'error' event and retries with backoff, matching
+   * the error handling behavior of getState in map subscriptions. */
+  getState?: () => Promise<StreamPosition>;
 }
 
 /** MapSubscriptionOptions can customize map Subscription. */
@@ -545,15 +561,19 @@ export interface MapSubscriptionOptions {
    * - 'from_scratch': (default) auto-recover by resubscribing from snapshot
    * - 'fatal': go to unsubscribed state, let user handle */
   unrecoverableStrategy?: MapUnrecoverableStrategy;
-  /** Callback to load state from app's database.
-   * When set, SDK uses external state flow: calls getState(), then subscribes with Phase=Stream.
-   * The app must return entries along with the stream position (offset/epoch) from the broker. */
-  getState?: () => Promise<MapExternalState>;
-  /** When true, stream catch-up publications are merged into the sync event by key (last value wins).
-   * When false (default), sync contains the state snapshot as-is, and catch-up entries are emitted
-   * as individual update events after sync. Default false is correct for most cases — merging can
-   * produce incorrect results when stream_data differs from state data. */
-  mergeSyncState?: boolean;
+  /** When true, stream catch-up publications are applied to the state snapshot by key
+   * (last value wins, `removed: true` deletes the key) before the sync event is emitted.
+   * The app gets a single sync with the state as of the moment the subscription went live,
+   * and no individual update events for catch-up publications.
+   *
+   * When false (default), sync contains the state snapshot as-is and catch-up publications
+   * are emitted as individual update events after sync.
+   *
+   * Only safe when stream publication payload matches state representation (same shape,
+   * last value wins). If your stream carries a different payload than state (e.g. deltas,
+   * computed events), leave this false — applying stream payload to state would overwrite
+   * the canonical state with a non-snapshot value. */
+  applyCatchUpToState?: boolean;
 }
 
 /** Internal options interface used by Subscription class.
@@ -563,10 +583,10 @@ export interface InternalSubscriptionOptions extends SubscriptionOptions {
   mapPageSize?: number;
   mapUnrecoverableStrategy?: MapUnrecoverableStrategy;
   mapPresenceType?: number; // 1=MAP (default), 2=MAP_CLIENTS, 3=MAP_USERS
-  mapGetState?: () => Promise<MapExternalState>;
-  mapMergeSyncState?: boolean;
+  mapApplyCatchUpToState?: boolean;
   sharedPoll?: boolean;
   sharedPollGetSignature?: (ctx: SharedPollSignatureContext) => Promise<SharedPollSignatureResult>;
+  // getState is inherited from SubscriptionOptions — no separate internal name needed
 }
 
 /** Strategy for handling unrecoverable position errors in map subscriptions */

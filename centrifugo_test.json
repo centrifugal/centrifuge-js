@@ -154,15 +154,6 @@
         "allow_subscribe_for_client": true
       },
       {
-        "name": "external",
-        "subscription_type": "map",
-        "map": {
-          "mode": "persistent",
-          "external_state": true
-        },
-        "allow_subscribe_for_client": true
-      },
-      {
         "name": "debounced",
         "subscription_type": "map",
         "map": {

@@ -1900,6 +1900,12 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
       // @ts-ignore – we are hiding some symbols from public API autocompletion.
       sub._setUnsubscribed(unsubscribe.code, unsubscribe.reason, false);
     } else {
+      if (unsubscribe.code === 2502) {
+        // State invalidated: clear subscription token and map state
+        // so resubscribe gets a fresh token and does full re-sync.
+        // @ts-ignore – _invalidateState is internal.
+        sub._invalidateState();
+      }
       // @ts-ignore – we are hiding some symbols from public API autocompletion.
       sub._setSubscribing(unsubscribe.code, unsubscribe.reason);
     }
@@ -1919,6 +1925,17 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     let reconnect = true;
     if ((code >= 3500 && code < 4000) || (code >= 4500 && code < 5000)) {
       reconnect = false;
+    }
+    if (code === 3014) {
+      // State invalidated: clear connection token and invalidate all subscription state.
+      this._token = '';
+      this._refreshRequired = true;
+      for (const channel in this._subs) {
+        if (this._subs.hasOwnProperty(channel)) {
+          // @ts-ignore – _invalidateState is internal.
+          this._subs[channel]._invalidateState();
+        }
+      }
     }
     this._disconnect(code, disconnect.reason, reconnect);
   }

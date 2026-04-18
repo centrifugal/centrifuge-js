@@ -274,4 +274,80 @@ describe('stream subscription getState', () => {
     sub.unsubscribe();
     c.disconnect();
   });
+
+  test('getState is called when recovery fails (unrecoverable position)', async () => {
+    // Uses "smallhistory" namespace with history_size=2.
+    // After publishing enough to evict old entries, reconnecting from
+    // an old position triggers error 112 (unrecoverable position).
+    // With getState, the SDK should call getState again instead of
+    // delivering recovered=false on an active subscription.
+    const c = createClient();
+    c.connect();
+    await waitForEvent(c, 'connected');
+
+    const channel = 'smallhistory:test_getstate_unrecoverable_' + Date.now();
+    let getStateCalls = 0;
+
+    // First, get the real epoch by subscribing normally.
+    const tempSub = c.newSubscription(channel, { recoverable: true });
+    const tempCtx = await new Promise<SubscribedContext>((resolve) => {
+      tempSub.on('subscribed', resolve);
+      tempSub.subscribe();
+    });
+    const realEpoch = tempCtx.streamPosition?.epoch || '';
+    tempSub.unsubscribe();
+    c.removeSubscription(tempSub);
+
+    // Simulate a real app: getState reads current stream position from backend.
+    const sub = c.newSubscription(channel, {
+      minResubscribeDelay: 100,
+      maxResubscribeDelay: 100,
+      getState: async () => {
+        getStateCalls++;
+        const resp = await fetch(`${apiBase}/history`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-API-Key': apiKey },
+          body: JSON.stringify({ channel, limit: 0 }),
+        });
+        const body = await resp.json() as any;
+        return {
+          offset: body.result?.offset || 0,
+          epoch: body.result?.epoch || realEpoch,
+        };
+      },
+    });
+
+    const subscribedPromise1 = waitForEvent<SubscribedContext>(sub, 'subscribed');
+    sub.subscribe();
+    await subscribedPromise1;
+    expect(getStateCalls).toBe(1);
+
+    // Disconnect first, then publish enough messages to push the stream
+    // beyond recovery (history_size=2, so 5 messages evict old entries).
+    const subscribedPromise2 = new Promise<SubscribedContext>((resolve) => {
+      sub.on('subscribed', (ctx) => {
+        resolve(ctx);
+      });
+    });
+
+    c.disconnect();
+    await new Promise(resolve => setTimeout(resolve, 200));
+
+    for (let i = 0; i < 5; i++) {
+      await apiPublish(channel, { i });
+    }
+
+    // Reconnect — SDK will try to recover from old position (offset 0),
+    // but stream only has offsets 4,5. Server returns error 112,
+    // SDK should call getState again.
+    c.connect();
+
+    await subscribedPromise2;
+
+    // getState should have been called again due to unrecoverable position.
+    expect(getStateCalls).toBe(2);
+
+    sub.unsubscribe();
+    c.disconnect();
+  });
 });

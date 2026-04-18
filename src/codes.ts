@@ -42,5 +42,6 @@ export enum unsubscribedCodes {
 }
 
 export enum subscriptionFlags {
-  channelCompaction = 1
+  channelCompaction = 1,
+  rejectUnrecovered = 2,
 }

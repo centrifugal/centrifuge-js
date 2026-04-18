@@ -425,17 +425,34 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
     this._sharedPollPendingItems = null;
   }
 
+  /** Called when server sends "state invalidated" disconnect (code 3014).
+   *  Clears subscription token and resets map state so next subscribe
+   *  obtains a fresh token and does a full state re-sync. */
+  _invalidateState() {
+    this._token = '';
+    if (this._map) {
+      this._offset = null;
+      this._epoch = null;
+      this._recover = false;
+      this._prevValueMap = new Map();
+      this._mapStateBuffer = [];
+      this._mapStreamBuffer = [];
+      this._mapCursor = '';
+      this._mapPhase = null;
+    }
+  }
+
   private _setSubscribed(result: any) {
     if (!this._isSubscribing()) {
       return;
     }
 
-    // Stream getState + failed recovery: the server couldn't recover missed
-    // publications. Reset the saved position and resubscribe — _subscribe will
-    // see _offset===null, call getState to refresh the app's state + get a
-    // fresh position, then subscribe from there. This matches the map
-    // subscription's "from_scratch" strategy for unrecoverable positions.
-    if (this._getState && !this._map && result.wasRecovering && !result.recovered) {
+    // Stream getState + failed recovery fallback for older servers that don't
+    // support the rejectUnrecovered flag. Modern servers return error 112
+    // instead of recovered:false (handled in _handleSubscribeError), which
+    // avoids the race of publications flowing on an active subscription while
+    // getState reloads app state.
+    if (this._getState && !this._map && result.was_recovering && !result.recovered) {
       this._offset = null;
       this._epoch = null;
       this._clearSubscribingState();
@@ -759,6 +776,9 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
     if (this._recoverable) req.recoverable = true;
     if (this._joinLeave) req.join_leave = true;
     req.flag = subscriptionFlags.channelCompaction;
+    if (this._getState) {
+      req.flag |= subscriptionFlags.rejectUnrecovered;
+    }
 
     if (this._needRecover()) {
       req.recover = true;
@@ -786,6 +806,16 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
     if (error.code === errorCodes.timeout) {
       // @ts-ignore – we are hiding some symbols from public API autocompletion.
       this._centrifuge._disconnect(connectingCodes.subscribeTimeout, 'subscribe timeout', true);
+      return;
+    }
+    if (error.code === 112 && this._getState) {
+      // Unrecoverable position with getState: reset position so next
+      // subscribe attempt calls getState() to reload app state from scratch.
+      this._offset = null;
+      this._epoch = null;
+      this._recover = false;
+      this._prevValueMap = new Map();
+      this._scheduleResubscribe();
       return;
     }
     this._subscribeError(error);

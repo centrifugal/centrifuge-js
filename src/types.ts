@@ -18,28 +18,31 @@ export interface TypedEventEmitter<Events extends EventMap> {
   listeners<E extends keyof Events>(event: E): Events[E][]
 }
 
-/** Client events which can be emitted. */
+/** Events emitted by the Centrifuge client. */
 export type ClientEvents = {
-  /** called when client state changes */
+  /** Emitted on every client state transition (connecting → connected → disconnected). */
   state: (ctx: StateContext) => void;
-  /** called when client goes to connecting state */
+  /** Emitted when the client starts a connection attempt. */
   connecting: (ctx: ConnectingContext) => void;
-  /** called when client goes to connected state */
+  /** Emitted when the client successfully connects and the server acknowledges the session. */
   connected: (ctx: ConnectedContext) => void;
-  /** called when client goes to disconnected state */
+  /** Emitted when the client connection is closed. */
   disconnected: (ctx: DisconnectedContext) => void;
-
-  // Async message coming from a server.
+  /** Emitted when an async message pushed by the server (not tied to a channel) is received. */
   message: (ctx: MessageContext) => void;
-  // Listen to errors happening internally. 
+  /** Emitted for internal errors (transport errors, token errors, etc.). Use for diagnostics. */
   error: (ctx: ErrorContext) => void;
-
-  // Listen for server-side subscription events.
+  /** Emitted when a server-side subscription moves to the subscribed state. */
   subscribed: (ctx: ServerSubscribedContext) => void;
+  /** Emitted when a server-side subscription moves to the subscribing state. */
   subscribing: (ctx: ServerSubscribingContext) => void;
+  /** Emitted when a server-side subscription is removed. */
   unsubscribed: (ctx: ServerUnsubscribedContext) => void;
+  /** Emitted when a publication arrives on a server-side subscription channel. */
   publication: (ctx: ServerPublicationContext) => void;
+  /** Emitted when a client joins a server-side subscription channel. */
   join: (ctx: ServerJoinContext) => void;
+  /** Emitted when a client leaves a server-side subscription channel. */
   leave: (ctx: ServerLeaveContext) => void;
 }
 
@@ -50,39 +53,41 @@ export enum State {
   Connected = "connected"
 }
 
-/** Events of Subscription. */
+/** Events emitted by a Subscription. */
 export type SubscriptionEvents = {
-  /** called when subscription state changes */
+  /** Emitted on every subscription state transition. */
   state: (ctx: SubscriptionStateContext) => void;
-  /** called when subscription state goes to subscribing */
+  /** Emitted when the subscription moves to the subscribing state (attempting to subscribe). */
   subscribing: (ctx: SubscribingContext) => void;
-  /** called when subscription state goes to subscribed */
+  /** Emitted when the subscription is successfully established. */
   subscribed: (ctx: SubscribedContext) => void;
-  /** called when subscription state goes to unsubscribed */
+  /** Emitted when the subscription is removed (by the server, by the client, or on error). */
   unsubscribed: (ctx: UnsubscribedContext) => void;
-
-  /** called when publication from channel received */
+  /** Emitted when a publication arrives on the channel. */
   publication: (ctx: PublicationContext) => void;
-  /** called when join event from channel received */
+  /** Emitted when a client joins the channel (requires joinLeave to be enabled). */
   join: (ctx: JoinContext) => void;
-  /** called when leave event from channel received */
+  /** Emitted when a client leaves the channel (requires joinLeave to be enabled). */
   leave: (ctx: LeaveContext) => void;
-
-  /** listen to subscription errors happening internally */
+  /** Emitted for internal subscription errors. Use for diagnostics and retry logic. */
   error: (ctx: SubscriptionErrorContext) => void;
 }
 
 /** Common events shared by all subscription types. */
 export type BaseSubscriptionEvents = SubscriptionEvents;
 
-/** Events for map subscriptions. */
+/** Events emitted by a map subscription. */
 export type MapSubscriptionEvents = SubscriptionEvents & {
+  /** Emitted once the initial state snapshot has been fully delivered and the subscription is live.
+   * Contains all current map entries. Also emitted after a full resync (e.g. from_scratch recovery). */
   sync: (ctx: MapSyncContext) => void;
+  /** Emitted for each individual key change (add, update, or remove) in the map. */
   update: (ctx: MapUpdateContext) => void;
 };
 
-/** Events for shared poll subscriptions (no sync). */
+/** Events emitted by a shared poll subscription. */
 export type SharedPollSubscriptionEvents = SubscriptionEvents & {
+  /** Emitted when a tracked key's data changes or a tracked key is removed. */
   update: (ctx: SharedPollUpdateContext) => void;
 };
 
@@ -99,286 +104,371 @@ export enum SubscriptionState {
   Subscribed = "subscribed"
 }
 
+/** Transport name identifier. */
 export type TransportName = 'websocket' | 'http_stream' | 'sse' | 'sockjs' | 'webtransport';
 
-/** TransportEndpoint allows configuring transport when using fallback mode */
+/** Configures a single transport endpoint when using transport fallback mode. */
 export interface TransportEndpoint {
-  /** transport to use */
+  /** Transport type. */
   transport: TransportName;
-  /** endpoint for a selected transport type */
+  /** Endpoint URL for this transport type. */
   endpoint: string;
 }
 
 /** Options for Centrifuge client. */
 export interface Options {
-  // provide header emulation, these headers are sent with first protocol message
-  // the backend can process those in a customized manner. In case of Centrifugo
-  // these headers are then used like real HTTP headers sent from the client.
-  // Requires Centrifugo v6.
+  /** Key-value map sent in the connect command payload. Centrifugo treats these as HTTP headers
+   * (e.g. for auth or routing). Requires Centrifugo >= v6. */
   headers: {[key: string]: string};
-  /** allows enabling debug mode */
+  /** Enables debug logging to the console. Can also be activated at runtime via
+   * `localStorage.centrifuge.debug = true` without rebuilding. */
   debug: boolean;
-  /** allows setting initial connection token (JWT) */
+  /** Initial connection token (JWT). Sent with the connect command; not refreshed automatically —
+   * provide getToken for token renewal. */
   token: string;
-  /** allows setting function to get/refresh connection token,
-   * this will only be called when new token needed, not on every reconnect. */
+  /** Called to obtain a fresh connection token when the current token is missing or has expired.
+   * Not called on every reconnect — only when a new token is actually needed. */
   getToken: null | ((ctx: ConnectionTokenContext) => Promise<string>);
-  /** data to send to a server with connect command */
+  /** Arbitrary data sent to the server with the connect command. */
   data: any | null;
-  /** allows setting function to get/renew connection data (called upon reconnects).
-   * In many cases you may prefer using setData method of Centrifuge Client instead. */
+  /** Called on each reconnect attempt (after a token is obtained) to supply fresh connect data.
+   * Prefer calling setData() between reconnects when data changes infrequently. */
   getData: null | (() => Promise<any>);
-  /** name of client - it's not a unique name for each connection, it's something to identify
-   * where the client connected from */
+  /** Client name string identifying the connecting environment (e.g. "js", "browser").
+   * Not unique per connection — used for server-side observability. */
   name: string;
-  /** version of client */
+  /** Application version string sent with the connect command for server-side observability. */
   version: string;
-  /** minimum delay between reconnect attempts in milliseconds */
+  /** Minimum delay between reconnect attempts in milliseconds. Default: 500. */
   minReconnectDelay: number;
-  /** maximum delay between reconnect attempts in milliseconds */
+  /** Maximum delay between reconnect attempts in milliseconds. Default: 20000. */
   maxReconnectDelay: number;
-  /** timeout for operations in milliseconds */
+  /** Timeout in milliseconds applied to transport connection attempts, all command replies,
+   * and ready() calls. Default: 5000. */
   timeout: number;
-  /** maximum delay of server pings to detect broken connection in milliseconds */
+  /** Extra milliseconds added on top of the server-reported ping interval before declaring the
+   * connection broken. Set to 0 to disable ping-based disconnect detection. Default: 10000. */
   maxServerPingDelay: number;
-  /** provide custom WebSocket constructor, useful for NodeJS env where WebSocket is not
-   * available globally */
+  /** Custom WebSocket constructor. Required in Node.js environments where WebSocket is not
+   * available globally. */
   websocket: any | null;
-  /** provide shim for fetch implementation */
+  /** Custom fetch implementation. Used by the HTTP stream and SSE transports. */
   fetch: any | null;
-  /** provide shim for ReadableStream */
+  /** Custom ReadableStream implementation. Used by the HTTP stream transport. */
   readableStream: any | null;
-  /** provide shim for EventSource object */
+  /** Custom EventSource implementation. Used by the SSE transport. */
   eventsource: any | null;
-  /** provide shim for SockJS object */
+  /** Custom SockJS constructor.
+   * @deprecated SockJS support is deprecated. Use WebSocket, HTTP stream, or SSE instead. */
   sockjs: any | null;
-  /** allows modifying options passed to SockJS constructor */
+  /** Options passed directly to the SockJS constructor.
+   * @deprecated SockJS support is deprecated. */
   sockjsOptions: SockjsOptions;
-  /** emulation endpoint to use */
+  /** Endpoint for the HTTP stream and SSE emulation transports. Default: '/emulation'. */
   emulationEndpoint: string;
-  /** EventTarget for network online/offline events. In a browser environment,
-   * Centrifuge uses global window online/offline events automatically
-   * by default. */
+  /** EventTarget used to observe network online/offline events. Defaults to globalThis (window
+   * in browsers). Set to null to disable network-event-based reconnection. */
   networkEventTarget: EventTarget | null;
 }
 
+/**
+ * Options passed to the SockJS constructor.
+ * @deprecated SockJS support is deprecated.
+ */
 export interface SockjsOptions {
+  /** List of transports SockJS is allowed to use. */
   transports?: string[];
+  /** Connection timeout in milliseconds. */
   timeout?: number;
 }
 
+/** Context for the client 'state' event. */
 export interface StateContext {
+  /** State the client transitioned to. */
   newState: State;
+  /** State the client transitioned from. */
   oldState: State;
 }
 
+/** Context for the client 'connected' event. */
 export interface ConnectedContext {
+  /** Unique client ID assigned by the server for this connection. */
   client: string;
+  /** Name of the transport that was used to establish the connection. */
   transport: string;
+  /** Optional custom data returned by the server in the connect reply. */
   data?: any;
 }
 
+/** Context for the client 'error' event. */
 export interface ErrorContext {
+  /** Category of the error (e.g. 'transport', 'token', 'connect'). */
   type: string;
+  /** The error details. */
   error: Error;
+  /** Transport name, present when the error is transport-specific. */
   transport?: string;
 }
 
+/** Server error with a numeric code and message. */
 export interface Error {
+  /** Numeric error code defined by the Centrifugo protocol. */
   code: number;
+  /** Human-readable error description. */
   message: string;
 }
 
+/** Context for the client 'connecting' event. */
 export interface ConnectingContext {
+  /** Numeric code describing why the client is (re)connecting. */
   code: number;
+  /** Human-readable reason for the connecting state. */
   reason: string;
 }
 
+/** Context for the client 'disconnected' event. */
 export interface DisconnectedContext {
+  /** Numeric code describing why the client disconnected. */
   code: number;
+  /** Human-readable reason for the disconnection. */
   reason: string;
 }
 
+/** Context for the client 'message' event (async server push, not tied to a channel). */
 export interface MessageContext {
+  /** Payload of the message. */
   data: any;
 }
 
+/** Context for a publication received on a client subscription channel. */
 export interface PublicationContext {
-  // channel from which publication was received.
+  /** Channel the publication was received on. */
   channel: string;
-  // data contains publication payload.
+  /** Publication payload. */
   data: any;
-  // info is an optional ClientInfo object. It's appended to a publication only if the publication was
-  // sent using the client SDK's publish method. If the publication was sent over the server publish API,
-  // this info object is missing as we don't have the publisher client context in that case.
+  /** Present only when the publication was sent via the client SDK publish method.
+   * Absent for server-API publishes where no publisher client context is available. */
   info?: ClientInfo;
-  // offset may be set for channels where the history Centrifugo feature is enabled. In this case, it's an
-  // incremental number assigned to the publication by the server broker (upon adding to the history stream).   
+  /** Monotonically increasing offset assigned by the broker. Present when history is enabled
+   * for the channel. */
   offset?: number;
-  // tags is an extra key-value map attached to a publication. Tags may be set when calling the server publish API. 
+  /** Key-value tags attached to the publication. Set via the server publish API. */
   tags?: Record<string, string>;
 }
 
+/** Information about a connected client, attached to publications and join/leave events. */
 export interface ClientInfo {
-  // client is a globally unique identifier that the server allocates for every connection.
+  /** Globally unique connection identifier assigned by the server. */
   client: string;
-  // user contains the ID of the authenticated user. An empty user means an anonymous user. One user can have
-  // many client connections.
+  /** Authenticated user ID. Empty string for anonymous connections. */
   user: string;
-  // connInfo is optional information attached to connection (during connection authentication).
+  /** Arbitrary data attached to the connection at authentication time. */
   connInfo?: any;
-  // chanInfo is optional information attached to subscription (during subscription authorization).
+  /** Arbitrary data attached to the subscription at authorization time. */
   chanInfo?: any;
 }
 
+/** Context for a subscription 'join' event. */
 export interface JoinContext {
+  /** Channel the client joined. */
   channel: string;
+  /** Information about the client that joined. */
   info: ClientInfo;
 }
 
+/** Context for a subscription 'leave' event. */
 export interface LeaveContext {
+  /** Channel the client left. */
   channel: string;
+  /** Information about the client that left. */
   info: ClientInfo;
 }
 
+/** Context for a subscription 'state' event. */
 export interface SubscriptionStateContext {
+  /** Channel this subscription is for. */
   channel: string;
+  /** State the subscription transitioned to. */
   newState: SubscriptionState;
+  /** State the subscription transitioned from. */
   oldState: SubscriptionState;
 }
 
+/** Context for the server-side subscription 'subscribed' event. */
 export interface ServerSubscribedContext {
-  /** channel of Subscription. */
+  /** Channel this subscription is for. */
   channel: string;
-  /** subscription is recoverable – i.e. can automatically recover missed messages */
+  /** Whether the server will recover missed publications on reconnect. */
   recoverable: boolean;
-  /** subscription is positioned – i.e. server tracks message loss on the way from PUB/SUB broker */
+  /** Whether the server tracks message loss between the broker and clients. */
   positioned: boolean;
-  /** streamPosition is set when Subscription is recoverable or positioned. */
+  /** Current stream position, present when the subscription is recoverable or positioned. */
   streamPosition?: StreamPosition;
-  /** wasRecovering is true when recovery was used in the subscribe request. */
+  /** True when recovery was attempted in the subscribe request. */
   wasRecovering: boolean;
-  /** whether or not missed publications were successfully recovered.  */
+  /** True when all missed publications were successfully recovered. */
   recovered: boolean;
-  /** whether or not a successfully recovered subscription has received missed publications.
-  Warning: must be used for metrics/logs purposes only.
-  Recovered publications are processed after the 'subscribed' event. **/
+  /** True when recovered publications are pending delivery after this event.
+   * For metrics and logging only — recovered publications are delivered after 'subscribed' fires. */
   hasRecoveredPublications: boolean;
-  /** custom data for Subscription returned from server. */
+  /** Custom data returned by the server in the subscribe reply. */
   data?: any;
 }
 
+/** Context for a client subscription 'subscribed' event. */
 export interface SubscribedContext {
-  /** channel of Subscription. */
+  /** Channel this subscription is for. */
   channel: string;
-  /** subscription is recoverable – i.e. can automatically recover missed messages */
+  /** Whether the server will recover missed publications on reconnect. */
   recoverable: boolean;
-  /** subscription is positioned – i.e. server tracks message loss on the way from PUB/SUB broker */
+  /** Whether the server tracks message loss between the broker and clients. */
   positioned: boolean;
-  /** streamPosition is set when Subscription is recoverable or positioned. */
+  /** Current stream position, present when the subscription is recoverable or positioned. */
   streamPosition?: StreamPosition;
-  /** wasRecovering is true when recovery was used in the subscribe request. */
+  /** True when recovery was attempted in the subscribe request. */
   wasRecovering: boolean;
-  /** whether or not missed publications were successfully recovered.  */
+  /** True when all missed publications were successfully recovered. */
   recovered: boolean;
-  /** whether or not a successfully recovered subscription has received missed publications.
-  Warning: must be used for metrics/logs purposes only.
-  Recovered publications are processed after the 'subscribed' event. **/
+  /** True when recovered publications are pending delivery after this event.
+   * For metrics and logging only — recovered publications are delivered after 'subscribed' fires. */
   hasRecoveredPublications: boolean;
-  /** custom data for Subscription returned from server. */
+  /** Custom data returned by the server in the subscribe reply. */
   data?: any;
-  /** State entries for map subscriptions (from state pagination) */
+  /** Initial map entries delivered during state pagination (map subscriptions only). */
   state?: MapUpdateContext[];
 }
 
+/** Context for a subscription 'error' event. */
 export interface SubscriptionErrorContext {
+  /** Channel this subscription is for. */
   channel: string;
+  /** Category of the error (e.g. 'subscribe', 'token', 'getState'). */
   type: string;
+  /** The error details. */
   error: Error;
 }
 
+/** Context for a subscription 'unsubscribed' event. */
 export interface UnsubscribedContext {
+  /** Channel this subscription was for. */
   channel: string;
+  /** Numeric code describing why the subscription was removed. */
   code: number;
+  /** Human-readable reason for the unsubscription. */
   reason: string;
 }
 
+/** Context for a publication received on a server-side subscription channel. */
 export interface ServerPublicationContext {
-  // channel from which publication was received.
+  /** Channel the publication was received on. */
   channel: string;
-  // data contains publication payload.
+  /** Publication payload. */
   data: any;
-  // info is an optional ClientInfo object. It's appended to a publication only if the publication was
-  // sent using the client SDK's publish method. If the publication was sent over the server publish API,
-  // this info object is missing as we don't have the publisher client context in that case.
+  /** Present only when the publication was sent via the client SDK publish method.
+   * Absent for server-API publishes where no publisher client context is available. */
   info?: ClientInfo;
-  // offset may be set for channels where the history Centrifugo feature is enabled. In this case, it's an
-  // incremental number assigned to the publication by the server broker (upon adding to the history stream).   
+  /** Monotonically increasing offset assigned by the broker. Present when history is enabled
+   * for the channel. */
   offset?: number;
-  // tags is an extra key-value map attached to a publication. Tags may be set when calling the server publish API. 
+  /** Key-value tags attached to the publication. Set via the server publish API. */
   tags?: Record<string, string>;
 }
 
+/** Context for a server-side subscription 'join' event. */
 export interface ServerJoinContext {
+  /** Channel the client joined. */
   channel: string;
+  /** Information about the client that joined. */
   info: ClientInfo;
 }
 
+/** Context for a server-side subscription 'leave' event. */
 export interface ServerLeaveContext {
+  /** Channel the client left. */
   channel: string;
+  /** Information about the client that left. */
   info: ClientInfo;
 }
 
+/** Context for a server-side subscription 'unsubscribed' event. */
 export interface ServerUnsubscribedContext {
+  /** Channel that was unsubscribed. */
   channel: string;
 }
 
+/** Context for a subscription 'subscribing' event. */
 export interface SubscribingContext {
+  /** Channel this subscription is for. */
   channel: string;
+  /** Numeric code describing why the subscription is (re)subscribing. */
   code: number;
+  /** Human-readable reason for the subscribing state. */
   reason: string;
 }
 
+/** Context for a server-side subscription 'subscribing' event. */
 export interface ServerSubscribingContext {
+  /** Channel the server-side subscription is being re-established on. */
   channel: string;
 }
 
+/** Context passed to the client-level getToken callback. Currently empty; reserved for future use. */
 export interface ConnectionTokenContext {
 }
 
+/** Context passed to the subscription-level getToken callback. */
 export interface SubscriptionTokenContext {
+  /** Channel the token is being requested for. */
   channel: string;
 }
 
+/** Context passed to the subscription-level getData callback. */
 export interface SubscriptionDataContext {
+  /** Channel the data is being requested for. */
   channel: string;
 }
 
+/** Result of a channel publish call. */
 export interface PublishResult {
 }
 
+/** Result of an RPC call. */
 export interface RpcResult {
+  /** Arbitrary data returned by the server-side RPC handler. */
   data: any;
 }
 
+/** Result of a presence call. */
 export interface PresenceResult {
+  /** Map of client ID to client info for all currently subscribed clients. */
   clients: Record<string, ClientInfo>;
 }
 
+/** Result of a presence stats call. */
 export interface PresenceStatsResult {
+  /** Number of active client connections in the channel. */
   numClients: number;
+  /** Number of unique authenticated users in the channel. */
   numUsers: number;
 }
 
+/** Result of a history call. */
 export interface HistoryResult {
+  /** Publications returned by the history query. */
   publications: PublicationContext[];
+  /** Offset of the most recent publication in the stream. */
   offset: number;
+  /** Epoch identifying the current stream generation. Changes when the stream is reset. */
   epoch: string;
 }
 
+/** Options for a history call. */
 export interface HistoryOptions {
+  /** Maximum number of publications to return. Negative value or 0 uses the server default. */
   limit?: number;
+  /** Return publications after this stream position (exclusive). */
   since?: StreamPosition;
+  /** Return publications in reverse order (newest first). */
   reverse?: boolean;
 }
 
@@ -482,35 +572,41 @@ export interface FilterNode {
 
 /** SubscriptionOptions can customize regular (non-map) Subscription. */
 export interface SubscriptionOptions {
-  /** allows setting initial subscription token (JWT) */
+  /** Initial subscription token (JWT). Not refreshed automatically — provide getToken for renewal. */
   token?: string;
-  /** allows setting function to get/refresh subscription token,
-   * this will only be called when new token needed, not on every resubscribe. */
+  /** Called to obtain a fresh subscription token when the current token is missing or has expired
+   * (e.g. after server code 109). Not called on every resubscribe — only when a new token is needed. */
   getToken?: null | ((ctx: SubscriptionTokenContext) => Promise<string>);
-  /** data to send to a server with subscribe command */
+  /** Arbitrary data sent to the server with the subscribe command. */
   data?: any | null;
-  /** allows setting function to get/renew subscription data (during resubscriptions).
-   * In many cases you may prefer using setData method of Subscription instead. */
+  /** Called on every resubscribe attempt (after a token is obtained) to supply fresh subscribe data.
+   * Prefer calling setData() when data changes infrequently. */
   getData?: null | ((ctx: SubscriptionDataContext) => Promise<any>);
-  /** force recovery on first subscribe from a provided StreamPosition. */
+  /** Bootstrap recovery from a known stream position on the first subscribe. */
   since?: Partial<StreamPosition> | null;
-  /** min delay between resubscribe attempts. */
+  /** Minimum delay between resubscribe attempts in milliseconds. */
   minResubscribeDelay?: number;
-  /** max delay between resubscribe attempts. */
+  /** Maximum delay between resubscribe attempts in milliseconds. */
   maxResubscribeDelay?: number;
-  /** ask server to make subscription positioned. */
+  /** Request a positioned subscription. The server must allow client-requested positioning;
+   * server namespace config typically controls this. */
   positioned?: boolean;
-  /** ask server to make subscription recoverable. */
+  /** Request a recoverable subscription. The server must allow client-requested recovery;
+   * server namespace config typically controls this. */
   recoverable?: boolean;
-  /** ask server to send join/leave messages. */
+  /** Request join/leave events for this channel. The server must allow client-requested join/leave. */
   joinLeave?: boolean;
-  /** delta format to be used. Delta usage must be allowed on the server side. */
+  /** Delta compression format for publications. Only 'fossil' is supported. Must be allowed on
+   * the server side. Cannot be combined with tagsFilter. */
   delta?: 'fossil';
-  /** server-side tagsFilter to apply for publications in channel. Tags filter support must be allowed on the server side. */
+  /** Server-side publication filter based on tags. Must be enabled in the server namespace config.
+   * Cannot be combined with delta. */
   tagsFilter?: FilterNode | null;
-  /** Called to load the app's current state and stream position. The SDK calls this:
+  /** Called to load the app's current state and stream position. Requires Centrifugo >= 6.8.0.
+   *
+   * The SDK calls this:
    * - On initial subscribe (no saved position)
-   * - On reconnect when recovery fails (recovered: false)
+   * - On reconnect when recovery fails (server returns error 112 — unrecoverable position)
    *
    * NOT called on reconnects where the server successfully recovers missed
    * publications — in that case the recovered publications arrive as events
@@ -529,51 +625,36 @@ export interface SubscriptionOptions {
    *
    * Recovered publications may overlap with data already loaded in getState.
    * This works correctly when updates are idempotent (applying the same update
-   * twice produces the same result). For non-idempotent updates, the app should
-   * deduplicate by offset. This is the same consideration described in the
-   * "Proper real-time document state synchronization" blog post, but natively
-   * baked into the SDK via this callback.
+   * twice produces the same result). For non-idempotent updates, deduplicate
+   * by publication offset.
    *
-   * On error, the SDK emits an 'error' event and retries with backoff, matching
-   * the error handling behavior of getState in map subscriptions. */
+   * On error, the SDK emits an 'error' event and retries with backoff. */
   getState?: () => Promise<StreamPosition>;
 }
 
 /** MapSubscriptionOptions can customize map Subscription. */
 export interface MapSubscriptionOptions {
-  /** allows setting initial subscription token (JWT) */
+  /** Initial subscription token (JWT). Not refreshed automatically — provide getToken for renewal. */
   token?: string;
-  /** allows setting function to get/refresh subscription token,
-   * this will only be called when new token needed, not on every resubscribe. */
+  /** Called to obtain a fresh subscription token when the current token is missing or has expired.
+   * Not called on every resubscribe — only when a new token is needed. */
   getToken?: (ctx: SubscriptionTokenContext) => Promise<string>;
-  /** data to send to a server with subscribe command */
+  /** Arbitrary data sent to the server with the subscribe command. */
   data?: any;
-  /** min delay between resubscribe attempts. */
+  /** Minimum delay between resubscribe attempts in milliseconds. */
   minResubscribeDelay?: number;
-  /** max delay between resubscribe attempts. */
+  /** Maximum delay between resubscribe attempts in milliseconds. */
   maxResubscribeDelay?: number;
-  /** Page size for map state/stream pagination (default: 100) */
+  /** Number of entries per page during state and stream pagination. 0 uses the server default.
+   * Sent as the limit parameter in paginated requests. */
   pageSize?: number;
-  /** Delta compression format (currently only 'fossil' supported).
-   * When set, the server may send delta-encoded publications for bandwidth savings. */
+  /** Delta compression format for publications. Only 'fossil' is supported. Must be allowed on
+   * the server side. */
   delta?: 'fossil';
-  /** Strategy for handling unrecoverable position errors (code 112) in map subscriptions.
-   * - 'from_scratch': (default) auto-recover by resubscribing from snapshot
-   * - 'fatal': go to unsubscribed state, let user handle */
+  /** How to handle an unrecoverable position error (server code 112):
+   * - 'from_scratch' (default): reset and resubscribe from a fresh snapshot automatically.
+   * - 'fatal': move to unsubscribed state and let the application decide what to do. */
   unrecoverableStrategy?: MapUnrecoverableStrategy;
-  /** When true, stream catch-up publications are applied to the state snapshot by key
-   * (last value wins, `removed: true` deletes the key) before the sync event is emitted.
-   * The app gets a single sync with the state as of the moment the subscription went live,
-   * and no individual update events for catch-up publications.
-   *
-   * When false (default), sync contains the state snapshot as-is and catch-up publications
-   * are emitted as individual update events after sync.
-   *
-   * Only safe when stream publication payload matches state representation (same shape,
-   * last value wins). If your stream carries a different payload than state (e.g. deltas,
-   * computed events), leave this false — applying stream payload to state would overwrite
-   * the canonical state with a non-snapshot value. */
-  applyCatchUpToState?: boolean;
 }
 
 /** Internal options interface used by Subscription class.
@@ -583,7 +664,6 @@ export interface InternalSubscriptionOptions extends SubscriptionOptions {
   mapPageSize?: number;
   mapUnrecoverableStrategy?: MapUnrecoverableStrategy;
   mapPresenceType?: number; // 1=MAP (default), 2=MAP_CLIENTS, 3=MAP_USERS
-  mapApplyCatchUpToState?: boolean;
   sharedPoll?: boolean;
   sharedPollGetSignature?: (ctx: SharedPollSignatureContext) => Promise<SharedPollSignatureResult>;
   // getState is inherited from SubscriptionOptions — no separate internal name needed
@@ -592,9 +672,11 @@ export interface InternalSubscriptionOptions extends SubscriptionOptions {
 /** Strategy for handling unrecoverable position errors in map subscriptions */
 export type MapUnrecoverableStrategy = 'from_scratch' | 'fatal';
 
-/** Stream position describes the position of a publication inside a stream.  */
+/** Position of a publication within a channel stream. */
 export interface StreamPosition {
+  /** Monotonically increasing offset of the publication within the stream. */
   offset: number;
+  /** Epoch string identifying the current stream generation. Changes when the stream is reset. */
   epoch: string;
 }
 
@@ -605,71 +687,71 @@ export enum MapPhase {
   State = 2,   // Paginating over state (map state)
 }
 
-/** Map update context — emitted via 'update' event for map subscriptions */
+/** Context for a map subscription 'update' event. */
 export interface MapUpdateContext extends PublicationContext {
-  /** The key identifying this entry */
+  /** The map key this update applies to. */
   key: string;
-  /** True if this publication represents a removal */
+  /** True when this update represents a key removal. */
   removed?: boolean;
-  /** Score associated with this entry */
+  /** Sort score for ordered map subscriptions. */
   score: number;
 }
 
-/** Update context for shared poll subscriptions */
+/** Context for a shared poll subscription 'update' event. */
 export interface SharedPollUpdateContext {
-  /** Channel name */
+  /** Channel this update belongs to. */
   channel: string;
-  /** The key identifying this entity */
+  /** The key identifying this tracked entity. */
   key: string;
-  /** Current entity data (null when removed) */
+  /** Current entity data. Null when the entity was removed. */
   data: any;
-  /** True if this entity was removed */
+  /** True when this entity was removed. */
   removed?: boolean;
-  /** Entity version */
+  /** Entity version returned by the server. */
   version?: number;
 }
 
-/** Complete state snapshot for map subscriptions (emitted on initial join and full resync) */
+/** Context for a map subscription 'sync' event — delivered once the initial snapshot is complete. */
 export interface MapSyncContext {
-  /** All current entries, ordered by score for ordered subscriptions */
+  /** All current map entries at the time of sync, ordered by score for ordered subscriptions. */
   entries: MapUpdateContext[];
 }
 
-/** Tracked item for shared poll subscriptions */
+/** A single item tracked by a shared poll subscription. */
 export interface SharedPollTrackItem {
-  /** The key identifying this entity */
+  /** The key identifying this entity. */
   key: string;
-  /** Current version the client has for this entity (0 = no version known) */
+  /** The client's last known version for this entity. 0 means no version is known. */
   version: number;
 }
 
-/** Context passed to the getSignature callback for shared poll subscriptions */
+/** Context passed to the getSignature callback for shared poll subscriptions. */
 export interface SharedPollSignatureContext {
-  /** All currently tracked keys that need a signature */
+  /** All currently tracked keys that require a fresh signature. */
   keys: string[];
 }
 
-/** Result expected from the getSignature callback */
+/** Result returned by the getSignature callback. */
 export interface SharedPollSignatureResult {
-  /** Keys to track (can be a subset of input keys to revoke removed ones) */
+  /** Keys to track. May be a subset of the input keys to revoke access to removed ones. */
   keys: string[];
-  /** HMAC signature authorizing these keys */
+  /** HMAC signature authorizing these keys. */
   signature: string;
 }
 
 /** Options for shared poll subscriptions */
 export interface SharedPollSubscriptionOptions {
-  /** Callback to get/refresh the HMAC signature for tracked keys.
-   * Called on reconnect (to replay tracked items), on signature TTL expiry,
-   * and when using the simplified `track(keys)` overload.
-   * Required for `track(keys)` and reconnect replay; optional only when
-   * every `track()` call provides an explicit signature. */
+  /** Called to obtain an HMAC signature authorizing the set of tracked keys. Invoked on
+   * reconnect (to replay tracked keys), on signature TTL expiry, and when using the
+   * simplified track(keys) overload. Required when using track(keys) or reconnect replay;
+   * optional only when every track() call supplies an explicit per-call signature. */
   getSignature?: (ctx: SharedPollSignatureContext) => Promise<SharedPollSignatureResult>;
-  /** Delta compression type (e.g. 'fossil') */
+  /** Delta compression format for publications. Only 'fossil' is supported. Must be allowed on
+   * the server side. */
   delta?: 'fossil';
-  /** min delay between resubscribe attempts */
+  /** Minimum delay between resubscribe attempts in milliseconds. */
   minResubscribeDelay?: number;
-  /** max delay between resubscribe attempts */
+  /** Maximum delay between resubscribe attempts in milliseconds. */
   maxResubscribeDelay?: number;
 }
 

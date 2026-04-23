@@ -228,7 +228,6 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
       map: true,
       mapPageSize: options?.pageSize,
       mapUnrecoverableStrategy: options?.unrecoverableStrategy,
-      mapApplyCatchUpToState: options?.applyCatchUpToState,
     });
     this._subs[channel] = sub;
     return sub as unknown as MapSubscription;
@@ -253,7 +252,6 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
       mapPresenceType: 2, // MAP_CLIENTS_PRESENCE
       mapPageSize: options?.pageSize,
       mapUnrecoverableStrategy: options?.unrecoverableStrategy,
-      mapApplyCatchUpToState: options?.applyCatchUpToState,
     });
     this._subs[channel] = sub;
     return sub as unknown as MapSubscription;
@@ -278,7 +276,6 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
       mapPresenceType: 3, // MAP_USERS_PRESENCE
       mapPageSize: options?.pageSize,
       mapUnrecoverableStrategy: options?.unrecoverableStrategy,
-      mapApplyCatchUpToState: options?.applyCatchUpToState,
     });
     this._subs[channel] = sub;
     return sub as unknown as MapSubscription;

@@ -63,8 +63,6 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
   private _mapCursor: string = '';          // Pagination cursor
   private _mapPageSize: number = 0;             // Page size (0 = use server default)
   private _mapUnrecoverableStrategy: MapUnrecoverableStrategy = 'from_scratch';
-  private _mapApplyCatchUpToState: boolean = false;
-
   // Publish debounce state (protocol-level, controlled by server)
   private _debounceMs: number = 0;
   private _debouncePending: Map<string, { data: any; dirty: boolean; timer: ReturnType<typeof setTimeout> }> = new Map();
@@ -444,19 +442,6 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
 
   private _setSubscribed(result: any) {
     if (!this._isSubscribing()) {
-      return;
-    }
-
-    // Stream getState + failed recovery fallback for older servers that don't
-    // support the rejectUnrecovered flag. Modern servers return error 112
-    // instead of recovered:false (handled in _handleSubscribeError), which
-    // avoids the race of publications flowing on an active subscription while
-    // getState reloads app state.
-    if (this._getState && !this._map && result.was_recovering && !result.recovered) {
-      this._offset = null;
-      this._epoch = null;
-      this._clearSubscribingState();
-      this._scheduleResubscribe();
       return;
     }
 
@@ -1097,9 +1082,6 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
     }
     if (options.mapUnrecoverableStrategy) {
       this._mapUnrecoverableStrategy = options.mapUnrecoverableStrategy;
-    }
-    if (options.mapApplyCatchUpToState === true) {
-      this._mapApplyCatchUpToState = true;
     }
     // Shared poll subscription options
     if (options.sharedPoll === true) {
@@ -1948,10 +1930,9 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
     // Skipped on successful recovery (app already has rendered state; stream
     // catch-up is emitted as individual update events).
     if (!ctx.recovered) {
-      if (this._mapApplyCatchUpToState && this._mapStreamBuffer.length > 0) {
-        // Opt-in: apply stream catch-up buffer to state buffer by key (last value wins).
+      if (this._mapStreamBuffer.length > 0) {
+        // Apply stream catch-up buffer to state by key (last value wins, removed deletes).
         // Produces a single sync snapshot that reflects state as of LIVE transition.
-        // Only safe when stream publication payload matches state representation.
         const stateMap = new Map<string, MapUpdateContext>();
         for (const entry of this._mapStateBuffer) {
           stateMap.set(entry.key, entry);
@@ -1971,8 +1952,7 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
 
     // Flush remaining stream buffer as publication and update events.
     // On recovery (sync skipped above) — app already has state and just needs
-    // incremental changes. On fresh join without applyCatchUpToState — catch-up
-    // entries follow the sync snapshot as individual updates.
+    // incremental changes.
     for (const pub of this._mapStreamBuffer) {
       this.emit('publication', pub);
       this.emit('update', pub);

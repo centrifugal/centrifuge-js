@@ -2,7 +2,6 @@
   "client": {
     "insecure": true,
     "concurrency": 8,
-    "map_pagination_min_limit": 1,
     "token": {
       "hmac_secret_key": "secret"
     }
@@ -184,8 +183,7 @@
           "mode": "versioned",
           "refresh_interval": "200ms",
           "refresh_batch_size": 100,
-          "max_keys_per_connection": 100,
-          "max_consecutive_absences": 2
+          "max_keys_per_connection": 100
         },
         "allow_subscribe_for_client": true
       },
@@ -196,8 +194,7 @@
           "proxy_name": "poll_backend",
           "refresh_interval": "200ms",
           "refresh_batch_size": 100,
-          "max_keys_per_connection": 100,
-          "max_consecutive_absences": 2
+          "max_keys_per_connection": 100
         },
         "allow_subscribe_for_client": true
       }

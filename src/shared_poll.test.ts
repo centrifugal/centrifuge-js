@@ -89,9 +89,8 @@ function makeTrackSignature(
 ): string {
   const now = Math.floor(Date.now() / 1000);
   const expiry = now + ttl;
-  const sortedKeys = [...keys].sort();
   const keysHash = crypto.createHash('sha256')
-    .update(sortedKeys.join('\x00'))
+    .update(keys.join('\x00'))
     .digest('hex');
   const payload = `${now}:${expiry}:${user}:${channel}:${keysHash}`;
   const hmac = crypto.createHmac('sha256', secret)

@@ -1,7 +1,7 @@
 This SDK provides a client to connect to [Centrifugo](https://github.com/centrifugal/centrifugo) or any [Centrifuge-based](https://github.com/centrifugal/centrifuge) server using pure WebSocket or one of the alternative transports (HTTP-streaming, SSE/EventSource, experimental WebTransport) from web browser, ReactNative, or NodeJS environments.
 
 > [!IMPORTANT]  
-> This library behaves according to a common [Centrifigo SDK spec](https://centrifugal.dev/docs/transports/client_api). It's recommended to read that before starting to work with this SDK as the spec covers common SDK behavior - describes client and subscription state transitions, main options and methods. Then proceed with this readme for more specifics about `centrifuge-js`.
+> This library behaves according to a common [Centrifugo SDK spec](https://centrifugal.dev/docs/transports/client_api). It's recommended to read that before starting to work with this SDK as the spec covers common SDK behavior - describes client and subscription state transitions, main options and methods. Then proceed with this readme for more specifics about `centrifuge-js`.
 
 The features implemented by this SDK can be found in [SDK feature matrix](https://centrifugal.dev/docs/transports/client_sdk#sdk-feature-matrix).
 
@@ -46,13 +46,13 @@ And then in your project:
 import { Centrifuge } from 'centrifuge';
 ```
 
-In browser, you can import SDK from CDN (replace `5.0.0` with a concrete version number you want to use, see [releases](https://github.com/centrifugal/centrifuge-js/releases)):
+In browser, you can import SDK from [unpkg](https://app.unpkg.com/centrifuge@latest) CDN (replace `5.0.0` with a concrete version number you want to use, see [releases](https://github.com/centrifugal/centrifuge-js/releases)):
 
 ```html
 <script src="https://unpkg.com/centrifuge@5.0.0/dist/centrifuge.js"></script>
 ```
 
-See also [centrifuge-js on cdnjs](https://cdnjs.com/libraries/centrifuge). Note that `centrifuge-js` browser builds target [ES6](https://caniuse.com/es6).
+See also [centrifuge-js on jsdelivr](https://www.jsdelivr.com/package/npm/centrifuge). Note that `centrifuge-js` browser builds target [ES6](https://caniuse.com/es6).
 
 **By default, library works with JSON only**, if you want to send binary payloads go to [Protobuf support](#protobuf-support) section to see how to import client with Protobuf support.
 

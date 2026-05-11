@@ -2,6 +2,7 @@ import { Centrifuge, UnauthorizedError } from './centrifuge'
 import {
   DisconnectedContext,
   Error as CentrifugeError,
+  FilterNode,
   PublicationContext,
   TransportName,
   UnsubscribedContext,
@@ -120,6 +121,47 @@ test('state invalidated unsubscribe (2502) clears sub token and map state', () =
   // Stream subscription NOT affected.
   expect((streamSub as any)._token).toBe('stream-sub-token');
   expect((streamSub as any)._offset).toBe(10);
+});
+
+test('newMapSubscription propagates tagsFilter from constructor options', () => {
+  const c = new Centrifuge([{
+    transport: 'websocket' as TransportName,
+    endpoint: 'ws://localhost:8000/connection/websocket',
+  }], {
+    websocket: WebSocket,
+  });
+
+  const filter: FilterNode = { key: 'team', cmp: 'eq', val: 'eng' };
+  const sub = c.newMapSubscription('test:map', { tagsFilter: filter });
+  expect((sub as any)._tagsFilter).toEqual(filter);
+
+  // Variants must propagate it too.
+  const clientsSub = c.newMapClientsSubscription('$clients:test', { tagsFilter: filter });
+  expect((clientsSub as any)._tagsFilter).toEqual(filter);
+
+  const usersSub = c.newMapUsersSubscription('$users:test', { tagsFilter: filter });
+  expect((usersSub as any)._tagsFilter).toEqual(filter);
+});
+
+test('newSharedPollSubscription propagates token, getToken, and data from constructor options', () => {
+  const c = new Centrifuge([{
+    transport: 'websocket' as TransportName,
+    endpoint: 'ws://localhost:8000/connection/websocket',
+  }], {
+    websocket: WebSocket,
+  });
+
+  const getToken = async () => 'fresh-token';
+  const data = { extra: 1 };
+  const sub = c.newSharedPollSubscription('poll:test', {
+    token: 'static-token',
+    getToken,
+    data,
+  });
+
+  expect((sub as any)._token).toBe('static-token');
+  expect((sub as any)._getToken).toBe(getToken);
+  expect((sub as any)._data).toEqual(data);
 });
 
 (typeof globalThis.WebSocket !== 'undefined' ? test.skip : test)('no websocket constructor', async () => {

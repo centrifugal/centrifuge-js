@@ -9,6 +9,3 @@ export {
     UnauthorizedError,
     Subscription,
 }
-
-// Re-export MapPhase enum explicitly for convenience
-export { MapPhase } from './types';

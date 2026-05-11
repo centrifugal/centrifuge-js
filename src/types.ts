@@ -79,7 +79,12 @@ export type BaseSubscriptionEvents = SubscriptionEvents;
 /** Events emitted by a map subscription. */
 export type MapSubscriptionEvents = SubscriptionEvents & {
   /** Emitted once the initial state snapshot has been fully delivered and the subscription is live.
-   * Contains all current map entries. Also emitted after a full resync (e.g. from_scratch recovery). */
+   * Contains all current map entries. Also emitted after a full resync (e.g. from_scratch recovery).
+   *
+   * NOT emitted on reconnects where the server successfully recovers missed updates — in that
+   * case the application's existing snapshot is still valid and missed key changes arrive as
+   * `update` events. Use `subscribed` to learn that the subscription is live; use `sync` only
+   * to refresh the initial snapshot. */
   sync: (ctx: MapSyncContext) => void;
   /** Emitted for each individual key change (add, update, or remove) in the map. */
   update: (ctx: MapUpdateContext) => void;
@@ -334,16 +339,43 @@ export interface SubscribedContext {
   hasRecoveredPublications: boolean;
   /** Custom data returned by the server in the subscribe reply. */
   data?: any;
-  /** Initial map entries delivered during state pagination (map subscriptions only). */
-  state?: MapUpdateContext[];
+  /** Initial map entries delivered during state pagination (map subscriptions only).
+   * A snapshot — never contains removed keys. */
+  state?: MapEntry[];
 }
+
+/** Category of a subscription 'error' event.
+ *
+ * - `'subscribe'`         — subscribe attempt failed with a temporary error; SDK will resubscribe.
+ *                           Also used for failures in the `getState` callback (stream subscriptions).
+ * - `'subscribeData'`     — `getData` callback rejected; SDK will resubscribe.
+ * - `'subscribeToken'`    — `getToken` callback rejected on initial subscribe; SDK will resubscribe.
+ * - `'configuration'`     — server asked for a refreshed subscription token but no `getToken` is configured.
+ * - `'refreshToken'`      — `getToken` callback rejected during token refresh; SDK will retry.
+ * - `'refresh'`           — server-side subscription refresh failed with a temporary error; SDK will retry.
+ * - `'track'`             — shared poll: `track()` request to the server failed, or the `getSignature`
+ *                           callback rejected when called via `track(keys)`.
+ * - `'untrack'`           — shared poll: `untrack()` request to the server failed.
+ * - `'signatureRefresh'`  — shared poll: `getSignature` callback rejected during a periodic signature
+ *                           refresh or on subscribe replay; SDK will retry with backoff.
+ */
+export type SubscriptionErrorType =
+  | 'subscribe'
+  | 'subscribeData'
+  | 'subscribeToken'
+  | 'configuration'
+  | 'refreshToken'
+  | 'refresh'
+  | 'track'
+  | 'untrack'
+  | 'signatureRefresh';
 
 /** Context for a subscription 'error' event. */
 export interface SubscriptionErrorContext {
   /** Channel this subscription is for. */
   channel: string;
-  /** Category of the error (e.g. 'subscribe', 'token', 'getState'). */
-  type: string;
+  /** Category of the error — see SubscriptionErrorType for the full list. */
+  type: SubscriptionErrorType;
   /** The error details. */
   error: Error;
 }
@@ -649,8 +681,11 @@ export interface MapSubscriptionOptions {
    * Sent as the limit parameter in paginated requests. */
   pageSize?: number;
   /** Delta compression format for publications. Only 'fossil' is supported. Must be allowed on
-   * the server side. */
+   * the server side. Cannot be combined with tagsFilter. */
   delta?: 'fossil';
+  /** Server-side publication filter based on tags. Must be enabled in the server namespace config.
+   * Cannot be combined with delta. Can also be updated at runtime via setTagsFilter(). */
+  tagsFilter?: FilterNode | null;
   /** How to handle an unrecoverable position error (server code 112):
    * - 'from_scratch' (default): reset and resubscribe from a fresh snapshot automatically.
    * - 'fatal': move to unsubscribed state and let the application decide what to do. */
@@ -680,21 +715,26 @@ export interface StreamPosition {
   epoch: string;
 }
 
-/** Phase constants for map subscriptions */
-export enum MapPhase {
-  Live = 0,    // Join live pub/sub (default)
-  Stream = 1,  // Paginating over stream (history catch-up)
-  State = 2,   // Paginating over state (map state)
+/** A single entry in a map subscription snapshot.
+ *
+ * Used in `MapSyncContext.entries` and `SubscribedContext.state` — both represent
+ * the current state of the map, not a change event. Snapshots never contain
+ * removed keys, so there is no `removed` flag here; see `MapUpdateContext` for
+ * the per-change event shape. */
+export interface MapEntry extends PublicationContext {
+  /** The map key. */
+  key: string;
 }
 
-/** Context for a map subscription 'update' event. */
-export interface MapUpdateContext extends PublicationContext {
-  /** The map key this update applies to. */
-  key: string;
-  /** True when this update represents a key removal. */
+/** Context for a map subscription 'update' event — a single key change.
+ *
+ * Use `removed` to distinguish a key set/update (`removed` absent or false)
+ * from a key removal (`removed === true`). For the current state of the map
+ * (no change semantics), see `MapEntry`. */
+export interface MapUpdateContext extends MapEntry {
+  /** True when this update represents a key removal. The publication's `data`
+   * field is not meaningful for removals. */
   removed?: boolean;
-  /** Sort score for ordered map subscriptions. */
-  score: number;
 }
 
 /** Context for a shared poll subscription 'update' event. */
@@ -711,10 +751,10 @@ export interface SharedPollUpdateContext {
   version?: number;
 }
 
-/** Context for a map subscription 'sync' event — delivered once the initial snapshot is complete. */
+/** Context for a map subscription 'sync' event — delivered when a fresh snapshot is ready. */
 export interface MapSyncContext {
-  /** All current map entries at the time of sync, ordered by score for ordered subscriptions. */
-  entries: MapUpdateContext[];
+  /** All current map entries at the time of sync. Never contains removed keys. */
+  entries: MapEntry[];
 }
 
 /** A single item tracked by a shared poll subscription. */
@@ -741,6 +781,13 @@ export interface SharedPollSignatureResult {
 
 /** Options for shared poll subscriptions */
 export interface SharedPollSubscriptionOptions {
+  /** Initial subscription token (JWT). Not refreshed automatically — provide getToken for renewal. */
+  token?: string;
+  /** Called to obtain a fresh subscription token when the current token is missing or has expired.
+   * Not called on every resubscribe — only when a new token is needed. */
+  getToken?: (ctx: SubscriptionTokenContext) => Promise<string>;
+  /** Arbitrary data sent to the server with the subscribe command. */
+  data?: any;
   /** Called to obtain an HMAC signature authorizing the set of tracked keys. Invoked on
    * reconnect (to replay tracked keys), on signature TTL expiry, and when using the
    * simplified track(keys) overload. Required when using track(keys) or reconnect replay;

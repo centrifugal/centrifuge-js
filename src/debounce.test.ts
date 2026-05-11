@@ -48,7 +48,7 @@ function uniqueChannel(ns: string): string {
   return `${ns}:debounce_test_${Date.now()}_${testCounter}`;
 }
 
-testFn('mapPublish debounce — first publish immediate, subsequent coalesced', async () => {
+testFn('map publish debounce — first publish immediate, subsequent coalesced', async () => {
   const c = createClient();
   c.connect();
   await c.ready(5000);

@@ -2,28 +2,38 @@
 
 This document describes changes to make when the next major version removes backwards-compatibility constraints around subscription types.
 
-## Current state (v5)
+## Status
+
+A subset of this plan has already landed in v5 because the map/shared-poll APIs are not yet released and the user authorized breaking changes there:
+
+- ✅ `publish(data)` and `history(opts)` moved from `BaseSubscription` into `Subscription` class (still named `Subscription`, not yet `StreamSubscription`).
+- ✅ `mapPublish` / `mapRemove` deleted from `BaseSubscription`; their logic is inlined into `MapSubscription.publish(key, data)` / `MapSubscription.remove(key)`.
+- ✅ `MapSubscription.publish` now takes `data: any` (required) on both the impl and the public type — the `data?` override hack is gone.
+- ✅ `track`, `untrack`, `trackedKeys` moved from `BaseSubscription` to `SharedPollSubscription`; the `if (!this._sharedPoll) throw` runtime guards are gone.
+- ✅ Required protected members promoted: `_centrifuge`, `_methodCall`, `_debounceMs`, `_debouncedPublish`, `_cancelDebounce`, `_isSubscribed`, `_sharedPollTrackedItems`, `_sharedPollGetSignature`, `_sharedPollPendingSignature`, `_sharedPollPendingItems`, `_sendTrackRequest`, `_sendUntrackRequest`, `_handleTrackError`.
+
+The remaining items below are still future work.
+
+## Current state (v5, post-shipped-cleanup)
 
 Class hierarchy exists but is partially hidden behind type aliases:
 
-- `BaseSubscription` (class) — all logic, uses `InternalSubscriptionEvents` (broad event type for internal emit calls)
-- `Subscription extends BaseSubscription` — empty wrapper, exists for backwards compat
-- `MapSubscription extends BaseSubscription` — adds `publish(key, data?)` and `remove(key)`
-- `SharedPollSubscription extends BaseSubscription` — empty placeholder
+- `BaseSubscription` (class) — lifecycle + shared internal helpers (including the protected `_sendTrackRequest` / `_sendUntrackRequest` / `_handleTrackError` and the shared-poll lifecycle handlers `_sharedPollReplayTrack` / `_sharedPollRefreshSignature` invoked from the subscribe flow). Uses `InternalSubscriptionEvents` (broad event type for internal emit calls). No longer hosts `publish(data)`, `history(opts)`, `mapPublish`, `mapRemove`, `track`, `untrack`, or `trackedKeys`.
+- `Subscription extends BaseSubscription` — defines `publish(data)` and `history(opts)` for stream channels.
+- `MapSubscription extends BaseSubscription` — defines `publish(key, data)` and `remove(key)`, no override conflict.
+- `SharedPollSubscription extends BaseSubscription` — defines `track`, `untrack`, `trackedKeys` directly; no runtime guards.
 
-Exported types in `centrifuge.ts` are manually constructed (`CommonSurface` + explicit type members) to narrow the public surface. Internal classes are imported with `_` prefix to avoid name collisions with the type aliases. Factory methods use `as unknown as` to bridge between internal classes and exported types.
+Exported types in `centrifuge.ts` are still manually constructed (`CommonSurface` + explicit type members) to narrow the public surface. Internal classes are imported with `_` prefix to avoid name collisions with the type aliases. Factory methods still use `as unknown as` to bridge between internal classes and exported types.
 
 Event types:
 - `SubscriptionEvents` — clean stream events (no `sync`/`update`)
-- `InternalSubscriptionEvents` — extends `SubscriptionEvents` with `sync`/`update`, used only by `BaseSubscription` class internally so subclasses can emit map/shared-poll events
-- `MapSubscriptionEvents` — `SubscriptionEvents` + narrowed `sync`/`update` with `MapUpdateContext`
+- `InternalSubscriptionEvents` — extends `SubscriptionEvents` with `sync`/`update`, used by `BaseSubscription` class internally so subclasses can emit map/shared-poll events
+- `MapSubscriptionEvents` — `SubscriptionEvents` + narrowed `sync`/`update` with `MapEntry` / `MapUpdateContext`
 - `SharedPollSubscriptionEvents` — `SubscriptionEvents` + narrowed `update` with `SharedPollUpdateContext`
 - `BaseSubscriptionEvents` — alias for `SubscriptionEvents` (shared by all types)
 
-Known compromises:
-- `MapSubscription.publish(key, data?)` — `data` is optional to satisfy TS override of `BaseSubscription.publish(data)`. The exported type alias narrows it back to `publish(key: string, data: any)`.
-- `mapPublish`/`mapRemove`/`track`/`untrack`/`trackedKeys` still live on `BaseSubscription` with runtime guards. Hidden from narrowed exported types but accessible via the class.
-- `InternalSubscriptionEvents` exists solely because `BaseSubscription` needs to emit `sync`/`update` for its subclasses.
+Remaining known compromise:
+- `InternalSubscriptionEvents` still exists because `BaseSubscription` lifecycle code emits `sync` and `update` from publication handlers and from `_sharedPollReplayTrack` / `_sharedPollRefreshSignature` (synthetic `removed:true` events on key revocation). Eliminating it requires moving those emit sites into the subclasses, which is part of the domino chain (state-field migration → event-type narrowing → drop type aliases).
 
 ## Changes for next major
 
@@ -60,42 +70,26 @@ Centrifuge client methods rename accordingly:
 
 ### 2. Move `publish(data)` and `history()` from BaseSubscription to StreamSubscription
 
-These are stream-specific. Currently on `BaseSubscription` because that used to be `Subscription`.
-
-```typescript
-// subscription.ts
-export class BaseSubscription extends ... {
-  // Remove: publish(data), history(opts)
-  // Keep: subscribe, unsubscribe, ready, presence, presenceStats, etc.
-}
-
-export class StreamSubscription extends BaseSubscription {
-  async publish(data: any): Promise<PublishResult> { ... }
-  async history(opts?: HistoryOptions): Promise<HistoryResult> { ... }
-}
-```
-
-This eliminates the `publish` signature conflict — `MapSubscription.publish(key, data)` no longer overrides anything. The `data?` optional hack goes away.
+Already done — both `publish(data)` and `history(opts)` live on the `Subscription` class (which will be renamed `StreamSubscription`). `BaseSubscription` no longer hosts either method, so map and shared-poll subscriptions don't inherit them. The override conflict and `data?` optional hack are gone.
 
 ### 3. Move map/shared-poll methods from BaseSubscription to subclasses
 
-Currently `mapPublish`, `mapRemove`, `track`, `untrack`, `trackedKeys` live on `BaseSubscription` with runtime guards (`if (!this._map) throw`). Move them to their respective subclasses:
+Already done. Both sides are now in their respective subclasses with no runtime guards:
 
 ```typescript
 export class MapSubscription extends BaseSubscription {
   async publish(key: string, data: any): Promise<PublishResult> { ... }
   async remove(key: string): Promise<PublishResult> { ... }
-  // mapPublish/mapRemove removed — publish/remove are the API
 }
 
 export class SharedPollSubscription extends BaseSubscription {
-  async track(...) { ... }
-  async untrack(...) { ... }
+  track(keysOrItems: string[] | SharedPollTrackItem[], signature?: string): void { ... }
+  untrack(keys: string[]): void { ... }
   trackedKeys(): Set<string> { ... }
 }
 ```
 
-This also eliminates the runtime guards — calling `track()` on a `MapSubscription` is a compile-time error, not a runtime throw.
+Calling `track()` on a `MapSubscription` (or vice versa) is now a compile-time error rather than a runtime throw.
 
 ### 4. Unify get/remove/subscriptions methods with discriminated union
 
@@ -152,8 +146,7 @@ TypeScript doesn't allow changing the EventEmitter generic on `extends`. Approac
 
 ### 7. Remove deprecated method aliases
 
-- Remove `mapPublish` / `mapRemove` from public API (already hidden by type narrowing, just delete from class)
-- Remove `track`/`untrack`/`trackedKeys` from `BaseSubscription` (moved to `SharedPollSubscription` in step 3)
+Already done. `mapPublish` / `mapRemove` no longer exist on `BaseSubscription`. `track`/`untrack`/`trackedKeys` are no longer on `BaseSubscription` — they live on `SharedPollSubscription`.
 
 ## Migration guide for users
 
@@ -177,12 +170,13 @@ The full refactor was applied and validated (tsc clean, 135 tests pass). Key fin
 
 ### `private` → `protected` is required for moving methods to subclasses
 
-Moving `publish`/`history`/`track`/`untrack` etc. to subclasses requires these BaseSubscription members to become `protected`:
+All of the BaseSubscription members needed by the migrated subclass methods are now `protected`:
 - `_centrifuge` — subclasses delegate to `this._centrifuge.publish(...)`, `this._centrifuge.mapPublish(...)`, etc.
-- `_methodCall()` — gate for all RPC methods (waits for subscribed state)
-- `_isSubscribed()` — used by track/untrack to decide whether to send immediately or buffer
-- `_sharedPollTrackedItems`, `_sharedPollGetSignature`, `_sharedPollPendingSignature`, `_sharedPollPendingItems` — accessed by SharedPollSubscription.track/untrack
-- `_sendTrackRequest()`, `_sendUntrackRequest()`, `_handleTrackError()` — called by SharedPollSubscription.track
+- `_methodCall()` — gate for all RPC methods (waits for subscribed state).
+- `_debounceMs`, `_debouncedPublish()`, `_cancelDebounce()` — used by both `Subscription.publish` and `MapSubscription.publish`/`remove`.
+- `_isSubscribed()` — used by `track`/`untrack` to decide whether to send immediately or buffer.
+- `_sharedPollTrackedItems`, `_sharedPollGetSignature`, `_sharedPollPendingSignature`, `_sharedPollPendingItems` — accessed by `SharedPollSubscription.track`/`untrack`.
+- `_sendTrackRequest()`, `_sendUntrackRequest()`, `_handleTrackError()` — called by `SharedPollSubscription.track`/`untrack`.
 
 ### Steps 6, 5, and "export classes directly" are one domino chain
 
@@ -202,14 +196,14 @@ When `removeSubscription(sub: AnySubscription | null)` replaces separate typed r
 - [ ] Rename `Subscription` → `StreamSubscription` (no deprecated alias — clean break)
 - [ ] Rename `newSubscription()` → `newStreamSubscription()` (no deprecated alias)
 - [ ] Rename `SubscriptionEvents` → `StreamSubscriptionEvents`
-- [ ] Move `publish(data)` and `history()` to `StreamSubscription` class
-- [ ] Move `mapPublish`/`mapRemove` logic into `MapSubscription.publish`/`remove`
-- [ ] Move `track`/`untrack`/`trackedKeys` to `SharedPollSubscription`
-- [ ] Change `private` → `protected` for `_centrifuge`, `_methodCall`, `_isSubscribed`, `_sharedPoll*`, `_sendTrackRequest`, `_sendUntrackRequest`, `_handleTrackError`
+- [x] Move `publish(data)` and `history(opts)` to `StreamSubscription` class _(done in v5; both live on `Subscription` pending the rename)_
+- [x] Move `mapPublish`/`mapRemove` logic into `MapSubscription.publish`/`remove`
+- [x] Move `track`/`untrack`/`trackedKeys` to `SharedPollSubscription`
+- [x] Promote all required `private` → `protected` members (`_centrifuge`, `_methodCall`, `_debounceMs`, `_debouncedPublish`, `_cancelDebounce`, `_isSubscribed`, `_sharedPollTrackedItems`, `_sharedPollGetSignature`, `_sharedPollPendingSignature`, `_sharedPollPendingItems`, `_sendTrackRequest`, `_sendUntrackRequest`, `_handleTrackError`)
 - [ ] Make `type` a const literal on each class for discriminated union narrowing
 - [ ] Unify `getSubscription`/`removeSubscription`/`subscriptions` return to `AnySubscription` discriminated union
 - [ ] Remove typed getters (`getMapSubscription`, `removeMapSubscription`, `getSharedPollSubscription`, `removeSharedPollSubscription`, `mapSubscriptions`, `sharedPollSubscriptions`)
-- [ ] Remove `mapPublish`/`mapRemove` method aliases from class
+- [x] Remove `mapPublish`/`mapRemove` method aliases from class
 - [ ] Export `StreamSubscription`, `MapSubscription`, `SharedPollSubscription` classes from `index.ts`
 - [ ] Update tests
 - [ ] Update CHANGELOG with migration notes

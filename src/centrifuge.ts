@@ -26,7 +26,7 @@ import {
   State, Options, SubscriptionState, ClientEvents,
   TypedEventEmitter, RpcResult, SubscriptionOptions,
   MapSubscriptionOptions, MapSubscriptionEvents, BaseSubscriptionEvents,
-  SharedPollSubscriptionOptions, SharedPollSubscriptionEvents,
+  SharedPollSubscriptionOptions, SharedPollSubscriptionEvents, SharedPollTrackItem,
   HistoryOptions, HistoryResult, PublishResult,
   PresenceResult, PresenceStatsResult, SubscribedContext,
   TransportEndpoint,
@@ -53,7 +53,11 @@ export type MapSubscription = CommonSurface
 
 /** Shared poll subscription: track/untrack + narrowed shared poll events. */
 export type SharedPollSubscription = CommonSurface
-  & Pick<_BaseSubscription, 'track' | 'untrack' | 'trackedKeys'>
+  & {
+    track(keysOrItems: string[] | SharedPollTrackItem[], signature?: string): void;
+    untrack(keys: string[]): void;
+    trackedKeys(): Set<string>;
+  }
   & TypedEventEmitter<SharedPollSubscriptionEvents>;
 
 const defaults: Options = {
@@ -228,6 +232,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
       minResubscribeDelay: options?.minResubscribeDelay,
       maxResubscribeDelay: options?.maxResubscribeDelay,
       delta: options?.delta,
+      tagsFilter: options?.tagsFilter,
       map: true,
       mapPageSize: options?.pageSize,
       mapUnrecoverableStrategy: options?.unrecoverableStrategy,
@@ -254,6 +259,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
       minResubscribeDelay: options?.minResubscribeDelay,
       maxResubscribeDelay: options?.maxResubscribeDelay,
       delta: options?.delta,
+      tagsFilter: options?.tagsFilter,
       map: true,
       mapPresenceType: 2, // MAP_CLIENTS_PRESENCE
       mapPageSize: options?.pageSize,
@@ -281,6 +287,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
       minResubscribeDelay: options?.minResubscribeDelay,
       maxResubscribeDelay: options?.maxResubscribeDelay,
       delta: options?.delta,
+      tagsFilter: options?.tagsFilter,
       map: true,
       mapPresenceType: 3, // MAP_USERS_PRESENCE
       mapPageSize: options?.pageSize,
@@ -302,6 +309,9 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
       throw new Error('Subscription to the channel ' + channel + ' already exists');
     }
     const sub = new _SharedPollSubscription(this, channel, {
+      token: options?.token,
+      getToken: options?.getToken,
+      data: options?.data,
       minResubscribeDelay: options?.minResubscribeDelay,
       maxResubscribeDelay: options?.maxResubscribeDelay,
       delta: options?.delta,

@@ -24,6 +24,11 @@
       "name": "poll_backend",
       "endpoint": "http://127.0.0.1:3010/refresh",
       "timeout": "5s"
+    },
+    {
+      "name": "poll_backend_pb",
+      "endpoint": "http://127.0.0.1:3011/refresh",
+      "timeout": "5s"
     }
   ],
   "http_api": {
@@ -192,6 +197,18 @@
         "subscription_type": "shared_poll",
         "shared_poll": {
           "proxy_name": "poll_backend",
+          "refresh_interval": "200ms",
+          "refresh_batch_size": 100,
+          "max_keys_per_connection": 100
+        },
+        "allow_subscribe_for_client": true
+      },
+      {
+        "name": "pollpb",
+        "subscription_type": "shared_poll",
+        "shared_poll": {
+          "proxy_name": "poll_backend_pb",
+          "mode": "versioned",
           "refresh_interval": "200ms",
           "refresh_batch_size": 100,
           "max_keys_per_connection": 100

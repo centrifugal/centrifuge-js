@@ -4,6 +4,7 @@ import {
   PublicationContext,
   TransportName,
 } from './types';
+import { errorCodes } from './codes';
 
 import WebSocket from 'ws';
 import { fetch } from 'undici';
@@ -198,7 +199,7 @@ describe('stream subscription getState', () => {
     // Error shape matches the subscribe error pattern used by map getState:
     // { type: 'subscribe', channel, error: { code, message, temporary } }
     expect(errors[0].type).toBe('subscribe');
-    expect(errors[0].error.code).toBe(13); // errorCodes.subscriptionGetState
+    expect(errors[0].error.code).toBe(errorCodes.subscriptionGetState);
     expect(errors[0].error.message).toContain('simulated DB failure');
 
     sub.unsubscribe();

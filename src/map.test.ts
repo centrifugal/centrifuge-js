@@ -147,6 +147,14 @@ test('subscribe with pre-seeded state', async () => {
   const keys = syncCtx.entries.map(e => e.key).sort();
   expect(keys).toEqual(['k1', 'k2', 'k3']);
 
+  // MapEntry shape contract: snapshot entries never carry `removed` or `score`.
+  // Locks the public surface so a regression in _getMapUpdateContext can't
+  // silently put either field back on snapshot entries.
+  for (const entry of syncCtx.entries) {
+    expect((entry as any).removed).toBeUndefined();
+    expect((entry as any).score).toBeUndefined();
+  }
+
   await disconnectClient(c);
 });
 
@@ -201,8 +209,8 @@ test('real-time removal', async () => {
   await disconnectClient(c);
 });
 
-// 5. Client mapPublish and mapRemove.
-test('client mapPublish and mapRemove', async () => {
+// 5. Client publish and remove via the SDK round-trip.
+test('client publish and remove via SDK round-trip', async () => {
   const c = createClient();
   c.connect();
   await c.ready(5000);
@@ -677,6 +685,89 @@ test('unrecoverable position with fatal strategy unsubscribes', async () => {
   const unsubCtx = await unsubscribedP;
   // Code 112 = unrecoverable position, passed through by fatal strategy.
   expect(unsubCtx.code).toBe(112);
+
+  await disconnectClient(c);
+}, 15000);
+
+// tagsFilter applied via constructor option arrives on initial subscribe.
+test('tagsFilter passed via constructor option is applied on first subscribe', async () => {
+  const c = createClient();
+  c.connect();
+  await c.ready(5000);
+
+  const ch = uniqueChannel('tagged');
+
+  // Seed entries with different tags.
+  await apiMapPublish(ch, 'eng_item', { v: 1 }, { team: 'eng' });
+  await apiMapPublish(ch, 'sales_item', { v: 2 }, { team: 'sales' });
+  await apiMapPublish(ch, 'eng_item_2', { v: 3 }, { team: 'eng' });
+
+  // Filter set at construction time — no setTagsFilter() call between
+  // newMapSubscription and subscribe(). This is the path the constructor
+  // option is meant to support.
+  const sub = c.newMapSubscription(ch, {
+    tagsFilter: { key: 'team', cmp: 'eq', val: 'eng' },
+  });
+
+  const syncP = waitForEvent<MapSyncContext>(sub, 'sync');
+  sub.subscribe();
+  await sub.ready(5000);
+
+  const sync = await syncP;
+  const keys = sync.entries.map(e => e.key).sort();
+  expect(keys).toEqual(['eng_item', 'eng_item_2']);
+
+  await disconnectClient(c);
+}, 15000);
+
+// `sync` is NOT emitted on successful recovery — only the missed update arrives.
+test('sync is NOT emitted on successful recovery', async () => {
+  const c = createClient();
+  c.connect();
+  await c.ready(5000);
+
+  const ch = uniqueChannel('positioned');
+  const sub = c.newMapSubscription(ch);
+
+  // Catch the initial sync.
+  const initialSyncP = waitForEvent<MapSyncContext>(sub, 'sync');
+  const firstUpdateP = waitForEvent<MapUpdateContext>(sub, 'update');
+
+  sub.subscribe();
+  await sub.ready(5000);
+
+  await apiMapPublish(ch, 'before_disconnect', { v: 1 });
+  await firstUpdateP;
+  await initialSyncP;
+
+  // From here on, sync must NOT fire again on a recovered resubscribe.
+  let syncCount = 0;
+  sub.on('sync', () => { syncCount++; });
+
+  // Disconnect, publish during the gap, then reconnect.
+  c.disconnect();
+  await apiMapPublish(ch, 'during_disconnect', { v: 2 });
+
+  const resubscribedP = waitForEvent<SubscribedContext>(sub, 'subscribed');
+  const recoveredUpdateP = waitForEvent<MapUpdateContext>(sub, 'update');
+
+  c.connect();
+  await c.ready(5000);
+
+  const resubCtx = await resubscribedP;
+  expect(resubCtx.recovered).toBe(true);
+
+  // The missed publication arrives as an update event.
+  const update = await recoveredUpdateP;
+  expect(update.key).toBe('during_disconnect');
+
+  // Give the SDK a moment to flush any pending sync.
+  await new Promise(resolve => setTimeout(resolve, 100));
+
+  // Critical assertion: no sync event was emitted on successful recovery.
+  // The application's existing snapshot is still valid; missed key changes
+  // arrived as update events.
+  expect(syncCount).toBe(0);
 
   await disconnectClient(c);
 }, 15000);

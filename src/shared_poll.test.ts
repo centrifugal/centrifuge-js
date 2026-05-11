@@ -1299,3 +1299,56 @@ test('getSignature rejection emits error with sharedPollGetSignature code', asyn
 
   await disconnectClient(c);
 }, 15000);
+
+// 31. signatureRefresh error on reconnect replay carries sharedPollGetSignature code.
+test('signatureRefresh error on reconnect replay uses sharedPollGetSignature code', async () => {
+  const c = createClient();
+  c.connect();
+  await c.ready(5000);
+
+  const ch = uniqueChannel('poll');
+
+  // Toggleable getSignature: succeeds on initial subscribe, rejects on replay.
+  let failNext = false;
+  const getSignature = async (ctx: SharedPollSignatureContext): Promise<SharedPollSignatureResult> => {
+    if (failNext) {
+      throw new Error('signature service unavailable on replay');
+    }
+    return {
+      keys: ctx.keys,
+      signature: makeTrackSignature(pollSecret, ch, ctx.keys, ''),
+    };
+  };
+
+  const sub = c.newSharedPollSubscription(ch, { getSignature });
+
+  sub.subscribe();
+  await sub.ready(5000);
+
+  // Successfully track a key — initial getSignature succeeds.
+  mockItems.set('sr_key', { data: { v: 1 }, version: 1 });
+  sub.track(['sr_key']);
+  await waitForEvent<SharedPollUpdateContext>(sub, 'update');
+
+  // Arm the error path. Next getSignature invocation (triggered by the
+  // replay after reconnect) will reject.
+  failNext = true;
+
+  // Collect signatureRefresh errors emitted from this point.
+  const errorP = new Promise<any>((resolve) => {
+    sub.on('error', (ctx) => {
+      if (ctx.type === 'signatureRefresh') resolve(ctx);
+    });
+  });
+
+  // Disconnect and reconnect — replay path runs and triggers the failing getSignature.
+  c.disconnect();
+  await new Promise(resolve => setTimeout(resolve, 200));
+  c.connect();
+
+  const errCtx = await errorP;
+  expect(errCtx.error.code).toBe(errorCodes.sharedPollGetSignature);
+  expect(errCtx.error.message).toContain('signature service unavailable on replay');
+
+  await disconnectClient(c);
+}, 15000);

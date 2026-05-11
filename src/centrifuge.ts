@@ -213,7 +213,10 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
 
   /** newMapSubscription allocates new map Subscription to a channel. Since server only allows
    * one subscription per channel per client this method throws if client already has
-   * channel subscription in internal registry. */
+   * channel subscription in internal registry.
+   *
+   * Experimental. Requires Centrifugo >= v6.8.0. API may change in a backwards-incompatible
+   * way in subsequent minor releases. */
   newMapSubscription(channel: string, options?: MapSubscriptionOptions): MapSubscription {
     if (this.getSubscription(channel) !== null) {
       throw new Error('Subscription to the channel ' + channel + ' already exists');
@@ -236,7 +239,10 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
   /** Create a map subscription for observing individual connections (clients presence).
    * Each entry has key=clientId and contains full ClientInfo.
    * Use this to track connections per channel.
-   * The channel should be the full presence channel name (e.g., "$clients:games"). */
+   * The channel should be the full presence channel name (e.g., "$clients:games").
+   *
+   * Experimental. Requires Centrifugo >= v6.8.0. API may change in a backwards-incompatible
+   * way in subsequent minor releases. */
   newMapClientsSubscription(channel: string, options?: MapSubscriptionOptions): MapSubscription {
     if (this.getSubscription(channel) !== null) {
       throw new Error('Subscription to the channel ' + channel + ' already exists');
@@ -260,7 +266,10 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
   /** Create a map subscription for observing unique users (users presence).
    * Each entry has key=userId (no ClientInfo stored).
    * User entries expire via TTL, providing debounce for quick reconnects.
-   * The channel should be the full presence channel name (e.g., "$users:games"). */
+   * The channel should be the full presence channel name (e.g., "$users:games").
+   *
+   * Experimental. Requires Centrifugo >= v6.8.0. API may change in a backwards-incompatible
+   * way in subsequent minor releases. */
   newMapUsersSubscription(channel: string, options?: MapSubscriptionOptions): MapSubscription {
     if (this.getSubscription(channel) !== null) {
       throw new Error('Subscription to the channel ' + channel + ' already exists');
@@ -284,7 +293,10 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
   /** newSharedPollSubscription allocates a new shared poll Subscription to a channel.
    * Shared poll subscriptions use server-side polling to aggregate interest sets
    * and deliver periodic updates with version tracking. Track items after subscribing
-   * using the track() method on the returned Subscription. */
+   * using the track() method on the returned Subscription.
+   *
+   * Experimental. Requires Centrifugo >= v6.8.0. API may change in a backwards-incompatible
+   * way in subsequent minor releases. */
   newSharedPollSubscription(channel: string, options?: SharedPollSubscriptionOptions): SharedPollSubscription {
     if (this.getSubscription(channel) !== null) {
       throw new Error('Subscription to the channel ' + channel + ' already exists');

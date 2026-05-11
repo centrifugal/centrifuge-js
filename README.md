@@ -23,6 +23,7 @@ The features implemented by this SDK can be found in [SDK feature matrix](https:
     * [Subscription token](#subscription-token)
     * [Subscription options](#subscription-options)
 * [Subscription management API](#subscription-management-api)
+* [Map and shared poll subscriptions (experimental)](#map-and-shared-poll-subscriptions-experimental)
 * [Message batching](#message-batching)
 * [Server-side subscriptions](#server-side-subscriptions)
 * [Protobuf support](#protobuf-support)
@@ -849,6 +850,13 @@ removeSubscription allows removing Subcription from the internal registry.
 `subscriptions(): Record<string, Subscription>`
 
  Get a map with all current client-side subscriptions registered in the client.
+
+## Map and shared poll subscriptions (experimental)
+
+In addition to regular channel subscriptions, this SDK exposes `newMapSubscription` (with `newMapClientsSubscription` / `newMapUsersSubscription` variants) and `newSharedPollSubscription`. Map subscriptions deliver a server-maintained key-value snapshot plus a live stream of updates; shared poll subscriptions aggregate per-key interest sets with version tracking. See API docs on the corresponding methods for details.
+
+> [!WARNING]
+> These APIs are **experimental** and require **Centrifugo >= v6.8.0**. The shape and behavior may change in a backwards-incompatible way in subsequent minor releases as the feature stabilizes.
 
 ## Message batching
 

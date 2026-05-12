@@ -92,7 +92,10 @@ function makeTrackSignature(
   const keysHash = crypto.createHash('sha256')
     .update(keys.join('\x00'))
     .digest('hex');
-  const payload = `${now}:${expiry}:${user}:${channel}:${keysHash}`;
+  // Payload fields are NUL-separated (matches the inner keys join) so colons
+  // inside user or channel can't shift between fields. The outer signature
+  // string itself stays ':'-separated — its fields are colon-free.
+  const payload = `${now}\x00${expiry}\x00${user}\x00${channel}\x00${keysHash}`;
   const hmac = crypto.createHmac('sha256', secret)
     .update(payload)
     .digest('hex');
@@ -908,8 +911,10 @@ test('track items with signature still works (backwards compat)', async () => {
   await disconnectClient(c);
 }, 15000);
 
-// 20. Multiple track() calls before subscribe — falls back to getSignature.
-test('multiple track calls before subscribe falls back to getSignature', async () => {
+// 20. Multiple track() calls before subscribe — each batch's signature is
+// cached in the library and replayed independently. getSignature is not
+// called.
+test('multiple track calls before subscribe replay all cached signatures', async () => {
   const c = createClient();
   const ch = uniqueChannel('poll');
 
@@ -925,9 +930,9 @@ test('multiple track calls before subscribe falls back to getSignature', async (
   mockItems.set('batch1', { data: { v: 1 }, version: 1 });
   mockItems.set('batch2', { data: { v: 2 }, version: 1 });
 
-  // Two track() calls with different key sets before subscribe.
-  // The second replaces pendingItems, but trackedItems has both keys,
-  // so replay must detect mismatch and use getSignature.
+  // Two track() calls with different key sets and different explicit
+  // signatures before subscribe. Both go into the signature library and
+  // both get replayed after subscribe completes.
   const sig1 = makeTrackSignature(pollSecret, ch, ['batch1'], '');
   sub.track([{ key: 'batch1', version: 0 }], sig1);
 
@@ -944,14 +949,16 @@ test('multiple track calls before subscribe falls back to getSignature', async (
   const updates = await updateP;
   const keys = updates.map(u => u.key).sort();
   expect(keys).toEqual(['batch1', 'batch2']);
-  // Must have called getSignature because pending items didn't match tracked items.
-  expect(getSignatureCalls).toBe(1);
+  // Both batches had explicit signatures in the library — no getSignature.
+  expect(getSignatureCalls).toBe(0);
 
   await disconnectClient(c);
 }, 15000);
 
-// 21. track() + untrack() before subscribe — buffered signature invalidated.
-test('track then untrack before subscribe invalidates buffered signature', async () => {
+// 21. track() + untrack() before subscribe — replay sends the original batch
+// (HMAC valid for the full key set) then chains an untrack for keys the user
+// removed locally. No getSignature call required.
+test('track then untrack before subscribe replays via chained untrack', async () => {
   const c = createClient();
   const ch = uniqueChannel('poll');
 
@@ -981,15 +988,18 @@ test('track then untrack before subscribe invalidates buffered signature', async
 
   const ctx = await updateP;
   expect(ctx.key).toBe('stay');
-  // Buffered sig covered ['stay','gone'] but tracked items are only ['stay'] —
-  // mismatch, so getSignature must have been called.
-  expect(getSignatureCalls).toBe(1);
+  // SDK replayed the original signature batch with the full key set, then
+  // chained untrack(['gone']) — no getSignature needed.
+  expect(getSignatureCalls).toBe(0);
 
   await disconnectClient(c);
 }, 15000);
 
-// 22. Reconnect clears buffered signature — uses getSignature on replay.
-test('reconnect clears buffered signature', async () => {
+// 22. Reconnect reuses cached signature without calling getSignature.
+// Cached signatures are preserved across disconnects (cleared only on
+// explicit unsubscribe) so mass-reconnect storms don't trigger mass
+// getSignature calls on the application backend.
+test('reconnect reuses cached signature without calling getSignature', async () => {
   const c = createClient();
   c.connect();
   await c.ready(5000);
@@ -1030,11 +1040,11 @@ test('reconnect clears buffered signature', async () => {
   await c.ready(5000);
   await sub.ready(5000);
 
-  // After reconnect, replay must use getSignature (buffered sig was cleared).
+  // After reconnect, replay must reuse the cached signature — no getSignature.
   const update = await waitForEvent<SharedPollUpdateContext>(sub, 'update');
   expect(update.key).toBe('rk1');
   expect(update.version).toBe(2);
-  expect(getSignatureCalls).toBe(1);
+  expect(getSignatureCalls).toBe(0);
 
   await disconnectClient(c);
 }, 15000);
@@ -1300,55 +1310,311 @@ test('getSignature rejection emits error with sharedPollGetSignature code', asyn
   await disconnectClient(c);
 }, 15000);
 
-// 31. signatureRefresh error on reconnect replay carries sharedPollGetSignature code.
-test('signatureRefresh error on reconnect replay uses sharedPollGetSignature code', async () => {
+// 31. signatureRefresh error on deferred-track replay carries sharedPollGetSignature code.
+// Reconnects reuse cached signatures (no getSignature call), so this exercises
+// the other path that calls getSignature inside _sharedPollReplayTrack: a
+// track() issued before subscribe with no cached sig, where Phase 2 of the
+// replay must obtain a signature for the deferred keys after subscribe.
+test('signatureRefresh error on deferred-track replay uses sharedPollGetSignature code', async () => {
   const c = createClient();
   c.connect();
   await c.ready(5000);
 
   const ch = uniqueChannel('poll');
-
-  // Toggleable getSignature: succeeds on initial subscribe, rejects on replay.
-  let failNext = false;
-  const getSignature = async (ctx: SharedPollSignatureContext): Promise<SharedPollSignatureResult> => {
-    if (failNext) {
+  const sub = c.newSharedPollSubscription(ch, {
+    getSignature: async () => {
       throw new Error('signature service unavailable on replay');
-    }
-    return {
-      keys: ctx.keys,
-      signature: makeTrackSignature(pollSecret, ch, ctx.keys, ''),
-    };
-  };
+    },
+  });
 
-  const sub = c.newSharedPollSubscription(ch, { getSignature });
-
-  sub.subscribe();
-  await sub.ready(5000);
-
-  // Successfully track a key — initial getSignature succeeds.
-  mockItems.set('sr_key', { data: { v: 1 }, version: 1 });
+  // Track BEFORE subscribe with string keys — auto path, no cached signature.
+  // The deferred getSignature call happens inside _sharedPollReplayTrack
+  // after subscribe and emits a signatureRefresh error when it rejects.
   sub.track(['sr_key']);
-  await waitForEvent<SharedPollUpdateContext>(sub, 'update');
 
-  // Arm the error path. Next getSignature invocation (triggered by the
-  // replay after reconnect) will reject.
-  failNext = true;
-
-  // Collect signatureRefresh errors emitted from this point.
   const errorP = new Promise<any>((resolve) => {
     sub.on('error', (ctx) => {
       if (ctx.type === 'signatureRefresh') resolve(ctx);
     });
   });
 
-  // Disconnect and reconnect — replay path runs and triggers the failing getSignature.
-  c.disconnect();
-  await new Promise(resolve => setTimeout(resolve, 200));
-  c.connect();
+  sub.subscribe();
 
   const errCtx = await errorP;
   expect(errCtx.error.code).toBe(errorCodes.sharedPollGetSignature);
   expect(errCtx.error.message).toContain('signature service unavailable on replay');
+
+  await disconnectClient(c);
+}, 15000);
+
+// ============ Signature Refresh Tests ============
+
+// 32. TTL-driven refresh: a short-TTL signature triggers _sharedPollRefreshSignature
+// after the TTL elapses, and getSignature is invoked with ALL tracked keys
+// (consolidating refresh).
+test('refresh: short TTL triggers consolidating getSignature call', async () => {
+  const c = createClient();
+  c.connect();
+  await c.ready(5000);
+
+  const ch = uniqueChannel('poll');
+
+  // Capture the SECOND getSignature call (refresh) via a deferred promise.
+  let captureRefreshCall!: (v: { keys: string[] }) => void;
+  const refreshCallP = new Promise<{ keys: string[] }>(resolve => {
+    captureRefreshCall = resolve;
+  });
+
+  let getSignatureCalls = 0;
+  const sub = c.newSharedPollSubscription(ch, {
+    getSignature: async (ctx) => {
+      getSignatureCalls++;
+      // First call: 6s TTL → refresh fires ~6s after track. Subsequent: long TTL.
+      const ttl = getSignatureCalls === 1 ? 6 : 3600;
+      const signature = makeTrackSignature(pollSecret, ch, ctx.keys, '', ttl);
+      if (getSignatureCalls === 2) captureRefreshCall({ keys: ctx.keys });
+      return { keys: ctx.keys, signature };
+    },
+  });
+
+  sub.subscribe();
+  await sub.ready(5000);
+
+  mockItems.set('rk', { data: { v: 1 }, version: 1 });
+  sub.track(['rk']);
+  await waitForEvent<SharedPollUpdateContext>(sub, 'update');
+  expect(getSignatureCalls).toBe(1);
+
+  // Wait up to 10s for the refresh to fire.
+  const refreshCtx = await Promise.race([
+    refreshCallP,
+    new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error('refresh did not fire in 10s')), 10000)
+    ),
+  ]);
+  expect(refreshCtx.keys).toEqual(['rk']);
+  expect(getSignatureCalls).toBe(2);
+
+  await disconnectClient(c);
+}, 20000);
+
+// 33. 109 on a track command triggers a consolidating refresh.
+// Use an expired explicit signature so the server rejects with ErrorTokenExpired.
+test('refresh: 109 on track triggers consolidating getSignature call', async () => {
+  const c = createClient();
+  c.connect();
+  await c.ready(5000);
+
+  const ch = uniqueChannel('poll');
+
+  // getSignature: returns a valid (long-TTL) sig when SDK refreshes after 109.
+  let getSignatureCalls = 0;
+  const sub = c.newSharedPollSubscription(ch, {
+    getSignature: async (ctx) => {
+      getSignatureCalls++;
+      return { keys: ctx.keys, signature: makeTrackSignature(pollSecret, ch, ctx.keys, '') };
+    },
+  });
+
+  sub.subscribe();
+  await sub.ready(5000);
+
+  // Inject an explicit signature whose expiry is past the server's 5s grace.
+  mockItems.set('109_key', { data: { v: 1 }, version: 1 });
+  const expiredSig = makeTrackSignature(pollSecret, ch, ['109_key'], '', -60);
+  // Listen for the eventual update after refresh.
+  const updateP = waitForEvent<SharedPollUpdateContext>(sub, 'update');
+  sub.track([{ key: '109_key', version: 0 }], expiredSig);
+
+  // After server returns 109, SDK calls getSignature for a fresh consolidated
+  // signature covering all tracked keys, then re-sends the track command.
+  const ctx = await updateP;
+  expect(ctx.key).toBe('109_key');
+  expect(getSignatureCalls).toBe(1); // one consolidating refresh call
+
+  await disconnectClient(c);
+}, 15000);
+
+// 34. Multiple concurrent 109 errors (e.g. multi-batch replay with all sigs expired)
+// collapse into a SINGLE refresh — the in-flight guard prevents duplicate
+// getSignature calls.
+test('refresh: in-flight guard collapses concurrent 109s into one refresh', async () => {
+  const c = createClient();
+  c.connect();
+  await c.ready(5000);
+
+  const ch = uniqueChannel('poll');
+
+  let getSignatureCalls = 0;
+  const sub = c.newSharedPollSubscription(ch, {
+    getSignature: async (ctx) => {
+      getSignatureCalls++;
+      // Slow getSignature so the in-flight window is large enough to see
+      // duplicate-call attempts if the guard were broken.
+      await new Promise(resolve => setTimeout(resolve, 100));
+      return { keys: ctx.keys, signature: makeTrackSignature(pollSecret, ch, ctx.keys, '') };
+    },
+  });
+
+  sub.subscribe();
+  await sub.ready(5000);
+
+  mockItems.set('m1', { data: { v: 1 }, version: 1 });
+  mockItems.set('m2', { data: { v: 2 }, version: 1 });
+  mockItems.set('m3', { data: { v: 3 }, version: 1 });
+
+  // Three separate track() calls each with an expired explicit signature.
+  // Each will fail 109 server-side, and each failure routes to
+  // _sharedPollRefreshSignature — but the in-flight guard collapses them.
+  const updatesP = collectEvents<SharedPollUpdateContext>(sub, 'update', 3);
+  sub.track([{ key: 'm1', version: 0 }], makeTrackSignature(pollSecret, ch, ['m1'], '', -60));
+  sub.track([{ key: 'm2', version: 0 }], makeTrackSignature(pollSecret, ch, ['m2'], '', -60));
+  sub.track([{ key: 'm3', version: 0 }], makeTrackSignature(pollSecret, ch, ['m3'], '', -60));
+
+  await updatesP;
+  // Exactly one consolidating getSignature call covered all three.
+  expect(getSignatureCalls).toBe(1);
+
+  await disconnectClient(c);
+}, 15000);
+
+// 35. Refresh consolidates the signature library into ONE entry covering all
+// currently tracked keys (expired entries get replaced; the new sig covers
+// everything).
+test('refresh: consolidates library into a single entry', async () => {
+  const c = createClient();
+  c.connect();
+  await c.ready(5000);
+
+  const ch = uniqueChannel('poll');
+  const sub = c.newSharedPollSubscription(ch, {
+    getSignature: async (ctx) => ({
+      keys: ctx.keys,
+      signature: makeTrackSignature(pollSecret, ch, ctx.keys, ''),
+    }),
+  });
+
+  sub.subscribe();
+  await sub.ready(5000);
+
+  mockItems.set('lc1', { data: { v: 1 }, version: 1 });
+  mockItems.set('lc2', { data: { v: 2 }, version: 1 });
+
+  // Two explicit-sig track() calls → library has two entries.
+  const u1 = waitForEvent<SharedPollUpdateContext>(sub, 'update');
+  sub.track([{ key: 'lc1', version: 0 }], makeTrackSignature(pollSecret, ch, ['lc1'], ''));
+  await u1;
+  const u2 = waitForEvent<SharedPollUpdateContext>(sub, 'update');
+  sub.track([{ key: 'lc2', version: 0 }], makeTrackSignature(pollSecret, ch, ['lc2'], ''));
+  await u2;
+
+  // @ts-ignore – private field access for assertion only.
+  expect(sub._sharedPollSignatures.length).toBe(2);
+
+  // Force a refresh by sending an expired sig — server returns 109,
+  // _sharedPollRefreshSignature consolidates 'lc1' + 'lc2' into one entry.
+  mockItems.set('lc3', { data: { v: 3 }, version: 1 });
+  const u3 = waitForEvent<SharedPollUpdateContext>(sub, 'update');
+  sub.track([{ key: 'lc3', version: 0 }], makeTrackSignature(pollSecret, ch, ['lc3'], '', -60));
+  await u3;
+
+  // After refresh: a single consolidated entry covers all three keys.
+  // @ts-ignore – private field access for assertion only.
+  expect(sub._sharedPollSignatures.length).toBe(1);
+  // @ts-ignore – private field access for assertion only.
+  expect(new Set(sub._sharedPollSignatures[0].keys))
+    .toEqual(new Set(['lc1', 'lc2', 'lc3']));
+
+  await disconnectClient(c);
+}, 15000);
+
+// 36. Refresh target tracks MIN ttl across multiple track responses.
+// SDK schedules its refresh at the EARLIEST deadline received across all
+// responses — refreshing slightly too early is harmless, too late risks 109.
+test('refresh: target tracks MIN ttl across responses', async () => {
+  const c = createClient();
+  c.connect();
+  await c.ready(5000);
+
+  const ch = uniqueChannel('poll');
+  const sub = c.newSharedPollSubscription(ch, {
+    getSignature: makeGetSignature(pollSecret, ch),
+  });
+
+  sub.subscribe();
+  await sub.ready(5000);
+
+  mockItems.set('t1', { data: { v: 1 }, version: 1 });
+  mockItems.set('t2', { data: { v: 2 }, version: 1 });
+
+  // First track: long TTL.
+  const u1 = waitForEvent<SharedPollUpdateContext>(sub, 'update');
+  sub.track([{ key: 't1', version: 0 }], makeTrackSignature(pollSecret, ch, ['t1'], '', 3600));
+  await u1;
+
+  // @ts-ignore – private field access for assertion only.
+  const targetAfterLong = sub._sharedPollSignatureRefreshTargetMs;
+  expect(targetAfterLong).toBeGreaterThan(Date.now() + 3000 * 1000);
+
+  // Second track: shorter TTL (~30s). Target should move EARLIER.
+  const u2 = waitForEvent<SharedPollUpdateContext>(sub, 'update');
+  sub.track([{ key: 't2', version: 0 }], makeTrackSignature(pollSecret, ch, ['t2'], '', 30));
+  await u2;
+
+  // @ts-ignore – private field access for assertion only.
+  const targetAfterShort = sub._sharedPollSignatureRefreshTargetMs;
+  expect(targetAfterShort).toBeLessThan(targetAfterLong);
+  expect(targetAfterShort).toBeLessThan(Date.now() + 60 * 1000);
+
+  await disconnectClient(c);
+}, 15000);
+
+// 37. Revoked keys trigger an explicit untrack to the server. Without it the
+// server keeps broadcasting for revoked keys and the SDK silently drops them.
+test('revoked keys send explicit untrack to server', async () => {
+  const c = createClient();
+  c.connect();
+  await c.ready(5000);
+
+  const ch = uniqueChannel('poll');
+  // getSignature authorizes only "allowed" and revokes "revoked".
+  const sub = c.newSharedPollSubscription(ch, {
+    getSignature: async (ctx: SharedPollSignatureContext) => {
+      const authorized = ctx.keys.filter(k => k !== 'revoked');
+      return {
+        keys: authorized,
+        signature: makeTrackSignature(pollSecret, ch, authorized, ''),
+      };
+    },
+  });
+
+  // Spy on the wire-level untrack helper so we can observe which keys the
+  // SDK sends to Centrifugo (versus only emitting a local removal update).
+  const untrackCalls: string[][] = [];
+  // @ts-ignore – overriding the internal helper for inspection.
+  const originalSendUntrack = sub._sendUntrackRequest.bind(sub);
+  // @ts-ignore – method shadow.
+  sub._sendUntrackRequest = (keys: string[]) => {
+    untrackCalls.push([...keys]);
+    return originalSendUntrack(keys);
+  };
+
+  sub.subscribe();
+  await sub.ready(5000);
+
+  mockItems.set('allowed', { data: { v: 1 }, version: 1 });
+
+  const updatesP = collectEvents<SharedPollUpdateContext>(sub, 'update', 2);
+  sub.track(['allowed', 'revoked']);
+  await updatesP;
+
+  // SDK must have sent an untrack for "revoked" so the server stops tracking it.
+  // Wait briefly for the async untrack to dispatch.
+  await new Promise(resolve => setTimeout(resolve, 100));
+  const allRevokedSent = untrackCalls.flat();
+  expect(allRevokedSent).toContain('revoked');
+  // And "allowed" must NOT have been untracked.
+  expect(allRevokedSent).not.toContain('allowed');
 
   await disconnectClient(c);
 }, 15000);

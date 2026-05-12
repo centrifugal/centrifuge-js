@@ -80,7 +80,8 @@ function makeTrackSignature(
   const keysHash = crypto.createHash('sha256')
     .update(keys.join('\x00'))
     .digest('hex');
-  const payload = `${now}:${expiry}:${user}:${channel}:${keysHash}`;
+  // Payload fields are NUL-separated to match the server-side verifier.
+  const payload = `${now}\x00${expiry}\x00${user}\x00${channel}\x00${keysHash}`;
   const hmac = crypto.createHmac('sha256', secret)
     .update(payload)
     .digest('hex');

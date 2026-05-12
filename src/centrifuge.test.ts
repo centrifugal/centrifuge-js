@@ -53,6 +53,12 @@ test('state invalidated disconnect (3014) clears token and map state', () => {
   (streamSub as any)._token = 'some-stream-sub-token';
   (streamSub as any)._offset = 10;
   (streamSub as any)._epoch = 'def';
+  // Stream sub with fossil delta would carry a delta base here.
+  (streamSub as any)._prevValueMap.set('', 'stream-delta-base');
+
+  // Create a shared poll subscription with a stale per-key delta base.
+  const sharedPollSub = c.newSharedPollSubscription('test:poll', {});
+  (sharedPollSub as any)._prevValueMap.set('k1', 'shared-poll-delta-base');
 
   // Simulate server sending disconnect code 3014.
   (c as any)._handleDisconnect({ code: 3014, reason: 'state invalidated' });
@@ -72,10 +78,16 @@ test('state invalidated disconnect (3014) clears token and map state', () => {
   expect((sub as any)._mapCursor).toBe('');
   expect((sub as any)._prevValueMap.size).toBe(0);
 
-  // Stream subscription: token cleared, but position preserved.
+  // Stream subscription: token cleared, position preserved, but stale delta
+  // base dropped — a stale base would corrupt decoding of the first pub
+  // after re-subscribe.
   expect((streamSub as any)._token).toBe('');
   expect((streamSub as any)._offset).toBe(10);
   expect((streamSub as any)._epoch).toBe('def');
+  expect((streamSub as any)._prevValueMap.size).toBe(0);
+
+  // Shared poll subscription: delta base also cleared for the same reason.
+  expect((sharedPollSub as any)._prevValueMap.size).toBe(0);
 });
 
 test('state invalidated unsubscribe (2502) clears sub token and map state', () => {

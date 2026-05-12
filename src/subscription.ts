@@ -82,12 +82,32 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
   private _sharedPollEpoch: string = '';
   protected _sharedPollTrackedItems: Map<string, number> = new Map();  // key → version
   protected _sharedPollGetSignature: null | ((ctx: SharedPollSignatureContext) => Promise<SharedPollSignatureResult>) = null;
+  // TTL-driven and 109-driven consolidating refresh (one call to getSignature
+  // covering all tracked keys, replaces the library with one entry).
   private _sharedPollSignatureRefreshTimeout?: null | ReturnType<typeof setTimeout> = null;
   private _sharedPollSignatureRefreshAttempts: number = 0;
+  // Per-track-command transient retry (track call failed with temporary error).
   private _sharedPollTrackRetryTimeout?: null | ReturnType<typeof setTimeout> = null;
   private _sharedPollTrackRetryAttempts: number = 0;
-  protected _sharedPollPendingSignature: string | null = null;
-  protected _sharedPollPendingItems: SharedPollTrackItem[] | null = null;
+  // Replay-getSignature retry (Phase 2 of _sharedPollReplayTrack failed). Held
+  // separately so it can't clobber the refresh timer or accumulate backoff
+  // attempts onto refresh failures.
+  private _sharedPollReplayRetryTimeout?: null | ReturnType<typeof setTimeout> = null;
+  private _sharedPollReplayRetryAttempts: number = 0;
+  // Library of HMAC signatures previously obtained for track() calls.
+  // Each entry covers the exact key set originally signed; reused on reconnect
+  // so we don't hit the application's getSignature endpoint for every client
+  // during mass reconnect storms. Periodic refresh consolidates entries into
+  // one combined signature covering all currently tracked keys.
+  protected _sharedPollSignatures: Array<{ keys: string[]; signature: string }> = [];
+  // Earliest scheduled refresh time (unix milliseconds) across all received
+  // track responses. Server returns MIN ttl per response; SDK keeps the
+  // single earliest deadline as the refresh target. Cleared on consolidation
+  // refresh and on explicit unsubscribe.
+  private _sharedPollSignatureRefreshTargetMs: number | null = null;
+  // Guard against concurrent refresh calls — multiple 109 errors during
+  // reconnect replay could otherwise trigger overlapping getSignature calls.
+  protected _sharedPollSignatureRefreshInFlight: boolean = false;
 
   /** Subscription constructor should not be used directly, create subscriptions using Client method. */
   constructor(centrifuge: Centrifuge, channel: string, options?: Partial<InternalSubscriptionOptions>) {
@@ -394,21 +414,32 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
     this._clearRefreshTimeout();
     this._clearSharedPollSignatureRefresh();
     this._clearSharedPollTrackRetry();
-    // Discard buffered signature — stale after disconnect/unsubscribe.
-    this._sharedPollPendingSignature = null;
-    this._sharedPollPendingItems = null;
+    this._clearSharedPollReplayRetry();
+    // Drop the stale refresh target — the replay after reconnect will set a
+    // fresh one from the next batch of track responses.
+    this._sharedPollSignatureRefreshTargetMs = null;
+    // Reset the in-flight guard so refresh can run again after reconnect.
+    this._sharedPollSignatureRefreshInFlight = false;
+    // NOTE: do NOT clear _sharedPollSignatures or _sharedPollTrackedItems.
+    // They persist across reconnects so _sharedPollReplayTrack can re-send
+    // tracks using the cached signatures — avoids hitting getSignature for
+    // every client during mass reconnect storms. Cleared only on explicit
+    // unsubscribe via _setUnsubscribed.
   }
 
   /** Called when server sends "state invalidated" disconnect (code 3014).
-   *  Clears subscription token and resets map state so next subscribe
-   *  obtains a fresh token and does a full state re-sync. */
+   *  Clears subscription token and resets cached state so next subscribe
+   *  obtains a fresh token and does a full state re-sync. Delta base is
+   *  cleared for every subscription type (stream/map/shared_poll all use
+   *  _prevValueMap for fossil delta) — a stale base would corrupt decoding
+   *  of the first publication after re-subscribe. */
   _invalidateState() {
     this._token = '';
+    this._prevValueMap = new Map();
     if (this._map) {
       this._offset = null;
       this._epoch = null;
       this._recover = false;
-      this._prevValueMap = new Map();
       this._mapStateBuffer = [];
       this._mapStreamBuffer = [];
       this._mapCursor = '';
@@ -813,6 +844,13 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
     }
     this._inflight = false;
     this._sharedPollEpoch = '';
+    // Explicit unsubscribe — drop all shared-poll state so a subsequent
+    // subscribe starts cold. Reconnects use _clearSubscribedState (above)
+    // which preserves the signature library and tracked items.
+    this._sharedPollSignatures = [];
+    this._sharedPollTrackedItems.clear();
+    this._sharedPollSignatureRefreshInFlight = false;
+    this._sharedPollSignatureRefreshTargetMs = null;
     this._cancelAllDebounce();
     if (this._setState(SubscriptionState.Unsubscribed)) {
       this.emit('unsubscribed', { channel: this.channel, code: code, reason: reason });
@@ -846,6 +884,16 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
 
     let ctx: any;
     if (this._sharedPoll) {
+      // Ignore publications for keys the user is no longer tracking.
+      // Common race: SDK replays a cached signature batch on reconnect with
+      // some keys the user untracked locally; the chained untrack hasn't
+      // reached the server yet, so the server may push updates for those
+      // keys in the meantime. Without this guard those updates would
+      // re-insert the keys into _sharedPollTrackedItems and emit 'update'
+      // events the user already opted out of.
+      if (pub.key && !this._sharedPollTrackedItems.has(pub.key)) {
+        return;
+      }
       // Update locally tracked versions.
       if (pub.key) {
         if (pub.removed) {
@@ -1204,30 +1252,62 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
 
   // ============ Shared Poll Internal Helpers ============
 
-  protected _sendTrackRequest(items: { key: string; version: number }[], signature: string): Promise<void> {
-    return new Promise<void>((resolve, reject) => {
-      const req: any = {
-        channel: this.channel,
-        type: 1,
-        items: items.map(i => i.version > 0 ? i : { key: i.key }),
-        signature: signature,
-      };
-      const msg = { 'sub_refresh': req };
-      // @ts-ignore – we are hiding some symbols from public API autocompletion.
-      this._centrifuge._call(msg).then(resolveCtx => {
-        const result = resolveCtx.reply.sub_refresh;
-        this._handleTrackResponse(result);
-        if (resolveCtx.next) {
-          resolveCtx.next();
-        }
-        resolve();
-      }, rejectCtx => {
-        if (rejectCtx.next) {
-          rejectCtx.next();
-        }
-        reject(rejectCtx.error);
+  // Send ONE or MORE signature batches in a single sub_refresh frame.
+  // Splits across frames when the estimated payload exceeds the wire frame
+  // budget — keeps each request well under the 64k Centrifugo frame limit.
+  protected _sendTrackRequest(
+    batches: Array<{ items: { key: string; version: number }[]; signature: string }>,
+  ): Promise<void> {
+    if (batches.length === 0) return Promise.resolve();
+
+    // Estimate ~80 bytes per signature + ~40 bytes per item (key + varint + framing).
+    // ~60KB budget leaves headroom for envelope, channel name, and reply.
+    const maxBytes = 60000;
+    const frames: typeof batches[] = [];
+    let current: typeof batches = [];
+    let currentBytes = 100; // envelope baseline
+    for (const b of batches) {
+      let cost = 100;
+      for (const it of b.items) cost += it.key.length + 16;
+      if (current.length > 0 && currentBytes + cost > maxBytes) {
+        frames.push(current);
+        current = [];
+        currentBytes = 100;
+      }
+      current.push(b);
+      currentBytes += cost;
+    }
+    if (current.length > 0) frames.push(current);
+
+    const send = (frame: typeof batches): Promise<void> =>
+      new Promise<void>((resolve, reject) => {
+        const req: any = {
+          channel: this.channel,
+          type: 1,
+          track: frame.map(b => ({
+            signature: b.signature,
+            items: b.items.map(i => i.version > 0 ? i : { key: i.key }),
+          })),
+        };
+        const msg = { 'sub_refresh': req };
+        // @ts-ignore – we are hiding some symbols from public API autocompletion.
+        this._centrifuge._call(msg).then(resolveCtx => {
+          this._handleTrackResponse(resolveCtx.reply.sub_refresh);
+          if (resolveCtx.next) resolveCtx.next();
+          resolve();
+        }, rejectCtx => {
+          if (rejectCtx.next) rejectCtx.next();
+          reject(rejectCtx.error);
+        });
       });
-    });
+
+    // Sequential dispatch: a frame failure stops further frames so the SDK
+    // doesn't end up with some frames committed server-side and others not
+    // — which would otherwise lead to retry-with-duplicate-publications.
+    return frames.reduce<Promise<void>>(
+      (chain, frame) => chain.then(() => send(frame)),
+      Promise.resolve(),
+    );
   }
 
   protected _sendUntrackRequest(keys: string[]): Promise<void> {
@@ -1235,7 +1315,7 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
       const req: any = {
         channel: this.channel,
         type: 2,
-        untrack_keys: keys,
+        untrack: keys,
       };
       const msg = { 'sub_refresh': req };
       // @ts-ignore – we are hiding some symbols from public API autocompletion.
@@ -1256,20 +1336,42 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
   private _handleTrackResponse(result: any) {
     // Track succeeded — reset retry state.
     this._clearSharedPollTrackRetry();
-    // Process cached items from server.
-    if (result.items && result.items.length > 0) {
+    // Process cached items from server (publications across all batches in the request).
+    if (result && result.items && result.items.length > 0) {
       for (const pub of result.items) {
         this._handlePublication(pub);
       }
     }
-    // Existing TTL handling.
-    this._clearSharedPollSignatureRefresh();
-    if (result.expires === true) {
-      this._sharedPollSignatureRefreshTimeout = setTimeout(
-        () => this._sharedPollRefreshSignature(),
-        ttlMilliseconds(result.ttl)
-      );
+    // Server returns MIN ttl across all batches in this request. Keep the
+    // EARLIEST deadline received across all responses as the refresh target.
+    // Refreshing too early is harmless (cheap getSignature call); refreshing
+    // too late risks 109 errors mid-replay, so we err earlier.
+    if (result && result.expires === true && result.ttl > 0) {
+      const targetMs = Date.now() + result.ttl * 1000;
+      this._maybeScheduleSharedPollSignatureRefresh(targetMs);
     }
+  }
+
+  // Reschedule the consolidating refresh timer if `targetMs` is earlier than
+  // the currently scheduled target. No-op when a sooner refresh is already
+  // pending. Pass null to clear and reset (e.g. after consolidation succeeded).
+  private _maybeScheduleSharedPollSignatureRefresh(targetMs: number | null) {
+    if (targetMs === null) {
+      this._sharedPollSignatureRefreshTargetMs = null;
+      this._clearSharedPollSignatureRefresh();
+      return;
+    }
+    if (!this._isSubscribed()) return;
+    if (this._sharedPollSignatureRefreshTargetMs !== null &&
+        targetMs >= this._sharedPollSignatureRefreshTargetMs) {
+      return; // existing timer fires sooner
+    }
+    this._sharedPollSignatureRefreshTargetMs = targetMs;
+    this._clearSharedPollSignatureRefresh();
+    this._sharedPollSignatureRefreshTimeout = setTimeout(
+      () => this._sharedPollRefreshSignature(),
+      Math.max(0, targetMs - Date.now()),
+    );
   }
 
   private _clearSharedPollSignatureRefresh() {
@@ -1278,6 +1380,9 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
       this._sharedPollSignatureRefreshTimeout = null;
     }
     this._sharedPollSignatureRefreshAttempts = 0;
+    // Do not clear the target here — _maybeScheduleSharedPollSignatureRefresh
+    // owns target lifecycle. This helper only stops the timer and resets
+    // backoff so the next reschedule starts fresh.
   }
 
   private _clearSharedPollTrackRetry() {
@@ -1286,6 +1391,14 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
       this._sharedPollTrackRetryTimeout = null;
     }
     this._sharedPollTrackRetryAttempts = 0;
+  }
+
+  private _clearSharedPollReplayRetry() {
+    if (this._sharedPollReplayRetryTimeout !== null) {
+      clearTimeout(this._sharedPollReplayRetryTimeout);
+      this._sharedPollReplayRetryTimeout = null;
+    }
+    this._sharedPollReplayRetryAttempts = 0;
   }
 
   protected _handleTrackError(err: any) {
@@ -1297,6 +1410,15 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
       channel: this.channel,
       error: err,
     });
+    // Error 109 (token expired) on a track command means the signature has
+    // expired past the server's grace period. Trigger a refresh — getSignature
+    // will issue a fresh consolidated signature that replaces stale ones.
+    // The in-flight guard inside _sharedPollRefreshSignature prevents
+    // duplicate refresh calls when multiple track retries all hit 109.
+    if (err.code === 109) {
+      this._sharedPollRefreshSignature();
+      return;
+    }
     if (err.code < 100 || err.temporary === true) {
       // Temporary error — retry full track replay with backoff.
       this._sharedPollTrackRetryTimeout = setTimeout(
@@ -1306,25 +1428,42 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
     }
   }
 
+  // _sharedPollRefreshSignature obtains a fresh consolidated signature
+  // covering all currently tracked keys, then replaces the library with the
+  // single new entry. Triggered by the TTL timer (server's `expires/ttl`
+  // response) and by 109 errors on track commands. The in-flight guard
+  // collapses concurrent refresh attempts into one.
   private _sharedPollRefreshSignature() {
     this._clearSharedPollSignatureRefresh();
     if (!this._isSubscribed()) return;
     if (!this._sharedPollGetSignature) return;
     if (this._sharedPollTrackedItems.size === 0) return;
+    if (this._sharedPollSignatureRefreshInFlight) return;
 
+    // Reset the global refresh target — the timer that pointed at this
+    // moment has already fired, and the in-flight refresh will publish a
+    // fresh deadline via the consolidated track response. Resetting here
+    // (not after consolidation success) lets any concurrent track() call
+    // that lands during getSignature still set a tighter target if its
+    // signature is shorter-lived than the consolidated one.
+    this._sharedPollSignatureRefreshTargetMs = null;
+    this._sharedPollSignatureRefreshInFlight = true;
     const keys = Array.from(this._sharedPollTrackedItems.keys());
     const self = this;
 
     this._sharedPollGetSignature({ keys }).then(result => {
+      self._sharedPollSignatureRefreshInFlight = false;
       if (!self._isSubscribed()) return;
 
       self._sharedPollSignatureRefreshAttempts = 0;
 
       // Handle revoked keys (keys not in the returned set).
       const returnedKeys = new Set(result.keys);
+      const revokedKeys: string[] = [];
       for (const key of keys) {
         if (!returnedKeys.has(key)) {
           self._sharedPollTrackedItems.delete(key);
+          revokedKeys.push(key);
           self.emit('update', {
             channel: self.channel,
             key: key,
@@ -1332,6 +1471,13 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
             removed: true,
           } as SharedPollUpdateContext);
         }
+      }
+      // Tell the server to stop tracking revoked keys — otherwise the server
+      // keeps broadcasting them and the SDK silently drops the publications.
+      if (revokedKeys.length > 0) {
+        self._sendUntrackRequest(revokedKeys).catch(err => {
+          self.emit('error', { type: 'untrack', channel: self.channel, error: err });
+        });
       }
 
       // Re-track only keys covered by the returned signature.
@@ -1343,12 +1489,29 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
         }
       }
 
+      // Replace the signature library with the consolidated entry. Keep
+      // any entries that cover keys NOT in the consolidation — those keys
+      // may have been added via a concurrent track() while getSignature was
+      // in flight and their signatures must remain available for reconnect.
+      const consolidatedKeySet = new Set(result.keys);
+      const uncovered = self._sharedPollSignatures.filter(entry =>
+        entry.keys.some(k => self._sharedPollTrackedItems.has(k) && !consolidatedKeySet.has(k))
+      );
+      // Target was already reset at refresh start; any concurrent track()
+      // during getSignature has set its own target if its TTL was tighter.
+      // The consolidated track response below will set a target unless
+      // something earlier is already in place.
+      self._sharedPollSignatures = items.length > 0
+        ? [{ keys: result.keys, signature: result.signature }, ...uncovered]
+        : uncovered;
+
       if (items.length === 0) return;
 
-      self._sendTrackRequest(items, result.signature).catch(err => {
+      self._sendTrackRequest([{ items, signature: result.signature }]).catch(err => {
         self._handleTrackError(err);
       });
     }).catch(e => {
+      self._sharedPollSignatureRefreshInFlight = false;
       self.emit('error', {
         type: 'signatureRefresh',
         channel: self.channel,
@@ -1365,51 +1528,110 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
     });
   }
 
+  // _sharedPollReplayTrack runs after subscribe completes — on initial
+  // subscribe AND after every reconnect. It reuses every cached signature
+  // in _sharedPollSignatures so that mass reconnects don't trigger mass
+  // getSignature calls on the application backend.
+  //
+  // For each cached batch:
+  //   - Build a track command with the batch's ORIGINAL key set (HMAC was
+  //     signed over those keys, so the full set must be sent). Versions are
+  //     CURRENT per-connection versions, so the server pushes only what's
+  //     changed.
+  //   - If any keys in the batch were untracked() locally since the original
+  //     track(), chain an untrack command after the track resolves — keeps
+  //     the server's per-connection tracked set in sync.
+  //
+  // getSignature is invoked only when there are no cached signatures (e.g.
+  // initial subscribe where track(keys) was called without explicit sig).
+  // Once a signature is expired beyond the server's grace period, the next
+  // track command returns error 109 — _handleTrackError then triggers
+  // _sharedPollRefreshSignature for a fresh consolidated signature.
   private _sharedPollReplayTrack() {
-    if (this._sharedPollTrackedItems.size === 0) return;
     if (!this._isSubscribed()) return;
+    if (this._sharedPollTrackedItems.size === 0 && this._sharedPollSignatures.length === 0) return;
 
-    // If track() was called with an explicit signature before subscribe
-    // completed, use it directly — no need to call getSignature.
-    // But only if the pending items still exactly match the current tracked
-    // items set. They can diverge when: (a) multiple track() calls buffered
-    // different item sets, (b) untrack() removed some keys after track().
-    const pendingSig = this._sharedPollPendingSignature;
-    const pendingItems = this._sharedPollPendingItems;
-    this._sharedPollPendingSignature = null;
-    this._sharedPollPendingItems = null;
-    if (pendingSig !== null && pendingItems !== null && pendingItems.length > 0) {
-      const pendingKeys = new Set(pendingItems.map(i => i.key));
-      let match = pendingKeys.size === this._sharedPollTrackedItems.size;
-      if (match) {
-        for (const key of pendingKeys) {
-          if (!this._sharedPollTrackedItems.has(key)) { match = false; break; }
+    // Phase 1: replay every cached signature batch in a SINGLE sub_refresh
+    // frame (multi-batch wire format). The server validates each batch's
+    // HMAC independently and merges the response. All-or-nothing semantics:
+    // one failed signature → the whole replay fails and _handleTrackError
+    // drives a consolidating refresh.
+    //
+    // After this block `coveredKeys` is the set of currently-tracked keys
+    // that already have a signature in the library — any tracked key not
+    // in this set needs a fresh getSignature in Phase 2.
+    const coveredKeys = new Set<string>();
+    const replayBatches: Array<{ items: SharedPollTrackItem[]; signature: string }> = [];
+    const allUntrackedInReplay: string[] = [];
+    for (const entry of this._sharedPollSignatures) {
+      // Items: ORIGINAL key set + current per-connection versions. Keys that
+      // were untracked locally still go in items (HMAC needs the full batch);
+      // a single chained untrack runs after the multi-batch track resolves
+      // to converge server-side state.
+      const items: SharedPollTrackItem[] = entry.keys.map(key => ({
+        key,
+        version: this._sharedPollTrackedItems.get(key) ?? 0,
+      }));
+      replayBatches.push({ items, signature: entry.signature });
+      for (const k of entry.keys) {
+        if (this._sharedPollTrackedItems.has(k)) {
+          coveredKeys.add(k);
+        } else {
+          allUntrackedInReplay.push(k);
         }
       }
-      if (match) {
-        this._sendTrackRequest(pendingItems, pendingSig).catch(err => {
-          this._handleTrackError(err);
-        });
-        return;
+    }
+    if (replayBatches.length > 0) {
+      const trackPromise = this._sendTrackRequest(replayBatches);
+      trackPromise.catch(err => { this._handleTrackError(err); });
+      if (allUntrackedInReplay.length > 0) {
+        // Chain untrack AFTER track resolves — sending it first would no-op
+        // server-side (key not yet tracked) and the subsequent track would
+        // re-add it, leaving state out of sync.
+        trackPromise.then(() => {
+          if (this._isSubscribed()) {
+            this._sendUntrackRequest(allUntrackedInReplay).catch(err => {
+              this.emit('error', { type: 'untrack', channel: this.channel, error: err });
+            });
+          }
+        }).catch(() => { /* track failure already handled above */ });
       }
-      // Mismatch — fall through to getSignature for the current set.
     }
 
-    if (!this._sharedPollGetSignature) return;
+    // Phase 2: any tracked items NOT covered by a cached signature need
+    // a fresh getSignature. This handles two cases:
+    //   - initial subscribe where track(keys) was called without explicit
+    //     sig (library starts empty, all keys uncovered);
+    //   - mixed track(keys) + track(items, sig) before subscribe — the
+    //     explicit batch sits in the library, but auto-tracked keys still
+    //     need a signature.
+    const uncoveredKeys: string[] = [];
+    for (const key of this._sharedPollTrackedItems.keys()) {
+      if (!coveredKeys.has(key)) uncoveredKeys.push(key);
+    }
+    if (uncoveredKeys.length === 0) return;
 
-    const keys = Array.from(this._sharedPollTrackedItems.keys());
+    if (!this._sharedPollGetSignature) {
+      this.emit('error', {
+        type: 'track',
+        channel: this.channel,
+        error: { code: errorCodes.sharedPollGetSignature, message: 'getSignature callback required for tracked keys without an explicit signature' },
+      });
+      return;
+    }
     const self = this;
 
-    this._sharedPollGetSignature({ keys }).then(result => {
+    this._sharedPollGetSignature({ keys: uncoveredKeys }).then(result => {
       if (!self._isSubscribed()) return;
+      self._clearSharedPollReplayRetry();
 
-      self._sharedPollSignatureRefreshAttempts = 0;
-
-      // Handle revoked keys.
+      // Handle revoked keys (keys we asked about that the backend didn't authorize).
       const returnedKeys = new Set(result.keys);
-      for (const key of keys) {
+      const revokedKeys: string[] = [];
+      for (const key of uncoveredKeys) {
         if (!returnedKeys.has(key)) {
           self._sharedPollTrackedItems.delete(key);
+          revokedKeys.push(key);
           self.emit('update', {
             channel: self.channel,
             key: key,
@@ -1418,19 +1640,27 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
           } as SharedPollUpdateContext);
         }
       }
+      if (revokedKeys.length > 0) {
+        self._sendUntrackRequest(revokedKeys).catch(err => {
+          self.emit('error', { type: 'untrack', channel: self.channel, error: err });
+        });
+      }
 
-      // Re-track only keys covered by the returned signature.
-      const items: { key: string; version: number }[] = [];
+      const items: SharedPollTrackItem[] = [];
       for (const key of result.keys) {
         const version = self._sharedPollTrackedItems.get(key);
         if (version !== undefined) {
           items.push({ key, version });
         }
       }
-
       if (items.length === 0) return;
 
-      self._sendTrackRequest(items, result.signature).catch(err => {
+      // Cache the obtained signature for subsequent reconnect replays.
+      self._sharedPollSignatures.push({
+        keys: result.keys,
+        signature: result.signature,
+      });
+      self._sendTrackRequest([{ items, signature: result.signature }]).catch(err => {
         self._handleTrackError(err);
       });
     }).catch(e => {
@@ -1442,10 +1672,11 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
           message: e !== undefined ? e.toString() : ''
         }
       });
-      // Retry after delay with exponential backoff.
-      self._sharedPollSignatureRefreshTimeout = setTimeout(
+      // Replay-getSignature retry uses its OWN backoff state — separate from
+      // the refresh timer so a stuck replay can't delay the next TTL refresh.
+      self._sharedPollReplayRetryTimeout = setTimeout(
         () => self._sharedPollReplayTrack(),
-        backoff(self._sharedPollSignatureRefreshAttempts++, 5000, 30000)
+        backoff(self._sharedPollReplayRetryAttempts++, 5000, 30000)
       );
     });
   }
@@ -2014,72 +2245,95 @@ export class SharedPollSubscription extends BaseSubscription {
       items = keysOrItems as SharedPollTrackItem[];
     }
 
+    // Update per-connection tracked items (use max(existing, new) so a stale
+    // page load can't downgrade a version already advanced by a publication).
     for (const item of items) {
-      this._sharedPollTrackedItems.set(item.key, item.version);
-    }
-
-    if (!this._isSubscribed()) {
-      // Buffer signature so _sharedPollReplayTrack can use it instead of
-      // calling getSignature. Replay validates that pending items still
-      // match tracked items before using — falls back to getSignature on mismatch.
-      if (sig !== undefined) {
-        this._sharedPollPendingSignature = sig;
-        this._sharedPollPendingItems = [...items];
+      const existing = this._sharedPollTrackedItems.get(item.key);
+      if (existing === undefined || item.version > existing) {
+        this._sharedPollTrackedItems.set(item.key, item.version);
       }
-      return; // Replayed on subscribe via _sharedPollReplayTrack.
     }
 
     if (sig !== undefined) {
-      // Existing path: signature provided.
-      this._sendTrackRequest(items, sig).catch(err => {
-        this._handleTrackError(err);
+      // Explicit signature path — append to library and (if subscribed) send.
+      this._sharedPollSignatures.push({
+        keys: items.map(i => i.key),
+        signature: sig,
       });
-    } else {
-      // New path: auto-obtain signature via getSignature.
-      if (!this._sharedPollGetSignature) {
-        this.emit('error', {
-          type: 'track',
-          channel: this.channel,
-          error: { code: errorCodes.sharedPollGetSignature, message: 'getSignature callback required for track(keys)' },
-        });
-        return;
-      }
-      const keys = items.map(i => i.key);
-      this._sharedPollGetSignature({ keys }).then(result => {
-        if (!this._isSubscribed()) return;
-        // Handle revoked keys.
-        const returnedKeys = new Set(result.keys);
-        for (const key of keys) {
-          if (!returnedKeys.has(key)) {
-            this._sharedPollTrackedItems.delete(key);
-            this.emit('update', {
-              channel: this.channel,
-              key: key,
-              data: null,
-              removed: true,
-            } as SharedPollUpdateContext);
-          }
-        }
-        // Track authorized keys.
-        const authorizedItems: { key: string; version: number }[] = [];
-        for (const key of result.keys) {
-          const version = this._sharedPollTrackedItems.get(key);
-          if (version !== undefined) {
-            authorizedItems.push({ key, version });
-          }
-        }
-        if (authorizedItems.length === 0) return;
-        this._sendTrackRequest(authorizedItems, result.signature).catch(err => {
+      if (this._isSubscribed()) {
+        this._sendTrackRequest([{ items, signature: sig }]).catch(err => {
           this._handleTrackError(err);
         });
-      }).catch(e => {
-        this.emit('error', {
-          type: 'track',
-          channel: this.channel,
-          error: { code: errorCodes.sharedPollGetSignature, message: e !== undefined ? e.toString() : 'getSignature failed' },
-        });
-      });
+      }
+      // If not subscribed yet, _sharedPollReplayTrack will fire after subscribe.
+      return;
     }
+
+    // Auto-obtain signature via getSignature callback.
+    if (!this._sharedPollGetSignature) {
+      this.emit('error', {
+        type: 'track',
+        channel: this.channel,
+        error: { code: errorCodes.sharedPollGetSignature, message: 'getSignature callback required for track(keys)' },
+      });
+      return;
+    }
+
+    if (!this._isSubscribed()) {
+      // Defer the getSignature call until after subscribe — _sharedPollReplayTrack
+      // will obtain a signature covering all tracked keys at once.
+      return;
+    }
+
+    const keys = items.map(i => i.key);
+    this._sharedPollGetSignature({ keys }).then(result => {
+      if (!this._isSubscribed()) return;
+      // Handle revoked keys.
+      const returnedKeys = new Set(result.keys);
+      const revokedKeys: string[] = [];
+      for (const key of keys) {
+        if (!returnedKeys.has(key)) {
+          this._sharedPollTrackedItems.delete(key);
+          revokedKeys.push(key);
+          this.emit('update', {
+            channel: this.channel,
+            key: key,
+            data: null,
+            removed: true,
+          } as SharedPollUpdateContext);
+        }
+      }
+      // Server may already be tracking some of these from a prior track() with
+      // a different signature — send untrack so it stops broadcasting them.
+      if (revokedKeys.length > 0) {
+        this._sendUntrackRequest(revokedKeys).catch(err => {
+          this.emit('error', { type: 'untrack', channel: this.channel, error: err });
+        });
+      }
+      // Track authorized keys.
+      const authorizedItems: { key: string; version: number }[] = [];
+      for (const key of result.keys) {
+        const version = this._sharedPollTrackedItems.get(key);
+        if (version !== undefined) {
+          authorizedItems.push({ key, version });
+        }
+      }
+      if (authorizedItems.length === 0) return;
+      // Cache the obtained signature for reconnect replay.
+      this._sharedPollSignatures.push({
+        keys: result.keys,
+        signature: result.signature,
+      });
+      this._sendTrackRequest([{ items: authorizedItems, signature: result.signature }]).catch(err => {
+        this._handleTrackError(err);
+      });
+    }).catch(e => {
+      this.emit('error', {
+        type: 'track',
+        channel: this.channel,
+        error: { code: errorCodes.sharedPollGetSignature, message: e !== undefined ? e.toString() : 'getSignature failed' },
+      });
+    });
   }
 
   /** Stop tracking specific keys in a shared poll subscription.

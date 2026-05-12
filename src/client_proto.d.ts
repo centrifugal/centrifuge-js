@@ -2271,6 +2271,81 @@ export namespace centrifugal {
                 public static getTypeUrl(typeUrlPrefix?: string): string;
             }
 
+            /** Properties of a TrackBatch. */
+            interface ITrackBatch {
+
+                /** TrackBatch signature */
+                signature?: (string|null);
+
+                /** TrackBatch items */
+                items?: (centrifugal.centrifuge.protocol.IKeyedItem[]|null);
+            }
+
+            /** Represents a TrackBatch. */
+            class TrackBatch implements ITrackBatch {
+
+                /**
+                 * Constructs a new TrackBatch.
+                 * @param [properties] Properties to set
+                 */
+                constructor(properties?: centrifugal.centrifuge.protocol.ITrackBatch);
+
+                /** TrackBatch signature. */
+                public signature: string;
+
+                /** TrackBatch items. */
+                public items: centrifugal.centrifuge.protocol.IKeyedItem[];
+
+                /**
+                 * Encodes the specified TrackBatch message. Does not implicitly {@link centrifugal.centrifuge.protocol.TrackBatch.verify|verify} messages.
+                 * @param message TrackBatch message or plain object to encode
+                 * @param [writer] Writer to encode to
+                 * @returns Writer
+                 */
+                public static encode(message: centrifugal.centrifuge.protocol.ITrackBatch, writer?: $protobuf.Writer): $protobuf.Writer;
+
+                /**
+                 * Encodes the specified TrackBatch message, length delimited. Does not implicitly {@link centrifugal.centrifuge.protocol.TrackBatch.verify|verify} messages.
+                 * @param message TrackBatch message or plain object to encode
+                 * @param [writer] Writer to encode to
+                 * @returns Writer
+                 */
+                public static encodeDelimited(message: centrifugal.centrifuge.protocol.ITrackBatch, writer?: $protobuf.Writer): $protobuf.Writer;
+
+                /**
+                 * Decodes a TrackBatch message from the specified reader or buffer.
+                 * @param reader Reader or buffer to decode from
+                 * @param [length] Message length if known beforehand
+                 * @returns TrackBatch
+                 * @throws {Error} If the payload is not a reader or valid buffer
+                 * @throws {$protobuf.util.ProtocolError} If required fields are missing
+                 */
+                public static decode(reader: ($protobuf.Reader|Uint8Array), length?: number): centrifugal.centrifuge.protocol.TrackBatch;
+
+                /**
+                 * Decodes a TrackBatch message from the specified reader or buffer, length delimited.
+                 * @param reader Reader or buffer to decode from
+                 * @returns TrackBatch
+                 * @throws {Error} If the payload is not a reader or valid buffer
+                 * @throws {$protobuf.util.ProtocolError} If required fields are missing
+                 */
+                public static decodeDelimited(reader: ($protobuf.Reader|Uint8Array)): centrifugal.centrifuge.protocol.TrackBatch;
+
+                /**
+                 * Verifies a TrackBatch message.
+                 * @param message Plain object to verify
+                 * @returns `null` if valid, otherwise the reason why it is not
+                 */
+                public static verify(message: { [k: string]: any }): (string|null);
+
+                /**
+                 * Gets the default type url for TrackBatch
+                 * @param [typeUrlPrefix] your custom typeUrlPrefix(default "type.googleapis.com")
+                 * @returns The default type url
+                 */
+                public static getTypeUrl(typeUrlPrefix?: string): string;
+            }
+
             /** Properties of a SubRefreshRequest. */
             interface ISubRefreshRequest {
 
@@ -2280,17 +2355,14 @@ export namespace centrifugal {
                 /** SubRefreshRequest token */
                 token?: (string|null);
 
-                /** SubRefreshRequest items */
-                items?: (centrifugal.centrifuge.protocol.IKeyedItem[]|null);
-
-                /** SubRefreshRequest untrack_keys */
-                untrack_keys?: (string[]|null);
-
                 /** SubRefreshRequest type */
                 type?: (number|null);
 
-                /** SubRefreshRequest signature */
-                signature?: (string|null);
+                /** SubRefreshRequest track */
+                track?: (centrifugal.centrifuge.protocol.ITrackBatch[]|null);
+
+                /** SubRefreshRequest untrack */
+                untrack?: (string[]|null);
             }
 
             /** Represents a SubRefreshRequest. */
@@ -2308,17 +2380,14 @@ export namespace centrifugal {
                 /** SubRefreshRequest token. */
                 public token: string;
 
-                /** SubRefreshRequest items. */
-                public items: centrifugal.centrifuge.protocol.IKeyedItem[];
-
-                /** SubRefreshRequest untrack_keys. */
-                public untrack_keys: string[];
-
                 /** SubRefreshRequest type. */
                 public type: number;
 
-                /** SubRefreshRequest signature. */
-                public signature: string;
+                /** SubRefreshRequest track. */
+                public track: centrifugal.centrifuge.protocol.ITrackBatch[];
+
+                /** SubRefreshRequest untrack. */
+                public untrack: string[];
 
                 /**
                  * Encodes the specified SubRefreshRequest message. Does not implicitly {@link centrifugal.centrifuge.protocol.SubRefreshRequest.verify|verify} messages.

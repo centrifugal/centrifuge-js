@@ -5650,6 +5650,177 @@ export const centrifugal = $root.centrifugal = (() => {
                 return KeyedItem;
             })();
 
+            protocol.TrackBatch = (function() {
+
+                /**
+                 * Properties of a TrackBatch.
+                 * @memberof centrifugal.centrifuge.protocol
+                 * @interface ITrackBatch
+                 * @property {string|null} [signature] TrackBatch signature
+                 * @property {Array.<centrifugal.centrifuge.protocol.IKeyedItem>|null} [items] TrackBatch items
+                 */
+
+                /**
+                 * Constructs a new TrackBatch.
+                 * @memberof centrifugal.centrifuge.protocol
+                 * @classdesc Represents a TrackBatch.
+                 * @implements ITrackBatch
+                 * @constructor
+                 * @param {centrifugal.centrifuge.protocol.ITrackBatch=} [properties] Properties to set
+                 */
+                function TrackBatch(properties) {
+                    this.items = [];
+                    if (properties)
+                        for (let keys = Object.keys(properties), i = 0; i < keys.length; ++i)
+                            if (properties[keys[i]] != null)
+                                this[keys[i]] = properties[keys[i]];
+                }
+
+                /**
+                 * TrackBatch signature.
+                 * @member {string} signature
+                 * @memberof centrifugal.centrifuge.protocol.TrackBatch
+                 * @instance
+                 */
+                TrackBatch.prototype.signature = "";
+
+                /**
+                 * TrackBatch items.
+                 * @member {Array.<centrifugal.centrifuge.protocol.IKeyedItem>} items
+                 * @memberof centrifugal.centrifuge.protocol.TrackBatch
+                 * @instance
+                 */
+                TrackBatch.prototype.items = $util.emptyArray;
+
+                /**
+                 * Encodes the specified TrackBatch message. Does not implicitly {@link centrifugal.centrifuge.protocol.TrackBatch.verify|verify} messages.
+                 * @function encode
+                 * @memberof centrifugal.centrifuge.protocol.TrackBatch
+                 * @static
+                 * @param {centrifugal.centrifuge.protocol.ITrackBatch} message TrackBatch message or plain object to encode
+                 * @param {$protobuf.Writer} [writer] Writer to encode to
+                 * @returns {$protobuf.Writer} Writer
+                 */
+                TrackBatch.encode = function encode(message, writer) {
+                    if (!writer)
+                        writer = $Writer.create();
+                    if (message.signature != null && Object.hasOwnProperty.call(message, "signature"))
+                        writer.uint32(/* id 1, wireType 2 =*/10).string(message.signature);
+                    if (message.items != null && message.items.length)
+                        for (let i = 0; i < message.items.length; ++i)
+                            $root.centrifugal.centrifuge.protocol.KeyedItem.encode(message.items[i], writer.uint32(/* id 2, wireType 2 =*/18).fork()).ldelim();
+                    return writer;
+                };
+
+                /**
+                 * Encodes the specified TrackBatch message, length delimited. Does not implicitly {@link centrifugal.centrifuge.protocol.TrackBatch.verify|verify} messages.
+                 * @function encodeDelimited
+                 * @memberof centrifugal.centrifuge.protocol.TrackBatch
+                 * @static
+                 * @param {centrifugal.centrifuge.protocol.ITrackBatch} message TrackBatch message or plain object to encode
+                 * @param {$protobuf.Writer} [writer] Writer to encode to
+                 * @returns {$protobuf.Writer} Writer
+                 */
+                TrackBatch.encodeDelimited = function encodeDelimited(message, writer) {
+                    return this.encode(message, writer).ldelim();
+                };
+
+                /**
+                 * Decodes a TrackBatch message from the specified reader or buffer.
+                 * @function decode
+                 * @memberof centrifugal.centrifuge.protocol.TrackBatch
+                 * @static
+                 * @param {$protobuf.Reader|Uint8Array} reader Reader or buffer to decode from
+                 * @param {number} [length] Message length if known beforehand
+                 * @returns {centrifugal.centrifuge.protocol.TrackBatch} TrackBatch
+                 * @throws {Error} If the payload is not a reader or valid buffer
+                 * @throws {$protobuf.util.ProtocolError} If required fields are missing
+                 */
+                TrackBatch.decode = function decode(reader, length) {
+                    if (!(reader instanceof $Reader))
+                        reader = $Reader.create(reader);
+                    let end = length === undefined ? reader.len : reader.pos + length, message = new $root.centrifugal.centrifuge.protocol.TrackBatch();
+                    while (reader.pos < end) {
+                        let tag = reader.uint32();
+                        switch (tag >>> 3) {
+                        case 1: {
+                                message.signature = reader.string();
+                                break;
+                            }
+                        case 2: {
+                                if (!(message.items && message.items.length))
+                                    message.items = [];
+                                message.items.push($root.centrifugal.centrifuge.protocol.KeyedItem.decode(reader, reader.uint32()));
+                                break;
+                            }
+                        default:
+                            reader.skipType(tag & 7);
+                            break;
+                        }
+                    }
+                    return message;
+                };
+
+                /**
+                 * Decodes a TrackBatch message from the specified reader or buffer, length delimited.
+                 * @function decodeDelimited
+                 * @memberof centrifugal.centrifuge.protocol.TrackBatch
+                 * @static
+                 * @param {$protobuf.Reader|Uint8Array} reader Reader or buffer to decode from
+                 * @returns {centrifugal.centrifuge.protocol.TrackBatch} TrackBatch
+                 * @throws {Error} If the payload is not a reader or valid buffer
+                 * @throws {$protobuf.util.ProtocolError} If required fields are missing
+                 */
+                TrackBatch.decodeDelimited = function decodeDelimited(reader) {
+                    if (!(reader instanceof $Reader))
+                        reader = new $Reader(reader);
+                    return this.decode(reader, reader.uint32());
+                };
+
+                /**
+                 * Verifies a TrackBatch message.
+                 * @function verify
+                 * @memberof centrifugal.centrifuge.protocol.TrackBatch
+                 * @static
+                 * @param {Object.<string,*>} message Plain object to verify
+                 * @returns {string|null} `null` if valid, otherwise the reason why it is not
+                 */
+                TrackBatch.verify = function verify(message) {
+                    if (typeof message !== "object" || message === null)
+                        return "object expected";
+                    if (message.signature != null && message.hasOwnProperty("signature"))
+                        if (!$util.isString(message.signature))
+                            return "signature: string expected";
+                    if (message.items != null && message.hasOwnProperty("items")) {
+                        if (!Array.isArray(message.items))
+                            return "items: array expected";
+                        for (let i = 0; i < message.items.length; ++i) {
+                            let error = $root.centrifugal.centrifuge.protocol.KeyedItem.verify(message.items[i]);
+                            if (error)
+                                return "items." + error;
+                        }
+                    }
+                    return null;
+                };
+
+                /**
+                 * Gets the default type url for TrackBatch
+                 * @function getTypeUrl
+                 * @memberof centrifugal.centrifuge.protocol.TrackBatch
+                 * @static
+                 * @param {string} [typeUrlPrefix] your custom typeUrlPrefix(default "type.googleapis.com")
+                 * @returns {string} The default type url
+                 */
+                TrackBatch.getTypeUrl = function getTypeUrl(typeUrlPrefix) {
+                    if (typeUrlPrefix === undefined) {
+                        typeUrlPrefix = "type.googleapis.com";
+                    }
+                    return typeUrlPrefix + "/centrifugal.centrifuge.protocol.TrackBatch";
+                };
+
+                return TrackBatch;
+            })();
+
             protocol.SubRefreshRequest = (function() {
 
                 /**
@@ -5658,10 +5829,9 @@ export const centrifugal = $root.centrifugal = (() => {
                  * @interface ISubRefreshRequest
                  * @property {string|null} [channel] SubRefreshRequest channel
                  * @property {string|null} [token] SubRefreshRequest token
-                 * @property {Array.<centrifugal.centrifuge.protocol.IKeyedItem>|null} [items] SubRefreshRequest items
-                 * @property {Array.<string>|null} [untrack_keys] SubRefreshRequest untrack_keys
                  * @property {number|null} [type] SubRefreshRequest type
-                 * @property {string|null} [signature] SubRefreshRequest signature
+                 * @property {Array.<centrifugal.centrifuge.protocol.ITrackBatch>|null} [track] SubRefreshRequest track
+                 * @property {Array.<string>|null} [untrack] SubRefreshRequest untrack
                  */
 
                 /**
@@ -5673,8 +5843,8 @@ export const centrifugal = $root.centrifugal = (() => {
                  * @param {centrifugal.centrifuge.protocol.ISubRefreshRequest=} [properties] Properties to set
                  */
                 function SubRefreshRequest(properties) {
-                    this.items = [];
-                    this.untrack_keys = [];
+                    this.track = [];
+                    this.untrack = [];
                     if (properties)
                         for (let keys = Object.keys(properties), i = 0; i < keys.length; ++i)
                             if (properties[keys[i]] != null)
@@ -5698,22 +5868,6 @@ export const centrifugal = $root.centrifugal = (() => {
                 SubRefreshRequest.prototype.token = "";
 
                 /**
-                 * SubRefreshRequest items.
-                 * @member {Array.<centrifugal.centrifuge.protocol.IKeyedItem>} items
-                 * @memberof centrifugal.centrifuge.protocol.SubRefreshRequest
-                 * @instance
-                 */
-                SubRefreshRequest.prototype.items = $util.emptyArray;
-
-                /**
-                 * SubRefreshRequest untrack_keys.
-                 * @member {Array.<string>} untrack_keys
-                 * @memberof centrifugal.centrifuge.protocol.SubRefreshRequest
-                 * @instance
-                 */
-                SubRefreshRequest.prototype.untrack_keys = $util.emptyArray;
-
-                /**
                  * SubRefreshRequest type.
                  * @member {number} type
                  * @memberof centrifugal.centrifuge.protocol.SubRefreshRequest
@@ -5722,12 +5876,20 @@ export const centrifugal = $root.centrifugal = (() => {
                 SubRefreshRequest.prototype.type = 0;
 
                 /**
-                 * SubRefreshRequest signature.
-                 * @member {string} signature
+                 * SubRefreshRequest track.
+                 * @member {Array.<centrifugal.centrifuge.protocol.ITrackBatch>} track
                  * @memberof centrifugal.centrifuge.protocol.SubRefreshRequest
                  * @instance
                  */
-                SubRefreshRequest.prototype.signature = "";
+                SubRefreshRequest.prototype.track = $util.emptyArray;
+
+                /**
+                 * SubRefreshRequest untrack.
+                 * @member {Array.<string>} untrack
+                 * @memberof centrifugal.centrifuge.protocol.SubRefreshRequest
+                 * @instance
+                 */
+                SubRefreshRequest.prototype.untrack = $util.emptyArray;
 
                 /**
                  * Encodes the specified SubRefreshRequest message. Does not implicitly {@link centrifugal.centrifuge.protocol.SubRefreshRequest.verify|verify} messages.
@@ -5745,16 +5907,14 @@ export const centrifugal = $root.centrifugal = (() => {
                         writer.uint32(/* id 1, wireType 2 =*/10).string(message.channel);
                     if (message.token != null && Object.hasOwnProperty.call(message, "token"))
                         writer.uint32(/* id 2, wireType 2 =*/18).string(message.token);
-                    if (message.items != null && message.items.length)
-                        for (let i = 0; i < message.items.length; ++i)
-                            $root.centrifugal.centrifuge.protocol.KeyedItem.encode(message.items[i], writer.uint32(/* id 3, wireType 2 =*/26).fork()).ldelim();
-                    if (message.untrack_keys != null && message.untrack_keys.length)
-                        for (let i = 0; i < message.untrack_keys.length; ++i)
-                            writer.uint32(/* id 4, wireType 2 =*/34).string(message.untrack_keys[i]);
                     if (message.type != null && Object.hasOwnProperty.call(message, "type"))
-                        writer.uint32(/* id 5, wireType 0 =*/40).int32(message.type);
-                    if (message.signature != null && Object.hasOwnProperty.call(message, "signature"))
-                        writer.uint32(/* id 6, wireType 2 =*/50).string(message.signature);
+                        writer.uint32(/* id 3, wireType 0 =*/24).int32(message.type);
+                    if (message.track != null && message.track.length)
+                        for (let i = 0; i < message.track.length; ++i)
+                            $root.centrifugal.centrifuge.protocol.TrackBatch.encode(message.track[i], writer.uint32(/* id 4, wireType 2 =*/34).fork()).ldelim();
+                    if (message.untrack != null && message.untrack.length)
+                        for (let i = 0; i < message.untrack.length; ++i)
+                            writer.uint32(/* id 5, wireType 2 =*/42).string(message.untrack[i]);
                     return writer;
                 };
 
@@ -5798,23 +5958,19 @@ export const centrifugal = $root.centrifugal = (() => {
                                 break;
                             }
                         case 3: {
-                                if (!(message.items && message.items.length))
-                                    message.items = [];
-                                message.items.push($root.centrifugal.centrifuge.protocol.KeyedItem.decode(reader, reader.uint32()));
-                                break;
-                            }
-                        case 4: {
-                                if (!(message.untrack_keys && message.untrack_keys.length))
-                                    message.untrack_keys = [];
-                                message.untrack_keys.push(reader.string());
-                                break;
-                            }
-                        case 5: {
                                 message.type = reader.int32();
                                 break;
                             }
-                        case 6: {
-                                message.signature = reader.string();
+                        case 4: {
+                                if (!(message.track && message.track.length))
+                                    message.track = [];
+                                message.track.push($root.centrifugal.centrifuge.protocol.TrackBatch.decode(reader, reader.uint32()));
+                                break;
+                            }
+                        case 5: {
+                                if (!(message.untrack && message.untrack.length))
+                                    message.untrack = [];
+                                message.untrack.push(reader.string());
                                 break;
                             }
                         default:
@@ -5858,28 +6014,25 @@ export const centrifugal = $root.centrifugal = (() => {
                     if (message.token != null && message.hasOwnProperty("token"))
                         if (!$util.isString(message.token))
                             return "token: string expected";
-                    if (message.items != null && message.hasOwnProperty("items")) {
-                        if (!Array.isArray(message.items))
-                            return "items: array expected";
-                        for (let i = 0; i < message.items.length; ++i) {
-                            let error = $root.centrifugal.centrifuge.protocol.KeyedItem.verify(message.items[i]);
-                            if (error)
-                                return "items." + error;
-                        }
-                    }
-                    if (message.untrack_keys != null && message.hasOwnProperty("untrack_keys")) {
-                        if (!Array.isArray(message.untrack_keys))
-                            return "untrack_keys: array expected";
-                        for (let i = 0; i < message.untrack_keys.length; ++i)
-                            if (!$util.isString(message.untrack_keys[i]))
-                                return "untrack_keys: string[] expected";
-                    }
                     if (message.type != null && message.hasOwnProperty("type"))
                         if (!$util.isInteger(message.type))
                             return "type: integer expected";
-                    if (message.signature != null && message.hasOwnProperty("signature"))
-                        if (!$util.isString(message.signature))
-                            return "signature: string expected";
+                    if (message.track != null && message.hasOwnProperty("track")) {
+                        if (!Array.isArray(message.track))
+                            return "track: array expected";
+                        for (let i = 0; i < message.track.length; ++i) {
+                            let error = $root.centrifugal.centrifuge.protocol.TrackBatch.verify(message.track[i]);
+                            if (error)
+                                return "track." + error;
+                        }
+                    }
+                    if (message.untrack != null && message.hasOwnProperty("untrack")) {
+                        if (!Array.isArray(message.untrack))
+                            return "untrack: array expected";
+                        for (let i = 0; i < message.untrack.length; ++i)
+                            if (!$util.isString(message.untrack[i]))
+                                return "untrack: string[] expected";
+                    }
                     return null;
                 };
 

@@ -1,14 +1,24 @@
 import resolve from '@rollup/plugin-node-resolve';
 import commonjs from '@rollup/plugin-commonjs';
-import typescript from 'rollup-plugin-typescript2';
+import typescript from '@rollup/plugin-typescript';
 import json from '@rollup/plugin-json';
 import del from 'rollup-plugin-delete';
+
+// Silence noisy TS9005 declaration-emit warnings from the protobufjs-generated
+// client_proto.js — its JSDoc references inner namespaces that TS can't lift
+// into a public .d.ts. We don't ship a .d.ts for it anyway (filtered by the
+// del plugin below), so the warnings are harmless.
+const silenceProtoWarnings = (level, log, handler) => {
+  if (log.plugin === 'typescript' && /TS9005|client_proto\.js/.test(log.message || '')) return;
+  handler(level, log);
+};
 
 export default [
   {
     input: 'src/index.ts',
+    onLog: silenceProtoWarnings,
     plugins: [
-      typescript(),
+      typescript({ outDir: 'build' }),
       resolve({
         preferBuiltins: false
       }),
@@ -37,9 +47,10 @@ export default [
   },
   {
     input: 'src/protobuf.ts',
+    onLog: silenceProtoWarnings,
     plugins: [
       json(),
-      typescript(),
+      typescript({ outDir: 'build/protobuf' }),
       resolve({
         preferBuiltins: false
       }),

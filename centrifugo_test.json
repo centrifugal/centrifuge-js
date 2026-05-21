@@ -22,12 +22,12 @@
   "proxies": [
     {
       "name": "poll_backend",
-      "endpoint": "http://127.0.0.1:3010/refresh",
+      "endpoint": "http://host.docker.internal:3010/refresh",
       "timeout": "5s"
     },
     {
       "name": "poll_backend_pb",
-      "endpoint": "http://127.0.0.1:3011/refresh",
+      "endpoint": "http://host.docker.internal:3011/refresh",
       "timeout": "5s"
     }
   ],

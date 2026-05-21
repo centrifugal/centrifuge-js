@@ -1,8 +1,6 @@
-version: '3.8'
-
 services:
   centrifugo:
-    image: centrifugo/centrifugo:v6
+    image: centrifugo/centrifugo:v6.8.0
     command:
       - centrifugo
       - --config=/centrifugo_test.json
@@ -10,3 +8,5 @@ services:
       - "8000:8000"
     volumes:
       - ./centrifugo_test.json:/centrifugo_test.json:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"

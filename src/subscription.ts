@@ -1257,6 +1257,7 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
   // budget — keeps each request well under the 64k Centrifugo frame limit.
   protected _sendTrackRequest(
     batches: Array<{ items: { key: string; version: number }[]; signature: string }>,
+    untrackKeys?: string[],
   ): Promise<void> {
     if (batches.length === 0) return Promise.resolve();
 
@@ -1265,7 +1266,11 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
     const maxBytes = 60000;
     const frames: typeof batches[] = [];
     let current: typeof batches = [];
+    // Reserve space for inline untrack keys in the first frame.
     let currentBytes = 100; // envelope baseline
+    if (untrackKeys && untrackKeys.length > 0) {
+      for (const key of untrackKeys) currentBytes += key.length + 4;
+    }
     for (const b of batches) {
       let cost = 100;
       for (const it of b.items) cost += it.key.length + 16;
@@ -1279,7 +1284,7 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
     }
     if (current.length > 0) frames.push(current);
 
-    const send = (frame: typeof batches): Promise<void> =>
+    const send = (frame: typeof batches, frameUntrackKeys?: string[]): Promise<void> =>
       new Promise<void>((resolve, reject) => {
         const req: any = {
           channel: this.channel,
@@ -1289,6 +1294,9 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
             items: b.items.map(i => i.version > 0 ? i : { key: i.key }),
           })),
         };
+        if (frameUntrackKeys && frameUntrackKeys.length > 0) {
+          req.untrack = frameUntrackKeys;
+        }
         const msg = { 'sub_refresh': req };
         // @ts-ignore – we are hiding some symbols from public API autocompletion.
         this._centrifuge._call(msg).then(resolveCtx => {
@@ -1304,8 +1312,9 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
     // Sequential dispatch: a frame failure stops further frames so the SDK
     // doesn't end up with some frames committed server-side and others not
     // — which would otherwise lead to retry-with-duplicate-publications.
+    // Inline untrack keys go only in the first frame.
     return frames.reduce<Promise<void>>(
-      (chain, frame) => chain.then(() => send(frame)),
+      (chain, frame, idx) => chain.then(() => send(frame, idx === 0 ? untrackKeys : undefined)),
       Promise.resolve(),
     );
   }
@@ -1538,9 +1547,10 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
   //     signed over those keys, so the full set must be sent). Versions are
   //     CURRENT per-connection versions, so the server pushes only what's
   //     changed.
-  //   - If any keys in the batch were untracked() locally since the original
-  //     track(), chain an untrack command after the track resolves — keeps
-  //     the server's per-connection tracked set in sync.
+  //   - Any keys in the batch that were locally untracked() since the original
+  //     track() are sent in the same frame's `untrack` field — the server
+  //     validates the full HMAC then removes them immediately, avoiding a
+  //     separate round-trip.
   //
   // getSignature is invoked only when there are no cached signatures (e.g.
   // initial subscribe where track(keys) was called without explicit sig).
@@ -1582,20 +1592,12 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
       }
     }
     if (replayBatches.length > 0) {
-      const trackPromise = this._sendTrackRequest(replayBatches);
-      trackPromise.catch(err => { this._handleTrackError(err); });
-      if (allUntrackedInReplay.length > 0) {
-        // Chain untrack AFTER track resolves — sending it first would no-op
-        // server-side (key not yet tracked) and the subsequent track would
-        // re-add it, leaving state out of sync.
-        trackPromise.then(() => {
-          if (this._isSubscribed()) {
-            this._sendUntrackRequest(allUntrackedInReplay).catch(err => {
-              this.emit('error', { type: 'untrack', channel: this.channel, error: err });
-            });
-          }
-        }).catch(() => { /* track failure already handled above */ });
-      }
+      // Pass untracked keys inline — server validates HMAC over the full batch
+      // then immediately removes the stale keys in the same handler, eliminating
+      // the previous two-round-trip track→untrack sequence.
+      this._sendTrackRequest(replayBatches, allUntrackedInReplay).catch(err => {
+        this._handleTrackError(err);
+      });
     }
 
     // Phase 2: any tracked items NOT covered by a cached signature need
@@ -2348,6 +2350,14 @@ export class SharedPollSubscription extends BaseSubscription {
     for (const key of keys) {
       this._sharedPollTrackedItems.delete(key);
     }
+    // Drop any signature entries whose ENTIRE key set is now untracked —
+    // they contribute nothing to reconnect replays and would grow unboundedly
+    // in long-running sessions with many track/untrack cycles. Entries where
+    // at least one key is still tracked are kept intact: pruning them would
+    // cause those live keys to lose their signature on the next reconnect.
+    this._sharedPollSignatures = this._sharedPollSignatures.filter(entry =>
+      entry.keys.some(k => this._sharedPollTrackedItems.has(k))
+    );
     if (this._isSubscribed()) {
       this._sendUntrackRequest(keys).catch(err => {
         this.emit('error', {

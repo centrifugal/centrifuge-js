@@ -496,7 +496,11 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     return {};
   }
 
-  /** Publish data to a key in a map channel. */
+  /** Publish data to a key in a map channel without holding a MapSubscription.
+   * Use this when you need to write to a map channel from outside a subscription
+   * context (e.g. a standalone publisher). When you already hold a MapSubscription,
+   * prefer `sub.publish(key, data)` instead — it enforces the method-call guard and
+   * applies debounce configuration. */
   async mapPublish(channel: string, key: string, data: any): Promise<PublishResult> {
     const cmd = {
       publish: { channel, type: 1, key, data }
@@ -506,7 +510,10 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     return {};
   }
 
-  /** Remove a key from a map channel. */
+  /** Remove a key from a map channel without holding a MapSubscription.
+   * Use this when you need to remove a key from outside a subscription context.
+   * When you already hold a MapSubscription, prefer `sub.remove(key)` instead —
+   * it enforces the method-call guard and cancels any pending debounced publish. */
   async mapRemove(channel: string, key: string): Promise<PublishResult> {
     const cmd = {
       publish: { channel, type: 1, key, removed: true }

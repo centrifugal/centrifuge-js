@@ -129,7 +129,7 @@ async function disconnectClient(c: Centrifuge): Promise<void> {
 function waitForEvent<T>(emitter: any, event: string, timeout = 10000): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error(`timeout waiting for '${event}'`)), timeout);
-    emitter.on(event, (ctx: T) => {
+    emitter.once(event, (ctx: T) => {
       clearTimeout(timer);
       resolve(ctx);
     });
@@ -643,7 +643,7 @@ test('reconnect replays track with current versions', async () => {
   await disconnectClient(c);
 });
 
-// 12. trackedKeys returns current tracked keys.
+// 14. trackedKeys returns current tracked keys.
 test('trackedKeys returns tracked and untracked keys', async () => {
   const c = createClient();
   c.connect();
@@ -684,7 +684,7 @@ test('trackedKeys returns tracked and untracked keys', async () => {
   await disconnectClient(c);
 }, 15000);
 
-// 13. track() before subscribe — items replayed after connect using buffered signature.
+// 15. track() before subscribe — items replayed after connect using buffered signature.
 test('track before subscribe replays items using buffered signature', async () => {
   const c = createClient();
   const ch = uniqueChannel('poll');
@@ -719,7 +719,7 @@ test('track before subscribe replays items using buffered signature', async () =
   await disconnectClient(c);
 });
 
-// 14. track() + untrack() before subscribe — untracked key not sent.
+// 16. track() + untrack() before subscribe — untracked key not sent.
 test('track then untrack before subscribe skips untracked key', async () => {
   const c = createClient();
   const ch = uniqueChannel('poll');
@@ -753,7 +753,7 @@ test('track then untrack before subscribe skips untracked key', async () => {
   await disconnectClient(c);
 });
 
-// 15. track with string keys (simplified API) — auto-obtains signature.
+// 17. track with string keys (simplified API) — auto-obtains signature.
 test('track with string keys (simplified API)', async () => {
   const c = createClient();
   c.connect();
@@ -781,7 +781,7 @@ test('track with string keys (simplified API)', async () => {
   await disconnectClient(c);
 }, 15000);
 
-// 16. track with string keys without getSignature emits error.
+// 18. track with string keys without getSignature emits error.
 test('track with string keys without getSignature emits error', async () => {
   const c = createClient();
   c.connect();
@@ -810,7 +810,7 @@ test('track with string keys without getSignature emits error', async () => {
   await disconnectClient(c);
 }, 15000);
 
-// 17. track string keys — revoked key emits removal update.
+// 19. track string keys — revoked key emits removal update.
 test('track string keys - revoked key emits removal update', async () => {
   const c = createClient();
   c.connect();
@@ -855,7 +855,7 @@ test('track string keys - revoked key emits removal update', async () => {
   await disconnectClient(c);
 }, 15000);
 
-// 18. track string keys before subscribe replays on connect.
+// 20. track string keys before subscribe replays on connect.
 test('track string keys before subscribe replays on connect', async () => {
   const c = createClient();
   const ch = uniqueChannel('poll');
@@ -882,7 +882,7 @@ test('track string keys before subscribe replays on connect', async () => {
   await disconnectClient(c);
 }, 15000);
 
-// 19. track items with signature still works (backwards compat).
+// 21. track items with signature still works (backwards compat).
 test('track items with signature still works (backwards compat)', async () => {
   const c = createClient();
   c.connect();
@@ -911,7 +911,7 @@ test('track items with signature still works (backwards compat)', async () => {
   await disconnectClient(c);
 }, 15000);
 
-// 20. Multiple track() calls before subscribe — each batch's signature is
+// 22. Multiple track() calls before subscribe — each batch's signature is
 // cached in the library and replayed independently. getSignature is not
 // called.
 test('multiple track calls before subscribe replay all cached signatures', async () => {
@@ -955,7 +955,7 @@ test('multiple track calls before subscribe replay all cached signatures', async
   await disconnectClient(c);
 }, 15000);
 
-// 21. track() + untrack() before subscribe — replay sends the original batch
+// 23. track() + untrack() before subscribe — replay sends the original batch
 // (HMAC valid for the full key set) then chains an untrack for keys the user
 // removed locally. No getSignature call required.
 test('track then untrack before subscribe replays via chained untrack', async () => {
@@ -995,7 +995,7 @@ test('track then untrack before subscribe replays via chained untrack', async ()
   await disconnectClient(c);
 }, 15000);
 
-// 22. Reconnect reuses cached signature without calling getSignature.
+// 24. Reconnect reuses cached signature without calling getSignature.
 // Cached signatures are preserved across disconnects (cleared only on
 // explicit unsubscribe) so mass-reconnect storms don't trigger mass
 // getSignature calls on the application backend.
@@ -1049,7 +1049,7 @@ test('reconnect reuses cached signature without calling getSignature', async () 
   await disconnectClient(c);
 }, 15000);
 
-// 23. track(keys) without signature before subscribe — getSignature used on replay.
+// 25. track(keys) without signature before subscribe — getSignature used on replay.
 test('track without signature before subscribe uses getSignature', async () => {
   const c = createClient();
   const ch = uniqueChannel('poll');
@@ -1081,7 +1081,7 @@ test('track without signature before subscribe uses getSignature', async () => {
   await disconnectClient(c);
 }, 15000);
 
-// 24. Second client tracking same key gets initial data.
+// 26. Second client tracking same key gets initial data.
 // Regression: when Client A already tracked the key (server has data),
 // Client B tracking with version=0 must still receive the current state.
 test('second client tracking same key gets initial data', async () => {
@@ -1133,7 +1133,7 @@ test('second client tracking same key gets initial data', async () => {
   await disconnectClient(c2);
 }, 15000);
 
-// 25. Multiple clients tracking same keys — all get initial data.
+// 27. Multiple clients tracking same keys — all get initial data.
 // Three clients track the same two keys sequentially. Each must receive data
 // even though the keys already exist on the server after the first client.
 test('multiple clients all get initial data for same keys', async () => {
@@ -1168,7 +1168,7 @@ test('multiple clients all get initial data for same keys', async () => {
   for (const c of clients) { await disconnectClient(c); }
 }, 25000);
 
-// 26. Versionless: synthetic version on wire.
+// 28. Versionless: synthetic version on wire.
 test('versionless: synthetic version on wire', async () => {
   const c = createClient();
   c.connect();
@@ -1199,7 +1199,7 @@ test('versionless: synthetic version on wire', async () => {
   await disconnectClient(c);
 }, 15000);
 
-// 27. Versionless: epoch stored internally on subscribe.
+// 29. Versionless: epoch stored internally on subscribe.
 test('versionless: epoch stored internally on subscribe', async () => {
   const c = createClient();
   c.connect();
@@ -1222,7 +1222,7 @@ test('versionless: epoch stored internally on subscribe', async () => {
   await disconnectClient(c);
 }, 15000);
 
-// 28. Versioned mode: empty epoch stored internally on subscribe.
+// 30. Versioned mode: empty epoch stored internally on subscribe.
 test('versioned mode: empty epoch stored internally', async () => {
   const c = createClient();
   c.connect();
@@ -1243,7 +1243,7 @@ test('versioned mode: empty epoch stored internally', async () => {
   await disconnectClient(c);
 }, 15000);
 
-// 29. Versionless: version stored from publication.
+// 31. Versionless: version stored from publication.
 test('versionless: version stored from publication', async () => {
   const c = createClient();
   c.connect();
@@ -1274,7 +1274,7 @@ test('versionless: version stored from publication', async () => {
   await disconnectClient(c);
 }, 15000);
 
-// 30. getSignature rejection emits error with correct code.
+// 32. getSignature rejection emits error with correct code.
 test('getSignature rejection emits error with sharedPollGetSignature code', async () => {
   const c = createClient();
   c.connect();
@@ -1310,7 +1310,7 @@ test('getSignature rejection emits error with sharedPollGetSignature code', asyn
   await disconnectClient(c);
 }, 15000);
 
-// 31. signatureRefresh error on deferred-track replay carries sharedPollGetSignature code.
+// 33. signatureRefresh error on deferred-track replay carries sharedPollGetSignature code.
 // Reconnects reuse cached signatures (no getSignature call), so this exercises
 // the other path that calls getSignature inside _sharedPollReplayTrack: a
 // track() issued before subscribe with no cached sig, where Phase 2 of the
@@ -1349,7 +1349,7 @@ test('signatureRefresh error on deferred-track replay uses sharedPollGetSignatur
 
 // ============ Signature Refresh Tests ============
 
-// 32. TTL-driven refresh: a short-TTL signature triggers _sharedPollRefreshSignature
+// 34. TTL-driven refresh: a short-TTL signature triggers _sharedPollRefreshSignature
 // after the TTL elapses, and getSignature is invoked with ALL tracked keys
 // (consolidating refresh).
 test('refresh: short TTL triggers consolidating getSignature call', async () => {
@@ -1398,7 +1398,7 @@ test('refresh: short TTL triggers consolidating getSignature call', async () => 
   await disconnectClient(c);
 }, 20000);
 
-// 33. 109 on a track command triggers a consolidating refresh.
+// 35. 109 on a track command triggers a consolidating refresh.
 // Use an expired explicit signature so the server rejects with ErrorTokenExpired.
 test('refresh: 109 on track triggers consolidating getSignature call', async () => {
   const c = createClient();
@@ -1435,7 +1435,7 @@ test('refresh: 109 on track triggers consolidating getSignature call', async () 
   await disconnectClient(c);
 }, 15000);
 
-// 34. Multiple concurrent 109 errors (e.g. multi-batch replay with all sigs expired)
+// 36. Multiple concurrent 109 errors (e.g. multi-batch replay with all sigs expired)
 // collapse into a SINGLE refresh — the in-flight guard prevents duplicate
 // getSignature calls.
 test('refresh: in-flight guard collapses concurrent 109s into one refresh', async () => {
@@ -1478,7 +1478,7 @@ test('refresh: in-flight guard collapses concurrent 109s into one refresh', asyn
   await disconnectClient(c);
 }, 15000);
 
-// 35. Refresh consolidates the signature library into ONE entry covering all
+// 37. Refresh consolidates the signature library into ONE entry covering all
 // currently tracked keys (expired entries get replaced; the new sig covers
 // everything).
 test('refresh: consolidates library into a single entry', async () => {
@@ -1528,7 +1528,7 @@ test('refresh: consolidates library into a single entry', async () => {
   await disconnectClient(c);
 }, 15000);
 
-// 36. Refresh target tracks MIN ttl across multiple track responses.
+// 38. Refresh target tracks MIN ttl across multiple track responses.
 // SDK schedules its refresh at the EARLIEST deadline received across all
 // responses — refreshing slightly too early is harmless, too late risks 109.
 test('refresh: target tracks MIN ttl across responses', async () => {
@@ -1569,7 +1569,7 @@ test('refresh: target tracks MIN ttl across responses', async () => {
   await disconnectClient(c);
 }, 15000);
 
-// 37. Revoked keys trigger an explicit untrack to the server. Without it the
+// 39. Revoked keys trigger an explicit untrack to the server. Without it the
 // server keeps broadcasting for revoked keys and the SDK silently drops them.
 test('revoked keys send explicit untrack to server', async () => {
   const c = createClient();
@@ -1615,6 +1615,73 @@ test('revoked keys send explicit untrack to server', async () => {
   expect(allRevokedSent).toContain('revoked');
   // And "allowed" must NOT have been untracked.
   expect(allRevokedSent).not.toContain('allowed');
+
+  await disconnectClient(c);
+}, 15000);
+
+// 40. On reconnect, stale keys (locally untracked since the signature was
+// obtained) are sent inline in the track replay frame instead of as a
+// separate untrack round-trip.
+test('inline untrack sent in replay frame on reconnect', async () => {
+  const c = createClient();
+  c.connect();
+  await c.ready(5000);
+
+  const ch = uniqueChannel('poll');
+  const sub = c.newSharedPollSubscription(ch, {});
+  sub.subscribe();
+  await sub.ready(5000);
+
+  mockItems.set('keyA', { data: { v: 1 }, version: 1 });
+  mockItems.set('keyB', { data: { v: 2 }, version: 1 });
+
+  // Track both keys with an explicit signature so they land in _sharedPollSignatures.
+  const sig = makeTrackSignature(pollSecret, ch, ['keyA', 'keyB'], '', 3600);
+  const updatesP = collectEvents<SharedPollUpdateContext>(sub, 'update', 2);
+  sub.track([{ key: 'keyA', version: 0 }, { key: 'keyB', version: 0 }], sig);
+  await updatesP;
+
+  // Untrack keyB — removes from _sharedPollTrackedItems but the signature
+  // entry in _sharedPollSignatures still carries both keys.
+  sub.untrack(['keyB']);
+  // Wait for the initial untrack RPC to dispatch before installing spies.
+  await new Promise(resolve => setTimeout(resolve, 150));
+
+  // Install spies AFTER the initial untrack has been dispatched so only
+  // reconnect-replay calls are captured.
+  const trackReqArgs: Array<{ untrackKeys: string[] | undefined }> = [];
+  // @ts-ignore – private method override for inspection.
+  const origSendTrack = sub._sendTrackRequest.bind(sub);
+  // @ts-ignore
+  sub._sendTrackRequest = (batches: any[], untrackKeys?: string[]) => {
+    trackReqArgs.push({ untrackKeys });
+    return origSendTrack(batches, untrackKeys);
+  };
+
+  const sendUntrackCalls: string[][] = [];
+  // @ts-ignore
+  const origSendUntrack = sub._sendUntrackRequest.bind(sub);
+  // @ts-ignore
+  sub._sendUntrackRequest = (keys: string[]) => {
+    sendUntrackCalls.push([...keys]);
+    return origSendUntrack(keys);
+  };
+
+  // Reconnect and wait for subscription to be ready again.
+  c.disconnect();
+  await new Promise(resolve => setTimeout(resolve, 200));
+  c.connect();
+  await c.ready(5000);
+  await sub.ready(5000);
+  // Give the replay RPC a moment to complete.
+  await new Promise(resolve => setTimeout(resolve, 200));
+
+  // The replay must have included keyB as an inline untrack — not as a
+  // separate second frame.
+  expect(trackReqArgs.length).toBeGreaterThanOrEqual(1);
+  expect(trackReqArgs[0].untrackKeys).toEqual(['keyB']);
+  // No standalone untrack for keyB must have been issued during replay.
+  expect(sendUntrackCalls.flat()).not.toContain('keyB');
 
   await disconnectClient(c);
 }, 15000);

@@ -3186,9 +3186,9 @@ prompts@^2.0.1:
     sisteransi "^1.0.5"
 
 protobufjs-cli@^1.1.2:
-  version "1.1.2"
-  resolved "https://registry.npmjs.org/protobufjs-cli/-/protobufjs-cli-1.1.2.tgz"
-  integrity sha512-8ivXWxT39gZN4mm4ArQyJrRgnIwZqffBWoLDsE21TmMcKI3XwJMV4lEF2WU02C4JAtgYYc2SfJIltelD8to35g==
+  version "1.2.1"
+  resolved "https://registry.yarnpkg.com/protobufjs-cli/-/protobufjs-cli-1.2.1.tgz#1ae38194625050331d1d6ff87fc8a660107d8839"
+  integrity sha512-2DePjPlVa3TPmq7qiO8RblAAasOCHLVIGgTFhtLo/e906UanwMfZCPXcPXYZBAB9uhFdU6WzVbXruJF6aM8wDA==
   dependencies:
     chalk "^4.0.0"
     escodegen "^1.13.0"

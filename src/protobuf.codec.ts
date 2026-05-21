@@ -70,18 +70,21 @@ export class ProtobufCodec {
     };
   }
 
-  applyDeltaIfNeeded(pub: centrifugal.centrifuge.protocol.IPublication, prevValue: Uint8Array): { newData: Uint8Array; newPrevValue: Uint8Array } {
+  applyDeltaIfNeeded(pub: centrifugal.centrifuge.protocol.IPublication, prevValue: Uint8Array): { newData: Uint8Array; newPrevValue: Uint8Array; isDelta: boolean; wireBytes: number; fullBytes: number } {
     let newData: Uint8Array, newPrevValue: Uint8Array;
+    let isDelta: boolean;
     if (pub.delta) {
+      isDelta = true;
       // binary delta.
       const valueArray = applyDelta(prevValue, pub.data!);
       newData = new Uint8Array(valueArray)
       newPrevValue = valueArray;
     } else {
+      isDelta = false;
       // full binary data.
       newData = pub.data!;
       newPrevValue = pub.data!;
     }
-    return { newData, newPrevValue }
+    return { newData, newPrevValue, isDelta, wireBytes: pub.data!.length, fullBytes: newPrevValue.length }
   }
 }

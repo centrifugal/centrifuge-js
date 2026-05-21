@@ -1,17 +1,12 @@
-version: '3.8'
-
 services:
   centrifugo:
-    image: centrifugo/centrifugo:v6
+    image: centrifugo/centrifugo:v6.8.0
     command:
       - centrifugo
+      - --config=/centrifugo/config.json
     ports:
       - "8000:8000"
-    environment:
-      - CENTRIFUGO_CLIENT_INSECURE=true
-      - CENTRIFUGO_HTTP_STREAM_ENABLED=true
-      - CENTRIFUGO_SSE_ENABLED=true
-      - CENTRIFUGO_CHANNEL_WITHOUT_NAMESPACE_PRESENCE=true
-      - CENTRIFUGO_CLIENT_CONCURRENCY=8
-      - CENTRIFUGO_LOG_LEVEL=trace
-      - CENTRIFUGO_CLIENT_TOKEN_HMAC_SECRET_KEY=secret
+    volumes:
+      - ./centrifugo_test.json:/centrifugo/config.json:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"

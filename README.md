@@ -23,6 +23,9 @@ The features implemented by this SDK can be found in [SDK feature matrix](https:
     * [Subscription token](#subscription-token)
     * [Subscription options](#subscription-options)
 * [Subscription management API](#subscription-management-api)
+* [Stream subscriptions with `getState`](#stream-subscriptions-with-getstate)
+* [Map subscriptions (experimental)](#map-subscriptions-experimental)
+* [Shared poll subscriptions (experimental)](#shared-poll-subscriptions-experimental)
 * [Message batching](#message-batching)
 * [Server-side subscriptions](#server-side-subscriptions)
 * [Protobuf support](#protobuf-support)
@@ -849,6 +852,56 @@ removeSubscription allows removing Subcription from the internal registry.
 `subscriptions(): Record<string, Subscription>`
 
  Get a map with all current client-side subscriptions registered in the client.
+
+## Stream subscriptions with `getState`
+
+For positioned/recoverable stream channels, the SDK can call an app-supplied `getState` callback that loads the application's current state from its own source of truth (database, API, etc.) and returns the corresponding stream position. The SDK subscribes with recovery from that position, so any publications committed after the state was read arrive as `publication` events. This is the "app-owned state" pattern — Centrifugo delivers only change events, your database stays the canonical store.
+
+The SDK invokes `getState`:
+
+* on the initial subscribe (no saved position);
+* on reconnect **only when server recovery fails** (server returns error 112 — unrecoverable position).
+
+On a successful recovery, `getState` is **not** called — the SDK has a valid position and missed publications arrive as events.
+
+Inside the callback, **read the stream position first, then read your data** so the position is a lower bound. Recovered publications may overlap data already loaded in `getState`; this is safe for idempotent updates, otherwise deduplicate by `offset`. See `SubscriptionOptions.getState` JSDoc for the full contract.
+
+Requires **Centrifugo >= v6.8.0**.
+
+References:
+
+* Blog post — [Transactional publishing for stream subscriptions with PostgreSQL](https://centrifugal.dev/blog/2026/05/15/pg-stream-broker-benefits)
+* Example — [pg_stream_broker kitchen orders demo](https://github.com/centrifugal/examples/tree/master/v6/pg_stream_broker)
+
+## Map subscriptions (experimental)
+
+A **map subscription** delivers a real-time key-value collection whose lifecycle is managed by Centrifugo: clients receive a complete snapshot on subscribe, catch up on missed key changes after disconnects, and observe live per-key updates. Typical use cases include cursor positions, lobby members, feature flags, scoreboards, and per-key presence (`map_clients` / `map_users`).
+
+Use `Centrifuge.newMapSubscription(channel, options?)` to create one. The variants `newMapClientsSubscription` and `newMapUsersSubscription` produce presence-style map subscriptions backed by `$clients:*` / `$users:*` channels. The returned `MapSubscription` emits a `sync` event whenever a fresh snapshot is delivered — on the initial subscribe, and again only when the SDK rebuilds state from scratch (e.g. after an unrecoverable position with the default `from_scratch` strategy). Every individual key change (set or remove) — both during live operation and on successful recovery after a disconnect — arrives as an `update` event; on successful recovery `sync` is suppressed because the application's existing snapshot is still valid. Call `publish(key, data)` / `remove(key)` to mutate.
+
+> [!WARNING]
+> Map subscriptions are **experimental** and require **Centrifugo >= v6.8.0**. The shape and behavior may change in a backwards-incompatible way in subsequent minor releases as the feature stabilizes.
+
+References:
+
+* Server docs — [Map subscriptions](https://centrifugal.dev/docs/server/map_subscriptions)
+* PRO enhancements — [Map subscriptions (PRO)](https://centrifugal.dev/docs/pro/map_subscriptions)
+* Blog series — Map subscriptions Part 1 (synchronized key-value state and presence) and Part 2 (PostgreSQL map broker with transactional publishing)
+
+## Shared poll subscriptions (experimental)
+
+A **shared poll subscription** moves polling from clients to Centrifugo: clients register their interest in specific keys, and Centrifugo polls the backend once per configurable interval on behalf of everyone, fanning the changes back out. Backend load scales with the number of unique tracked items rather than the number of connected clients. Typical use cases include vote counts, prices, view counts, live scores, and configuration sync.
+
+Use `Centrifuge.newSharedPollSubscription(channel, options?)`, then call `track(keys)` / `untrack(keys)` on the returned `SharedPollSubscription` to manage the interest set. Provide the `getSignature` callback in options to authorize tracked keys via per-key HMAC signatures (replayed on reconnect and refreshed on signature TTL). The subscription emits an `update` event per item whenever the backend reports a new version, including synthetic `removed: true` events when the server revokes a key.
+
+> [!WARNING]
+> Shared poll subscriptions are **experimental** and require **Centrifugo >= v6.8.0**. The shape and behavior may change in a backwards-incompatible way in subsequent minor releases as the feature stabilizes.
+
+References:
+
+* Server docs — [Shared poll subscriptions](https://centrifugal.dev/docs/server/shared_poll)
+* PRO enhancements — [Shared poll (PRO)](https://centrifugal.dev/docs/pro/shared_poll)
+* Blog post — [Shared poll subscriptions: O(unique items) polling with low-latency updates](https://centrifugal.dev/blog/2026/05/12/shared-poll-subscriptions)
 
 ## Message batching
 

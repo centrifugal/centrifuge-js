@@ -2,6 +2,7 @@ import { Centrifuge, UnauthorizedError } from './centrifuge'
 import {
   DisconnectedContext,
   Error as CentrifugeError,
+  FilterNode,
   PublicationContext,
   TransportName,
   UnsubscribedContext,
@@ -22,6 +23,157 @@ import { ReadableStream } from 'node:stream/web';
 
 test('invalid endpoint', () => {
   expect(() => { new Centrifuge('') }).toThrowError();
+});
+
+test('state invalidated disconnect (3014) clears token and map state', () => {
+  const c = new Centrifuge([{
+    transport: 'websocket' as TransportName,
+    endpoint: 'ws://localhost:8000/connection/websocket',
+  }], {
+    websocket: WebSocket,
+  });
+
+  // Set a connection token.
+  (c as any)._token = 'some-connection-token';
+
+  // Create a map subscription and simulate having cached state.
+  const sub = c.newMapSubscription('test:map');
+  (sub as any)._token = 'some-sub-token';
+  (sub as any)._offset = 42;
+  (sub as any)._epoch = 'abc';
+  (sub as any)._recover = true;
+  (sub as any)._mapPhase = 0; // Live
+  (sub as any)._mapStateBuffer = [{ key: 'k', data: {} }];
+  (sub as any)._mapStreamBuffer = [{ key: 'k2', data: {} }];
+  (sub as any)._mapCursor = 'cursor123';
+  (sub as any)._prevValueMap.set('k', 'prev');
+
+  // Create a stream subscription and simulate having cached state.
+  const streamSub = c.newSubscription('test:stream');
+  (streamSub as any)._token = 'some-stream-sub-token';
+  (streamSub as any)._offset = 10;
+  (streamSub as any)._epoch = 'def';
+  // Stream sub with fossil delta would carry a delta base here.
+  (streamSub as any)._prevValueMap.set('', 'stream-delta-base');
+
+  // Create a shared poll subscription with a stale per-key delta base.
+  const sharedPollSub = c.newSharedPollSubscription('test:poll', {});
+  (sharedPollSub as any)._prevValueMap.set('k1', 'shared-poll-delta-base');
+
+  // Simulate server sending disconnect code 3014.
+  (c as any)._handleDisconnect({ code: 3014, reason: 'state invalidated' });
+
+  // Connection token cleared, refresh required.
+  expect((c as any)._token).toBe('');
+  expect((c as any)._refreshRequired).toBe(true);
+
+  // Map subscription: token and state cleared.
+  expect((sub as any)._token).toBe('');
+  expect((sub as any)._offset).toBeNull();
+  expect((sub as any)._epoch).toBeNull();
+  expect((sub as any)._recover).toBe(false);
+  expect((sub as any)._mapPhase).toBeNull();
+  expect((sub as any)._mapStateBuffer).toEqual([]);
+  expect((sub as any)._mapStreamBuffer).toEqual([]);
+  expect((sub as any)._mapCursor).toBe('');
+  expect((sub as any)._prevValueMap.size).toBe(0);
+
+  // Stream subscription: token cleared, position preserved, but stale delta
+  // base dropped — a stale base would corrupt decoding of the first pub
+  // after re-subscribe.
+  expect((streamSub as any)._token).toBe('');
+  expect((streamSub as any)._offset).toBe(10);
+  expect((streamSub as any)._epoch).toBe('def');
+  expect((streamSub as any)._prevValueMap.size).toBe(0);
+
+  // Shared poll subscription: delta base also cleared for the same reason.
+  expect((sharedPollSub as any)._prevValueMap.size).toBe(0);
+});
+
+test('state invalidated unsubscribe (2502) clears sub token and map state', () => {
+  const c = new Centrifuge([{
+    transport: 'websocket' as TransportName,
+    endpoint: 'ws://localhost:8000/connection/websocket',
+  }], {
+    websocket: WebSocket,
+  });
+
+  // Set a connection token — should NOT be cleared by per-sub unsubscribe.
+  (c as any)._token = 'connection-token';
+
+  // Create a map subscription with cached state.
+  const mapSub = c.newMapSubscription('test:map');
+  (mapSub as any)._token = 'map-sub-token';
+  (mapSub as any)._offset = 42;
+  (mapSub as any)._epoch = 'abc';
+  (mapSub as any)._recover = true;
+  (mapSub as any)._mapPhase = 0;
+  (mapSub as any)._mapStateBuffer = [{ key: 'k', data: {} }];
+  (mapSub as any)._prevValueMap.set('k', 'prev');
+
+  // Create a stream subscription — should NOT be affected.
+  const streamSub = c.newSubscription('test:stream');
+  (streamSub as any)._token = 'stream-sub-token';
+  (streamSub as any)._offset = 10;
+
+  // Simulate server sending unsubscribe code 2502 for the map subscription only.
+  (c as any)._handleUnsubscribe('test:map', { code: 2502, reason: 'server tags filter changed' });
+
+  // Map subscription: token and state cleared, moves to subscribing.
+  expect((mapSub as any)._token).toBe('');
+  expect((mapSub as any)._offset).toBeNull();
+  expect((mapSub as any)._epoch).toBeNull();
+  expect((mapSub as any)._mapPhase).toBeNull();
+  expect((mapSub as any)._mapStateBuffer).toEqual([]);
+  expect((mapSub as any)._prevValueMap.size).toBe(0);
+
+  // Connection token NOT cleared.
+  expect((c as any)._token).toBe('connection-token');
+
+  // Stream subscription NOT affected.
+  expect((streamSub as any)._token).toBe('stream-sub-token');
+  expect((streamSub as any)._offset).toBe(10);
+});
+
+test('newMapSubscription propagates tagsFilter from constructor options', () => {
+  const c = new Centrifuge([{
+    transport: 'websocket' as TransportName,
+    endpoint: 'ws://localhost:8000/connection/websocket',
+  }], {
+    websocket: WebSocket,
+  });
+
+  const filter: FilterNode = { key: 'team', cmp: 'eq', val: 'eng' };
+  const sub = c.newMapSubscription('test:map', { tagsFilter: filter });
+  expect((sub as any)._tagsFilter).toEqual(filter);
+
+  // Variants must propagate it too.
+  const clientsSub = c.newMapClientsSubscription('$clients:test', { tagsFilter: filter });
+  expect((clientsSub as any)._tagsFilter).toEqual(filter);
+
+  const usersSub = c.newMapUsersSubscription('$users:test', { tagsFilter: filter });
+  expect((usersSub as any)._tagsFilter).toEqual(filter);
+});
+
+test('newSharedPollSubscription propagates token, getToken, and data from constructor options', () => {
+  const c = new Centrifuge([{
+    transport: 'websocket' as TransportName,
+    endpoint: 'ws://localhost:8000/connection/websocket',
+  }], {
+    websocket: WebSocket,
+  });
+
+  const getToken = async () => 'fresh-token';
+  const data = { extra: 1 };
+  const sub = c.newSharedPollSubscription('poll:test', {
+    token: 'static-token',
+    getToken,
+    data,
+  });
+
+  expect((sub as any)._token).toBe('static-token');
+  expect((sub as any)._getToken).toBe(getToken);
+  expect((sub as any)._data).toEqual(data);
 });
 
 (typeof globalThis.WebSocket !== 'undefined' ? test.skip : test)('no websocket constructor', async () => {

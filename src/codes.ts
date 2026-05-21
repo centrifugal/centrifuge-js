@@ -11,6 +11,8 @@ export enum errorCodes {
   transportWriteError = 10,
   connectionClosed = 11,
   badConfiguration = 12,
+  subscriptionGetState = 13,
+  sharedPollGetSignature = 14,
 }
 
 export enum connectingCodes {
@@ -40,5 +42,6 @@ export enum unsubscribedCodes {
 }
 
 export enum subscriptionFlags {
-  channelCompaction = 1
+  channelCompaction = 1,
+  rejectUnrecovered = 2,
 }

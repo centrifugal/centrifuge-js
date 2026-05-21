@@ -698,6 +698,24 @@ export namespace centrifugal {
 
                 /** Publication channel */
                 channel?: (string|null);
+
+                /** Publication key */
+                key?: (string|null);
+
+                /** Publication removed */
+                removed?: (boolean|null);
+
+                /** Publication score */
+                score?: (number|Long|null);
+
+                /** Publication epoch */
+                epoch?: (string|null);
+
+                /** Publication prev_data */
+                prev_data?: (Uint8Array|null);
+
+                /** Publication version */
+                version?: (number|Long|null);
             }
 
             /** Represents a Publication. */
@@ -729,6 +747,24 @@ export namespace centrifugal {
 
                 /** Publication channel. */
                 public channel: string;
+
+                /** Publication key. */
+                public key: string;
+
+                /** Publication removed. */
+                public removed: boolean;
+
+                /** Publication score. */
+                public score: (number|Long);
+
+                /** Publication epoch. */
+                public epoch: string;
+
+                /** Publication prev_data. */
+                public prev_data: Uint8Array;
+
+                /** Publication version. */
+                public version: (number|Long);
 
                 /**
                  * Encodes the specified Publication message. Does not implicitly {@link centrifugal.centrifuge.protocol.Publication.verify|verify} messages.
@@ -1868,6 +1904,21 @@ export namespace centrifugal {
 
                 /** SubscribeRequest flag */
                 flag?: (number|Long|null);
+
+                /** SubscribeRequest type */
+                type?: (number|null);
+
+                /** SubscribeRequest phase */
+                phase?: (number|null);
+
+                /** SubscribeRequest cursor */
+                cursor?: (string|null);
+
+                /** SubscribeRequest limit */
+                limit?: (number|null);
+
+                /** SubscribeRequest asc */
+                asc?: (boolean|null);
             }
 
             /** Represents a SubscribeRequest. */
@@ -1914,6 +1965,21 @@ export namespace centrifugal {
 
                 /** SubscribeRequest flag. */
                 public flag: (number|Long);
+
+                /** SubscribeRequest type. */
+                public type: number;
+
+                /** SubscribeRequest phase. */
+                public phase: number;
+
+                /** SubscribeRequest cursor. */
+                public cursor: string;
+
+                /** SubscribeRequest limit. */
+                public limit: number;
+
+                /** SubscribeRequest asc. */
+                public asc: boolean;
 
                 /**
                  * Encodes the specified SubscribeRequest message. Does not implicitly {@link centrifugal.centrifuge.protocol.SubscribeRequest.verify|verify} messages.
@@ -2003,6 +2069,21 @@ export namespace centrifugal {
 
                 /** SubscribeResult id */
                 id?: (number|Long|null);
+
+                /** SubscribeResult type */
+                type?: (number|null);
+
+                /** SubscribeResult phase */
+                phase?: (number|null);
+
+                /** SubscribeResult cursor */
+                cursor?: (string|null);
+
+                /** SubscribeResult state */
+                state?: (centrifugal.centrifuge.protocol.IPublication[]|null);
+
+                /** SubscribeResult publish_debounce */
+                publish_debounce?: (number|null);
             }
 
             /** Represents a SubscribeResult. */
@@ -2049,6 +2130,21 @@ export namespace centrifugal {
 
                 /** SubscribeResult id. */
                 public id: (number|Long);
+
+                /** SubscribeResult type. */
+                public type: number;
+
+                /** SubscribeResult phase. */
+                public phase: number;
+
+                /** SubscribeResult cursor. */
+                public cursor: string;
+
+                /** SubscribeResult state. */
+                public state: centrifugal.centrifuge.protocol.IPublication[];
+
+                /** SubscribeResult publish_debounce. */
+                public publish_debounce: number;
 
                 /**
                  * Encodes the specified SubscribeResult message. Does not implicitly {@link centrifugal.centrifuge.protocol.SubscribeResult.verify|verify} messages.
@@ -2100,6 +2196,156 @@ export namespace centrifugal {
                 public static getTypeUrl(typeUrlPrefix?: string): string;
             }
 
+            /** Properties of a KeyedItem. */
+            interface IKeyedItem {
+
+                /** KeyedItem key */
+                key?: (string|null);
+
+                /** KeyedItem version */
+                version?: (number|Long|null);
+            }
+
+            /** Represents a KeyedItem. */
+            class KeyedItem implements IKeyedItem {
+
+                /**
+                 * Constructs a new KeyedItem.
+                 * @param [properties] Properties to set
+                 */
+                constructor(properties?: centrifugal.centrifuge.protocol.IKeyedItem);
+
+                /** KeyedItem key. */
+                public key: string;
+
+                /** KeyedItem version. */
+                public version: (number|Long);
+
+                /**
+                 * Encodes the specified KeyedItem message. Does not implicitly {@link centrifugal.centrifuge.protocol.KeyedItem.verify|verify} messages.
+                 * @param message KeyedItem message or plain object to encode
+                 * @param [writer] Writer to encode to
+                 * @returns Writer
+                 */
+                public static encode(message: centrifugal.centrifuge.protocol.IKeyedItem, writer?: $protobuf.Writer): $protobuf.Writer;
+
+                /**
+                 * Encodes the specified KeyedItem message, length delimited. Does not implicitly {@link centrifugal.centrifuge.protocol.KeyedItem.verify|verify} messages.
+                 * @param message KeyedItem message or plain object to encode
+                 * @param [writer] Writer to encode to
+                 * @returns Writer
+                 */
+                public static encodeDelimited(message: centrifugal.centrifuge.protocol.IKeyedItem, writer?: $protobuf.Writer): $protobuf.Writer;
+
+                /**
+                 * Decodes a KeyedItem message from the specified reader or buffer.
+                 * @param reader Reader or buffer to decode from
+                 * @param [length] Message length if known beforehand
+                 * @returns KeyedItem
+                 * @throws {Error} If the payload is not a reader or valid buffer
+                 * @throws {$protobuf.util.ProtocolError} If required fields are missing
+                 */
+                public static decode(reader: ($protobuf.Reader|Uint8Array), length?: number): centrifugal.centrifuge.protocol.KeyedItem;
+
+                /**
+                 * Decodes a KeyedItem message from the specified reader or buffer, length delimited.
+                 * @param reader Reader or buffer to decode from
+                 * @returns KeyedItem
+                 * @throws {Error} If the payload is not a reader or valid buffer
+                 * @throws {$protobuf.util.ProtocolError} If required fields are missing
+                 */
+                public static decodeDelimited(reader: ($protobuf.Reader|Uint8Array)): centrifugal.centrifuge.protocol.KeyedItem;
+
+                /**
+                 * Verifies a KeyedItem message.
+                 * @param message Plain object to verify
+                 * @returns `null` if valid, otherwise the reason why it is not
+                 */
+                public static verify(message: { [k: string]: any }): (string|null);
+
+                /**
+                 * Gets the default type url for KeyedItem
+                 * @param [typeUrlPrefix] your custom typeUrlPrefix(default "type.googleapis.com")
+                 * @returns The default type url
+                 */
+                public static getTypeUrl(typeUrlPrefix?: string): string;
+            }
+
+            /** Properties of a TrackBatch. */
+            interface ITrackBatch {
+
+                /** TrackBatch signature */
+                signature?: (string|null);
+
+                /** TrackBatch items */
+                items?: (centrifugal.centrifuge.protocol.IKeyedItem[]|null);
+            }
+
+            /** Represents a TrackBatch. */
+            class TrackBatch implements ITrackBatch {
+
+                /**
+                 * Constructs a new TrackBatch.
+                 * @param [properties] Properties to set
+                 */
+                constructor(properties?: centrifugal.centrifuge.protocol.ITrackBatch);
+
+                /** TrackBatch signature. */
+                public signature: string;
+
+                /** TrackBatch items. */
+                public items: centrifugal.centrifuge.protocol.IKeyedItem[];
+
+                /**
+                 * Encodes the specified TrackBatch message. Does not implicitly {@link centrifugal.centrifuge.protocol.TrackBatch.verify|verify} messages.
+                 * @param message TrackBatch message or plain object to encode
+                 * @param [writer] Writer to encode to
+                 * @returns Writer
+                 */
+                public static encode(message: centrifugal.centrifuge.protocol.ITrackBatch, writer?: $protobuf.Writer): $protobuf.Writer;
+
+                /**
+                 * Encodes the specified TrackBatch message, length delimited. Does not implicitly {@link centrifugal.centrifuge.protocol.TrackBatch.verify|verify} messages.
+                 * @param message TrackBatch message or plain object to encode
+                 * @param [writer] Writer to encode to
+                 * @returns Writer
+                 */
+                public static encodeDelimited(message: centrifugal.centrifuge.protocol.ITrackBatch, writer?: $protobuf.Writer): $protobuf.Writer;
+
+                /**
+                 * Decodes a TrackBatch message from the specified reader or buffer.
+                 * @param reader Reader or buffer to decode from
+                 * @param [length] Message length if known beforehand
+                 * @returns TrackBatch
+                 * @throws {Error} If the payload is not a reader or valid buffer
+                 * @throws {$protobuf.util.ProtocolError} If required fields are missing
+                 */
+                public static decode(reader: ($protobuf.Reader|Uint8Array), length?: number): centrifugal.centrifuge.protocol.TrackBatch;
+
+                /**
+                 * Decodes a TrackBatch message from the specified reader or buffer, length delimited.
+                 * @param reader Reader or buffer to decode from
+                 * @returns TrackBatch
+                 * @throws {Error} If the payload is not a reader or valid buffer
+                 * @throws {$protobuf.util.ProtocolError} If required fields are missing
+                 */
+                public static decodeDelimited(reader: ($protobuf.Reader|Uint8Array)): centrifugal.centrifuge.protocol.TrackBatch;
+
+                /**
+                 * Verifies a TrackBatch message.
+                 * @param message Plain object to verify
+                 * @returns `null` if valid, otherwise the reason why it is not
+                 */
+                public static verify(message: { [k: string]: any }): (string|null);
+
+                /**
+                 * Gets the default type url for TrackBatch
+                 * @param [typeUrlPrefix] your custom typeUrlPrefix(default "type.googleapis.com")
+                 * @returns The default type url
+                 */
+                public static getTypeUrl(typeUrlPrefix?: string): string;
+            }
+
             /** Properties of a SubRefreshRequest. */
             interface ISubRefreshRequest {
 
@@ -2108,6 +2354,15 @@ export namespace centrifugal {
 
                 /** SubRefreshRequest token */
                 token?: (string|null);
+
+                /** SubRefreshRequest type */
+                type?: (number|null);
+
+                /** SubRefreshRequest track */
+                track?: (centrifugal.centrifuge.protocol.ITrackBatch[]|null);
+
+                /** SubRefreshRequest untrack */
+                untrack?: (string[]|null);
             }
 
             /** Represents a SubRefreshRequest. */
@@ -2124,6 +2379,15 @@ export namespace centrifugal {
 
                 /** SubRefreshRequest token. */
                 public token: string;
+
+                /** SubRefreshRequest type. */
+                public type: number;
+
+                /** SubRefreshRequest track. */
+                public track: centrifugal.centrifuge.protocol.ITrackBatch[];
+
+                /** SubRefreshRequest untrack. */
+                public untrack: string[];
 
                 /**
                  * Encodes the specified SubRefreshRequest message. Does not implicitly {@link centrifugal.centrifuge.protocol.SubRefreshRequest.verify|verify} messages.
@@ -2183,6 +2447,9 @@ export namespace centrifugal {
 
                 /** SubRefreshResult ttl */
                 ttl?: (number|null);
+
+                /** SubRefreshResult items */
+                items?: (centrifugal.centrifuge.protocol.IPublication[]|null);
             }
 
             /** Represents a SubRefreshResult. */
@@ -2199,6 +2466,9 @@ export namespace centrifugal {
 
                 /** SubRefreshResult ttl. */
                 public ttl: number;
+
+                /** SubRefreshResult items. */
+                public items: centrifugal.centrifuge.protocol.IPublication[];
 
                 /**
                  * Encodes the specified SubRefreshResult message. Does not implicitly {@link centrifugal.centrifuge.protocol.SubRefreshResult.verify|verify} messages.
@@ -2390,6 +2660,15 @@ export namespace centrifugal {
 
                 /** PublishRequest data */
                 data?: (Uint8Array|null);
+
+                /** PublishRequest type */
+                type?: (number|null);
+
+                /** PublishRequest key */
+                key?: (string|null);
+
+                /** PublishRequest removed */
+                removed?: (boolean|null);
             }
 
             /** Represents a PublishRequest. */
@@ -2406,6 +2685,15 @@ export namespace centrifugal {
 
                 /** PublishRequest data. */
                 public data: Uint8Array;
+
+                /** PublishRequest type. */
+                public type: number;
+
+                /** PublishRequest key. */
+                public key: string;
+
+                /** PublishRequest removed. */
+                public removed: boolean;
 
                 /**
                  * Encodes the specified PublishRequest message. Does not implicitly {@link centrifugal.centrifuge.protocol.PublishRequest.verify|verify} messages.

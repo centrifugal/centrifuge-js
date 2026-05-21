@@ -1,4 +1,9 @@
-import { Subscription } from './subscription';
+import {
+  Subscription,
+  BaseSubscription as _BaseSubscription,
+  MapSubscription as _MapSubscription,
+  SharedPollSubscription as _SharedPollSubscription
+} from './subscription';
 import {
   errorCodes, disconnectedCodes,
   connectingCodes, subscribingCodes
@@ -20,12 +25,40 @@ import {
 import {
   State, Options, SubscriptionState, ClientEvents,
   TypedEventEmitter, RpcResult, SubscriptionOptions,
+  MapSubscriptionOptions, MapSubscriptionEvents, BaseSubscriptionEvents,
+  SharedPollSubscriptionOptions, SharedPollSubscriptionEvents, SharedPollTrackItem,
   HistoryOptions, HistoryResult, PublishResult,
   PresenceResult, PresenceStatsResult, SubscribedContext,
   TransportEndpoint,
 } from './types';
 
 import EventEmitter from 'events';
+
+/** Common methods shared by all subscription types. */
+type CommonSurface = Pick<_BaseSubscription,
+  'channel' | 'state' | 'type' |
+  'subscribe' | 'unsubscribe' | 'ready' |
+  'presence' | 'presenceStats' |
+  'setData' | 'deltaStats'
+>;
+
+/** Common subscription surface — use for mixed-type registries. */
+export type BaseSubscription = CommonSurface & TypedEventEmitter<BaseSubscriptionEvents>;
+
+/** Map subscription: publish/remove + narrowed map events. */
+export type MapSubscription = CommonSurface
+  & Pick<_BaseSubscription, 'setTagsFilter'>
+  & { publish(key: string, data: any): Promise<PublishResult>; remove(key: string): Promise<PublishResult>; }
+  & TypedEventEmitter<MapSubscriptionEvents>;
+
+/** Shared poll subscription: track/untrack + narrowed shared poll events. */
+export type SharedPollSubscription = CommonSurface
+  & {
+    track(keysOrItems: string[] | SharedPollTrackItem[], signature?: string): void;
+    untrack(keys: string[]): void;
+    trackedKeys(): Set<string>;
+  }
+  & TypedEventEmitter<SharedPollSubscriptionEvents>;
 
 const defaults: Options = {
   headers: {},
@@ -86,7 +119,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
   private _client: null;
   private _session: string;
   private _node: string;
-  private _subs: Record<string, Subscription>;
+  private _subs: Record<string, _BaseSubscription>;
   private _serverSubs: Record<string, serverSubscription>;
   private _commandId: number;
   private _commands: any[];
@@ -169,11 +202,11 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     }
   }
 
-  /** newSubscription allocates new Subscription to a channel. Since server only allows 
-   * one subscription per channel per client this method throws if client already has 
+  /** newSubscription allocates new Subscription to a channel. Since server only allows
+   * one subscription per channel per client this method throws if client already has
    * channel subscription in internal registry.
    * */
-  newSubscription(channel: string, options?: Partial<SubscriptionOptions>): Subscription {
+  newSubscription(channel: string, options?: SubscriptionOptions): Subscription {
     if (this.getSubscription(channel) !== null) {
       throw new Error('Subscription to the channel ' + channel + ' already exists');
     }
@@ -182,10 +215,127 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     return sub;
   }
 
-  /** getSubscription returns Subscription if it's registered in the internal 
+  /** newMapSubscription allocates new map Subscription to a channel. Since server only allows
+   * one subscription per channel per client this method throws if client already has
+   * channel subscription in internal registry.
+   *
+   * Experimental. Requires Centrifugo >= v6.8.0. API may change in a backwards-incompatible
+   * way in subsequent minor releases. */
+  newMapSubscription(channel: string, options?: MapSubscriptionOptions): MapSubscription {
+    if (this.getSubscription(channel) !== null) {
+      throw new Error('Subscription to the channel ' + channel + ' already exists');
+    }
+    const sub = new _MapSubscription(this, channel, {
+      token: options?.token,
+      getToken: options?.getToken,
+      data: options?.data,
+      minResubscribeDelay: options?.minResubscribeDelay,
+      maxResubscribeDelay: options?.maxResubscribeDelay,
+      delta: options?.delta,
+      tagsFilter: options?.tagsFilter,
+      map: true,
+      mapPageSize: options?.pageSize,
+      mapUnrecoverableStrategy: options?.unrecoverableStrategy,
+    });
+    this._subs[channel] = sub;
+    return sub as unknown as MapSubscription;
+  }
+
+  /** Create a map subscription for observing individual connections (clients presence).
+   * Each entry has key=clientId and contains full ClientInfo.
+   * Use this to track connections per channel.
+   * The channel should be the full presence channel name (e.g., "$clients:games").
+   *
+   * Experimental. Requires Centrifugo >= v6.8.0. API may change in a backwards-incompatible
+   * way in subsequent minor releases. */
+  newMapClientsSubscription(channel: string, options?: MapSubscriptionOptions): MapSubscription {
+    if (this.getSubscription(channel) !== null) {
+      throw new Error('Subscription to the channel ' + channel + ' already exists');
+    }
+    const sub = new _MapSubscription(this, channel, {
+      token: options?.token,
+      getToken: options?.getToken,
+      data: options?.data,
+      minResubscribeDelay: options?.minResubscribeDelay,
+      maxResubscribeDelay: options?.maxResubscribeDelay,
+      delta: options?.delta,
+      tagsFilter: options?.tagsFilter,
+      map: true,
+      mapPresenceType: 2, // MAP_CLIENTS_PRESENCE
+      mapPageSize: options?.pageSize,
+      mapUnrecoverableStrategy: options?.unrecoverableStrategy,
+    });
+    this._subs[channel] = sub;
+    return sub as unknown as MapSubscription;
+  }
+
+  /** Create a map subscription for observing unique users (users presence).
+   * Each entry has key=userId (no ClientInfo stored).
+   * User entries expire via TTL, providing debounce for quick reconnects.
+   * The channel should be the full presence channel name (e.g., "$users:games").
+   *
+   * Experimental. Requires Centrifugo >= v6.8.0. API may change in a backwards-incompatible
+   * way in subsequent minor releases. */
+  newMapUsersSubscription(channel: string, options?: MapSubscriptionOptions): MapSubscription {
+    if (this.getSubscription(channel) !== null) {
+      throw new Error('Subscription to the channel ' + channel + ' already exists');
+    }
+    const sub = new _MapSubscription(this, channel, {
+      token: options?.token,
+      getToken: options?.getToken,
+      data: options?.data,
+      minResubscribeDelay: options?.minResubscribeDelay,
+      maxResubscribeDelay: options?.maxResubscribeDelay,
+      delta: options?.delta,
+      tagsFilter: options?.tagsFilter,
+      map: true,
+      mapPresenceType: 3, // MAP_USERS_PRESENCE
+      mapPageSize: options?.pageSize,
+      mapUnrecoverableStrategy: options?.unrecoverableStrategy,
+    });
+    this._subs[channel] = sub;
+    return sub as unknown as MapSubscription;
+  }
+
+  /** newSharedPollSubscription allocates a new shared poll Subscription to a channel.
+   * Shared poll subscriptions use server-side polling to aggregate interest sets
+   * and deliver periodic updates with version tracking. Track items after subscribing
+   * using the track() method on the returned Subscription.
+   *
+   * Experimental. Requires Centrifugo >= v6.8.0. API may change in a backwards-incompatible
+   * way in subsequent minor releases. */
+  newSharedPollSubscription(channel: string, options?: SharedPollSubscriptionOptions): SharedPollSubscription {
+    if (this.getSubscription(channel) !== null) {
+      throw new Error('Subscription to the channel ' + channel + ' already exists');
+    }
+    const sub = new _SharedPollSubscription(this, channel, {
+      token: options?.token,
+      getToken: options?.getToken,
+      data: options?.data,
+      minResubscribeDelay: options?.minResubscribeDelay,
+      maxResubscribeDelay: options?.maxResubscribeDelay,
+      delta: options?.delta,
+      sharedPoll: true,
+      sharedPollGetSignature: options?.getSignature,
+    });
+    this._subs[channel] = sub;
+    return sub as unknown as SharedPollSubscription;
+  }
+
+  /** getSubscription returns Subscription if it's registered in the internal
    * registry or null. */
   getSubscription(channel: string): Subscription | null {
-    return this._getSub(channel);
+    return this._getSub(channel) as Subscription | null;
+  }
+
+  /** Get a map subscription by channel. */
+  getMapSubscription(channel: string): MapSubscription | null {
+    return this._getSub(channel) as unknown as MapSubscription | null;
+  }
+
+  /** Get a shared poll subscription by channel. */
+  getSharedPollSubscription(channel: string): SharedPollSubscription | null {
+    return this._getSub(channel) as unknown as SharedPollSubscription | null;
   }
 
   /** removeSubscription allows removing Subcription from the internal registry. */
@@ -199,9 +349,37 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     this._removeSubscription(sub);
   }
 
+  /** Remove a map subscription. */
+  removeMapSubscription(sub: MapSubscription | null) {
+    this.removeSubscription(sub as unknown as Subscription);
+  }
+
+  /** Remove a shared poll subscription. */
+  removeSharedPollSubscription(sub: SharedPollSubscription | null) {
+    this.removeSubscription(sub as unknown as Subscription);
+  }
+
   /** Get a map with all current client-side subscriptions. */
   subscriptions(): Record<string, Subscription> {
-    return this._subs;
+    return this._subs as Record<string, Subscription>;
+  }
+
+  /** Get all map subscriptions. */
+  mapSubscriptions(): Record<string, MapSubscription> {
+    const result: Record<string, MapSubscription> = {};
+    for (const [ch, sub] of Object.entries(this._subs)) {
+      if (sub.type === 'map') result[ch] = sub as unknown as MapSubscription;
+    }
+    return result;
+  }
+
+  /** Get all shared poll subscriptions. */
+  sharedPollSubscriptions(): Record<string, SharedPollSubscription> {
+    const result: Record<string, SharedPollSubscription> = {};
+    for (const [ch, sub] of Object.entries(this._subs)) {
+      if (sub.type === 'shared_poll') result[ch] = sub as unknown as SharedPollSubscription;
+    }
+    return result;
   }
 
   /** ready returns a Promise which resolves upon client goes to Connected 
@@ -313,6 +491,33 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
       }
     };
 
+    await this._methodCall();
+    await this._callPromise(cmd, () => ({}));
+    return {};
+  }
+
+  /** Publish data to a key in a map channel without holding a MapSubscription.
+   * Use this when you need to write to a map channel from outside a subscription
+   * context (e.g. a standalone publisher). When you already hold a MapSubscription,
+   * prefer `sub.publish(key, data)` instead — it enforces the method-call guard and
+   * applies debounce configuration. */
+  async mapPublish(channel: string, key: string, data: any): Promise<PublishResult> {
+    const cmd = {
+      publish: { channel, type: 1, key, data }
+    };
+    await this._methodCall();
+    await this._callPromise(cmd, () => ({}));
+    return {};
+  }
+
+  /** Remove a key from a map channel without holding a MapSubscription.
+   * Use this when you need to remove a key from outside a subscription context.
+   * When you already hold a MapSubscription, prefer `sub.remove(key)` instead —
+   * it enforces the method-call guard and cancels any pending debounced publish. */
+  async mapRemove(channel: string, key: string): Promise<PublishResult> {
+    const cmd = {
+      publish: { channel, type: 1, key, removed: true }
+    };
     await this._methodCall();
     await this._callPromise(cmd, () => ({}));
     return {};
@@ -1399,14 +1604,14 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     }
   }
 
-  private _removeSubscription(sub: Subscription | null) {
+  private _removeSubscription(sub: _BaseSubscription | null) {
     if (sub === null) {
       return;
     }
     delete this._subs[sub.channel];
   }
 
-  protected _unsubscribe(sub: Subscription) {
+  protected _unsubscribe(sub: _BaseSubscription) {
     if (!this._transportIsOpen) {
       return Promise.resolve();
     }
@@ -1721,6 +1926,12 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
       // @ts-ignore – we are hiding some symbols from public API autocompletion.
       sub._setUnsubscribed(unsubscribe.code, unsubscribe.reason, false);
     } else {
+      if (unsubscribe.code === 2502) {
+        // State invalidated: clear subscription token and map state
+        // so resubscribe gets a fresh token and does full re-sync.
+        // @ts-ignore – _invalidateState is internal.
+        sub._invalidateState();
+      }
       // @ts-ignore – we are hiding some symbols from public API autocompletion.
       sub._setSubscribing(unsubscribe.code, unsubscribe.reason);
     }
@@ -1740,6 +1951,17 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     let reconnect = true;
     if ((code >= 3500 && code < 4000) || (code >= 4500 && code < 5000)) {
       reconnect = false;
+    }
+    if (code === 3014) {
+      // State invalidated: clear connection token and invalidate all subscription state.
+      this._token = '';
+      this._refreshRequired = true;
+      for (const channel in this._subs) {
+        if (this._subs.hasOwnProperty(channel)) {
+          // @ts-ignore – _invalidateState is internal.
+          this._subs[channel]._invalidateState();
+        }
+      }
     }
     this._disconnect(code, disconnect.reason, reconnect);
   }

@@ -1652,16 +1652,16 @@ test('inline untrack sent in replay frame on reconnect', async () => {
   const trackReqArgs: Array<{ untrackKeys: string[] | undefined }> = [];
   // @ts-ignore – private method override for inspection.
   const origSendTrack = sub._sendTrackRequest.bind(sub);
-  // @ts-ignore
+  // @ts-ignore – private method override for inspection.
   sub._sendTrackRequest = (batches: any[], untrackKeys?: string[]) => {
     trackReqArgs.push({ untrackKeys });
     return origSendTrack(batches, untrackKeys);
   };
 
   const sendUntrackCalls: string[][] = [];
-  // @ts-ignore
+  // @ts-ignore – access private method for spying.
   const origSendUntrack = sub._sendUntrackRequest.bind(sub);
-  // @ts-ignore
+  // @ts-ignore – private method override for inspection.
   sub._sendUntrackRequest = (keys: string[]) => {
     sendUntrackCalls.push([...keys]);
     return origSendUntrack(keys);

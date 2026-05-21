@@ -59,7 +59,7 @@ function startMockBackend(): Promise<void> {
       });
     });
     mockServer.on('error', reject);
-    mockServer.listen(mockBackendPort, '127.0.0.1', () => resolve());
+    mockServer.listen(mockBackendPort, () => resolve());
   });
 }
 

@@ -68,7 +68,10 @@ function startMockBackend(): Promise<void> {
         }
       });
     });
-    mockServer.listen(mockBackendPort, '127.0.0.1', () => resolve());
+    // Bind to all interfaces so Centrifugo running inside Docker can reach
+    // this mock backend via host.docker.internal (which routes through the
+    // docker0 bridge on Linux, not loopback).
+    mockServer.listen(mockBackendPort, () => resolve());
   });
 }
 

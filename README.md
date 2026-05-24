@@ -901,7 +901,7 @@ References:
 
 * Server docs — [Shared poll subscriptions](https://centrifugal.dev/docs/server/shared_poll)
 * PRO enhancements — [Shared poll (PRO)](https://centrifugal.dev/docs/pro/shared_poll)
-* Blog post — [Shared poll subscriptions: O(unique items) polling with low-latency updates](https://centrifugal.dev/blog/2026/05/12/shared-poll-subscriptions)
+* Blog post — [Shared poll subscriptions: O(unique items) polling with low-latency updates](https://centrifugal.dev/blog/2026/05/21/shared-poll-subscriptions)
 
 ## Message batching
 

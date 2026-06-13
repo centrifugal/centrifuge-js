@@ -1889,8 +1889,10 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
 
   private _handleJoin(channel: string, join: any, id?: number) {
     const sub = this._getSub(channel, id);
-    if (!sub && channel) {
-      if (this._isServerSub(channel)) {
+    if (!sub) {
+      // See _handlePublication: a compacted push with an unknown id has an empty
+      // channel and no matching subscription — drop instead of crashing.
+      if (channel && this._isServerSub(channel)) {
         const ctx = { channel: channel, info: this._getJoinLeaveContext(join.info) };
         this.emit('join', ctx);
       }
@@ -1902,8 +1904,10 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
 
   private _handleLeave(channel: string, leave: any, id?: number) {
     const sub = this._getSub(channel, id);
-    if (!sub && channel) {
-      if (this._isServerSub(channel)) {
+    if (!sub) {
+      // See _handlePublication: a compacted push with an unknown id has an empty
+      // channel and no matching subscription — drop instead of crashing.
+      if (channel && this._isServerSub(channel)) {
         const ctx = { channel: channel, info: this._getJoinLeaveContext(leave.info) };
         this.emit('leave', ctx);
       }
@@ -2001,8 +2005,12 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
 
   private _handlePublication(channel: string, pub: any, id?: number) {
     const sub = this._getSub(channel, id);
-    if (!sub && channel) {
-      if (this._isServerSub(channel)) {
+    if (!sub) {
+      // No client-side subscription. With channel compaction the push carries a
+      // numeric id and no channel, so an unknown id (e.g. a publication for a
+      // subscription already unsubscribed) has an empty channel here — it must
+      // be dropped, not fall through to sub._handlePublication on null.
+      if (channel && this._isServerSub(channel)) {
         const ctx = this._getPublicationContext(channel, pub);
         this.emit('publication', ctx);
         if (pub.offset !== undefined) {

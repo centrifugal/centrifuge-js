@@ -78,12 +78,12 @@ test('state invalidated disconnect (3014) clears token and map state', () => {
   expect((sub as any)._mapCursor).toBe('');
   expect((sub as any)._prevValueMap.size).toBe(0);
 
-  // Stream subscription: token cleared, position preserved, but stale delta
-  // base dropped — a stale base would corrupt decoding of the first pub
-  // after re-subscribe.
+  // Stream subscription: token cleared, recovery position reset to the
+  // unrecoverable sentinel (epoch "_", offset 0) so the resubscribe reports
+  // was_recovering=true, recovered=false, and stale delta base dropped.
   expect((streamSub as any)._token).toBe('');
-  expect((streamSub as any)._offset).toBe(10);
-  expect((streamSub as any)._epoch).toBe('def');
+  expect((streamSub as any)._offset).toBe(0);
+  expect((streamSub as any)._epoch).toBe('_');
   expect((streamSub as any)._prevValueMap.size).toBe(0);
 
   // Shared poll subscription: delta base also cleared for the same reason.

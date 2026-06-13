@@ -427,12 +427,23 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
     // unsubscribe via _setUnsubscribed.
   }
 
-  /** Called when server sends "state invalidated" disconnect (code 3014).
-   *  Clears subscription token and resets cached state so next subscribe
-   *  obtains a fresh token and does a full state re-sync. Delta base is
-   *  cleared for every subscription type (stream/map/shared_poll all use
-   *  _prevValueMap for fossil delta) — a stale base would corrupt decoding
-   *  of the first publication after re-subscribe. */
+  /** Called on "state invalidated" — unsubscribe code 2502 for this channel,
+   *  or connection disconnect code 3014. Clears the token (next subscribe
+   *  fetches a fresh one) and the fossil delta base (every subscription type
+   *  uses _prevValueMap; a stale base would corrupt decoding of the first
+   *  publication after re-subscribe).
+   *
+   *  Map subscriptions restart from scratch: their recovery position and
+   *  materialized-state buffers are dropped so the next subscribe does a full
+   *  STATE re-sync.
+   *
+   *  Stream/shared-poll subscriptions instead reset the recovery position to a
+   *  sentinel epoch ("_") the server can never match (offset 0), leaving
+   *  _recover untouched: a recoverable subscription then resubscribes with
+   *  was_recovering=true, recovered=false (so the app reloads via its existing
+   *  recovery-failure path rather than treating it as a brand-new first
+   *  subscribe), while a non-recoverable one simply resubscribes. The real
+   *  epoch/offset are adopted from the subscribe reply. */
   _invalidateState() {
     this._token = '';
     this._prevValueMap = new Map();
@@ -444,6 +455,9 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
       this._mapStreamBuffer = [];
       this._mapCursor = '';
       this._mapPhase = null;
+    } else {
+      this._offset = 0;
+      this._epoch = '_';
     }
   }
 

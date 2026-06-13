@@ -5,7 +5,7 @@ import {
   SharedPollSubscription as _SharedPollSubscription
 } from './subscription';
 import {
-  errorCodes, disconnectedCodes,
+  errorCodes, disconnectedCodes, unsubscribedCodes,
   connectingCodes, subscribingCodes
 } from './codes';
 
@@ -1450,6 +1450,22 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
   }
 
   private _disconnect(code: number, reason: string, reconnect: boolean) {
+    if (code === disconnectedCodes.stateInvalidated) {
+      // State invalidated: clear connection token (forcing a fresh one via
+      // getToken on reconnect) and invalidate all subscription state. Done here
+      // (the shared funnel) so it fires whether it arrives as a Disconnect push
+      // or as a raw WebSocket close code — and before _clearConnectedState below
+      // moves subscriptions to subscribing for the resubscribe. Runs ahead of the
+      // isDisconnected guard so the invalidation is unconditional.
+      this._token = '';
+      this._refreshRequired = true;
+      for (const channel in this._subs) {
+        if (this._subs.hasOwnProperty(channel)) {
+          // @ts-ignore – _invalidateState is internal.
+          this._subs[channel]._invalidateState();
+        }
+      }
+    }
     if (this._isDisconnected()) {
       return;
     }
@@ -1930,9 +1946,9 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
       // @ts-ignore – we are hiding some symbols from public API autocompletion.
       sub._setUnsubscribed(unsubscribe.code, unsubscribe.reason, false);
     } else {
-      if (unsubscribe.code === 2502) {
-        // State invalidated: clear subscription token and map state
-        // so resubscribe gets a fresh token and does full re-sync.
+      if (unsubscribe.code === unsubscribedCodes.stateInvalidated) {
+        // State invalidated: clear subscription token and cached state so the
+        // resubscribe gets a fresh token and re-syncs.
         // @ts-ignore – _invalidateState is internal.
         sub._invalidateState();
       }
@@ -1956,17 +1972,9 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     if ((code >= 3500 && code < 4000) || (code >= 4500 && code < 5000)) {
       reconnect = false;
     }
-    if (code === 3014) {
-      // State invalidated: clear connection token and invalidate all subscription state.
-      this._token = '';
-      this._refreshRequired = true;
-      for (const channel in this._subs) {
-        if (this._subs.hasOwnProperty(channel)) {
-          // @ts-ignore – _invalidateState is internal.
-          this._subs[channel]._invalidateState();
-        }
-      }
-    }
+    // State invalidation (code 3014) is handled centrally in _disconnect so it
+    // covers both delivery paths: a Disconnect push (this method) and a raw
+    // WebSocket close code (transport onClose → _disconnect directly).
     this._disconnect(code, disconnect.reason, reconnect);
   }
 

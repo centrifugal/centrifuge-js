@@ -513,6 +513,10 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
     if (this._isSubscribed()) {
       this._clearSubscribedState();
     }
+    // Channel compaction: the numeric channel id is scoped to the connected
+    // session — drop it when moving back to subscribing (e.g. on reconnect). The
+    // next subscribe reply re-establishes it (the server may reuse the same id).
+    this._id = 0;
     if (this._setState(SubscriptionState.Subscribing)) {
       this.emit('subscribing', { channel: this.channel, code: code, reason: reason });
     }
@@ -843,6 +847,10 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
       this._clearSubscribingState();
     }
     this._inflight = false;
+    // Channel compaction: the numeric channel id is scoped to the active
+    // subscription. Drop it so a push for the old id (e.g. one in flight when we
+    // unsubscribe) is no longer routed to this subscription.
+    this._id = 0;
     this._sharedPollEpoch = '';
     // Explicit unsubscribe — drop all shared-poll state so a subsequent
     // subscribe starts cold. Reconnects use _clearSubscribedState (above)

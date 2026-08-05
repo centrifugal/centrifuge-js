@@ -350,3 +350,38 @@ describe('non-emulation string endpoint', () => {
     expect(selectedTransportName(c)).toBe('websocket');
   });
 });
+
+describe('dependency source equivalence: emulation transports from globalThis', () => {
+  test('sse resolves eventsource from globalThis', () => {
+    const saved = (globalThis as any).EventSource;
+    (globalThis as any).EventSource = EventSource;
+    try {
+      const c = makeClient([{ transport: 'sse' as TransportName, endpoint: sseEndpoint }], {
+        fetch: fetch,
+      });
+      c.connect();
+      expect(selectedTransportName(c)).toBe('sse');
+    } finally {
+      if (saved === undefined) {
+        delete (globalThis as any).EventSource;
+      } else {
+        (globalThis as any).EventSource = saved;
+      }
+    }
+  });
+
+  test('http_stream resolves fetch and readableStream from globalThis', () => {
+    const savedFetch = (globalThis as any).fetch;
+    const savedStream = (globalThis as any).ReadableStream;
+    (globalThis as any).fetch = fetch;
+    (globalThis as any).ReadableStream = ReadableStream;
+    try {
+      const c = makeClient([{ transport: 'http_stream' as TransportName, endpoint: httpStreamEndpoint }], {});
+      c.connect();
+      expect(selectedTransportName(c)).toBe('http_stream');
+    } finally {
+      (globalThis as any).fetch = savedFetch;
+      (globalThis as any).ReadableStream = savedStream;
+    }
+  });
+});

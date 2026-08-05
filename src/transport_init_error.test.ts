@@ -9,6 +9,7 @@ import { WebsocketTransport } from './transport_websocket';
 import { SockjsTransport } from './transport_sockjs';
 import { SseTransport } from './transport_sse';
 import { HttpStreamTransport } from './transport_http_stream';
+import { WebtransportTransport } from './transport_webtransport';
 
 // Regression tests for https://github.com/centrifugal/centrifuge-js/issues/268
 //
@@ -967,6 +968,13 @@ describe('transport wrappers before initialize()', () => {
 
   test('SseTransport.close() does not throw', () => {
     const t = new SseTransport(sseEndpoint, { eventsource: function () { /* fake */ }, fetch: fetch });
+    expect(() => t.close()).not.toThrow();
+  });
+
+  test('WebtransportTransport.close() does not throw', () => {
+    const t = new WebtransportTransport('https://localhost:8000/connection/webtransport', {
+      webtransport: function () { /* fake */ },
+    });
     expect(() => t.close()).not.toThrow();
   });
 

@@ -87,12 +87,13 @@ afterEach(async () => {
     // transport_init_error.test.ts, and must not mask assertions here.
     try { c!.disconnect(); } catch { /* pinned elsewhere */ }
   }
-  // disconnect() does not clear the connect timeout: it is a closure local of
-  // _initializeTransport, cleared only from onOpen/onClose. A transport that
-  // never opens therefore leaves an armed timer behind, which CI reports as an
-  // open handle since it runs jest --detectOpenHandles with no --forceExit.
-  // Waiting it out keeps this file honest against unmodified source; the fix
-  // moves the timeout onto the instance so _disconnect can clear it.
+  // disconnect() clears the connect timeout, so this wait is not needed for the
+  // current client. It is kept because this file has to pass against the source
+  // as it was before that was true - it is the baseline the transport selection
+  // rewrite had to preserve, and it must stay meaningful if that rewrite is
+  // reverted. Without it, a transport that never opens leaves an armed timer,
+  // which CI reports as an open handle: it runs jest --detectOpenHandles with
+  // no --forceExit.
   await new Promise(resolve => setTimeout(resolve, CONNECT_TIMEOUT + 50));
 });
 

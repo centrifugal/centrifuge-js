@@ -1589,14 +1589,6 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
       this._clearConnectedState();
     }
 
-    if (needEvent) {
-      if (this._isConnecting()) {
-        this.emit('connecting', ctx);
-      } else {
-        this.emit('disconnected', ctx);
-      }
-    }
-
     // Otherwise an attempt that never opened leaves its timeout armed past
     // disconnect, holding the event loop open and firing against a transport
     // nobody is using any more.
@@ -1606,6 +1598,14 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     // surface, but it must not skip the state transitions or leave the client
     // without a scheduled reconnect - the latter is what turned a transport-side
     // error into a permanently dead client.
+    if (needEvent) {
+      if (this._isConnecting()) {
+        this.emit('connecting', ctx);
+      } else {
+        this.emit('disconnected', ctx);
+      }
+    }
+
     try {
       if (this._transport) {
         this._debug("closing existing transport");

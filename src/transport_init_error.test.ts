@@ -975,3 +975,77 @@ describe('transport wrappers before initialize()', () => {
     expect(() => t.close()).not.toThrow();
   });
 });
+
+describe('SseTransport close is not reentrant', () => {
+  test('close() returns before onClose is delivered', async () => {
+    // Every other transport reports its close asynchronously. Delivering it
+    // inline made SSE the one transport that re-entered the client from inside
+    // its own close(), which is why _disconnect has to null this._transport
+    // before closing it.
+    const events: string[] = [];
+    const fakeEventSource: any = function () {
+      return { close: () => { events.push('inner close'); } };
+    };
+
+    const t = new SseTransport(sseEndpoint, { eventsource: fakeEventSource, fetch: fetch });
+    t.initialize('json', {
+      onOpen: () => { /* unused */ },
+      onError: () => { /* unused */ },
+      onClose: () => { events.push('onClose'); },
+      onMessage: () => { /* unused */ },
+    }, '{}');
+
+    t.close();
+    events.push('close returned');
+
+    expect(events).toEqual(['inner close', 'close returned']);
+
+    await new Promise(r => setTimeout(r, 10));
+    expect(events).toEqual(['inner close', 'close returned', 'onClose']);
+  });
+
+  test('repeated close() synthesizes only one onClose', async () => {
+    let closes = 0;
+    const fakeEventSource: any = function () {
+      return { close: () => { /* no-op */ } };
+    };
+
+    const t = new SseTransport(sseEndpoint, { eventsource: fakeEventSource, fetch: fetch });
+    t.initialize('json', {
+      onOpen: () => { /* unused */ },
+      onError: () => { /* unused */ },
+      onClose: () => { closes++; },
+      onMessage: () => { /* unused */ },
+    }, '{}');
+
+    t.close();
+    t.close();
+    t.close();
+    await new Promise(r => setTimeout(r, 10));
+
+    expect(closes).toBe(1);
+  });
+
+  test('an sse client still reconnects after its transport fails', async () => {
+    // The deferred close lands after _disconnect has advanced the transport id,
+    // so it is ignored on the id guard. The client must not depend on it: the
+    // connect timeout and initialize failures reset the state themselves.
+    const counter = { calls: 0 };
+    const c = track(new Centrifuge([
+      { transport: 'sse' as TransportName, endpoint: sseEndpoint },
+    ], {
+      eventsource: throwingEventSource(counter),
+      fetch: fetch,
+      emulationEndpoint: emulationEndpoint,
+      timeout: 100,
+      minReconnectDelay: 20,
+      maxReconnectDelay: 20,
+    }));
+    c.on('error', () => { /* expected every attempt */ });
+
+    c.connect();
+    await waitFor(() => counter.calls >= 3);
+
+    expect(c.state).toBe(State.Connecting);
+  });
+});

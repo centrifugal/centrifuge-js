@@ -115,6 +115,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
   private _transportClosed: boolean;
   private _reconnecting: boolean;
   private _reconnectTimeout?: null | ReturnType<typeof setTimeout> = null;
+  private _connectTimeout: null | ReturnType<typeof setTimeout> = null;
   private _reconnectAttempts: number;
   private _client: null;
   private _session: string;
@@ -163,6 +164,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     this._codec = new JsonCodec();
     this._reconnecting = false;
     this._reconnectTimeout = null;
+    this._connectTimeout = null;
     this._reconnectAttempts = 0;
     this._client = null;
     this._session = '';
@@ -419,6 +421,11 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
       return;
     }
     this._debug('connect called');
+    // Throws for configuration faults no retry could fix. Runs before any state
+    // change, so a throw leaves the client Disconnected rather than stranded in
+    // connecting, and before the getToken/getData hop so the behaviour does not
+    // depend on how the client is configured.
+    this._validateTransportConfig();
     this._reconnectAttempts = 0;
     this._startConnecting();
   }
@@ -830,7 +837,14 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     return true;
   }
 
-  private _initializeTransport() {
+  /**
+   * Resolves transport dependencies from config, falling back to globals.
+   *
+   * Absent dependencies must stay null, never undefined: sockjs, sse and
+   * http_stream implement supported() as a `!== null` check only, so undefined
+   * would report as supported and then fail on construction.
+   */
+  private _resolveTransportDeps() {
     let websocket: any;
     if (this._config.websocket !== null) {
       websocket = this._config.websocket;
@@ -876,101 +890,125 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
       }
     }
 
+    return { websocket, sockjs, eventsource, fetchFunc, readableStream };
+  }
+
+  /** Constructs a transport wrapper. Does not check supported(). */
+  private _createTransport(transportName: string, endpoint: string, deps: any): any {
+    switch (transportName) {
+      case 'websocket':
+        return new WebsocketTransport(endpoint, {
+          websocket: deps.websocket
+        });
+      case 'webtransport':
+        return new WebtransportTransport(endpoint, {
+          webtransport: globalThis.WebTransport,
+          decoder: this._codec,
+          encoder: this._codec
+        });
+      case 'http_stream':
+        return new HttpStreamTransport(endpoint, {
+          fetch: deps.fetchFunc,
+          readableStream: deps.readableStream,
+          emulationEndpoint: this._config.emulationEndpoint,
+          decoder: this._codec,
+          encoder: this._codec
+        });
+      case 'sse':
+        return new SseTransport(endpoint, {
+          eventsource: deps.eventsource,
+          fetch: deps.fetchFunc,
+          emulationEndpoint: this._config.emulationEndpoint,
+        });
+      case 'sockjs':
+        return new SockjsTransport(endpoint, {
+          sockjs: deps.sockjs,
+          sockjsOptions: this._config.sockjsOptions
+        });
+      default:
+        // Unreachable for array configurations, whose transport names are
+        // validated in _configure. Kept as a guard.
+        throw new Error('unknown transport ' + transportName);
+    }
+  }
+
+  /**
+   * Validates that the configured transports can be used at all, throwing if
+   * not. Called synchronously from connect() before any state change, so these
+   * faults surface at the call site instead of from a reconnect timer, and
+   * behave identically whether or not getToken/getData are configured.
+   *
+   * Never assigns this._transport - it only probes supported().
+   */
+  private _validateTransportConfig() {
+    const deps = this._resolveTransportDeps();
+
     if (!this._emulation) {
       if (startsWith(this._endpoint, 'http')) {
         throw new Error('Provide explicit transport endpoints configuration in case of using HTTP (i.e. using array of TransportEndpoint instead of a single string), or use ws(s):// scheme in an endpoint if you aimed using WebSocket transport');
-      } else {
-        this._debug('client will use websocket');
-        this._transport = new WebsocketTransport(this._endpoint as string, {
-          websocket: websocket
-        });
-        if (!this._transport.supported()) {
-          throw new Error('WebSocket constructor not found, make sure it is available globally or passed as a dependency in Centrifuge options');
-        }
       }
+      if (!this._createTransport('websocket', this._endpoint as string, deps).supported()) {
+        throw new Error('WebSocket constructor not found, make sure it is available globally or passed as a dependency in Centrifuge options');
+      }
+      return;
+    }
+
+    for (const transportConfig of this._transports) {
+      if (this._createTransport(transportConfig.transport, transportConfig.endpoint, deps).supported()) {
+        return;
+      }
+    }
+    throw new Error('no supported transport found');
+  }
+
+  private _initializeTransport() {
+    const deps = this._resolveTransportDeps();
+
+    if (!this._emulation) {
+      this._debug('client will use websocket');
+      this._transport = this._createTransport('websocket', this._endpoint as string, deps);
     } else {
-      if (this._currentTransportIndex >= this._transports.length) {
-        this._triedAllTransports = true;
-        this._currentTransportIndex = 0;
-      }
+      let selected: any = null;
       let count = 0;
-      while (true) {
-        if (count >= this._transports.length) {
-          throw new Error('no supported transport found');
+      while (count < this._transports.length) {
+        // Wrapped here rather than only on entry: the index is advanced by a
+        // failed attempt, so a later attempt can start past the end of the list.
+        if (this._currentTransportIndex >= this._transports.length) {
+          this._triedAllTransports = true;
+          this._currentTransportIndex = 0;
         }
         const transportConfig = this._transports[this._currentTransportIndex];
-        const transportName = transportConfig.transport;
-        const transportEndpoint = transportConfig.endpoint;
-
-        if (transportName === 'websocket') {
-          this._debug('trying websocket transport');
-          this._transport = new WebsocketTransport(transportEndpoint, {
-            websocket: websocket
-          });
-          if (!this._transport.supported()) {
-            this._debug('websocket transport not available');
-            this._currentTransportIndex++;
-            count++;
-            continue;
-          }
-        } else if (transportName === 'webtransport') {
-          this._debug('trying webtransport transport');
-          this._transport = new WebtransportTransport(transportEndpoint, {
-            webtransport: globalThis.WebTransport,
-            decoder: this._codec,
-            encoder: this._codec
-          });
-          if (!this._transport.supported()) {
-            this._debug('webtransport transport not available');
-            this._currentTransportIndex++;
-            count++;
-            continue;
-          }
-        } else if (transportName === 'http_stream') {
-          this._debug('trying http_stream transport');
-          this._transport = new HttpStreamTransport(transportEndpoint, {
-            fetch: fetchFunc,
-            readableStream: readableStream,
-            emulationEndpoint: this._config.emulationEndpoint,
-            decoder: this._codec,
-            encoder: this._codec
-          });
-          if (!this._transport.supported()) {
-            this._debug('http_stream transport not available');
-            this._currentTransportIndex++;
-            count++;
-            continue;
-          }
-        } else if (transportName === 'sse') {
-          this._debug('trying sse transport');
-          this._transport = new SseTransport(transportEndpoint, {
-            eventsource: eventsource,
-            fetch: fetchFunc,
-            emulationEndpoint: this._config.emulationEndpoint,
-          });
-          if (!this._transport.supported()) {
-            this._debug('sse transport not available');
-            this._currentTransportIndex++;
-            count++;
-            continue;
-          }
-        } else if (transportName === 'sockjs') {
-          this._debug('trying sockjs');
-          this._transport = new SockjsTransport(transportEndpoint, {
-            sockjs: sockjs,
-            sockjsOptions: this._config.sockjsOptions
-          });
-          if (!this._transport.supported()) {
-            this._debug('sockjs transport not available');
-            this._currentTransportIndex++;
-            count++;
-            continue;
-          }
-        } else {
-          throw new Error('unknown transport ' + transportName);
+        this._debug('trying ' + transportConfig.transport + ' transport');
+        const candidate = this._createTransport(transportConfig.transport, transportConfig.endpoint, deps);
+        // Assigned only once supported, so giving up never leaves the client
+        // holding a wrapper that was never initialized.
+        if (candidate.supported()) {
+          selected = candidate;
+          break;
         }
-        break;
+        this._debug(transportConfig.transport + ' transport not available');
+        this._currentTransportIndex++;
+        count++;
       }
+      if (selected === null) {
+        // connect() validated that at least one transport was supported, so
+        // getting here means a dependency disappeared under a running client.
+        // Retries run from a timer with no call site, so report it like any
+        // other transport failure rather than throwing.
+        this._debug('no supported transport found on reconnect');
+        this._transportClosed = true;
+        this._reconnecting = false;
+        this.emit('error', {
+          type: 'transport',
+          error: {
+            code: errorCodes.transportClosed,
+            message: 'no supported transport found'
+          }
+        });
+        this._disconnect(connectingCodes.transportClosed, 'no supported transport found', true);
+        return;
+      }
+      this._transport = selected;
     }
 
     const self = this;
@@ -991,17 +1029,57 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
 
     this._transportClosed = false;
 
-    let connectTimeout: any;
-    connectTimeout = setTimeout(function () {
-      transport.close();
+    // Shared by the connect timeout and by an initialize() that fails. A
+    // closure rather than a method: it reads wasOpen and the transport of this
+    // particular attempt.
+    const failTransport = (reason: string, e?: any) => {
+      if (self._transportId != transportId) {
+        self._debug('transport failure from non-actual transport', reason, e);
+        return;
+      }
+      self._clearConnectTimeout();
+      // Nothing will ever deliver onClose for a transport that failed to
+      // initialize or never opened, so this reset is what keeps the client
+      // reconnecting instead of parking on the "waiting for transport close"
+      // guard for the rest of the page's life.
+      self._transportClosed = true;
+      self._debug(transport.name(), 'transport failed:', reason, e);
+      if (self._emulation && !self._transportWasOpen) {
+        self._currentTransportIndex++;
+        if (self._currentTransportIndex >= self._transports.length) {
+          self._triedAllTransports = true;
+          self._currentTransportIndex = 0;
+        }
+      }
+      if (self._isConnecting() && !wasOpen) {
+        self.emit('error', {
+          type: 'transport',
+          error: {
+            code: errorCodes.transportClosed,
+            // The exception message is the whole diagnostic payload here: it is
+            // what names the CSP directive or the mixed-content scheme.
+            message: (e && e.message) ? e.message : reason
+          },
+          transport: transport.name()
+        });
+      }
+      self._reconnecting = false;
+      self._disconnect(connectingCodes.transportClosed, reason, true);
+    };
+
+    // A verdict on the attempt, not a request for the transport to report back:
+    // a transport whose close() is a silent no-op would never deliver onClose,
+    // and the client would never reconnect. _disconnect closes the transport, so
+    // this must not close it as well.
+    this._clearConnectTimeout();
+    this._connectTimeout = setTimeout(function () {
+      failTransport('connect timeout');
     }, this._config.timeout);
 
-    this._transport.initialize(this._codecName(), {
+    try {
+      const initResult = this._transport.initialize(this._codecName(), {
       onOpen: function () {
-        if (connectTimeout) {
-          clearTimeout(connectTimeout);
-          connectTimeout = null;
-        }
+        self._clearConnectTimeout();
         if (self._transportId != transportId) {
           self._debug('open callback from non-actual transport');
           transport.close();
@@ -1029,10 +1107,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
         self._debug('transport level error', e);
       },
       onClose: function (closeEvent) {
-        if (connectTimeout) {
-          clearTimeout(connectTimeout);
-          connectTimeout = null;
-        }
+        self._clearConnectTimeout();
         if (self._transportId != transportId) {
           self._debug('close callback from non-actual transport');
           return;
@@ -1100,9 +1175,25 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
       onMessage: function (data) {
         self._dataReceived(data);
       }
-    }, initialData);
+      }, initialData);
+      // WebtransportTransport.initialize is async, so its failures arrive as a
+      // rejected promise rather than a synchronous throw.
+      if (initResult && typeof initResult.then === 'function') {
+        initResult.catch((e: any) => failTransport('transport initialize error', e));
+      }
+    } catch (e) {
+      failTransport('transport initialize error', e);
+      return;
+    }
     //@ts-ignore must be used only for debug and test purposes.
     self.emit('__centrifuge_debug:transport_initialized', {})
+  }
+
+  private _clearConnectTimeout() {
+    if (this._connectTimeout !== null) {
+      clearTimeout(this._connectTimeout);
+      this._connectTimeout = null;
+    }
   }
 
   private _sendConnect(skipSending: boolean): any {
@@ -1506,19 +1597,34 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
       }
     }
 
-    if (this._transport) {
-      this._debug("closing existing transport");
-      const transport = this._transport;
-      this._transport = null;
-      transport.close(); // Close only after setting this._transport to null to avoid recursion when calling transport close().
-      // Need to mark as closed here, because connect call may be sync called after disconnect,
-      // transport onClose callback will not be called yet
-      this._transportClosed = true;
-      this._nextTransportId();
-    } else {
-      this._debug("no transport to close");
+    // Otherwise an attempt that never opened leaves its timeout armed past
+    // disconnect, holding the event loop open and firing against a transport
+    // nobody is using any more.
+    this._clearConnectTimeout();
+
+    // Both finally blocks are load bearing. A throw from close() must still
+    // surface, but it must not skip the state transitions or leave the client
+    // without a scheduled reconnect - the latter is what turned a transport-side
+    // error into a permanently dead client.
+    try {
+      if (this._transport) {
+        this._debug("closing existing transport");
+        const transport = this._transport;
+        this._transport = null;
+        try {
+          transport.close(); // Close only after setting this._transport to null to avoid recursion when calling transport close().
+        } finally {
+          // Need to mark as closed here, because connect call may be sync called after disconnect,
+          // transport onClose callback will not be called yet
+          this._transportClosed = true;
+          this._nextTransportId();
+        }
+      } else {
+        this._debug("no transport to close");
+      }
+    } finally {
+      this._scheduleReconnect();
     }
-    this._scheduleReconnect();
   }
 
   private _failUnauthorized() {

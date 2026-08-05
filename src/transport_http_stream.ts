@@ -179,7 +179,8 @@ export class HttpStreamTransport {
   }
 
   close() {
-    this._abortController.abort();
+    // _abortController is only assigned in initialize().
+    this._abortController?.abort();
   }
 
   send(data: any, session: string, node: string) {

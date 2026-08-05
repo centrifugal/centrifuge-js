@@ -72,7 +72,14 @@ export class SseTransport {
   }
 
   close() {
-    this._transport.close();
+    try {
+      this._transport?.close();
+    } catch (e) {
+      // already closed, or not closeable.
+    }
+    // Deliberately outside the guard above: EventSource has no close event, so
+    // this synthesizes one, and errors raised downstream of it must not be
+    // mistaken for a transport-close failure.
     if (this._onClose !== null) {
       this._onClose();
     }

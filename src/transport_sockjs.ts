@@ -15,7 +15,9 @@ export class SockjsTransport {
   }
 
   subName() {
-    return 'sockjs-' + this._transport.transport;
+    // Called from debug logging, which must not throw on a transport that was
+    // constructed but never initialized.
+    return 'sockjs-' + this._transport?.transport;
   }
 
   emulation() {
@@ -47,7 +49,11 @@ export class SockjsTransport {
   }
 
   close() {
-    this._transport.close();
+    try {
+      this._transport?.close();
+    } catch (e) {
+      // already closed, or not closeable.
+    }
   }
 
   send(data: any) {

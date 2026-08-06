@@ -36,9 +36,10 @@ export class WebsocketTransport {
     } else {
       this._transport = new this.options.websocket(this.endpoint);
     }
-    if (protocol === 'protobuf') {
-      this._transport.binaryType = 'arraybuffer';
-    }
+    // Always take binary messages as ArrayBuffer, not Blob. Compressed frames
+    // arrive as binary even on a JSON connection, and reading a Blob is async -
+    // which would reorder messages.
+    this._transport.binaryType = 'arraybuffer';
 
     this._transport.onopen = () => {
       callbacks.onOpen();

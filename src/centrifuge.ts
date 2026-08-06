@@ -16,6 +16,8 @@ import { SseTransport } from './transport_sse';
 import { WebtransportTransport } from './transport_webtransport';
 
 import { JsonCodec } from './json';
+import { FrameCodec, frameCodecFromDictionary, frameByteLength, supportedConnectionFlags, connectionFlagDictionaryCompression } from './frame_codec';
+import { DictionaryCache, sharedDictionaryCache } from './dictionary_cache';
 
 import {
   isFunction, log, startsWith, errorExists,
@@ -29,7 +31,7 @@ import {
   SharedPollSubscriptionOptions, SharedPollSubscriptionEvents, SharedPollTrackItem,
   HistoryOptions, HistoryResult, PublishResult,
   PresenceResult, PresenceStatsResult, SubscribedContext,
-  TransportEndpoint,
+  TransportEndpoint, CompressionStats
 } from './types';
 
 import EventEmitter from 'events';
@@ -131,6 +133,21 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
   private _data: any;
   private _dispatchPromise: Promise<void>;
   private _serverPing: number;
+  /**
+   * Dictionary compression state. Non-null once the server has sent a
+   * dictionary; every frame after that point carries a codec marker.
+   * @internal
+   */
+  private _frameCodec: FrameCodec | null = null;
+  /** @internal */
+  private _compressionAccepted = false;
+  /**
+   * Total bytes delivered by the transport, counted before any decompression.
+   * Tracked in both modes so the two can be compared.
+   * @internal
+   */
+  private _transportBytesIn = 0;
+  private _dictionaries: DictionaryCache = sharedDictionaryCache;
   private _serverPingTimeout?: null | ReturnType<typeof setTimeout> = null;
   private _sendPong: boolean;
   private _promises: Record<number, any>;
@@ -628,6 +645,38 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     log('debug', args);
   }
 
+  /**
+   * compressionStats returns what this connection measured about dictionary
+   * compression.
+   *
+   * Byte counts are exact at the protocol frame level, but read them with two
+   * caveats: they compare against sending the same frames uncompressed rather
+   * than against permessage-deflate, and they are measured on WebSocket message
+   * payloads, so they exclude WebSocket and TCP framing which compression also
+   * shrinks slightly. The figure is therefore a small underestimate.
+   *
+   * Frames received before compression activated are not counted at all, so this
+   * reports steady state rather than the whole connection.
+   */
+  compressionStats(): CompressionStats {
+    const s = this._frameCodec !== null
+      ? this._frameCodec.getStats()
+      : { frames: 0, bytesReceived: 0, bytesDecompressed: 0, dictionaryBytes: 0 };
+    const saved = s.bytesDecompressed - s.bytesReceived - s.dictionaryBytes;
+    return {
+      accepted: this._compressionAccepted,
+      active: this._frameCodec !== null,
+      dictionaryId: this._frameCodec !== null ? this._frameCodec.id : '',
+      frames: s.frames,
+      bytesReceived: s.bytesReceived,
+      bytesDecompressed: s.bytesDecompressed,
+      dictionaryBytes: s.dictionaryBytes,
+      bytesSaved: saved,
+      ratio: s.bytesReceived > 0 ? s.bytesDecompressed / s.bytesReceived : 0,
+      transportBytesReceived: this._transportBytesIn,
+    };
+  }
+
   private _codecName(): string {
     return this._codec.name()
   }
@@ -776,6 +825,12 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
 
   private _clearConnectedState() {
     this._client = null;
+    // Compression is negotiated per connection: a reconnect must start over,
+    // and must not try to decode the next connection's frames with a dictionary
+    // that connection never received.
+    this._frameCodec = null;
+    this._compressionAccepted = false;
+    this._transportBytesIn = 0;
     this._clearServerPingTimeout();
     this._clearRefreshTimeout();
 
@@ -1281,6 +1336,17 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     if (Object.keys(this._config.headers).length > 0) {
       req.headers = this._config.headers;
     }
+    // Always advertise every connection-level capability this SDK can handle.
+    // There is no user-facing option on purpose: the client states capability,
+    // the server decides what to use, and a server supporting none ignores it.
+    req.flag = supportedConnectionFlags;
+    // Dictionaries kept from earlier connections. The server answers with an id
+    // alone for anything it recognises, so a returning client is compressed from
+    // its first frame without paying for the transfer again.
+    const heldIds = this._dictionaries.ids();
+    if (heldIds.length > 0) {
+      req.state = { dictionary_ids: heldIds };
+    }
 
     const subs = {};
     let hasSubs = false;
@@ -1369,7 +1435,54 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     if (this._serverPing > 0) {
       this._waitServerPing();
     }
+    this._transportBytesIn += frameByteLength(data);
+    if (this._frameCodec !== null) {
+      try {
+        data = this._frameCodec.decode(data, this._codec.name() === 'json');
+      } catch (e) {
+        this._debug('frame decode error', e);
+        // A cached dictionary that cannot decode is a stale or corrupted entry:
+        // drop it so the next connection does not advertise it again and wedge
+        // this client in a loop.
+        this._dictionaries.forget(this._frameCodec.id);
+        this._disconnect(disconnectedCodes.badProtocol, 'frame decode error', true);
+        return;
+      }
+    }
     const replies = this._codec.decodeReplies(data);
+    // A dictionary arriving in this frame takes effect from the NEXT frame: the
+    // frame carrying it is itself encoded with whatever was already in use,
+    // since the client can not decode anything until the new one is applied.
+    // Decoding above is already done, so installing here is safe.
+    //
+    // This must happen here rather than in reply dispatch, which is asynchronous
+    // - the next frame can arrive before a dispatched handler runs, and would
+    // then be decoded with the wrong dictionary or none at all.
+    for (const i in replies) {
+      if (!replies.hasOwnProperty(i)) continue;
+      const reply = replies[i];
+      const push = reply.push;
+      if (push && push.state && push.state.dictionary) {
+        const codec = frameCodecFromDictionary(push.state.dictionary, this._dictionaries);
+        if (codec !== null) {
+          // Only the structure dictionary is remembered, and it is always the
+          // first a connection receives. Channel dictionaries carry fragments of
+          // other users' messages and are never written to storage.
+          if (this._frameCodec === null) {
+            this._dictionaries.put(codec.id, codec.dictionary);
+          }
+          this._frameCodec = codec;
+          this._debug('dictionary compression activated, id', codec.id);
+        } else {
+          // The server named a dictionary this client does not hold, so nothing
+          // after this frame can be decoded. Forget it and start over rather
+          // than misread everything that follows.
+          this._dictionaries.forget(push.state.dictionary.id || '');
+          this._disconnect(disconnectedCodes.badProtocol, 'unknown dictionary', true);
+          return;
+        }
+      }
+    }
     // We have to guarantee order of events in replies processing - i.e. start processing
     // next reply only when we finished processing of current one. Without syncing things in
     // this way we could get wrong publication events order as reply promises resolve
@@ -1713,6 +1826,9 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     }
 
     this._client = result.client;
+    // A client can not assume a capability it advertised was accepted: the node
+    // may have it disabled, or may decline this connection.
+    this._compressionAccepted = ((result.flag || 0) & connectionFlagDictionaryCompression) !== 0;
     this._setState(State.Connected);
 
     if (this._refreshTimeout) {

@@ -817,3 +817,38 @@ export interface DeltaStats {
   /** Compression ratio: 1 - (bytesReceived / bytesDecoded). 0 when bytesDecoded is 0. */
   compressionRatio: number;
 }
+
+/**
+ * CompressionStats describes what a connection measured about dictionary
+ * compression on the frames it received.
+ */
+export interface CompressionStats {
+  /** Whether the server confirmed the feature at connect. */
+  accepted: boolean;
+  /** Whether frames are currently being decompressed. */
+  active: boolean;
+  /** Identifier of the dictionary in use. */
+  dictionaryId: string;
+  /** How many compressed frames were received. */
+  frames: number;
+  /** Compressed size of those frames. */
+  bytesReceived: number;
+  /** What they expanded to. */
+  bytesDecompressed: number;
+  /** What the dictionary itself cost to receive. */
+  dictionaryBytes: number;
+  /**
+   * Net saving: what these frames would have cost uncompressed, less what they
+   * actually cost, less the dictionary transfer. Can be negative on a connection
+   * that received too little traffic to earn the dictionary back.
+   */
+  bytesSaved: number;
+  /** Uncompressed over compressed, ignoring the dictionary transfer. */
+  ratio: number;
+  /**
+   * Total bytes delivered by the transport since connect, counted before any
+   * decompression. Tracked whether or not compression is active, so the two
+   * modes can be compared directly.
+   */
+  transportBytesReceived: number;
+}

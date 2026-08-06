@@ -35,9 +35,8 @@
     "docs": "typedoc --exclude '**/transport_*.ts' --exclude '**/*.test.ts' --exclude '**/*+(utils|json|protobuf.codec|codes|browser).ts' --excludePrivate --excludeInternal --entryPoints src/*.ts",
     "build-all": "yarn clean && yarn build && yarn build-browser && yarn build-browser-protobuf",
     "build-browser": "esbuild src/browser.ts --bundle --minify --sourcemap --outfile=dist/centrifuge.js",
-    "dev": "esbuild src/browser.ts --bundle --outfile=dist/centrifuge.js --servedir=dist/ --serve=2000",
+    "dev": "esbuild src/browser.protobuf.ts --bundle --outfile=dist/centrifuge.protobuf.js --watch=forever & esbuild src/browser.ts --bundle --outfile=dist/centrifuge.js --servedir=dist/ --serve=2000",
     "build-browser-protobuf": "esbuild src/browser.protobuf.ts --bundle --minify --sourcemap --outfile=dist/centrifuge.protobuf.js",
-    "dev-protobuf": "esbuild src/browser.protobuf.ts --bundle --outfile=dist/centrifuge.protobuf.js --servedir=dist/ --serve=2000",
     "proto": "./make-proto"
   },
   "devDependencies": {
@@ -87,6 +86,7 @@
   "homepage": "https://github.com/centrifugal/centrifuge-js",
   "dependencies": {
     "events": "^3.3.0",
+    "fflate": "^0.8.3",
     "protobufjs": "^7.6.0"
   }
 }

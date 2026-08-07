@@ -597,8 +597,8 @@ export namespace centrifugal {
             /** Properties of a ConnectionState. */
             interface IConnectionState {
 
-                /** ConnectionState dictionary */
-                dictionary?: (centrifugal.centrifuge.protocol.IDictionary|null);
+                /** ConnectionState dict */
+                dict?: (centrifugal.centrifuge.protocol.IDictionary|null);
             }
 
             /** Represents a ConnectionState. */
@@ -610,8 +610,8 @@ export namespace centrifugal {
                  */
                 constructor(properties?: centrifugal.centrifuge.protocol.IConnectionState);
 
-                /** ConnectionState dictionary. */
-                public dictionary?: (centrifugal.centrifuge.protocol.IDictionary|null);
+                /** ConnectionState dict. */
+                public dict?: (centrifugal.centrifuge.protocol.IDictionary|null);
 
                 /**
                  * Encodes the specified ConnectionState message. Does not implicitly {@link centrifugal.centrifuge.protocol.ConnectionState.verify|verify} messages.
@@ -1655,6 +1655,12 @@ export namespace centrifugal {
 
                 /** ConnectRequest flag */
                 flag?: (number|Long|null);
+
+                /** ConnectRequest profile */
+                profile?: (string|null);
+
+                /** ConnectRequest dict */
+                dict?: (string|null);
             }
 
             /** Represents a ConnectRequest. */
@@ -1686,6 +1692,12 @@ export namespace centrifugal {
 
                 /** ConnectRequest flag. */
                 public flag: (number|Long);
+
+                /** ConnectRequest profile. */
+                public profile: string;
+
+                /** ConnectRequest dict. */
+                public dict: string;
 
                 /**
                  * Encodes the specified ConnectRequest message. Does not implicitly {@link centrifugal.centrifuge.protocol.ConnectRequest.verify|verify} messages.
@@ -1775,6 +1787,9 @@ export namespace centrifugal {
 
                 /** ConnectResult flag */
                 flag?: (number|Long|null);
+
+                /** ConnectResult dict */
+                dict?: (centrifugal.centrifuge.protocol.IDictionary|null);
             }
 
             /** Represents a ConnectResult. */
@@ -1821,6 +1836,9 @@ export namespace centrifugal {
 
                 /** ConnectResult flag. */
                 public flag: (number|Long);
+
+                /** ConnectResult dict. */
+                public dict?: (centrifugal.centrifuge.protocol.IDictionary|null);
 
                 /**
                  * Encodes the specified ConnectResult message. Does not implicitly {@link centrifugal.centrifuge.protocol.ConnectResult.verify|verify} messages.

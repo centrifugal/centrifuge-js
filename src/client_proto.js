@@ -1595,7 +1595,7 @@ export const centrifugal = $root.centrifugal = (() => {
                  * Properties of a ConnectionState.
                  * @memberof centrifugal.centrifuge.protocol
                  * @interface IConnectionState
-                 * @property {centrifugal.centrifuge.protocol.IDictionary|null} [dictionary] ConnectionState dictionary
+                 * @property {centrifugal.centrifuge.protocol.IDictionary|null} [dict] ConnectionState dict
                  */
 
                 /**
@@ -1614,12 +1614,12 @@ export const centrifugal = $root.centrifugal = (() => {
                 }
 
                 /**
-                 * ConnectionState dictionary.
-                 * @member {centrifugal.centrifuge.protocol.IDictionary|null|undefined} dictionary
+                 * ConnectionState dict.
+                 * @member {centrifugal.centrifuge.protocol.IDictionary|null|undefined} dict
                  * @memberof centrifugal.centrifuge.protocol.ConnectionState
                  * @instance
                  */
-                ConnectionState.prototype.dictionary = null;
+                ConnectionState.prototype.dict = null;
 
                 /**
                  * Encodes the specified ConnectionState message. Does not implicitly {@link centrifugal.centrifuge.protocol.ConnectionState.verify|verify} messages.
@@ -1633,8 +1633,8 @@ export const centrifugal = $root.centrifugal = (() => {
                 ConnectionState.encode = function encode(message, writer) {
                     if (!writer)
                         writer = $Writer.create();
-                    if (message.dictionary != null && Object.hasOwnProperty.call(message, "dictionary"))
-                        $root.centrifugal.centrifuge.protocol.Dictionary.encode(message.dictionary, writer.uint32(/* id 1, wireType 2 =*/10).fork()).ldelim();
+                    if (message.dict != null && Object.hasOwnProperty.call(message, "dict"))
+                        $root.centrifugal.centrifuge.protocol.Dictionary.encode(message.dict, writer.uint32(/* id 1, wireType 2 =*/10).fork()).ldelim();
                     return writer;
                 };
 
@@ -1676,7 +1676,7 @@ export const centrifugal = $root.centrifugal = (() => {
                             break;
                         switch (tag >>> 3) {
                         case 1: {
-                                message.dictionary = $root.centrifugal.centrifuge.protocol.Dictionary.decode(reader, reader.uint32(), undefined, long + 1);
+                                message.dict = $root.centrifugal.centrifuge.protocol.Dictionary.decode(reader, reader.uint32(), undefined, long + 1);
                                 break;
                             }
                         default:
@@ -1718,10 +1718,10 @@ export const centrifugal = $root.centrifugal = (() => {
                         long = 0;
                     if (long > $util.recursionLimit)
                         return "maximum nesting depth exceeded";
-                    if (message.dictionary != null && message.hasOwnProperty("dictionary")) {
-                        let error = $root.centrifugal.centrifuge.protocol.Dictionary.verify(message.dictionary, long + 1);
+                    if (message.dict != null && message.hasOwnProperty("dict")) {
+                        let error = $root.centrifugal.centrifuge.protocol.Dictionary.verify(message.dict, long + 1);
                         if (error)
-                            return "dictionary." + error;
+                            return "dict." + error;
                     }
                     return null;
                 };
@@ -4136,6 +4136,8 @@ export const centrifugal = $root.centrifugal = (() => {
                  * @property {string|null} [version] ConnectRequest version
                  * @property {Object.<string,string>|null} [headers] ConnectRequest headers
                  * @property {number|Long|null} [flag] ConnectRequest flag
+                 * @property {string|null} [profile] ConnectRequest profile
+                 * @property {string|null} [dict] ConnectRequest dict
                  */
 
                 /**
@@ -4212,6 +4214,22 @@ export const centrifugal = $root.centrifugal = (() => {
                 ConnectRequest.prototype.flag = $util.Long ? $util.Long.fromBits(0,0,false) : 0;
 
                 /**
+                 * ConnectRequest profile.
+                 * @member {string} profile
+                 * @memberof centrifugal.centrifuge.protocol.ConnectRequest
+                 * @instance
+                 */
+                ConnectRequest.prototype.profile = "";
+
+                /**
+                 * ConnectRequest dict.
+                 * @member {string} dict
+                 * @memberof centrifugal.centrifuge.protocol.ConnectRequest
+                 * @instance
+                 */
+                ConnectRequest.prototype.dict = "";
+
+                /**
                  * Encodes the specified ConnectRequest message. Does not implicitly {@link centrifugal.centrifuge.protocol.ConnectRequest.verify|verify} messages.
                  * @function encode
                  * @memberof centrifugal.centrifuge.protocol.ConnectRequest
@@ -4241,6 +4259,10 @@ export const centrifugal = $root.centrifugal = (() => {
                             writer.uint32(/* id 6, wireType 2 =*/50).fork().uint32(/* id 1, wireType 2 =*/10).string(keys[i]).uint32(/* id 2, wireType 2 =*/18).string(message.headers[keys[i]]).ldelim();
                     if (message.flag != null && Object.hasOwnProperty.call(message, "flag"))
                         writer.uint32(/* id 7, wireType 0 =*/56).int64(message.flag);
+                    if (message.dict != null && Object.hasOwnProperty.call(message, "dict"))
+                        writer.uint32(/* id 8, wireType 2 =*/66).string(message.dict);
+                    if (message.profile != null && Object.hasOwnProperty.call(message, "profile"))
+                        writer.uint32(/* id 9, wireType 2 =*/74).string(message.profile);
                     return writer;
                 };
 
@@ -4351,6 +4373,14 @@ export const centrifugal = $root.centrifugal = (() => {
                                 message.flag = reader.int64();
                                 break;
                             }
+                        case 9: {
+                                message.profile = reader.string();
+                                break;
+                            }
+                        case 8: {
+                                message.dict = reader.string();
+                                break;
+                            }
                         default:
                             reader.skipType(tag & 7, long);
                             break;
@@ -4423,6 +4453,12 @@ export const centrifugal = $root.centrifugal = (() => {
                     if (message.flag != null && message.hasOwnProperty("flag"))
                         if (!$util.isInteger(message.flag) && !(message.flag && $util.isInteger(message.flag.low) && $util.isInteger(message.flag.high)))
                             return "flag: integer|Long expected";
+                    if (message.profile != null && message.hasOwnProperty("profile"))
+                        if (!$util.isString(message.profile))
+                            return "profile: string expected";
+                    if (message.dict != null && message.hasOwnProperty("dict"))
+                        if (!$util.isString(message.dict))
+                            return "dict: string expected";
                     return null;
                 };
 
@@ -4462,6 +4498,7 @@ export const centrifugal = $root.centrifugal = (() => {
                  * @property {string|null} [node] ConnectResult node
                  * @property {number|Long|null} [time] ConnectResult time
                  * @property {number|Long|null} [flag] ConnectResult flag
+                 * @property {centrifugal.centrifuge.protocol.IDictionary|null} [dict] ConnectResult dict
                  */
 
                 /**
@@ -4577,6 +4614,14 @@ export const centrifugal = $root.centrifugal = (() => {
                 ConnectResult.prototype.flag = $util.Long ? $util.Long.fromBits(0,0,false) : 0;
 
                 /**
+                 * ConnectResult dict.
+                 * @member {centrifugal.centrifuge.protocol.IDictionary|null|undefined} dict
+                 * @memberof centrifugal.centrifuge.protocol.ConnectResult
+                 * @instance
+                 */
+                ConnectResult.prototype.dict = null;
+
+                /**
                  * Encodes the specified ConnectResult message. Does not implicitly {@link centrifugal.centrifuge.protocol.ConnectResult.verify|verify} messages.
                  * @function encode
                  * @memberof centrifugal.centrifuge.protocol.ConnectResult
@@ -4615,6 +4660,8 @@ export const centrifugal = $root.centrifugal = (() => {
                         writer.uint32(/* id 11, wireType 0 =*/88).int64(message.time);
                     if (message.flag != null && Object.hasOwnProperty.call(message, "flag"))
                         writer.uint32(/* id 12, wireType 0 =*/96).int64(message.flag);
+                    if (message.dict != null && Object.hasOwnProperty.call(message, "dict"))
+                        $root.centrifugal.centrifuge.protocol.Dictionary.encode(message.dict, writer.uint32(/* id 13, wireType 2 =*/106).fork()).ldelim();
                     return writer;
                 };
 
@@ -4724,6 +4771,10 @@ export const centrifugal = $root.centrifugal = (() => {
                                 message.flag = reader.int64();
                                 break;
                             }
+                        case 13: {
+                                message.dict = $root.centrifugal.centrifuge.protocol.Dictionary.decode(reader, reader.uint32(), undefined, long + 1);
+                                break;
+                            }
                         default:
                             reader.skipType(tag & 7, long);
                             break;
@@ -4806,6 +4857,11 @@ export const centrifugal = $root.centrifugal = (() => {
                     if (message.flag != null && message.hasOwnProperty("flag"))
                         if (!$util.isInteger(message.flag) && !(message.flag && $util.isInteger(message.flag.low) && $util.isInteger(message.flag.high)))
                             return "flag: integer|Long expected";
+                    if (message.dict != null && message.hasOwnProperty("dict")) {
+                        let error = $root.centrifugal.centrifuge.protocol.Dictionary.verify(message.dict, long + 1);
+                        if (error)
+                            return "dict." + error;
+                    }
                     return null;
                 };
 

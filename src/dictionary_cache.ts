@@ -1,23 +1,24 @@
 /**
- * Where the structure dictionary is kept between connections.
+ * Where the dictionary is kept between connections.
  * @internal
  */
 const storageKey = 'centrifuge.dict';
 
 /**
- * dictionaryCache remembers the structure dictionary across connections, so a
- * reconnect costs an id rather than a transfer.
+ * dictionaryCache remembers the dictionary the server sent in the connect reply,
+ * so a reconnect - including a page reload - costs an id rather than a transfer.
  *
- * Only the structure dictionary is stored, and only the most recent one. Its id
- * changes only when a server is upgraded or an operator edits it, so a single
- * entry matches on essentially every reconnect; during a rolling deploy, where
- * old and new nodes disagree, a client re-downloads once per hop at about 1.6 KB
- * and needs no eviction policy to get right.
+ * One entry, the most recent. A dictionary belongs to a profile and changes only
+ * when the server publishes a new version, so a single entry matches on
+ * essentially every reconnect; during a rolling deploy, where old and new nodes
+ * disagree, a client re-downloads once per hop and needs no eviction policy to
+ * get right. A client that moves between profiles pays one transfer per switch.
  *
- * Channel dictionaries are deliberately never stored. They contain verbatim
- * fragments of other users' messages, and writing those to disk on a shared
- * machine would outlive the session that was entitled to them. They are also
- * built per node, so a stored copy would rarely match anyway.
+ * The entry outlives the session, which is the point - and worth being explicit
+ * about, because a dictionary is a sample of the traffic the profile carries. A
+ * server that puts application content into one is asserting that content may be
+ * handed to any connection of that profile; storing it here extends that to
+ * anyone using the same browser profile afterwards.
  *
  * The id is a hash of the content, computed by the server, so an entry can never
  * be used for a dictionary whose bytes differ. The CRC guards the other
@@ -53,10 +54,10 @@ export class DictionaryCache {
     return this.dict;
   }
 
-  /** Ids to advertise at connect. The protocol allows several; this keeps one. */
-  ids(): string[] {
+  /** The id to advertise at connect, or empty if nothing is cached. */
+  advertise(): string {
     this.ensureLoaded();
-    return this.id ? [this.id] : [];
+    return this.id;
   }
 
   put(id: string, dict: Uint8Array): void {

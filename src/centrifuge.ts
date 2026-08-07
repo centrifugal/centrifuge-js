@@ -71,6 +71,7 @@ const defaults: Options = {
   debug: false,
   name: 'js',
   version: '',
+  profile: '',
   fetch: null,
   readableStream: null,
   websocket: null,
@@ -1343,9 +1344,12 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     // Dictionaries kept from earlier connections. The server answers with an id
     // alone for anything it recognises, so a returning client is compressed from
     // its first frame without paying for the transfer again.
-    const heldIds = this._dictionaries.ids();
-    if (heldIds.length > 0) {
-      req.state = { dictionary_ids: heldIds };
+    const held = this._dictionaries.advertise();
+    if (held !== '') {
+      req.dict = held;
+    }
+    if (this._config.profile !== '') {
+      req.profile = this._config.profile;
     }
 
     const subs = {};
@@ -1461,14 +1465,20 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     for (const i in replies) {
       if (!replies.hasOwnProperty(i)) continue;
       const reply = replies[i];
-      const push = reply.push;
-      if (push && push.state && push.state.dictionary) {
-        const codec = frameCodecFromDictionary(push.state.dictionary, this._dictionaries);
+      // Compression is set up by the connect reply, which is the frame that
+      // carries the dictionary. A push may replace it later, which the protocol
+      // allows but the server does not currently do.
+      const connectDict = reply.connect && reply.connect.dict;
+      const pushDict = reply.push && reply.push.state && reply.push.state.dict;
+      const dict = connectDict || pushDict;
+      if (dict) {
+        const codec = frameCodecFromDictionary(dict, this._dictionaries);
         if (codec !== null) {
-          // Only the structure dictionary is remembered, and it is always the
-          // first a connection receives. Channel dictionaries carry fragments of
-          // other users' messages and are never written to storage.
-          if (this._frameCodec === null) {
+          // The dictionary from the connect reply belongs to this client's
+          // profile and changes only when the server publishes a new version,
+          // so keeping it turns the next connect into an id and no transfer.
+          // One arriving later in a push is connection-scoped and is not kept.
+          if (connectDict) {
             this._dictionaries.put(codec.id, codec.dictionary);
           }
           this._frameCodec = codec;
@@ -1477,7 +1487,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
           // The server named a dictionary this client does not hold, so nothing
           // after this frame can be decoded. Forget it and start over rather
           // than misread everything that follows.
-          this._dictionaries.forget(push.state.dictionary.id || '');
+          this._dictionaries.forget(dict.id || '');
           this._disconnect(disconnectedCodes.badProtocol, 'unknown dictionary', true);
           return;
         }

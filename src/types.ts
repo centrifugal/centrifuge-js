@@ -144,6 +144,12 @@ export interface Options {
   name: string;
   /** Application version string sent with the connect command for server-side observability. */
   version: string;
+  /** Application context this connection belongs to, e.g. "trading-dashboard" or
+   * "mobile-feed". A server may use it to serve a compression dictionary built for
+   * connections of that kind. It describes the client, not the user: use a small
+   * fixed set of names, the same way as name. The server decides what to do with it
+   * and may ignore or override it, so it must never be relied on to gate anything. */
+  profile: string;
   /** Minimum delay between reconnect attempts in milliseconds. Default: 500. */
   minReconnectDelay: number;
   /** Maximum delay between reconnect attempts in milliseconds. Default: 20000. */

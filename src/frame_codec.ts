@@ -43,12 +43,7 @@ const maxDecompressedFrameSize = 16 * 1024 * 1024;
  */
 const maxDictionarySize = 1024 * 1024;
 
-/**
- * Dictionary.flags bit 0: content is raw DEFLATE and must be inflated with no
- * preset dictionary before use.
- * @internal
- */
-export const dictionaryFlagDeflate = 1 << 0;
+
 
 /**
  * What a connection measured about dictionary compression.
@@ -167,11 +162,9 @@ export function frameCodecFromDictionary(dictionary: any, cache?: DictionaryCach
     raw = base64ToBytes(dictionary.data_b64 || dictionary.dataB64);
   }
   const id = dictionary.id || '';
-  const flags = Number(dictionary.flags || 0);
-  if (raw !== null && (flags & dictionaryFlagDeflate) !== 0) {
-    // The first dictionary of a connection travels deflated: its delivery frame
-    // could not be compressed, because nothing was installed yet to compress it
-    // against.
+  if (raw !== null) {
+    // Content is always deflated: the frame carrying it cannot be compressed,
+    // because nothing is installed yet to compress it against.
     try {
       raw = inflateSync(raw);
     } catch (e) {

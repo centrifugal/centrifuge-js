@@ -33,23 +33,23 @@ describe('dictionary cache', () => {
 
   it('advertises what it holds, and nothing when empty', () => {
     const c = new DictionaryCache();
-    expect(c.ids()).toEqual([]);
+    expect(c.advertise()).toEqual('');
     c.put('abc', dict);
-    expect(c.ids()).toEqual(['abc']);
+    expect(c.advertise()).toEqual('abc');
   });
 
   it('keeps only the latest, since the id changes only on upgrade', () => {
     const c = new DictionaryCache();
     c.put('v1', dict);
     c.put('v2', dict);
-    expect(c.ids()).toEqual(['v2']);
+    expect(c.advertise()).toEqual('v2');
     expect(c.get('v1')).toBeNull();
   });
 
   it('survives a reload', () => {
     new DictionaryCache().put('abc', dict);
     const fresh = new DictionaryCache();
-    expect(fresh.ids()).toEqual(['abc']);
+    expect(fresh.advertise()).toEqual('abc');
     expect(fresh.get('abc')).toEqual(dict);
   });
 
@@ -57,10 +57,10 @@ describe('dictionary cache', () => {
     const c = new DictionaryCache();
     c.put('abc', dict);
     c.forget('nomatch');
-    expect(c.ids()).toEqual(['abc']);
+    expect(c.advertise()).toEqual('abc');
     c.forget('abc');
-    expect(c.ids()).toEqual([]);
-    expect(new DictionaryCache().ids()).toEqual([]);
+    expect(c.advertise()).toEqual('');
+    expect(new DictionaryCache().advertise()).toEqual('');
   });
 
   it('rejects storage that was corrupted underneath it', () => {
@@ -70,13 +70,13 @@ describe('dictionary cache', () => {
     // decoding frames against it would corrupt every one of them.
     raw.b64 = btoa('x'.repeat(dict.length));
     store.set('centrifuge.dict', JSON.stringify(raw));
-    expect(new DictionaryCache().ids()).toEqual([]);
+    expect(new DictionaryCache().advertise()).toEqual('');
   });
 
   it('ignores unparseable storage', () => {
     store.set('centrifuge.dict', 'not json');
-    expect(new DictionaryCache().ids()).toEqual([]);
+    expect(new DictionaryCache().advertise()).toEqual('');
     store.set('centrifuge.dict', '{"id":"x"}');
-    expect(new DictionaryCache().ids()).toEqual([]);
+    expect(new DictionaryCache().advertise()).toEqual('');
   });
 });

@@ -109,10 +109,19 @@ export class FrameCodec {
     if (marker === FrameCodecRaw) {
       out = body;
     } else if (marker === FrameCodecCompressed) {
-      out = inflateSync(body, { dictionary: this.dict, out: undefined });
-      if (out.length > maxDecompressedFrameSize) {
+      // Bounded during inflate, not after: letting it grow first means a
+      // small crafted frame can force the allocation before anything checks
+      // it. One byte over the limit is enough to detect the overflow, because
+      // fflate fills a provided buffer and reports the real length when the
+      // data fits - so a result at capacity means there was more to come.
+      const out2 = inflateSync(body, {
+        dictionary: this.dict,
+        out: new Uint8Array(maxDecompressedFrameSize + 1),
+      });
+      if (out2.length > maxDecompressedFrameSize) {
         throw new Error('centrifuge: decompressed frame too large');
       }
+      out = out2;
     } else {
       // A marker this client does not know means the server used a codec that
       // was never negotiated. Guessing would corrupt the stream.
@@ -166,7 +175,8 @@ export function frameCodecFromDictionary(dictionary: any, cache?: DictionaryCach
     // Content is always deflated: the frame carrying it cannot be compressed,
     // because nothing is installed yet to compress it against.
     try {
-      raw = inflateSync(raw);
+      // Same bound-during-inflate reasoning as decode above.
+      raw = inflateSync(raw, { out: new Uint8Array(maxDictionarySize + 1) });
     } catch (e) {
       return null;
     }

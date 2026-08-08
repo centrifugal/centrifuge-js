@@ -1,18 +1,21 @@
-import { DictionaryCache } from './dictionary_cache';
+import { DictionaryCache, dictionaryId } from './dictionary_cache';
 
 // The cache is what makes a returning client compress from its first frame
-// instead of carrying kilobytes uncompressed while it earns a dictionary. It
-// also has to fail safe: an entry that cannot be trusted must look absent rather
-// than produce garbage.
+// instead of paying for a dictionary transfer it already has. It also has to
+// fail safe, and "safe" here is stronger than it sounds: bytes substituted in
+// storage make legitimate server frames decode into content of the
+// substituter's choosing, so an entry that cannot be verified against its id
+// must look absent rather than be used.
 describe('dictionary cache', () => {
   const dict = new TextEncoder().encode('{"push":{"channel":"","pub":{"data":{');
+  let realId: string;
 
-  // Node's ambient localStorage is not usable here, and the cache treats that as
-  // "no storage" by design. These tests are about the caching behaviour, so they
-  // install a working one.
   let store: Map<string, string>;
-  beforeEach(() => {
+  beforeEach(async () => {
+    realId = await dictionaryId(dict);
     store = new Map<string, string>();
+    // Node's ambient localStorage is not usable here, and the cache treats that
+    // as "no storage" by design. These tests are about caching, so install one.
     Object.defineProperty(globalThis, 'localStorage', {
       configurable: true,
       value: {
@@ -23,19 +26,36 @@ describe('dictionary cache', () => {
     });
   });
 
-  it('returns bytes only for the id they were stored under', () => {
+  // A cache that has just read storage. Verification is asynchronous because
+  // that is the only digest a browser offers, so anything reading a reloaded
+  // entry has to wait for it.
+  const reloaded = async () => {
     const c = new DictionaryCache();
-    c.put('abc', dict);
-    expect(c.get('abc')).toEqual(dict);
+    await c.warm();
+    return c;
+  };
+
+  it('computes the same id as the server', async () => {
+    // Byte-for-byte identical to DictionaryID in centrifugal/protocol:
+    // base64url of the first 12 bytes of SHA-256, unpadded. A mismatch here
+    // would turn every cache hit into a silent miss.
+    expect(realId).toMatch(/^[A-Za-z0-9_-]{16}$/);
+    expect(await dictionaryId(dict)).toEqual(realId);
+  });
+
+  it('returns bytes only for the id they were stored under', async () => {
+    const c = new DictionaryCache();
+    c.put(realId, dict);
+    expect(c.get(realId)).toEqual(dict);
     expect(c.get('other')).toBeNull();
     expect(c.get('')).toBeNull();
   });
 
-  it('advertises what it holds, and nothing when empty', () => {
+  it('advertises what it holds, and nothing when empty', async () => {
     const c = new DictionaryCache();
     expect(c.advertise()).toEqual('');
-    c.put('abc', dict);
-    expect(c.advertise()).toEqual('abc');
+    c.put(realId, dict);
+    expect(c.advertise()).toEqual(realId);
   });
 
   it('keeps only the latest, since the id changes only on upgrade', () => {
@@ -46,37 +66,79 @@ describe('dictionary cache', () => {
     expect(c.get('v1')).toBeNull();
   });
 
-  it('survives a reload', () => {
-    new DictionaryCache().put('abc', dict);
-    const fresh = new DictionaryCache();
-    expect(fresh.advertise()).toEqual('abc');
-    expect(fresh.get('abc')).toEqual(dict);
+  it('survives a reload', async () => {
+    new DictionaryCache().put(realId, dict);
+    const fresh = await reloaded();
+    expect(fresh.advertise()).toEqual(realId);
+    expect(fresh.get(realId)).toEqual(dict);
   });
 
-  it('forgets an entry, so a bad one is not advertised again', () => {
-    const c = new DictionaryCache();
-    c.put('abc', dict);
-    c.forget('nomatch');
-    expect(c.advertise()).toEqual('abc');
-    c.forget('abc');
-    expect(c.advertise()).toEqual('');
+  it('advertises nothing until verification finishes', () => {
+    new DictionaryCache().put(realId, dict);
+    // Read synchronously, before the digest can have resolved. Empty is the
+    // safe answer: it costs one transfer and never decodes against unverified
+    // bytes.
     expect(new DictionaryCache().advertise()).toEqual('');
   });
 
-  it('rejects storage that was corrupted underneath it', () => {
-    new DictionaryCache().put('abc', dict);
+  it('rejects bytes substituted under a real id', async () => {
+    new DictionaryCache().put(realId, dict);
     const raw = JSON.parse(store.get('centrifuge.dict')!);
-    // Same length, different content: only the checksum can catch this, and
-    // decoding frames against it would corrupt every one of them.
+    // Same length, different content. This is the attack the hash exists for:
+    // a CRC is forgeable, and decoding against these bytes would put the
+    // substituter's content into frames the application trusts.
     raw.b64 = btoa('x'.repeat(dict.length));
     store.set('centrifuge.dict', JSON.stringify(raw));
-    expect(new DictionaryCache().advertise()).toEqual('');
+    const c = await reloaded();
+    expect(c.advertise()).toEqual('');
+    expect(c.get(realId)).toBeNull();
+    expect(store.has('centrifuge.dict')).toBe(false);
   });
 
-  it('ignores unparseable storage', () => {
+  it('does not let a matching forged id become a real one', async () => {
+    // Rewriting bytes *and* id together passes local verification - there is
+    // nothing on the client to say otherwise. It is harmless because the id no
+    // server ever issued is an id no server recognises, so the server sends the
+    // genuine dictionary and these bytes are never used to decode anything.
+    const evil = new TextEncoder().encode('x'.repeat(dict.length));
+    const evilId = await dictionaryId(evil);
+    store.set('centrifuge.dict', JSON.stringify({ id: evilId, b64: btoa('x'.repeat(dict.length)) }));
+    const c = await reloaded();
+    expect(c.advertise()).toEqual(evilId);
+    expect(c.advertise()).not.toEqual(realId);
+  });
+
+  it('forgets an entry, so a bad one is not advertised again', async () => {
+    const c = new DictionaryCache();
+    c.put(realId, dict);
+    c.forget('nomatch');
+    expect(c.advertise()).toEqual(realId);
+    c.forget(realId);
+    expect(c.advertise()).toEqual('');
+    expect((await reloaded()).advertise()).toEqual('');
+  });
+
+  it('does not let a slow digest clobber a fresher dictionary', async () => {
+    // Storage holds an old entry; a connection completes and stores a new one
+    // before verification of the old one finishes. The new one has to win, or a
+    // client would advertise a dictionary the server has already replaced.
+    new DictionaryCache().put(realId, dict);
+    const newer = new TextEncoder().encode('{"push":{"channel":"","pub":{"data":{"v":2}}}}');
+    const newerId = await dictionaryId(newer);
+
+    const c = new DictionaryCache();
+    const verifying = c.warm();
+    c.put(newerId, newer);
+    await verifying;
+
+    expect(c.advertise()).toEqual(newerId);
+    expect(c.get(newerId)).toEqual(newer);
+  });
+
+  it('ignores unparseable storage', async () => {
     store.set('centrifuge.dict', 'not json');
-    expect(new DictionaryCache().advertise()).toEqual('');
+    expect((await reloaded()).advertise()).toEqual('');
     store.set('centrifuge.dict', '{"id":"x"}');
-    expect(new DictionaryCache().advertise()).toEqual('');
+    expect((await reloaded()).advertise()).toEqual('');
   });
 });

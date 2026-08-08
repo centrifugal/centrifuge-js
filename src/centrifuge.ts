@@ -1347,6 +1347,19 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     const held = this._dictionaries.advertise();
     if (held !== '') {
       req.dict = held;
+      // Install the codec for the bytes we are advertising, before the reply
+      // arrives. A server that recognises this id compresses the connect reply
+      // itself - there is nothing left to wait for once both sides hold the
+      // dictionary - so waiting to learn the codec from a reply would mean
+      // never being able to read the reply that teaches it.
+      //
+      // Safe when the server does not recognise it either: a frame carries a
+      // codec marker, so a raw reply still passes through untouched and the
+      // dictionary it delivers replaces this one below.
+      const heldBytes = this._dictionaries.get(held);
+      if (heldBytes !== null) {
+        this._frameCodec = new FrameCodec(held, heldBytes);
+      }
     }
     if (this._config.profile !== '') {
       req.profile = this._config.profile;

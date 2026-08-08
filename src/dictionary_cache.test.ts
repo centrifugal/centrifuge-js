@@ -102,7 +102,8 @@ describe('dictionary cache', () => {
     // genuine dictionary and these bytes are never used to decode anything.
     const evil = new TextEncoder().encode('x'.repeat(dict.length));
     const evilId = await dictionaryId(evil);
-    store.set('centrifuge.dict', JSON.stringify({ id: evilId, b64: btoa('x'.repeat(dict.length)) }));
+    // Written with a current timestamp so this exercises forgery, not expiry.
+    store.set('centrifuge.dict', JSON.stringify({ id: evilId, b64: btoa('x'.repeat(dict.length)), at: Date.now() }));
     const c = await reloaded();
     expect(c.advertise()).toEqual(evilId);
     expect(c.advertise()).not.toEqual(realId);
@@ -133,6 +134,38 @@ describe('dictionary cache', () => {
 
     expect(c.advertise()).toEqual(newerId);
     expect(c.get(newerId)).toEqual(newer);
+  });
+
+  it('drops an entry older than its lifetime', async () => {
+    // The id is advertised on every connect, so an unbounded cache lets a
+    // stable, server-chosen value follow a client forever. Expiry bounds that
+    // window; it is not a freshness check, since content-addressed ids already
+    // make a stale dictionary harmless.
+    new DictionaryCache().put(realId, dict);
+    const raw = JSON.parse(store.get('centrifuge.dict')!);
+    raw.at = Date.now() - 8 * 24 * 60 * 60 * 1000;
+    store.set('centrifuge.dict', JSON.stringify(raw));
+
+    const c = await reloaded();
+    expect(c.advertise()).toEqual('');
+    expect(store.has('centrifuge.dict')).toBe(false);
+  });
+
+  it('keeps an entry inside its lifetime', async () => {
+    new DictionaryCache().put(realId, dict);
+    const raw = JSON.parse(store.get('centrifuge.dict')!);
+    raw.at = Date.now() - 6 * 24 * 60 * 60 * 1000;
+    store.set('centrifuge.dict', JSON.stringify(raw));
+
+    expect((await reloaded()).advertise()).toEqual(realId);
+  });
+
+  it('drops an entry written before expiry existed', async () => {
+    // No timestamp means it predates this rule, and could be arbitrarily old.
+    // Dropping it costs one transfer; keeping it would exempt exactly the
+    // entries that have already lived longest.
+    store.set('centrifuge.dict', JSON.stringify({ id: realId, b64: btoa('x'.repeat(dict.length)) }));
+    expect((await reloaded()).advertise()).toEqual('');
   });
 
   it('ignores unparseable storage', async () => {

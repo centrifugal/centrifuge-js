@@ -4,6 +4,15 @@
  */
 const storageKey = 'centrifuge.dict';
 
+// How long a cached dictionary may live before it is dropped and re-fetched.
+//
+// This bounds a privacy property, not correctness: the id a client advertises
+// is stable and server-chosen, so an unbounded cache lets it follow a client
+// indefinitely. Seven days costs one dictionary transfer per client per week -
+// negligible against what a dictionary saves in that time - while keeping the
+// identifier short-lived enough to be useless for tracking.
+const maxCacheAgeMs = 7 * 24 * 60 * 60 * 1000;
+
 /**
  * dictionaryCache remembers the dictionary the server sent in the connect reply,
  * so a reconnect - including a page reload - costs an id rather than a transfer.
@@ -136,6 +145,18 @@ export class DictionaryCache {
       if (!entry || typeof entry.id !== 'string' || typeof entry.b64 !== 'string') {
         return;
       }
+      // A cached id is advertised on every connect, so it is a stable,
+      // server-chosen value a client hands back indefinitely - which is why
+      // RFC 9842 asks that dictionaries be treated like cookies. Dropping the
+      // entry after a fixed period caps the window in which that id means
+      // anything. It is not a freshness check: content-addressed ids already
+      // make staleness harmless, and an entry with no stored time is from
+      // before this existed and is dropped rather than kept forever.
+      const storedAt = typeof entry.at === 'number' ? entry.at : 0;
+      if (storedAt <= 0 || Date.now() - storedAt > maxCacheAgeMs) {
+        this.remove();
+        return;
+      }
       id = entry.id;
       bytes = base64ToBytes(entry.b64);
     } catch (e) {
@@ -176,6 +197,7 @@ export class DictionaryCache {
       globalThis.localStorage?.setItem(storageKey, JSON.stringify({
         id: this.id,
         b64: bytesToBase64(this.dict),
+        at: Date.now(),
       }));
     } catch (e) {
       // Storage full or disabled: caching is an optimisation, not a requirement.

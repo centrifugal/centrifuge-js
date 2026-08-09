@@ -1346,20 +1346,11 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     // its first frame without paying for the transfer again.
     const held = this._dictionaries.advertise();
     if (held !== '') {
+      // Advertised, but no codec is installed yet. The connect reply is always
+      // an ordinary protocol frame, so there is nothing to decode until the
+      // reply has told us which dictionary applies - at which point it is
+      // installed for the frames that follow.
       req.dict = held;
-      // Install the codec for the bytes we are advertising, before the reply
-      // arrives. A server that recognises this id compresses the connect reply
-      // itself - there is nothing left to wait for once both sides hold the
-      // dictionary - so waiting to learn the codec from a reply would mean
-      // never being able to read the reply that teaches it.
-      //
-      // Safe when the server does not recognise it either: a frame carries a
-      // codec marker, so a raw reply still passes through untouched and the
-      // dictionary it delivers replaces this one below.
-      const heldBytes = this._dictionaries.get(held);
-      if (heldBytes !== null) {
-        this._frameCodec = new FrameCodec(held, heldBytes);
-      }
     }
     if (this._config.profile !== '') {
       req.profile = this._config.profile;
@@ -1852,13 +1843,6 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     // A client can not assume a capability it advertised was accepted: the node
     // may have it disabled, or may decline this connection.
     this._compressionAccepted = ((result.flag || 0) & connectionFlagDictionaryCompression) !== 0;
-    if (!this._compressionAccepted && this._frameCodec !== null) {
-      // A codec installed from cache before connecting, on a connection the
-      // server then declined to compress. It marks this reply so we could read
-      // it, and nothing after it - so keeping the codec would mean stripping a
-      // marker off frames that do not have one.
-      this._frameCodec = null;
-    }
     this._setState(State.Connected);
 
     if (this._refreshTimeout) {

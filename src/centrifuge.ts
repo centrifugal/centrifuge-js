@@ -1852,6 +1852,13 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     // A client can not assume a capability it advertised was accepted: the node
     // may have it disabled, or may decline this connection.
     this._compressionAccepted = ((result.flag || 0) & connectionFlagDictionaryCompression) !== 0;
+    if (!this._compressionAccepted && this._frameCodec !== null) {
+      // A codec installed from cache before connecting, on a connection the
+      // server then declined to compress. It marks this reply so we could read
+      // it, and nothing after it - so keeping the codec would mean stripping a
+      // marker off frames that do not have one.
+      this._frameCodec = null;
+    }
     this._setState(State.Connected);
 
     if (this._refreshTimeout) {

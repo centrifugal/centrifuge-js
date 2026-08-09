@@ -165,12 +165,19 @@ export function frameCodecFromDictionary(dictionary: any, cache?: DictionaryCach
     return null;
   }
   let raw: Uint8Array | null = null;
+  let b64: string | null = null;
   if (dictionary.data && dictionary.data.length > 0) {
     raw = toBytes(dictionary.data);
   } else if (dictionary.data_b64 || dictionary.dataB64) {
-    raw = base64ToBytes(dictionary.data_b64 || dictionary.dataB64);
+    b64 = (dictionary.data_b64 || dictionary.dataB64) as string;
+    raw = base64ToBytes(b64);
   }
   const id = dictionary.id || '';
+  // Measured before inflating, on the encoded form, because that is what
+  // actually crossed the wire - deflated, and base64 on top of that for JSON.
+  // Charging the inflated size overstated the cost of the structure dictionary
+  // by most of its size.
+  const wireBytes = b64 !== null ? b64.length : raw !== null ? raw.length : 0;
   if (raw !== null) {
     // Content is always deflated: the frame carrying it cannot be compressed,
     // because nothing is installed yet to compress it against.
@@ -195,7 +202,7 @@ export function frameCodecFromDictionary(dictionary: any, cache?: DictionaryCach
     // Cached, so it crossed no wire on this connection and is not charged.
     return new FrameCodec(id, held, 0);
   }
-  return new FrameCodec(id, raw);
+  return new FrameCodec(id, raw, wireBytes);
 }
 
 function base64ToBytes(s: string): Uint8Array {

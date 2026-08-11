@@ -1470,21 +1470,17 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
       if (!replies.hasOwnProperty(i)) continue;
       const reply = replies[i];
       // Compression is set up by the connect reply, which is the frame that
-      // carries the dictionary. A push may replace it later, which the protocol
-      // allows but the server does not currently do.
-      const connectDict = reply.connect && reply.connect.dict;
-      const pushDict = reply.push && reply.push.state && reply.push.state.dict;
-      const dict = connectDict || pushDict;
+      // carries the dictionary. There is no way to replace it mid-connection:
+      // the frame announcing a new dictionary would have to be encoded against
+      // the old one, so the protocol does not offer it.
+      const dict = reply.connect && reply.connect.dict;
       if (dict) {
         const codec = frameCodecFromDictionary(dict, this._dictionaries);
         if (codec !== null) {
-          // The dictionary from the connect reply belongs to this client's
-          // profile and changes only when the server publishes a new version,
-          // so keeping it turns the next connect into an id and no transfer.
-          // One arriving later in a push is connection-scoped and is not kept.
-          if (connectDict) {
-            this._dictionaries.put(codec.id, codec.dictionary);
-          }
+          // This dictionary belongs to the client's profile and changes only
+          // when the server publishes a new version, so keeping it turns the
+          // next connect into an id and no transfer.
+          this._dictionaries.put(codec.id, codec.dictionary);
           this._frameCodec = codec;
           this._debug('dictionary compression activated, id', codec.id);
         } else {

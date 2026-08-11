@@ -494,9 +494,6 @@ export namespace centrifugal {
 
                 /** Push refresh */
                 refresh?: (centrifugal.centrifuge.protocol.IRefresh|null);
-
-                /** Push state */
-                state?: (centrifugal.centrifuge.protocol.IConnectionState|null);
             }
 
             /** Represents a Push. */
@@ -540,9 +537,6 @@ export namespace centrifugal {
 
                 /** Push refresh. */
                 public refresh?: (centrifugal.centrifuge.protocol.IRefresh|null);
-
-                /** Push state. */
-                public state?: (centrifugal.centrifuge.protocol.IConnectionState|null);
 
                 /**
                  * Encodes the specified Push message. Does not implicitly {@link centrifugal.centrifuge.protocol.Push.verify|verify} messages.
@@ -588,75 +582,6 @@ export namespace centrifugal {
 
                 /**
                  * Gets the default type url for Push
-                 * @param [typeUrlPrefix] your custom typeUrlPrefix(default "type.googleapis.com")
-                 * @returns The default type url
-                 */
-                public static getTypeUrl(typeUrlPrefix?: string): string;
-            }
-
-            /** Properties of a ConnectionState. */
-            interface IConnectionState {
-
-                /** ConnectionState dict */
-                dict?: (centrifugal.centrifuge.protocol.IDictionary|null);
-            }
-
-            /** Represents a ConnectionState. */
-            class ConnectionState implements IConnectionState {
-
-                /**
-                 * Constructs a new ConnectionState.
-                 * @param [properties] Properties to set
-                 */
-                constructor(properties?: centrifugal.centrifuge.protocol.IConnectionState);
-
-                /** ConnectionState dict. */
-                public dict?: (centrifugal.centrifuge.protocol.IDictionary|null);
-
-                /**
-                 * Encodes the specified ConnectionState message. Does not implicitly {@link centrifugal.centrifuge.protocol.ConnectionState.verify|verify} messages.
-                 * @param message ConnectionState message or plain object to encode
-                 * @param [writer] Writer to encode to
-                 * @returns Writer
-                 */
-                public static encode(message: centrifugal.centrifuge.protocol.IConnectionState, writer?: $protobuf.Writer): $protobuf.Writer;
-
-                /**
-                 * Encodes the specified ConnectionState message, length delimited. Does not implicitly {@link centrifugal.centrifuge.protocol.ConnectionState.verify|verify} messages.
-                 * @param message ConnectionState message or plain object to encode
-                 * @param [writer] Writer to encode to
-                 * @returns Writer
-                 */
-                public static encodeDelimited(message: centrifugal.centrifuge.protocol.IConnectionState, writer?: $protobuf.Writer): $protobuf.Writer;
-
-                /**
-                 * Decodes a ConnectionState message from the specified reader or buffer.
-                 * @param reader Reader or buffer to decode from
-                 * @param [length] Message length if known beforehand
-                 * @returns ConnectionState
-                 * @throws {Error} If the payload is not a reader or valid buffer
-                 * @throws {$protobuf.util.ProtocolError} If required fields are missing
-                 */
-                public static decode(reader: ($protobuf.Reader|Uint8Array), length?: number): centrifugal.centrifuge.protocol.ConnectionState;
-
-                /**
-                 * Decodes a ConnectionState message from the specified reader or buffer, length delimited.
-                 * @param reader Reader or buffer to decode from
-                 * @returns ConnectionState
-                 * @throws {Error} If the payload is not a reader or valid buffer
-                 * @throws {$protobuf.util.ProtocolError} If required fields are missing
-                 */
-                public static decodeDelimited(reader: ($protobuf.Reader|Uint8Array)): centrifugal.centrifuge.protocol.ConnectionState;
-
-                /**
-                 * Verifies a ConnectionState message.
-                 * @param message Plain object to verify
-                 * @returns `null` if valid, otherwise the reason why it is not
-                 */
-                public static verify(message: { [k: string]: any }): (string|null);
-
-                /**
-                 * Gets the default type url for ConnectionState
                  * @param [typeUrlPrefix] your custom typeUrlPrefix(default "type.googleapis.com")
                  * @returns The default type url
                  */

@@ -58,7 +58,7 @@ export interface FrameCodecStats {
 
 /**
  * FrameCodec decodes frames compressed with DEFLATE against a shared dictionary
- * the server sent over ConnectionState.
+ * the server sent in the connect reply.
  *
  * @internal
  */
@@ -152,8 +152,8 @@ function toBytes(data: any): Uint8Array {
 }
 
 /**
- * Build a codec from a ConnectionState dictionary payload, or null when the
- * update carries something this client does not understand.
+ * Build a codec from a connect reply dictionary payload, or null when it
+ * carries something this client does not understand.
  *
  * Protobuf connections carry the dictionary as raw bytes; JSON connections have
  * to base64 it, because a bytes field carries raw JSON in that protocol.

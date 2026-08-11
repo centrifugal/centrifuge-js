@@ -1235,7 +1235,6 @@ export const centrifugal = $root.centrifugal = (() => {
                  * @property {centrifugal.centrifuge.protocol.IConnect|null} [connect] Push connect
                  * @property {centrifugal.centrifuge.protocol.IDisconnect|null} [disconnect] Push disconnect
                  * @property {centrifugal.centrifuge.protocol.IRefresh|null} [refresh] Push refresh
-                 * @property {centrifugal.centrifuge.protocol.IConnectionState|null} [state] Push state
                  */
 
                 /**
@@ -1342,14 +1341,6 @@ export const centrifugal = $root.centrifugal = (() => {
                 Push.prototype.refresh = null;
 
                 /**
-                 * Push state.
-                 * @member {centrifugal.centrifuge.protocol.IConnectionState|null|undefined} state
-                 * @memberof centrifugal.centrifuge.protocol.Push
-                 * @instance
-                 */
-                Push.prototype.state = null;
-
-                /**
                  * Encodes the specified Push message. Does not implicitly {@link centrifugal.centrifuge.protocol.Push.verify|verify} messages.
                  * @function encode
                  * @memberof centrifugal.centrifuge.protocol.Push
@@ -1383,8 +1374,6 @@ export const centrifugal = $root.centrifugal = (() => {
                         $root.centrifugal.centrifuge.protocol.Disconnect.encode(message.disconnect, writer.uint32(/* id 11, wireType 2 =*/90).fork()).ldelim();
                     if (message.refresh != null && Object.hasOwnProperty.call(message, "refresh"))
                         $root.centrifugal.centrifuge.protocol.Refresh.encode(message.refresh, writer.uint32(/* id 12, wireType 2 =*/98).fork()).ldelim();
-                    if (message.state != null && Object.hasOwnProperty.call(message, "state"))
-                        $root.centrifugal.centrifuge.protocol.ConnectionState.encode(message.state, writer.uint32(/* id 13, wireType 2 =*/106).fork()).ldelim();
                     return writer;
                 };
 
@@ -1467,10 +1456,6 @@ export const centrifugal = $root.centrifugal = (() => {
                             }
                         case 12: {
                                 message.refresh = $root.centrifugal.centrifuge.protocol.Refresh.decode(reader, reader.uint32(), undefined, long + 1);
-                                break;
-                            }
-                        case 13: {
-                                message.state = $root.centrifugal.centrifuge.protocol.ConnectionState.decode(reader, reader.uint32(), undefined, long + 1);
                                 break;
                             }
                         default:
@@ -1563,11 +1548,6 @@ export const centrifugal = $root.centrifugal = (() => {
                         if (error)
                             return "refresh." + error;
                     }
-                    if (message.state != null && message.hasOwnProperty("state")) {
-                        let error = $root.centrifugal.centrifuge.protocol.ConnectionState.verify(message.state, long + 1);
-                        if (error)
-                            return "state." + error;
-                    }
                     return null;
                 };
 
@@ -1587,161 +1567,6 @@ export const centrifugal = $root.centrifugal = (() => {
                 };
 
                 return Push;
-            })();
-
-            protocol.ConnectionState = (function() {
-
-                /**
-                 * Properties of a ConnectionState.
-                 * @memberof centrifugal.centrifuge.protocol
-                 * @interface IConnectionState
-                 * @property {centrifugal.centrifuge.protocol.IDictionary|null} [dict] ConnectionState dict
-                 */
-
-                /**
-                 * Constructs a new ConnectionState.
-                 * @memberof centrifugal.centrifuge.protocol
-                 * @classdesc Represents a ConnectionState.
-                 * @implements IConnectionState
-                 * @constructor
-                 * @param {centrifugal.centrifuge.protocol.IConnectionState=} [properties] Properties to set
-                 */
-                function ConnectionState(properties) {
-                    if (properties)
-                        for (let keys = Object.keys(properties), i = 0; i < keys.length; ++i)
-                            if (properties[keys[i]] != null && keys[i] !== "__proto__")
-                                this[keys[i]] = properties[keys[i]];
-                }
-
-                /**
-                 * ConnectionState dict.
-                 * @member {centrifugal.centrifuge.protocol.IDictionary|null|undefined} dict
-                 * @memberof centrifugal.centrifuge.protocol.ConnectionState
-                 * @instance
-                 */
-                ConnectionState.prototype.dict = null;
-
-                /**
-                 * Encodes the specified ConnectionState message. Does not implicitly {@link centrifugal.centrifuge.protocol.ConnectionState.verify|verify} messages.
-                 * @function encode
-                 * @memberof centrifugal.centrifuge.protocol.ConnectionState
-                 * @static
-                 * @param {centrifugal.centrifuge.protocol.IConnectionState} message ConnectionState message or plain object to encode
-                 * @param {$protobuf.Writer} [writer] Writer to encode to
-                 * @returns {$protobuf.Writer} Writer
-                 */
-                ConnectionState.encode = function encode(message, writer) {
-                    if (!writer)
-                        writer = $Writer.create();
-                    if (message.dict != null && Object.hasOwnProperty.call(message, "dict"))
-                        $root.centrifugal.centrifuge.protocol.Dictionary.encode(message.dict, writer.uint32(/* id 1, wireType 2 =*/10).fork()).ldelim();
-                    return writer;
-                };
-
-                /**
-                 * Encodes the specified ConnectionState message, length delimited. Does not implicitly {@link centrifugal.centrifuge.protocol.ConnectionState.verify|verify} messages.
-                 * @function encodeDelimited
-                 * @memberof centrifugal.centrifuge.protocol.ConnectionState
-                 * @static
-                 * @param {centrifugal.centrifuge.protocol.IConnectionState} message ConnectionState message or plain object to encode
-                 * @param {$protobuf.Writer} [writer] Writer to encode to
-                 * @returns {$protobuf.Writer} Writer
-                 */
-                ConnectionState.encodeDelimited = function encodeDelimited(message, writer) {
-                    return this.encode(message, writer).ldelim();
-                };
-
-                /**
-                 * Decodes a ConnectionState message from the specified reader or buffer.
-                 * @function decode
-                 * @memberof centrifugal.centrifuge.protocol.ConnectionState
-                 * @static
-                 * @param {$protobuf.Reader|Uint8Array} reader Reader or buffer to decode from
-                 * @param {number} [length] Message length if known beforehand
-                 * @returns {centrifugal.centrifuge.protocol.ConnectionState} ConnectionState
-                 * @throws {Error} If the payload is not a reader or valid buffer
-                 * @throws {$protobuf.util.ProtocolError} If required fields are missing
-                 */
-                ConnectionState.decode = function decode(reader, length, error, long) {
-                    if (!(reader instanceof $Reader))
-                        reader = $Reader.create(reader);
-                    if (long === undefined)
-                        long = 0;
-                    if (long > $Reader.recursionLimit)
-                        throw Error("maximum nesting depth exceeded");
-                    let end = length === undefined ? reader.len : reader.pos + length, message = new $root.centrifugal.centrifuge.protocol.ConnectionState();
-                    while (reader.pos < end) {
-                        let tag = reader.uint32();
-                        if (tag === error)
-                            break;
-                        switch (tag >>> 3) {
-                        case 1: {
-                                message.dict = $root.centrifugal.centrifuge.protocol.Dictionary.decode(reader, reader.uint32(), undefined, long + 1);
-                                break;
-                            }
-                        default:
-                            reader.skipType(tag & 7, long);
-                            break;
-                        }
-                    }
-                    return message;
-                };
-
-                /**
-                 * Decodes a ConnectionState message from the specified reader or buffer, length delimited.
-                 * @function decodeDelimited
-                 * @memberof centrifugal.centrifuge.protocol.ConnectionState
-                 * @static
-                 * @param {$protobuf.Reader|Uint8Array} reader Reader or buffer to decode from
-                 * @returns {centrifugal.centrifuge.protocol.ConnectionState} ConnectionState
-                 * @throws {Error} If the payload is not a reader or valid buffer
-                 * @throws {$protobuf.util.ProtocolError} If required fields are missing
-                 */
-                ConnectionState.decodeDelimited = function decodeDelimited(reader) {
-                    if (!(reader instanceof $Reader))
-                        reader = new $Reader(reader);
-                    return this.decode(reader, reader.uint32());
-                };
-
-                /**
-                 * Verifies a ConnectionState message.
-                 * @function verify
-                 * @memberof centrifugal.centrifuge.protocol.ConnectionState
-                 * @static
-                 * @param {Object.<string,*>} message Plain object to verify
-                 * @returns {string|null} `null` if valid, otherwise the reason why it is not
-                 */
-                ConnectionState.verify = function verify(message, long) {
-                    if (typeof message !== "object" || message === null)
-                        return "object expected";
-                    if (long === undefined)
-                        long = 0;
-                    if (long > $util.recursionLimit)
-                        return "maximum nesting depth exceeded";
-                    if (message.dict != null && message.hasOwnProperty("dict")) {
-                        let error = $root.centrifugal.centrifuge.protocol.Dictionary.verify(message.dict, long + 1);
-                        if (error)
-                            return "dict." + error;
-                    }
-                    return null;
-                };
-
-                /**
-                 * Gets the default type url for ConnectionState
-                 * @function getTypeUrl
-                 * @memberof centrifugal.centrifuge.protocol.ConnectionState
-                 * @static
-                 * @param {string} [typeUrlPrefix] your custom typeUrlPrefix(default "type.googleapis.com")
-                 * @returns {string} The default type url
-                 */
-                ConnectionState.getTypeUrl = function getTypeUrl(typeUrlPrefix) {
-                    if (typeUrlPrefix === undefined) {
-                        typeUrlPrefix = "type.googleapis.com";
-                    }
-                    return typeUrlPrefix + "/centrifugal.centrifuge.protocol.ConnectionState";
-                };
-
-                return ConnectionState;
             })();
 
             protocol.Dictionary = (function() {

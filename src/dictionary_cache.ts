@@ -109,6 +109,38 @@ export class DictionaryCache {
     this.id = id;
     this.dict = dict;
     this.save();
+    // Check that the id a server sent actually names the bytes it sent with it.
+    //
+    // Not for safety - these arrived on the same connection as the frames they
+    // decode, and the server will compress against exactly these bytes, so this
+    // connection is fine either way and is deliberately not interrupted.
+    //
+    // It is to stop a server that derives ids differently from costing every
+    // client its cache in silence. Without this the entry is stored, fails
+    // verification on the next load, is dropped, and re-downloaded - once per
+    // session, forever, with nothing to indicate why. Refusing to cache it says
+    // the same thing in one place instead.
+    void this.verifyOffered(id, dict);
+  }
+
+  /**
+   * Drop a just-stored entry whose id does not match its content. Runs after
+   * put returns, because the only digest a browser offers is asynchronous.
+   */
+  private async verifyOffered(id: string, dict: Uint8Array): Promise<void> {
+    let digest: string;
+    try {
+      digest = await dictionaryId(dict);
+    } catch (e) {
+      return; // No WebCrypto: nothing to check with, and nothing was claimed.
+    }
+    if (digest === id || this.id !== id) {
+      // Matches, or a newer dictionary replaced this one while hashing.
+      return;
+    }
+    this.id = '';
+    this.dict = null;
+    this.remove();
   }
 
   /**

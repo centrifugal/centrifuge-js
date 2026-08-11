@@ -109,6 +109,30 @@ describe('dictionary cache', () => {
     expect(c.advertise()).not.toEqual(realId);
   });
 
+  it('does not cache a dictionary whose id does not name its content', async () => {
+    // A server that derives ids differently, or gets its own bookkeeping wrong.
+    // The connection itself is fine - it compresses against the bytes it sent -
+    // but caching this would mean advertising an id, being told to reuse it,
+    // and dropping it again on every single load. Refusing once is the same
+    // outcome without the churn.
+    const c = new DictionaryCache();
+    c.put('not-the-hash-of-these-bytes', dict);
+    expect(c.advertise()).toEqual('not-the-hash-of-these-bytes'); // stored optimistically
+    await new Promise((r) => setTimeout(r, 0)); // let the digest settle
+    expect(c.advertise()).toEqual('');
+    expect(c.get('not-the-hash-of-these-bytes')).toBeNull();
+    expect(store.has('centrifuge.dict')).toBe(false);
+    expect((await reloaded()).advertise()).toEqual('');
+  });
+
+  it('keeps a dictionary whose id does name its content', async () => {
+    const c = new DictionaryCache();
+    c.put(realId, dict);
+    await new Promise((r) => setTimeout(r, 0));
+    expect(c.advertise()).toEqual(realId);
+    expect(c.get(realId)).toEqual(dict);
+  });
+
   it('forgets an entry, so a bad one is not advertised again', async () => {
     const c = new DictionaryCache();
     c.put(realId, dict);

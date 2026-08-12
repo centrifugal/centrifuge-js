@@ -1,4 +1,25 @@
+import { webcrypto } from 'node:crypto';
 import { DictionaryCache, dictionaryId } from './dictionary_cache';
+
+// Node exposes globalThis.crypto only from v19. CI no longer runs anything
+// older, but a local toolchain might, and without this the cache would correctly
+// decline to persist what it cannot verify - turning every test about
+// verification into a test of the degraded path instead. That path has its own
+// tests at the bottom of this file.
+if (!(globalThis as any).crypto?.subtle) {
+  Object.defineProperty(globalThis, 'crypto', { configurable: true, value: webcrypto });
+}
+
+// Verification is asynchronous and reports completion nowhere, so waiting a
+// fixed tick for it is a race: one macrotask is enough on an idle laptop and not
+// on a loaded CI runner.
+const eventually = async (cond: () => boolean, what: string) => {
+  for (let i = 0; i < 200; i++) {
+    if (cond()) return;
+    await new Promise((r) => setTimeout(r, 5));
+  }
+  throw new Error(`timed out waiting for ${what}`);
+};
 
 // The cache is what makes a returning client compress from its first frame
 // instead of paying for a dictionary transfer it already has. It also has to
@@ -118,8 +139,7 @@ describe('dictionary cache', () => {
     const c = new DictionaryCache();
     c.put('not-the-hash-of-these-bytes', dict);
     expect(c.advertise()).toEqual('not-the-hash-of-these-bytes'); // stored optimistically
-    await new Promise((r) => setTimeout(r, 0)); // let the digest settle
-    expect(c.advertise()).toEqual('');
+    await eventually(() => c.advertise() === '', 'the unverifiable entry to be dropped');
     expect(c.get('not-the-hash-of-these-bytes')).toBeNull();
     expect(store.has('centrifuge.dict')).toBe(false);
     expect((await reloaded()).advertise()).toEqual('');

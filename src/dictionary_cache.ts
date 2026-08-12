@@ -50,6 +50,22 @@ const maxCacheAgeMs = 7 * 24 * 60 * 60 * 1000;
  *
  * @internal
  */
+/**
+ * Whether stored bytes can be checked against their id when they are read back.
+ *
+ * Persisting is only worth doing if they can. Where WebCrypto is missing - an
+ * insecure origin, an older browser, React Native without a polyfill - the cache
+ * stays in memory: reconnects within this page still cost an id rather than a
+ * transfer, and nothing is written that the next load would only discard.
+ *
+ * Compression itself does not depend on any of this. A client with no storage
+ * and no WebCrypto still decodes every frame; it just pays for the dictionary
+ * once per page instead of once per week.
+ */
+function canVerify(): boolean {
+  return typeof (globalThis as any).crypto?.subtle?.digest === 'function';
+}
+
 export class DictionaryCache {
   private id: string = '';
   private dict: Uint8Array | null = null;
@@ -166,6 +182,9 @@ export class DictionaryCache {
   }
 
   private async load(): Promise<void> {
+    if (!canVerify()) {
+      return;
+    }
     let id = '';
     let bytes: Uint8Array | null = null;
     try {
@@ -222,7 +241,7 @@ export class DictionaryCache {
   }
 
   private save(): void {
-    if (this.dict === null) {
+    if (this.dict === null || !canVerify()) {
       return;
     }
     try {

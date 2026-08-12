@@ -199,3 +199,55 @@ describe('dictionary cache', () => {
     expect((await reloaded()).advertise()).toEqual('');
   });
 });
+
+// Degraded environments. Compression must keep working where the cache cannot:
+// an insecure origin has no WebCrypto, React Native has neither it nor
+// localStorage by default, and Node has no localStorage. In all of them a
+// client should still decode every frame and simply pay for the dictionary once
+// per process rather than once per week.
+describe('dictionary cache without platform APIs', () => {
+  const dict = new TextEncoder().encode('{"push":{"channel":"","pub":{"data":{');
+
+  it('caches in memory and writes nothing when WebCrypto is missing', async () => {
+    const store = new Map<string, string>();
+    Object.defineProperty(globalThis, 'localStorage', {
+      configurable: true,
+      value: {
+        getItem: (k: string) => (store.has(k) ? store.get(k)! : null),
+        setItem: (k: string, v: string) => { store.set(k, v); },
+        removeItem: (k: string) => { store.delete(k); },
+      },
+    });
+    const realCrypto = (globalThis as any).crypto;
+    Object.defineProperty(globalThis, 'crypto', { configurable: true, value: undefined });
+    try {
+      const c = new DictionaryCache();
+      c.put('some-id', dict);
+      // Usable for this session's reconnects: these bytes came from the server
+      // on this connection, so there is nothing to distrust.
+      expect(c.advertise()).toEqual('some-id');
+      expect(c.get('some-id')).toEqual(dict);
+      await new Promise((r) => setTimeout(r, 0));
+      expect(c.advertise()).toEqual('some-id');
+      // But nothing persisted, because nothing could verify it on the way back.
+      expect(store.has('centrifuge.dict')).toBe(false);
+    } finally {
+      Object.defineProperty(globalThis, 'crypto', { configurable: true, value: realCrypto });
+    }
+  });
+
+  it('caches in memory when there is no localStorage at all', async () => {
+    const realStorage = (globalThis as any).localStorage;
+    Object.defineProperty(globalThis, 'localStorage', { configurable: true, value: undefined });
+    try {
+      const c = new DictionaryCache();
+      c.put('some-id', dict);
+      expect(c.get('some-id')).toEqual(dict);
+      expect(c.advertise()).toEqual('some-id');
+      c.forget('some-id');
+      expect(c.advertise()).toEqual('');
+    } finally {
+      Object.defineProperty(globalThis, 'localStorage', { configurable: true, value: realStorage });
+    }
+  });
+});

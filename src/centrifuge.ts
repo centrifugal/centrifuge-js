@@ -31,7 +31,7 @@ import {
   SharedPollSubscriptionOptions, SharedPollSubscriptionEvents, SharedPollTrackItem,
   HistoryOptions, HistoryResult, PublishResult,
   PresenceResult, PresenceStatsResult, SubscribedContext,
-  TransportEndpoint, CompressionStats
+  TransportEndpoint, DictionaryCompressionStats
 } from './types';
 
 import EventEmitter from 'events';
@@ -647,8 +647,8 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
   }
 
   /**
-   * compressionStats returns what this connection measured about dictionary
-   * compression.
+   * dictionaryCompressionStats returns what this connection measured on the
+   * frames it decoded against a dictionary.
    *
    * Byte counts are exact at the protocol frame level, but read them with two
    * caveats: they compare against sending the same frames uncompressed rather
@@ -659,7 +659,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
    * Frames received before compression activated are not counted at all, so this
    * reports steady state rather than the whole connection.
    */
-  compressionStats(): CompressionStats {
+  dictionaryCompressionStats(): DictionaryCompressionStats {
     const s = this._frameCodec !== null
       ? this._frameCodec.getStats()
       : { frames: 0, bytesReceived: 0, bytesDecompressed: 0, dictionaryBytes: 0 };

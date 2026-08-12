@@ -825,10 +825,10 @@ export interface DeltaStats {
 }
 
 /**
- * CompressionStats describes what a connection measured about dictionary
- * compression on the frames it received.
+ * DictionaryCompressionStats describes what a connection measured on the frames
+ * it decoded against a dictionary.
  */
-export interface CompressionStats {
+export interface DictionaryCompressionStats {
   /** Whether the server confirmed the feature at connect. */
   accepted: boolean;
   /** Whether frames are currently being decompressed. */

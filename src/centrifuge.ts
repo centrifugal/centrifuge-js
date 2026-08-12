@@ -148,7 +148,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
    * @internal
    */
   private _transportBytesIn = 0;
-  private _dictionaries: DictionaryCache = sharedDictionaryCache;
+  private _dictionary: DictionaryCache = sharedDictionaryCache;
   private _serverPingTimeout?: null | ReturnType<typeof setTimeout> = null;
   private _sendPong: boolean;
   private _promises: Record<number, any>;
@@ -1344,7 +1344,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     // Dictionaries kept from earlier connections. The server answers with an id
     // alone for anything it recognises, so a returning client is compressed from
     // its first frame without paying for the transfer again.
-    const held = this._dictionaries.advertise();
+    const held = this._dictionary.advertise();
     if (held !== '') {
       // Advertised, but no codec is installed yet. The connect reply is always
       // an ordinary protocol frame, so there is nothing to decode until the
@@ -1452,7 +1452,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
         // A cached dictionary that cannot decode is a stale or corrupted entry:
         // drop it so the next connection does not advertise it again and wedge
         // this client in a loop.
-        this._dictionaries.forget(this._frameCodec.id);
+        this._dictionary.forget(this._frameCodec.id);
         this._disconnect(disconnectedCodes.badProtocol, 'frame decode error', true);
         return;
       }
@@ -1475,19 +1475,19 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
       // the old one, so the protocol does not offer it.
       const dict = reply.connect && reply.connect.dict;
       if (dict) {
-        const codec = frameCodecFromDictionary(dict, this._dictionaries);
+        const codec = frameCodecFromDictionary(dict, this._dictionary);
         if (codec !== null) {
           // This dictionary belongs to the client's profile and changes only
           // when the server publishes a new version, so keeping it turns the
           // next connect into an id and no transfer.
-          this._dictionaries.put(codec.id, codec.dictionary);
+          this._dictionary.put(codec.id, codec.dictionary);
           this._frameCodec = codec;
           this._debug('dictionary compression activated, id', codec.id);
         } else {
           // The server named a dictionary this client does not hold, so nothing
           // after this frame can be decoded. Forget it and start over rather
           // than misread everything that follows.
-          this._dictionaries.forget(dict.id || '');
+          this._dictionary.forget(dict.id || '');
           this._disconnect(disconnectedCodes.badProtocol, 'unknown dictionary', true);
           return;
         }

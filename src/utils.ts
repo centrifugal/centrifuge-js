@@ -45,3 +45,18 @@ export function ttlMilliseconds(ttl: number) {
   // https://stackoverflow.com/questions/12633405/what-is-the-maximum-delay-for-setinterval
   return Math.min(ttl * 1000, 2147483647);
 }
+
+/** @internal */
+export function localStorageItem(key: string): string | null {
+  // Accessing localStorage is not always safe: it may be null (Safari in
+  // private browsing mode), or even throw on property access (when access to
+  // storage is denied by the browser settings).
+  try {
+    if (typeof localStorage === 'undefined' || localStorage === null || !isFunction(localStorage.getItem)) {
+      return null;
+    }
+    return localStorage.getItem(key);
+  } catch (e) {
+    return null;
+  }
+}

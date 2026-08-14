@@ -19,7 +19,7 @@ import { JsonCodec } from './json';
 
 import {
   isFunction, log, startsWith, errorExists,
-  backoff, ttlMilliseconds
+  backoff, ttlMilliseconds, localStorageItem
 } from './utils';
 
 import {
@@ -657,8 +657,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     this._codec = new JsonCodec();
     this._formatOverride();
 
-    if (this._config.debug === true ||
-      (typeof localStorage !== 'undefined' && typeof localStorage.getItem === 'function' && localStorage.getItem('centrifuge.debug'))) {
+    if (this._config.debug === true || localStorageItem('centrifuge.debug')) {
       this._debugEnabled = true;
     }
 

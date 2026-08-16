@@ -144,6 +144,12 @@ export interface Options {
   name: string;
   /** Application version string sent with the connect command for server-side observability. */
   version: string;
+  /** Application context this connection belongs to, e.g. "trading-dashboard" or
+   * "mobile-feed". A server may use it to serve a compression dictionary built for
+   * connections of that kind. It describes the client, not the user: use a small
+   * fixed set of names, the same way as name. The server decides what to do with it
+   * and may ignore or override it, so it must never be relied on to gate anything. */
+  profile: string;
   /** Minimum delay between reconnect attempts in milliseconds. Default: 500. */
   minReconnectDelay: number;
   /** Maximum delay between reconnect attempts in milliseconds. Default: 20000. */
@@ -816,4 +822,39 @@ export interface DeltaStats {
   bytesDecoded: number;
   /** Compression ratio: 1 - (bytesReceived / bytesDecoded). 0 when bytesDecoded is 0. */
   compressionRatio: number;
+}
+
+/**
+ * DictionaryCompressionStats describes what a connection measured on the frames
+ * it decoded against a dictionary.
+ */
+export interface DictionaryCompressionStats {
+  /** Whether the server confirmed the feature at connect. */
+  accepted: boolean;
+  /** Whether frames are currently being decompressed. */
+  active: boolean;
+  /** Identifier of the dictionary in use. */
+  dictionaryId: string;
+  /** How many compressed frames were received. */
+  frames: number;
+  /** Compressed size of those frames. */
+  bytesReceived: number;
+  /** What they expanded to. */
+  bytesDecompressed: number;
+  /** What the dictionary itself cost to receive. */
+  dictionaryBytes: number;
+  /**
+   * Net saving: what these frames would have cost uncompressed, less what they
+   * actually cost, less the dictionary transfer. Can be negative on a connection
+   * that received too little traffic to earn the dictionary back.
+   */
+  bytesSaved: number;
+  /** Uncompressed over compressed, ignoring the dictionary transfer. */
+  ratio: number;
+  /**
+   * Total bytes delivered by the transport since connect, counted before any
+   * decompression. Tracked whether or not compression is active, so the two
+   * modes can be compared directly.
+   */
+  transportBytesReceived: number;
 }

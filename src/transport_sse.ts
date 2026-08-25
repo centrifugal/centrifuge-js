@@ -63,18 +63,35 @@ export class SseTransport {
       callbacks.onMessage(e.data);
     };
 
+    // EventSource fires nothing when closed, so close() has to synthesize the
+    // notification. Deferred, because delivering it inline would make this the
+    // only transport that re-enters the client from its own close() - every
+    // other one reports asynchronously, via onclose, an aborted fetch or the
+    // WebTransport closed promise.
     self._onClose = function () {
-      callbacks.onClose({
-        code: 4,
-        reason: 'connection closed'
-      });
+      setTimeout(function () {
+        callbacks.onClose({
+          code: 4,
+          reason: 'connection closed'
+        });
+      }, 0);
     };
   }
 
   close() {
-    this._transport.close();
-    if (this._onClose !== null) {
-      this._onClose();
+    try {
+      this._transport?.close();
+    } catch (e) {
+      // already closed, or not closeable.
+    }
+    // Deliberately outside the guard above: errors raised downstream of the
+    // synthesized close must not be mistaken for a transport-close failure.
+    // Consumed one-shot, so repeated close() calls cannot synthesize repeated
+    // closes.
+    const onClose = this._onClose;
+    this._onClose = null;
+    if (onClose !== null) {
+      onClose();
     }
   }
 

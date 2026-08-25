@@ -58,7 +58,13 @@ export class WebsocketTransport {
   }
 
   close() {
-    this._transport.close();
+    // _transport stays null when the constructor above threw, and a replaced
+    // global WebSocket may not provide close() at all.
+    try {
+      this._transport?.close();
+    } catch (e) {
+      // already closed, or not closeable.
+    }
   }
 
   send(data: any) {

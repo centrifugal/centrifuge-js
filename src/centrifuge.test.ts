@@ -1093,3 +1093,24 @@ test.each(transportCases)("%s: unsubscribed with unauthorized", async (transport
   expect(c.state).toBe(State.Disconnected);
   expect(ctx.code).toBe(disconnectedCodes.disconnectCalled);
 });
+
+test('initializeTransport wraps current transport index instead of going out of bounds', () => {
+  // Neither transport is supported in this environment (no sockjs/webtransport globals
+  // or config provided), so both must be skipped during transport selection.
+  const c = new Centrifuge([
+    {
+      transport: 'sockjs' as TransportName,
+      endpoint: 'http://localhost:8000/connection/sockjs',
+    },
+    {
+      transport: 'webtransport' as TransportName,
+      endpoint: 'http://localhost:8000/connection/webtransport',
+    },
+  ]);
+
+  // Simulate a client which already cycled through transports on a previous
+  // connect attempt and is now resuming from the last index, not index 0.
+  (c as any)._currentTransportIndex = 1;
+
+  expect(() => { (c as any)._initializeTransport() }).toThrowError('no supported transport found');
+});

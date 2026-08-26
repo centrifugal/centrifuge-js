@@ -909,6 +909,9 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
           if (!this._transport.supported()) {
             this._debug('websocket transport not available');
             this._currentTransportIndex++;
+            if (this._currentTransportIndex >= this._transports.length) {
+              this._currentTransportIndex = 0;
+            }
             count++;
             continue;
           }
@@ -922,6 +925,9 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
           if (!this._transport.supported()) {
             this._debug('webtransport transport not available');
             this._currentTransportIndex++;
+            if (this._currentTransportIndex >= this._transports.length) {
+              this._currentTransportIndex = 0;
+            }
             count++;
             continue;
           }
@@ -937,6 +943,9 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
           if (!this._transport.supported()) {
             this._debug('http_stream transport not available');
             this._currentTransportIndex++;
+            if (this._currentTransportIndex >= this._transports.length) {
+              this._currentTransportIndex = 0;
+            }
             count++;
             continue;
           }
@@ -950,6 +959,9 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
           if (!this._transport.supported()) {
             this._debug('sse transport not available');
             this._currentTransportIndex++;
+            if (this._currentTransportIndex >= this._transports.length) {
+              this._currentTransportIndex = 0;
+            }
             count++;
             continue;
           }
@@ -962,6 +974,9 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
           if (!this._transport.supported()) {
             this._debug('sockjs transport not available');
             this._currentTransportIndex++;
+            if (this._currentTransportIndex >= this._transports.length) {
+              this._currentTransportIndex = 0;
+            }
             count++;
             continue;
           }

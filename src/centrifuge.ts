@@ -829,6 +829,14 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     return true;
   }
 
+  private _advanceTransportIndex() {
+    this._currentTransportIndex++;
+    if (this._currentTransportIndex >= this._transports.length) {
+      this._triedAllTransports = true;
+      this._currentTransportIndex = 0;
+    }
+  }
+
   private _initializeTransport() {
     let websocket: any;
     if (this._config.websocket !== null) {
@@ -908,10 +916,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
           });
           if (!this._transport.supported()) {
             this._debug('websocket transport not available');
-            this._currentTransportIndex++;
-            if (this._currentTransportIndex >= this._transports.length) {
-              this._currentTransportIndex = 0;
-            }
+            this._advanceTransportIndex();
             count++;
             continue;
           }
@@ -924,10 +929,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
           });
           if (!this._transport.supported()) {
             this._debug('webtransport transport not available');
-            this._currentTransportIndex++;
-            if (this._currentTransportIndex >= this._transports.length) {
-              this._currentTransportIndex = 0;
-            }
+            this._advanceTransportIndex();
             count++;
             continue;
           }
@@ -942,10 +944,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
           });
           if (!this._transport.supported()) {
             this._debug('http_stream transport not available');
-            this._currentTransportIndex++;
-            if (this._currentTransportIndex >= this._transports.length) {
-              this._currentTransportIndex = 0;
-            }
+            this._advanceTransportIndex();
             count++;
             continue;
           }
@@ -958,10 +957,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
           });
           if (!this._transport.supported()) {
             this._debug('sse transport not available');
-            this._currentTransportIndex++;
-            if (this._currentTransportIndex >= this._transports.length) {
-              this._currentTransportIndex = 0;
-            }
+            this._advanceTransportIndex();
             count++;
             continue;
           }
@@ -973,10 +969,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
           });
           if (!this._transport.supported()) {
             this._debug('sockjs transport not available');
-            this._currentTransportIndex++;
-            if (this._currentTransportIndex >= this._transports.length) {
-              this._currentTransportIndex = 0;
-            }
+            this._advanceTransportIndex();
             count++;
             continue;
           }
@@ -1086,11 +1079,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
             reason = 'transport closed';
           }
           if (self._emulation && !self._transportWasOpen) {
-            self._currentTransportIndex++;
-            if (self._currentTransportIndex >= self._transports.length) {
-              self._triedAllTransports = true;
-              self._currentTransportIndex = 0;
-            }
+            self._advanceTransportIndex();
           }
         } else {
           // Codes >= 3000 are sent from a server application level.

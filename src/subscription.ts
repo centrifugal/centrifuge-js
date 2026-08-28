@@ -952,13 +952,16 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
       // JSON transport with server-side delta escaping.
       // Store raw bytes for delta, decode for user.
       const rawBytes = pub.data;
+      const encoded = new TextEncoder().encode(rawBytes);
       if (!pub.removed) {
-        this._prevValueMap.set(pub.key, new TextEncoder().encode(rawBytes));
+        this._prevValueMap.set(pub.key, encoded);
       } else {
         this._prevValueMap.delete(pub.key);
       }
-      // Count as full payload in delta stats.
-      const byteLen = rawBytes.length;
+      // Count as full payload in delta stats. Use the UTF-8 byte length, not
+      // rawBytes.length (JS string length counts UTF-16 code units, which
+      // undercounts any non-ASCII content).
+      const byteLen = encoded.length;
       this._deltaNumPubs++;
       this._deltaNumFull++;
       this._deltaBytesReceived += byteLen;

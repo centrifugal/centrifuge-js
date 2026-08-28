@@ -15,7 +15,7 @@ export class JsonCodec {
   }
 
   applyDeltaIfNeeded(pub: any, prevValue: any) {
-    let newData: any, newPrevValue: any;
+    let newData: any, newPrevValue: any, wireBytes: number;
     let isDelta: boolean;
     if (pub.delta) {
       isDelta = true;
@@ -24,12 +24,16 @@ export class JsonCodec {
       const valueArray = applyDelta(prevValue, deltaBytes);
       newData = JSON.parse(new TextDecoder().decode(valueArray))
       newPrevValue = valueArray;
+      wireBytes = deltaBytes.length;
     } else {
       isDelta = false;
       // Full data as JSON string.
       newData = JSON.parse(pub.data);
       newPrevValue = new TextEncoder().encode(pub.data);
+      wireBytes = newPrevValue.length;
     }
-    return { newData, newPrevValue, isDelta, wireBytes: pub.data.length, fullBytes: newPrevValue.length }
+    // wireBytes is the UTF-8 byte length of pub.data, not its JS string length
+    // (.length counts UTF-16 code units, which undercounts any non-ASCII content).
+    return { newData, newPrevValue, isDelta, wireBytes, fullBytes: newPrevValue.length }
   }
 }

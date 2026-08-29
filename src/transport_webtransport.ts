@@ -101,7 +101,7 @@ export class WebtransportTransport {
     try {
       while (true) {
         const { done, value } = await reader.read();
-        if (value.length > 0) {
+        if (value && value.length > 0) {
           if (this._protocol === 'json') {
             jsonStreamBuf += this._utf8decoder.decode(value);
             while (jsonStreamPos < jsonStreamBuf.length) {

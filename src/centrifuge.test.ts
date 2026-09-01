@@ -22,7 +22,7 @@ import { fetch } from 'undici';
 import { ReadableStream } from 'node:stream/web';
 
 test('invalid endpoint', () => {
-  expect(() => { new Centrifuge('') }).toThrowError();
+  expect(() => { new Centrifuge('') }).toThrow();
 });
 
 test('state invalidated disconnect (3014) clears token and map state', () => {
@@ -178,7 +178,7 @@ test('newSharedPollSubscription propagates token, getToken, and data from constr
 
 (typeof globalThis.WebSocket !== 'undefined' ? test.skip : test)('no websocket constructor', async () => {
   const c = new Centrifuge('ws://localhost:8000/connection/websocket');
-  expect(() => { c.connect() }).toThrowError();
+  expect(() => { c.connect() }).toThrow();
 });
 
 const transportCases = [
@@ -1112,5 +1112,5 @@ test('initializeTransport wraps current transport index instead of going out of 
   // connect attempt and is now resuming from the last index, not index 0.
   (c as any)._currentTransportIndex = 1;
 
-  expect(() => { (c as any)._initializeTransport() }).toThrowError('no supported transport found');
+  expect(() => { (c as any)._initializeTransport() }).toThrow('no supported transport found');
 });

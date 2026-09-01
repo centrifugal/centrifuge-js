@@ -1395,7 +1395,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
         });
       }
     }
-    p = p.then(() => {
+    p.then(() => {
       finishDispatch();
     });
   }
@@ -1483,7 +1483,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
       reason: reason
     };
 
-    let needEvent = false;
+    let needEvent: boolean;
 
     if (reconnect) {
       needEvent = this._setState(State.Connecting);

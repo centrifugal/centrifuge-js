@@ -1468,6 +1468,16 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
           this._subs[channel]._invalidateState();
         }
       }
+      // Server-side subscriptions carry their own cached recovery position,
+      // separate from the client-side subscriptions above — reset it to the
+      // same unrecoverable sentinel so the next connect can't recover from
+      // now-invalidated state.
+      for (const channel in this._serverSubs) {
+        if (this._serverSubs.hasOwnProperty(channel)) {
+          this._serverSubs[channel].offset = 0;
+          this._serverSubs[channel].epoch = '_';
+        }
+      }
     }
     if (this._isDisconnected()) {
       return;

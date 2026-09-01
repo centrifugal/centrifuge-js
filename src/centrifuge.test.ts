@@ -90,6 +90,33 @@ test('state invalidated disconnect (3014) clears token and map state', () => {
   expect((sharedPollSub as any)._prevValueMap.size).toBe(0);
 });
 
+test('state invalidated disconnect (3014) resets server-side subscription recovery position', () => {
+  // Regression: server-side subscriptions cache their own recovery position
+  // separately from client-side subscriptions (_subs). 3014 must reset it too,
+  // or the next connect keeps requesting recovery from the pre-invalidation
+  // offset/epoch, defeating the point of state invalidation.
+  const c = new Centrifuge([{
+    transport: 'websocket' as TransportName,
+    endpoint: 'ws://localhost:8000/connection/websocket',
+  }], {
+    websocket: WebSocket,
+  });
+
+  (c as any)._serverSubs['news'] = {
+    offset: 5,
+    epoch: 'server-epoch',
+    recoverable: true,
+  };
+
+  (c as any)._handleDisconnect({ code: 3014, reason: 'state invalidated' });
+
+  expect((c as any)._serverSubs['news'].offset).toBe(0);
+  expect((c as any)._serverSubs['news'].epoch).toBe('_');
+  // recoverable left untouched — recovery is still requested, just from the
+  // sentinel position the server can never match.
+  expect((c as any)._serverSubs['news'].recoverable).toBe(true);
+});
+
 test('state invalidated unsubscribe (2502) clears sub token and map state', () => {
   const c = new Centrifuge([{
     transport: 'websocket' as TransportName,

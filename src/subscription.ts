@@ -412,6 +412,7 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
 
   private _clearSubscribedState() {
     this._clearRefreshTimeout();
+    this._cancelAllDebounce();
     this._clearSharedPollSignatureRefresh();
     this._clearSharedPollTrackRetry();
     this._clearSharedPollReplayRetry();

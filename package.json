@@ -28,7 +28,7 @@
     "build": "rollup -c && ./fixup.sh",
     "prepare": "npm run build-all",
     "lint": "eslint src/ --ext .js,.jsx,.ts,.tsx",
-    "test": "jest --detectOpenHandles --verbose",
+    "test": "jest --detectOpenHandles --forceExit --verbose",
     "bench": "jest src/codec.bench.test.ts",
     "clean": "rm -rf dist build package",
     "ts-node": "ts-node",

@@ -55,7 +55,10 @@ export class HttpStreamTransport {
                 }
                 try {
                   if (self._protocol === 'json') {
-                    jsonStreamBuf += self._utf8decoder.decode(value);
+                    // stream: true keeps decoder state across reads so a multi-byte
+                    // UTF-8 character split across two chunks is not corrupted into
+                    // replacement characters.
+                    jsonStreamBuf += self._utf8decoder.decode(value, { stream: true });
                     while (jsonStreamPos < jsonStreamBuf.length) {
                       if (jsonStreamBuf[jsonStreamPos] === '\n') {
                         const line = jsonStreamBuf.substring(0, jsonStreamPos);

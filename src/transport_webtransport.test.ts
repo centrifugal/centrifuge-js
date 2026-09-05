@@ -41,3 +41,27 @@ describe('WebtransportTransport._startReading', () => {
     expect(events).toEqual(['message']);
   });
 });
+
+describe('WebtransportTransport._startReading UTF-8 handling', () => {
+  it('decodes a multi-byte character split across two chunks', async () => {
+    const transport = new WebtransportTransport('https://example.com/connection/webtransport', {});
+    (transport as any)._protocol = 'json';
+    const payload = JSON.stringify({ data: 'привет 🎉' });
+    const full = new TextEncoder().encode(payload + '\n');
+    // Split in the middle of the first Cyrillic character (2-byte sequence).
+    const splitAt = payload.indexOf('привет') + 1;
+    (transport as any)._stream = {
+      readable: fakeReadableStream([full.slice(0, splitAt), full.slice(splitAt)])
+    };
+
+    const messages: any[] = [];
+    const eventTarget = new EventTarget();
+    eventTarget.addEventListener('message', (e: any) => { messages.push(e.data); });
+
+    await (transport as any)._startReading(eventTarget);
+
+    // Without {stream: true} the decoder would emit U+FFFD for the bytes of the
+    // character straddling the chunk boundary.
+    expect(messages).toEqual([payload]);
+  });
+});

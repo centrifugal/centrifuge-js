@@ -103,7 +103,10 @@ export class WebtransportTransport {
         const { done, value } = await reader.read();
         if (value && value.length > 0) {
           if (this._protocol === 'json') {
-            jsonStreamBuf += this._utf8decoder.decode(value);
+            // stream: true keeps decoder state across reads so a multi-byte
+            // UTF-8 character split across two chunks is not corrupted into
+            // replacement characters.
+            jsonStreamBuf += this._utf8decoder.decode(value, { stream: true });
             while (jsonStreamPos < jsonStreamBuf.length) {
               if (jsonStreamBuf[jsonStreamPos] === '\n') {
                 const line = jsonStreamBuf.substring(0, jsonStreamPos);

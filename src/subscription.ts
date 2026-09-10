@@ -229,9 +229,10 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
           this._debouncePending.delete(key);
           return;
         }
-        // Recursive — but in practice debounce windows are short.
+        // Recursive — but in practice debounce windows are short. Nobody awaits
+        // this send, so swallow errors like the timer-driven send above does.
         this._debouncePending.delete(key);
-        this._debouncedPublish(key, p.data, isMap);
+        this._debouncedPublish(key, p.data, isMap).catch(() => {});
       }, this._debounceMs);
     }, this._debounceMs);
     this._debouncePending.set(key, entry);

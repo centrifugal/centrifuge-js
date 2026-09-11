@@ -1,0 +1,182 @@
+import { Centrifuge } from './centrifuge';
+import { DisconnectedContext, State, TransportName } from './types';
+import { FakeCentrifugoServer } from './fakeServer';
+
+import WebSocket from 'ws';
+
+// Regression guard for #389: online/offline listeners must be removed once the
+// client becomes disconnected. Otherwise every disconnected client stays
+// reachable from the network event target (window by default in browsers).
+
+class CountingEventTarget extends EventTarget {
+  readonly counts: Record<string, number> = { offline: 0, online: 0 };
+
+  addEventListener(type: string, callback: any, options?: any): void {
+    this.counts[type] = (this.counts[type] || 0) + 1;
+    super.addEventListener(type, callback, options);
+  }
+
+  removeEventListener(type: string, callback: any, options?: any): void {
+    this.counts[type] = (this.counts[type] || 0) - 1;
+    super.removeEventListener(type, callback, options);
+  }
+}
+
+function createClient(url: string, target: EventTarget): Centrifuge {
+  return new Centrifuge([{
+    transport: 'websocket' as TransportName,
+    endpoint: url,
+  }], {
+    websocket: WebSocket,
+    minReconnectDelay: 10,
+    maxReconnectDelay: 50,
+    networkEventTarget: target,
+  });
+}
+
+function waitForEvent<T>(emitter: any, event: string, timeout = 5000): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(`timeout waiting for '${event}'`)), timeout);
+    emitter.on(event, (ctx: T) => {
+      clearTimeout(timer);
+      resolve(ctx);
+    });
+  });
+}
+
+describe('network event listeners', () => {
+  let server: FakeCentrifugoServer;
+  let target: CountingEventTarget;
+  let clients: Centrifuge[];
+
+  beforeEach(async () => {
+    server = await FakeCentrifugoServer.start();
+    target = new CountingEventTarget();
+    clients = [];
+  });
+
+  afterEach(async () => {
+    clients.forEach(c => c.disconnect());
+    await server.close();
+  });
+
+  const newClient = () => {
+    const c = createClient(server.url, target);
+    clients.push(c);
+    return c;
+  };
+
+  test('removed on disconnect() and added again on connect()', async () => {
+    const c = newClient();
+    expect(target.counts).toEqual({ offline: 0, online: 0 });
+
+    c.connect();
+    await c.ready(5000);
+    expect(target.counts).toEqual({ offline: 1, online: 1 });
+
+    c.disconnect();
+    expect(target.counts).toEqual({ offline: 0, online: 0 });
+
+    c.connect();
+    await c.ready(5000);
+    expect(target.counts).toEqual({ offline: 1, online: 1 });
+
+    c.disconnect();
+    expect(target.counts).toEqual({ offline: 0, online: 0 });
+  });
+
+  test('discarded clients do not accumulate listeners on a shared target', async () => {
+    for (let i = 0; i < 5; i++) {
+      const c = newClient();
+      c.connect();
+      c.disconnect();
+    }
+    for (let i = 0; i < 3; i++) {
+      const c = newClient();
+      c.connect();
+      await c.ready(5000);
+      c.disconnect();
+    }
+    expect(target.counts).toEqual({ offline: 0, online: 0 });
+  });
+
+  test('kept while reconnecting after offline, so online still reconnects', async () => {
+    const c = newClient();
+    c.connect();
+    await c.ready(5000);
+
+    target.dispatchEvent(new Event('offline'));
+    expect(c.state).toBe(State.Connecting);
+    expect(target.counts).toEqual({ offline: 1, online: 1 });
+
+    target.dispatchEvent(new Event('online'));
+    await c.ready(5000);
+    expect(c.state).toBe(State.Connected);
+    expect(target.counts).toEqual({ offline: 1, online: 1 });
+
+    c.disconnect();
+    expect(target.counts).toEqual({ offline: 0, online: 0 });
+  });
+
+  test('removed when server disconnects the client without reconnect', async () => {
+    const c = newClient();
+    c.connect();
+    await c.ready(5000);
+
+    const disconnectedPromise = waitForEvent<DisconnectedContext>(c, 'disconnected');
+    server.disconnect(3501, 'terminal');
+    const ctx = await disconnectedPromise;
+
+    expect(ctx.code).toBe(3501);
+    expect(c.state).toBe(State.Disconnected);
+    expect(target.counts).toEqual({ offline: 0, online: 0 });
+  });
+
+  test('added on connect() before token is loaded, so online skips token retry backoff', async () => {
+    let tokenCalls = 0;
+    const c = new Centrifuge([{
+      transport: 'websocket' as TransportName,
+      endpoint: server.url,
+    }], {
+      websocket: WebSocket,
+      networkEventTarget: target,
+      minReconnectDelay: 60000,
+      maxReconnectDelay: 60000,
+      getToken: () => {
+        tokenCalls++;
+        return tokenCalls === 1 ? Promise.reject(new Error('token unavailable')) : Promise.resolve('token');
+      },
+    });
+    clients.push(c);
+
+    const errorPromise = waitForEvent(c, 'error');
+    c.connect();
+    expect(target.counts).toEqual({ offline: 1, online: 1 });
+
+    // First token request fails, next attempt is scheduled after a 60s backoff.
+    await errorPromise;
+    expect(c.state).toBe(State.Connecting);
+
+    target.dispatchEvent(new Event('online'));
+    await c.ready(2000);
+    expect(tokenCalls).toBe(2);
+  });
+
+  test('target without removeEventListener keeps listeners and disconnect still works', async () => {
+    const addOnly = { addEventListener: jest.fn() };
+    const c = createClient(server.url, addOnly as any);
+    clients.push(c);
+
+    c.connect();
+    await c.ready(5000);
+    c.disconnect();
+    expect(c.state).toBe(State.Disconnected);
+
+    c.connect();
+    await c.ready(5000);
+    c.disconnect();
+    expect(c.state).toBe(State.Disconnected);
+    // Listeners stayed registered, so the second connect did not add them again.
+    expect(addOnly.addEventListener).toHaveBeenCalledTimes(2);
+  });
+});

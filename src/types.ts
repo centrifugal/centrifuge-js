@@ -171,8 +171,9 @@ export interface Options {
   sockjsOptions: SockjsOptions;
   /** Endpoint for the HTTP stream and SSE emulation transports. Default: '/emulation'. */
   emulationEndpoint: string;
-  /** EventTarget used to observe network online/offline events. Defaults to globalThis (window
-   * in browsers). Set to null to disable network-event-based reconnection. */
+  /** EventTarget used to observe network online/offline events. When null (default), globalThis
+   * is used if it supports addEventListener (window in browsers). Listeners are removed once the
+   * client becomes disconnected. */
   networkEventTarget: EventTarget | null;
 }
 

@@ -135,7 +135,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
   private _sendPong: boolean;
   private _promises: Record<number, any>;
   private _promiseId: number;
-  private _networkEventsSet: boolean;
+  private _networkEvents: { target: EventTarget; onOffline: () => void; onOnline: () => void } | null;
 
   private _debugEnabled: boolean;
   private _config: Options;
@@ -184,7 +184,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     this._promises = {};
     this._promiseId = 0;
     this._debugEnabled = false;
-    this._networkEventsSet = false;
+    this._networkEvents = null;
 
     this._config = { ...defaults, ...options };
     this._configure();
@@ -713,7 +713,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
   }
 
   private _setNetworkEvents() {
-    if (this._networkEventsSet) {
+    if (this._networkEvents !== null) {
       return;
     }
     let eventTarget: EventTarget | null = null;
@@ -723,14 +723,14 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
       eventTarget = globalThis as EventTarget;
     }
     if (eventTarget) {
-      eventTarget.addEventListener('offline', () => {
+      const onOffline = () => {
         this._debug('offline event triggered');
         if (this.state === State.Connected || this.state === State.Connecting) {
           this._disconnect(connectingCodes.transportClosed, 'transport closed', true);
           this._deviceWentOffline = true;
         }
-      });
-      eventTarget.addEventListener('online', () => {
+      };
+      const onOnline = () => {
         this._debug('online event triggered');
         if (this.state !== State.Connecting) {
           return;
@@ -746,9 +746,27 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
         }
         this._clearReconnectTimeout();
         this._startReconnecting();
-      });
-      this._networkEventsSet = true;
+      };
+      eventTarget.addEventListener('offline', onOffline);
+      eventTarget.addEventListener('online', onOnline);
+      this._networkEvents = { target: eventTarget, onOffline, onOnline };
     }
+  }
+
+  // The online listener drives reconnect, so listeners stay until the client is
+  // disconnected; removing them then lets a disconnected client be garbage-collected.
+  private _clearNetworkEvents() {
+    if (this._networkEvents === null) {
+      return;
+    }
+    const { target, onOffline, onOnline } = this._networkEvents;
+    if (typeof target.removeEventListener !== 'function') {
+      // Custom targets may implement only addEventListener – keep listeners registered then.
+      return;
+    }
+    target.removeEventListener('offline', onOffline);
+    target.removeEventListener('online', onOnline);
+    this._networkEvents = null;
   }
 
   private _getReconnectDelay() {
@@ -991,8 +1009,6 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
       const connectCommand = self._sendConnect(true);
       initialCommands.push(connectCommand);
     }
-
-    this._setNetworkEvents();
 
     const initialData = this._codec.encodeCommands(initialCommands);
 
@@ -1445,6 +1461,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
 
   private _startConnecting() {
     this._debug('start connecting');
+    this._setNetworkEvents();
     if (this._setState(State.Connecting)) {
       this.emit('connecting', { code: connectingCodes.connectCalled, reason: 'connect called' });
     }
@@ -1499,6 +1516,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
       needEvent = this._setState(State.Connecting);
     } else {
       needEvent = this._setState(State.Disconnected);
+      this._clearNetworkEvents();
       this._rejectPromises({ code: errorCodes.clientDisconnected, message: 'disconnected' });
     }
 

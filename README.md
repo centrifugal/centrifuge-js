@@ -469,7 +469,7 @@ const centrifuge = new Centrifuge(transports, {
 
 #### networkEventTarget
 
-EventTarget for network online/offline events. In browser environment Centrifuge uses global window online/offline events automatically by default. This option allows providing a custom EventTarget for handling network state changes in other environments.
+EventTarget for network online/offline events. In browser environment Centrifuge uses global window online/offline events automatically by default. This option allows providing a custom EventTarget for handling network state changes in other environments. Listeners are added when `connect()` is called and removed once the client becomes disconnected (for example, after calling `disconnect()`), so a disconnected client is not kept referenced from the event target.
 
 
 ### Connection Token

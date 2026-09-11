@@ -173,7 +173,7 @@ export interface Options {
   emulationEndpoint: string;
   /** EventTarget used to observe network online/offline events. When null (default), globalThis
    * is used if it supports addEventListener (window in browsers). Listeners are removed once the
-   * client becomes disconnected. */
+   * client becomes disconnected (a custom target must implement removeEventListener for this). */
   networkEventTarget: EventTarget | null;
 }
 

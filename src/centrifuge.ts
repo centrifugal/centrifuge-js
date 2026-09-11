@@ -690,6 +690,13 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
       this._reconnecting = false;
       const oldState = this.state;
       this.state = newState;
+      // Keep network listeners in sync with the state before emitting: a 'state'
+      // handler may call connect() or disconnect() synchronously.
+      if (newState === State.Connecting) {
+        this._setNetworkEvents();
+      } else if (newState === State.Disconnected) {
+        this._clearNetworkEvents();
+      }
       this.emit('state', { newState, oldState });
       return true;
     }
@@ -760,8 +767,8 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
       return;
     }
     const { target, onOffline, onOnline } = this._networkEvents;
-    if (typeof target.removeEventListener !== 'function') {
-      // Custom targets may implement only addEventListener – keep listeners registered then.
+    if (!isFunction(target.removeEventListener)) {
+      this._debug('network event target has no removeEventListener, listeners kept');
       return;
     }
     target.removeEventListener('offline', onOffline);
@@ -1158,18 +1165,21 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     }
 
     this._reconnecting = true;
+    // A disconnect while the token/data is loading aborts this attempt (a new one
+    // is scheduled by the disconnect), so the continuations below must not act on it.
+    const transportId = this._transportId;
     const emptyToken = this._token === '';
     const needTokenRefresh = this._refreshRequired || (emptyToken && this._config.getToken !== null);
     if (!needTokenRefresh) {
       if (this._config.getData) {
         this._config.getData().then(data => {
-          if (!this._isConnecting()) {
+          if (this._attemptAborted(transportId)) {
             return;
           }
           this._data = data;
           this._initializeTransport();
         })
-        .catch(e => this._handleGetDataError(e));
+        .catch(e => this._handleGetDataError(e, transportId));
       } else {
         this._initializeTransport();
       }
@@ -1178,7 +1188,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
 
     const self = this;
     this._getToken().then(function (token: string) {
-      if (!self._isConnecting()) {
+      if (self._attemptAborted(transportId)) {
         return;
       }
       if (token == null || token == undefined) {
@@ -1189,18 +1199,18 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
       self._debug('connection token refreshed');
       if (self._config.getData) {
         self._config.getData().then(function (data: any) {
-          if (!self._isConnecting()) {
+          if (self._attemptAborted(transportId)) {
             return;
           }
           self._data = data;
           self._initializeTransport();
         })
-        .catch(e => self._handleGetDataError(e));
+        .catch(e => self._handleGetDataError(e, transportId));
       } else {
         self._initializeTransport();
       }
     }).catch(function (e) {
-      if (!self._isConnecting()) {
+      if (self._attemptAborted(transportId)) {
         return;
       }
       if (e instanceof UnauthorizedError) {
@@ -1223,7 +1233,14 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     });
   }
 
-  private _handleGetDataError(e: any): void {
+  private _attemptAborted(transportId: number): boolean {
+    return !this._isConnecting() || this._transportId !== transportId;
+  }
+
+  private _handleGetDataError(e: any, transportId: number): void {
+    if (this._attemptAborted(transportId)) {
+      return;
+    }
     if (e instanceof UnauthorizedError) {
       this._failUnauthorized();
       return;
@@ -1461,7 +1478,6 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
 
   private _startConnecting() {
     this._debug('start connecting');
-    this._setNetworkEvents();
     if (this._setState(State.Connecting)) {
       this.emit('connecting', { code: connectingCodes.connectCalled, reason: 'connect called' });
     }
@@ -1515,9 +1531,6 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     if (reconnect) {
       needEvent = this._setState(State.Connecting);
     } else {
-      // Clear before the state transition: its 'state' event may call connect()
-      // synchronously, which must be able to register the listeners again.
-      this._clearNetworkEvents();
       needEvent = this._setState(State.Disconnected);
       this._rejectPromises({ code: errorCodes.clientDisconnected, message: 'disconnected' });
     }
@@ -1547,10 +1560,12 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
       // Need to mark as closed here, because connect call may be sync called after disconnect,
       // transport onClose callback will not be called yet
       this._transportClosed = true;
-      this._nextTransportId();
     } else {
       this._debug("no transport to close");
     }
+    // Invalidates callbacks of the closed transport and the token/data
+    // continuations of an attempt that had not created a transport yet.
+    this._nextTransportId();
     this._scheduleReconnect();
   }
 

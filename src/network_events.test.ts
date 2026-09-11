@@ -22,19 +22,6 @@ class CountingEventTarget extends EventTarget {
   }
 }
 
-function createClient(url: string, target: EventTarget, extra: Partial<Options> = {}): Centrifuge {
-  return new Centrifuge([{
-    transport: 'websocket' as TransportName,
-    endpoint: url,
-  }], {
-    websocket: WebSocket,
-    minReconnectDelay: 10,
-    maxReconnectDelay: 50,
-    networkEventTarget: target,
-    ...extra,
-  });
-}
-
 function waitForEvent<T>(emitter: any, event: string, timeout = 5000): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error(`timeout waiting for '${event}'`)), timeout);
@@ -44,6 +31,8 @@ function waitForEvent<T>(emitter: any, event: string, timeout = 5000): Promise<T
     });
   });
 }
+
+const delay = (ms: number) => new Promise<void>(r => setTimeout(r, ms));
 
 describe('network event listeners', () => {
   let server: FakeCentrifugoServer;
@@ -61,8 +50,17 @@ describe('network event listeners', () => {
     await server.close();
   });
 
-  const newClient = (extra: Partial<Options> = {}, eventTarget: EventTarget = target) => {
-    const c = createClient(server.url, eventTarget, extra);
+  const newClient = (options: Partial<Options> = {}) => {
+    const c = new Centrifuge([{
+      transport: 'websocket' as TransportName,
+      endpoint: server.url,
+    }], {
+      websocket: WebSocket,
+      minReconnectDelay: 10,
+      maxReconnectDelay: 50,
+      networkEventTarget: target,
+      ...options,
+    });
     clients.push(c);
     return c;
   };
@@ -157,6 +155,28 @@ describe('network event listeners', () => {
     expect(tokenCalls).toBe(2);
   });
 
+  test('offline/online while getToken is pending does not open a second transport', async () => {
+    const resolvers: Array<(token: string) => void> = [];
+    const c = newClient({
+      getToken: () => new Promise<string>(resolve => { resolvers.push(resolve); }),
+    });
+    let transportsInitialized = 0;
+    (c as any).on('__centrifuge_debug:transport_initialized', () => transportsInitialized++);
+
+    c.connect();
+    target.dispatchEvent(new Event('offline'));
+    target.dispatchEvent(new Event('online'));
+    await delay(0);
+    // The aborted first attempt's token resolves first, then the current one.
+    expect(resolvers.length).toBe(2);
+    resolvers.forEach(resolve => resolve('token'));
+
+    await c.ready(5000);
+    await delay(100);
+    expect(c.state).toBe(State.Connected);
+    expect(transportsInitialized).toBe(1);
+  });
+
   test('kept when connect() is called from the state handler of the disconnect', async () => {
     const c = newClient();
     let reconnectOnce = true;
@@ -182,7 +202,7 @@ describe('network event listeners', () => {
 
   test('target without removeEventListener keeps listeners and disconnect still works', async () => {
     const addOnly = { addEventListener: jest.fn() };
-    const c = newClient({}, addOnly as any);
+    const c = newClient({ networkEventTarget: addOnly as any });
 
     c.connect();
     await c.ready(5000);

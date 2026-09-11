@@ -1515,8 +1515,10 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     if (reconnect) {
       needEvent = this._setState(State.Connecting);
     } else {
-      needEvent = this._setState(State.Disconnected);
+      // Clear before the state transition: its 'state' event may call connect()
+      // synchronously, which must be able to register the listeners again.
       this._clearNetworkEvents();
+      needEvent = this._setState(State.Disconnected);
       this._rejectPromises({ code: errorCodes.clientDisconnected, message: 'disconnected' });
     }
 

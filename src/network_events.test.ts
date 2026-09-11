@@ -1,5 +1,5 @@
 import { Centrifuge } from './centrifuge';
-import { DisconnectedContext, State, TransportName } from './types';
+import { DisconnectedContext, Options, State, TransportName } from './types';
 import { FakeCentrifugoServer } from './fakeServer';
 
 import WebSocket from 'ws';
@@ -22,7 +22,7 @@ class CountingEventTarget extends EventTarget {
   }
 }
 
-function createClient(url: string, target: EventTarget): Centrifuge {
+function createClient(url: string, target: EventTarget, extra: Partial<Options> = {}): Centrifuge {
   return new Centrifuge([{
     transport: 'websocket' as TransportName,
     endpoint: url,
@@ -31,6 +31,7 @@ function createClient(url: string, target: EventTarget): Centrifuge {
     minReconnectDelay: 10,
     maxReconnectDelay: 50,
     networkEventTarget: target,
+    ...extra,
   });
 }
 
@@ -60,8 +61,8 @@ describe('network event listeners', () => {
     await server.close();
   });
 
-  const newClient = () => {
-    const c = createClient(server.url, target);
+  const newClient = (extra: Partial<Options> = {}, eventTarget: EventTarget = target) => {
+    const c = createClient(server.url, eventTarget, extra);
     clients.push(c);
     return c;
   };
@@ -134,12 +135,7 @@ describe('network event listeners', () => {
 
   test('added on connect() before token is loaded, so online skips token retry backoff', async () => {
     let tokenCalls = 0;
-    const c = new Centrifuge([{
-      transport: 'websocket' as TransportName,
-      endpoint: server.url,
-    }], {
-      websocket: WebSocket,
-      networkEventTarget: target,
+    const c = newClient({
       minReconnectDelay: 60000,
       maxReconnectDelay: 60000,
       getToken: () => {
@@ -147,7 +143,6 @@ describe('network event listeners', () => {
         return tokenCalls === 1 ? Promise.reject(new Error('token unavailable')) : Promise.resolve('token');
       },
     });
-    clients.push(c);
 
     const errorPromise = waitForEvent(c, 'error');
     c.connect();
@@ -162,10 +157,32 @@ describe('network event listeners', () => {
     expect(tokenCalls).toBe(2);
   });
 
+  test('kept when connect() is called from the state handler of the disconnect', async () => {
+    const c = newClient();
+    let reconnectOnce = true;
+    c.on('state', (ctx) => {
+      if (ctx.newState === State.Disconnected && reconnectOnce) {
+        reconnectOnce = false;
+        c.connect();
+      }
+    });
+    c.connect();
+    await c.ready(5000);
+
+    c.disconnect();
+    expect(c.state).toBe(State.Connecting);
+    expect(target.counts).toEqual({ offline: 1, online: 1 });
+
+    await c.ready(5000);
+    expect(target.counts).toEqual({ offline: 1, online: 1 });
+
+    c.disconnect();
+    expect(target.counts).toEqual({ offline: 0, online: 0 });
+  });
+
   test('target without removeEventListener keeps listeners and disconnect still works', async () => {
     const addOnly = { addEventListener: jest.fn() };
-    const c = createClient(server.url, addOnly as any);
-    clients.push(c);
+    const c = newClient({}, addOnly as any);
 
     c.connect();
     await c.ready(5000);

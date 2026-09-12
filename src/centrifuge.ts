@@ -136,6 +136,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
   private _promises: Record<number, any>;
   private _promiseId: number;
   private _networkEvents: { target: EventTarget; onOffline: () => void; onOnline: () => void } | null;
+  private _disconnects: number;
 
   private _debugEnabled: boolean;
   private _config: Options;
@@ -185,6 +186,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     this._promiseId = 0;
     this._debugEnabled = false;
     this._networkEvents = null;
+    this._disconnects = 0;
 
     this._config = { ...defaults, ...options };
     this._configure();
@@ -1166,20 +1168,22 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
 
     this._reconnecting = true;
     // A disconnect while the token/data is loading aborts this attempt (a new one
-    // is scheduled by the disconnect), so the continuations below must not act on it.
-    const transportId = this._transportId;
+    // is scheduled by the disconnect), so the continuations below must not act on
+    // it. Not the transport id: _initializeTransport changes it too, and its
+    // exceptions must still reach the error handlers below.
+    const disconnects = this._disconnects;
     const emptyToken = this._token === '';
     const needTokenRefresh = this._refreshRequired || (emptyToken && this._config.getToken !== null);
     if (!needTokenRefresh) {
       if (this._config.getData) {
         this._config.getData().then(data => {
-          if (this._attemptAborted(transportId)) {
+          if (this._attemptAborted(disconnects)) {
             return;
           }
           this._data = data;
           this._initializeTransport();
         })
-        .catch(e => this._handleGetDataError(e, transportId));
+        .catch(e => this._handleGetDataError(e, disconnects));
       } else {
         this._initializeTransport();
       }
@@ -1188,7 +1192,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
 
     const self = this;
     this._getToken().then(function (token: string) {
-      if (self._attemptAborted(transportId)) {
+      if (self._attemptAborted(disconnects)) {
         return;
       }
       if (token == null || token == undefined) {
@@ -1199,18 +1203,18 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
       self._debug('connection token refreshed');
       if (self._config.getData) {
         self._config.getData().then(function (data: any) {
-          if (self._attemptAborted(transportId)) {
+          if (self._attemptAborted(disconnects)) {
             return;
           }
           self._data = data;
           self._initializeTransport();
         })
-        .catch(e => self._handleGetDataError(e, transportId));
+        .catch(e => self._handleGetDataError(e, disconnects));
       } else {
         self._initializeTransport();
       }
     }).catch(function (e) {
-      if (self._attemptAborted(transportId)) {
+      if (self._attemptAborted(disconnects)) {
         return;
       }
       if (e instanceof UnauthorizedError) {
@@ -1233,12 +1237,12 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     });
   }
 
-  private _attemptAborted(transportId: number): boolean {
-    return !this._isConnecting() || this._transportId !== transportId;
+  private _attemptAborted(disconnects: number): boolean {
+    return !this._isConnecting() || this._disconnects !== disconnects;
   }
 
-  private _handleGetDataError(e: any, transportId: number): void {
-    if (this._attemptAborted(transportId)) {
+  private _handleGetDataError(e: any, disconnects: number): void {
+    if (this._attemptAborted(disconnects)) {
       return;
     }
     if (e instanceof UnauthorizedError) {
@@ -1515,6 +1519,9 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     if (this._isDisconnected()) {
       return;
     }
+    // Aborts token/data continuations of an attempt that had not created a
+    // transport yet (see _startReconnecting).
+    this._disconnects++;
     // we mark transport is closed right away, because _clearConnectedState will move subscriptions to subscribing state
     // if transport will still be open at this time, subscribe frames will be sent to closing transport
     this._transportIsOpen = false;
@@ -1563,8 +1570,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     } else {
       this._debug("no transport to close");
     }
-    // Invalidates callbacks of the closed transport and the token/data
-    // continuations of an attempt that had not created a transport yet.
+    // Invalidates callbacks of the closed transport.
     this._nextTransportId();
     this._scheduleReconnect();
   }

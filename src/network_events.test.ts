@@ -1,6 +1,7 @@
 import { Centrifuge } from './centrifuge';
 import { DisconnectedContext, Options, State, TransportName } from './types';
 import { FakeCentrifugoServer } from './fakeServer';
+import { errorCodes } from './codes';
 
 import WebSocket from 'ws';
 
@@ -215,5 +216,37 @@ describe('network event listeners', () => {
     expect(c.state).toBe(State.Disconnected);
     // Listeners stayed registered, so the second connect did not add them again.
     expect(addOnly.addEventListener).toHaveBeenCalledTimes(2);
+  });
+
+  test.each([
+    ['getToken', { getToken: async () => 'token' }, 'connectToken', errorCodes.clientConnectToken],
+    ['getData', { getData: async () => ({}) }, 'connectData', errorCodes.badConfiguration],
+  ])('socket constructor error after %s is reported and retried', async (_name, options, errorType, errorCode) => {
+    // E.g. new WebSocket('ws://...') on an https page throws SecurityError.
+    class ThrowingWebSocket {
+      constructor() {
+        throw new Error('insecure connection not allowed');
+      }
+    }
+    const c = newClient({
+      ...(options as Partial<Options>),
+      websocket: ThrowingWebSocket,
+      minReconnectDelay: 1000,
+      maxReconnectDelay: 1000,
+    });
+    const errors: string[] = [];
+    c.on('error', (ctx) => errors.push(`${ctx.type}:${ctx.error.code}`));
+    const error = waitForEvent(c, 'error', 2000);
+    c.connect();
+    await error;
+    expect(errors).toEqual([`${errorType}:${errorCode}`]);
+    expect((c as any)._reconnectTimeout).not.toBeNull();
+
+    try {
+      c.disconnect();
+    } catch (e) {
+      // Closing a transport that has no socket throws, as on master.
+    }
+    expect(c.state).toBe(State.Disconnected);
   });
 });

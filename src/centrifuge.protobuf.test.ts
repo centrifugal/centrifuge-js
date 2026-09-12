@@ -13,6 +13,46 @@ const transportCases = [
   ['http_stream', 'http://localhost:8000/connection/http_stream'],
 ]
 
+test('http_stream (Protobuf): a publication larger than one stream read is delivered', async () => {
+  const c = new Centrifuge([{
+    transport: 'http_stream' as TransportName,
+    endpoint: 'http://localhost:8000/connection/http_stream',
+  }], {
+    fetch: fetch,
+    readableStream: ReadableStream,
+    emulationEndpoint: 'http://localhost:8000/emulation',
+  });
+  const connectingCodes: number[] = [];
+  c.on('connecting', ctx => connectingCodes.push(ctx.code));
+
+  const channel = 'protobuf_large_' + Date.now();
+  const sub = c.newSubscription(channel);
+  const received: Uint8Array[] = [];
+  sub.on('publication', (ctx: PublicationContext) => received.push(ctx.data));
+  sub.subscribe();
+  c.connect();
+  await sub.ready(5000);
+
+  // Arrives in several reads of the response stream, split inside the reply.
+  const payload = 'z'.repeat(256000);
+  const resp = await fetch('http://localhost:8000/api/publish', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-API-Key': 'test-api-key' },
+    body: JSON.stringify({ channel, data: { payload } }),
+  });
+  expect(resp.ok).toBe(true);
+
+  const deadline = Date.now() + 5000;
+  while (received.length === 0 && Date.now() < deadline) {
+    await new Promise(resolve => setTimeout(resolve, 20));
+  }
+  expect(received).toHaveLength(1);
+  expect(JSON.parse(new TextDecoder().decode(received[0])).payload).toHaveLength(payload.length);
+  // Delivered on the first connection, without reconnecting.
+  expect(connectingCodes).toEqual([0]);
+  c.disconnect();
+});
+
 test.each(transportCases)("%s (Protobuf): connects and disconnects", async (transport, endpoint) => {
   const c = new Centrifuge([{
     transport: transport as TransportName,

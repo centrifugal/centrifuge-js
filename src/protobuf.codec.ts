@@ -58,15 +58,27 @@ export class ProtobufCodec {
 
   decodeReply(data: ArrayBuffer | Uint8Array): { ok: true; pos: number } | { ok: false } {
     const reader = Reader.create(new Uint8Array(data));
-    while (reader.pos < reader.len) {
-      Reply.decodeDelimited(reader);
-      return {
-        ok: true,
-        pos: reader.pos
-      };
+    if (reader.pos >= reader.len) {
+      return { ok: false };
     }
+    // A stream read may end in the middle of a reply, even inside its length
+    // prefix: more data is needed then, it is not a decoding error.
+    let length: number;
+    try {
+      length = reader.uint32();
+    } catch (e) {
+      if (e instanceof RangeError) {
+        return { ok: false };
+      }
+      throw e;
+    }
+    if (reader.pos + length > reader.len) {
+      return { ok: false };
+    }
+    Reply.decode(reader, length);
     return {
-      ok: false
+      ok: true,
+      pos: reader.pos
     };
   }
 

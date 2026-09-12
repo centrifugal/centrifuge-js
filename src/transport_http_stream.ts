@@ -215,8 +215,17 @@ export class HttpStreamTransport {
       body: body,
       mode: 'cors',
       credentials: 'same-origin',
+      // Closing the transport aborts requests still pending, e.g. hung in an
+      // intermediary, which would otherwise keep connections of the per-host pool.
+      signal: this._abortController.signal
     }
-    fetchFunc(this.options.emulationEndpoint, fetchOptions).catch(() => {
+    fetchFunc(this.options.emulationEndpoint, fetchOptions).then(response => {
+      // The session is gone (404), or the server or an intermediary failed. Other
+      // statuses, e.g. a too large request body, reject only this command.
+      if (response && (response.status === 404 || response.status >= 500)) {
+        this.close();
+      }
+    }, () => {
       // The command was not delivered. Close the transport so the client
       // reconnects instead of waiting for the command timeout.
       this.close();

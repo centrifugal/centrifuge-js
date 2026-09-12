@@ -5,6 +5,7 @@ export class SseTransport {
   _protocol: string;
   _transport: any;
   _onClose: any;
+  _abortController: any | null;
 
   constructor(endpoint: string, options: any) {
     this.endpoint = endpoint;
@@ -12,6 +13,7 @@ export class SseTransport {
     this._protocol = 'json';
     this._transport = null;
     this._onClose = null;
+    this._abortController = null;
   }
 
   name() {
@@ -31,6 +33,10 @@ export class SseTransport {
   }
 
   initialize(_protocol: 'json', callbacks: any, initialData: any) {
+    // Aborts pending emulation requests on close.
+    if (typeof AbortController !== 'undefined') {
+      this._abortController = new AbortController();
+    }
     let url: any;
     if (globalThis && globalThis.document && globalThis.document.baseURI) {
       // Handle case when endpoint is relative, like //example.com/connection/sse
@@ -72,6 +78,9 @@ export class SseTransport {
   }
 
   close() {
+    if (this._abortController !== null) {
+      this._abortController.abort();
+    }
     // No event source if its constructor threw in initialize().
     if (this._transport !== null) {
       this._transport.close();
@@ -92,14 +101,28 @@ export class SseTransport {
     };
     const body = JSON.stringify(req);
     const fetchFunc = this.options.fetch;
+    // Closing the transport aborts requests still pending, e.g. hung in an
+    // intermediary, which would otherwise keep connections of the per-host pool.
+    const signal = this._abortController !== null ? this._abortController.signal : undefined;
     const fetchOptions = {
       method: 'POST',
       headers: headers,
       body: body,
       mode: 'cors',
       credentials: 'same-origin',
+      signal: signal
     }
-    fetchFunc(this.options.emulationEndpoint, fetchOptions).catch(() => {
+    fetchFunc(this.options.emulationEndpoint, fetchOptions).then(response => {
+      // The session is gone (404), or the server or an intermediary failed. Other
+      // statuses, e.g. a too large request body, reject only this command.
+      if (response && (response.status === 404 || response.status >= 500)) {
+        this.close();
+      }
+    }, () => {
+      // Aborted because the transport was closed already.
+      if (signal && signal.aborted) {
+        return;
+      }
       // The command was not delivered. Close the transport so the client
       // reconnects instead of waiting for the command timeout.
       this.close();

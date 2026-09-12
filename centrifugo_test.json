@@ -1,6 +1,7 @@
 {
   "client": {
     "insecure": true,
+    "allowed_origins": ["http://localhost:*", "http://127.0.0.1:*"],
     "concurrency": 8,
     "token": {
       "hmac_secret_key": "secret"

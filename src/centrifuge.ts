@@ -1160,11 +1160,13 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     // A teardown rejects the pending command, and the rejection is processed after
     // it: a newer attempt may have started by then, which must not be torn down.
     const transportId = this._transportId;
-    // next() is called in finally: an exception while handling the reply must not
-    // stop dispatching later replies.
+    // An exception while handling the reply stops the client (see _dispatchFailed).
+    // next() is still called, so replies of a later connection aren't blocked.
     this._call(connectCommand, skipSending).then(resolveCtx => {
       try {
         self._connectResponse(resolveCtx.reply.connect);
+      } catch (err) {
+        self._dispatchFailed(err);
       } finally {
         if (resolveCtx.next) {
           resolveCtx.next();
@@ -1177,6 +1179,8 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
         } else {
           self._connectError(rejectCtx.error, self._transportId !== transportId);
         }
+      } catch (err) {
+        self._dispatchFailed(err);
       } finally {
         if (rejectCtx.next) {
           rejectCtx.next();
@@ -1482,9 +1486,9 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
           }
           return this._dispatchReply(replies[i]);
         }).catch(err => {
-          // An exception must not stop dispatching: every later frame waits for
-          // this one.
-          this._reportDispatchError(err);
+          // The exception stops the client, which skips the remaining replies. The
+          // chain still settles: frames of a later connection wait for this one.
+          this._dispatchFailed(err);
         });
       }
     }
@@ -1493,8 +1497,22 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     });
   }
 
-  // An exception thrown while dispatching a reply, e.g. by an application event
-  // handler, is still surfaced as an unhandled rejection, as before.
+  // An exception while handling a reply, e.g. thrown by an application event
+  // handler, may have left the application state inconsistent. The client stops
+  // in a state the application can see: it disconnects without reconnecting, so
+  // no later reply is processed.
+  private _dispatchFailed(err: any) {
+    this._reportDispatchError(err);
+    const message = err instanceof Error ? err.message : String(err);
+    try {
+      this._disconnect(disconnectedCodes.badProtocol, `exception during message handling: ${message}`, false);
+    } catch (e) {
+      // Thrown by a handler of the disconnect events.
+      this._reportDispatchError(e);
+    }
+  }
+
+  // The exception is surfaced as an unhandled rejection, as before.
   private _reportDispatchError(err: any) {
     this._debug('error dispatching reply', err);
     Promise.reject(err);
@@ -1698,6 +1716,8 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
       self._call(cmd, false).then(resolveCtx => {
         try {
           self._refreshResponse(resolveCtx.reply.refresh);
+        } catch (err) {
+          self._dispatchFailed(err);
         } finally {
           if (resolveCtx.next) {
             resolveCtx.next();
@@ -1710,6 +1730,8 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
           if (clientId === self._client) {
             self._refreshError(rejectCtx.error);
           }
+        } catch (err) {
+          self._dispatchFailed(err);
         } finally {
           if (rejectCtx.next) {
             rejectCtx.next();
@@ -1791,7 +1813,11 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
         if (rejectCtx.next) {
           rejectCtx.next();
         }
-        self._disconnect(connectingCodes.unsubscribeError, 'unsubscribe error', true);
+        try {
+          self._disconnect(connectingCodes.unsubscribeError, 'unsubscribe error', true);
+        } catch (err) {
+          self._dispatchFailed(err);
+        }
       });
     });
 

@@ -1,5 +1,6 @@
 import { Centrifuge } from './centrifuge';
 import { State, SubscriptionState, TransportName } from './types';
+import { disconnectedCodes } from './codes';
 import { FakeCentrifugoServer } from './fakeServer';
 
 import WebSocket from 'ws';
@@ -128,7 +129,9 @@ describe('dispatch and subscription state', () => {
     expect((sub as any)._offset).toBe(2);
   });
 
-  test('an exception while handling one frame does not stop later frames and replies', async () => {
+  // The exception may have left the application state inconsistent: the client
+  // stops in a state the application can see, and works again after connect().
+  test('an exception while handling a push disconnects the client', async () => {
     const { sub, received } = await subscribed('ch');
     const handle = (sub as any)._handlePublication.bind(sub);
     let failOnce = true;
@@ -142,13 +145,47 @@ describe('dispatch and subscription state', () => {
     // Applications see the exception as an unhandled rejection; captured here instead.
     const reported: any[] = [];
     (c as any)._reportDispatchError = (err: any) => reported.push(err);
+    const disconnected = new Promise<any>(resolve => c.once('disconnected', resolve));
 
-    sendFrame(publication('ch', 1));
-    sendFrame(publication('ch', 2));
-    await waitFor(() => received.length === 1);
-    expect(received).toEqual([2]);
-    // Command replies are still processed too.
-    await c.publish('ch', {});
+    sendFrame(publication('ch', 1), publication('ch', 2));
+    const ctx = await disconnected;
+    expect(ctx.code).toBe(disconnectedCodes.badProtocol);
+    expect(ctx.reason).toBe('exception during message handling: handling failure');
     expect(reported.map(e => e && e.message)).toEqual(['handling failure']);
+    await delay(50);
+    // Nothing after the failing publication was processed.
+    expect(received).toEqual([]);
+
+    c.connect();
+    await sub.ready(3000);
+    sendFrame(publication('ch', 3));
+    await waitFor(() => received.length === 1);
+    expect(received).toEqual([3]);
+    await c.publish('ch', {});
+  });
+
+  test('an exception while handling a command reply disconnects the client', async () => {
+    const reported: any[] = [];
+    (c as any)._reportDispatchError = (err: any) => reported.push(err);
+    const sub = c.newSubscription('ch');
+    let failOnce = true;
+    sub.on('subscribed', () => {
+      if (failOnce) {
+        failOnce = false;
+        throw new Error('handler failure');
+      }
+    });
+    const disconnected = new Promise<any>(resolve => c.once('disconnected', resolve));
+
+    sub.subscribe();
+    c.connect();
+    const ctx = await disconnected;
+    expect(ctx.code).toBe(disconnectedCodes.badProtocol);
+    expect(ctx.reason).toBe('exception during message handling: handler failure');
+    expect(reported.map(e => e && e.message)).toEqual(['handler failure']);
+
+    c.connect();
+    await sub.ready(3000);
+    await c.publish('ch', {});
   });
 });

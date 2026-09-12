@@ -749,12 +749,15 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
     const cmd = this._buildSubscribeCommand(token);
 
     // @ts-ignore – we are hiding some symbols from public API autocompletion.
-    // next() is called in finally: an exception while handling the reply must not
-    // stop the client from dispatching later replies.
+    // An exception while handling the reply stops the client (see _dispatchFailed).
+    // next() is still called, so replies of a later connection aren't blocked.
     this._centrifuge._call(cmd).then(resolveCtx => {
       try {
         this._inflight = false;
         this._handleSubscribeResponse(resolveCtx.reply.subscribe);
+      } catch (err) {
+        // @ts-ignore – we are hiding some symbols from public API autocompletion.
+        this._centrifuge._dispatchFailed(err);
       } finally {
         if (resolveCtx.next) {
           resolveCtx.next();
@@ -764,6 +767,9 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
       try {
         this._inflight = false;
         this._handleSubscribeError(rejectCtx.error);
+      } catch (err) {
+        // @ts-ignore – we are hiding some symbols from public API autocompletion.
+        this._centrifuge._dispatchFailed(err);
       } finally {
         if (rejectCtx.next) {
           rejectCtx.next();
@@ -1217,6 +1223,9 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
       self._centrifuge._call(msg).then(resolveCtx => {
         try {
           self._refreshResponse(resolveCtx.reply.sub_refresh);
+        } catch (err) {
+          // @ts-ignore – we are hiding some symbols from public API autocompletion.
+          self._centrifuge._dispatchFailed(err);
         } finally {
           if (resolveCtx.next) {
             resolveCtx.next();
@@ -1225,6 +1234,9 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
       }, rejectCtx => {
         try {
           self._refreshError(rejectCtx.error);
+        } catch (err) {
+          // @ts-ignore – we are hiding some symbols from public API autocompletion.
+          self._centrifuge._dispatchFailed(err);
         } finally {
           if (rejectCtx.next) {
             rejectCtx.next();
@@ -1335,6 +1347,9 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
         this._centrifuge._call(msg).then(resolveCtx => {
           try {
             this._handleTrackResponse(resolveCtx.reply.sub_refresh);
+          } catch (err) {
+            // @ts-ignore – we are hiding some symbols from public API autocompletion.
+            this._centrifuge._dispatchFailed(err);
           } finally {
             if (resolveCtx.next) resolveCtx.next();
           }
@@ -1782,6 +1797,9 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
     this._centrifuge._call(cmd).then(resolveCtx => {
       try {
         this._handleMapStateResponse(resolveCtx.reply.subscribe);
+      } catch (err) {
+        // @ts-ignore – we are hiding some symbols from public API autocompletion.
+        this._centrifuge._dispatchFailed(err);
       } finally {
         if (resolveCtx.next) {
           resolveCtx.next();
@@ -1790,6 +1808,9 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
     }, rejectCtx => {
       try {
         this._handleMapSubscribeError(rejectCtx.error);
+      } catch (err) {
+        // @ts-ignore – we are hiding some symbols from public API autocompletion.
+        this._centrifuge._dispatchFailed(err);
       } finally {
         if (rejectCtx.next) {
           rejectCtx.next();
@@ -1880,6 +1901,9 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
     this._centrifuge._call(cmd).then(resolveCtx => {
       try {
         this._handleMapStreamResponse(resolveCtx.reply.subscribe);
+      } catch (err) {
+        // @ts-ignore – we are hiding some symbols from public API autocompletion.
+        this._centrifuge._dispatchFailed(err);
       } finally {
         if (resolveCtx.next) {
           resolveCtx.next();
@@ -1888,6 +1912,9 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
     }, rejectCtx => {
       try {
         this._handleMapSubscribeError(rejectCtx.error);
+      } catch (err) {
+        // @ts-ignore – we are hiding some symbols from public API autocompletion.
+        this._centrifuge._dispatchFailed(err);
       } finally {
         if (rejectCtx.next) {
           rejectCtx.next();

@@ -188,4 +188,15 @@ describe('dispatch and subscription state', () => {
     await sub.ready(3000);
     await c.publish('ch', {});
   });
+
+  test('data that cannot be decoded closes the transport, and the client reconnects', async () => {
+    const { sub } = await subscribed('ch');
+    const resubscribed = new Promise<void>(resolve => sub.once('subscribed', () => resolve()));
+
+    // E.g. a captive portal answering with an HTML page.
+    (server as any).current.send('<!doctype html>');
+    await resubscribed;
+    expect(c.state).toBe(State.Connected);
+    await c.publish('ch', {});
+  });
 });

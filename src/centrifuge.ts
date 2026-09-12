@@ -1463,7 +1463,19 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     if (this._serverPing > 0) {
       this._waitServerPing();
     }
-    const replies = this._codec.decodeReplies(data);
+    let replies: any[];
+    try {
+      replies = this._codec.decodeReplies(data);
+    } catch (e) {
+      // Not Centrifugo data, e.g. an HTML page from a captive portal or a
+      // misconfigured proxy. Close the transport so the client reconnects,
+      // instead of throwing from the transport callback.
+      this._debug('error decoding received data', e);
+      if (this._transport) {
+        this._transport.close();
+      }
+      return;
+    }
     // We have to guarantee order of events in replies processing - i.e. start processing
     // next reply only when we finished processing of current one. Without syncing things in
     // this way we could get wrong publication events order as reply promises resolve

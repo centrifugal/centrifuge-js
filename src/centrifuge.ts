@@ -1448,13 +1448,9 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     // next reply only when we finished processing of current one. Without syncing things in
     // this way we could get wrong publication events order as reply promises resolve
     // on next loop tick so for loop continues before we finished emitting all reply events.
-    this._dispatchPromise = this._dispatchPromise.then(() => {
-      let finishDispatch;
-      this._dispatchPromise = new Promise(resolve => {
-        finishDispatch = resolve;
-      });
-      this._dispatchSynchronized(replies, finishDispatch);
-    });
+    this._dispatchPromise = this._dispatchPromise.then(() => new Promise<void>(resolve => {
+      this._dispatchSynchronized(replies, resolve);
+    }));
   }
 
   private _dispatchSynchronized(replies: any[], finishDispatch: any) {

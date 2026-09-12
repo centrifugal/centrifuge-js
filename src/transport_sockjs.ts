@@ -47,7 +47,10 @@ export class SockjsTransport {
   }
 
   close() {
-    this._transport.close();
+    // No socket if its constructor threw in initialize().
+    if (this._transport !== null) {
+      this._transport.close();
+    }
   }
 
   send(data: any) {

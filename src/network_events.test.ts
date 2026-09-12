@@ -221,7 +221,7 @@ describe('network event listeners', () => {
   test.each([
     ['getToken', { getToken: async () => 'token' }, 'connectToken', errorCodes.clientConnectToken],
     ['getData', { getData: async () => ({}) }, 'connectData', errorCodes.badConfiguration],
-  ])('socket constructor error after %s is reported and retried', async (_name, options, errorType, errorCode) => {
+  ])('socket constructor error after %s is reported and retried, closing that transport does not throw', async (_name, options, errorType, errorCode) => {
     // E.g. new WebSocket('ws://...') on an https page throws SecurityError.
     class ThrowingWebSocket {
       constructor() {
@@ -233,6 +233,8 @@ describe('network event listeners', () => {
       websocket: ThrowingWebSocket,
       minReconnectDelay: 1000,
       maxReconnectDelay: 1000,
+      // The connect timeout still fires for that transport: let it happen within this test.
+      timeout: 100,
     });
     const errors: string[] = [];
     c.on('error', (ctx) => errors.push(`${ctx.type}:${ctx.error.code}`));
@@ -242,11 +244,10 @@ describe('network event listeners', () => {
     expect(errors).toEqual([`${errorType}:${errorCode}`]);
     expect((c as any)._reconnectTimeout).not.toBeNull();
 
-    try {
-      c.disconnect();
-    } catch (e) {
-      // Closing a transport that has no socket throws, as on master.
-    }
+    // That transport has no socket: neither disconnect() nor its connect timeout
+    // may throw when closing it.
+    expect(() => c.disconnect()).not.toThrow();
     expect(c.state).toBe(State.Disconnected);
+    await delay(200);
   });
 });

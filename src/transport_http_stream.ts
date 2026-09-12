@@ -182,7 +182,10 @@ export class HttpStreamTransport {
   }
 
   close() {
-    this._abortController.abort();
+    // Not created if initialize() threw before creating it.
+    if (this._abortController !== null) {
+      this._abortController.abort();
+    }
   }
 
   send(data: any, session: string, node: string) {

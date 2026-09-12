@@ -72,7 +72,10 @@ export class SseTransport {
   }
 
   close() {
-    this._transport.close();
+    // No event source if its constructor threw in initialize().
+    if (this._transport !== null) {
+      this._transport.close();
+    }
     if (this._onClose !== null) {
       this._onClose();
     }

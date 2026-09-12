@@ -1754,16 +1754,17 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
     this._mapPhase = MapPhase.State;
 
     // If we have a position from `since`, we may skip snapshot and go to stream
-    if (this._recover && this._offset !== null && this._epoch !== null) {
+    const recovering = this._recover && this._offset !== null && this._epoch !== null;
+    if (recovering) {
       this._debug('map subscribe: recovering from position, skipping to stream phase');
       this._mapPhase = MapPhase.Stream;
-      this._fetchStream();
-      return;
     }
+    const start = () => recovering ? this._fetchStream() : this._fetchSnapshot();
 
-    // Get token if needed, then start fetching snapshot
+    // Get token if needed, then start fetching. Also when recovering: the token
+    // may have been cleared, e.g. after it expired.
     if (this._canSubscribeWithoutGettingToken()) {
-      this._fetchSnapshot();
+      start();
     } else {
       this._getSubscriptionToken()
         .then(token => {
@@ -1777,7 +1778,7 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
             return;
           }
           this._token = token;
-          this._fetchSnapshot();
+          start();
         })
         .catch(e => this._handleTokenError(e));
     }

@@ -1,6 +1,6 @@
 services:
   centrifugo:
-    image: centrifugo/centrifugo:v6.9.4
+    image: centrifugo/centrifugo:v6.9.5
     command:
       - centrifugo
       - --config=/centrifugo/config.json
@@ -14,7 +14,7 @@ services:
   # the recovery/smallhistory namespaces, short expired close delays. For token
   # expiry and refresh scenarios.
   centrifugo_secure:
-    image: centrifugo/centrifugo:v6.9.4
+    image: centrifugo/centrifugo:v6.9.5
     command:
       - centrifugo
       - --config=/centrifugo/config.json

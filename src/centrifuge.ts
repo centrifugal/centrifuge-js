@@ -1142,7 +1142,12 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
         self._disconnect(code, reason, needReconnect);
       },
       onMessage: function (data) {
-        self._dataReceived(data);
+        if (self._transportId != transportId) {
+          // A frame from a transport that was already closed or replaced.
+          self._debug('message from non-actual transport');
+          return;
+        }
+        self._dataReceived(data, transportId);
       }
     }, initialData);
     //@ts-ignore must be used only for debug and test purposes.
@@ -1155,20 +1160,27 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     // A teardown rejects the pending command, and the rejection is processed after
     // it: a newer attempt may have started by then, which must not be torn down.
     const transportId = this._transportId;
+    // next() is called in finally: an exception while handling the reply must not
+    // stop dispatching later replies.
     this._call(connectCommand, skipSending).then(resolveCtx => {
-      const result = resolveCtx.reply.connect;
-      self._connectResponse(result);
-      if (resolveCtx.next) {
-        resolveCtx.next();
+      try {
+        self._connectResponse(resolveCtx.reply.connect);
+      } finally {
+        if (resolveCtx.next) {
+          resolveCtx.next();
+        }
       }
     }, rejectCtx => {
-      if (transportId === self._abortedTransportId) {
-        self._debug('connect command of a transport aborted by the client rejected');
-      } else {
-        self._connectError(rejectCtx.error, self._transportId !== transportId);
-      }
-      if (rejectCtx.next) {
-        rejectCtx.next();
+      try {
+        if (transportId === self._abortedTransportId) {
+          self._debug('connect command of a transport aborted by the client rejected');
+        } else {
+          self._connectError(rejectCtx.error, self._transportId !== transportId);
+        }
+      } finally {
+        if (rejectCtx.next) {
+          rejectCtx.next();
+        }
       }
     });
     return connectCommand;
@@ -1427,9 +1439,13 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     return new Promise((resolve, reject) => {
       this._call(cmd, false).then(
         (resolveCtx: { reply: any; next?: () => void }) => {
-          const result = resultCB(resolveCtx.reply);
-          resolve(result);
-          resolveCtx.next?.();
+          try {
+            resolve(resultCB(resolveCtx.reply));
+          } catch (e) {
+            reject(e);
+          } finally {
+            resolveCtx.next?.();
+          }
         },
         (rejectCtx: { error: any; next?: () => void }) => {
           reject(rejectCtx.error);
@@ -1439,7 +1455,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     });
   }
 
-  private _dataReceived(data) {
+  private _dataReceived(data, transportId: number = this._transportId) {
     if (this._serverPing > 0) {
       this._waitServerPing();
     }
@@ -1449,22 +1465,39 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     // this way we could get wrong publication events order as reply promises resolve
     // on next loop tick so for loop continues before we finished emitting all reply events.
     this._dispatchPromise = this._dispatchPromise.then(() => new Promise<void>(resolve => {
-      this._dispatchSynchronized(replies, resolve);
+      this._dispatchSynchronized(replies, resolve, transportId);
     }));
   }
 
-  private _dispatchSynchronized(replies: any[], finishDispatch: any) {
+  private _dispatchSynchronized(replies: any[], finishDispatch: any, transportId: number) {
     let p: Promise<unknown> = Promise.resolve();
     for (const i in replies) {
       if (replies.hasOwnProperty(i)) {
         p = p.then(() => {
+          // The transport was closed or replaced while this frame waited or was
+          // being dispatched (e.g. disconnect() called from an event handler):
+          // its remaining replies are outdated.
+          if (this._transportId !== transportId) {
+            return;
+          }
           return this._dispatchReply(replies[i]);
+        }).catch(err => {
+          // An exception must not stop dispatching: every later frame waits for
+          // this one.
+          this._reportDispatchError(err);
         });
       }
     }
     p.then(() => {
       finishDispatch();
     });
+  }
+
+  // An exception thrown while dispatching a reply, e.g. by an application event
+  // handler, is still surfaced as an unhandled rejection, as before.
+  private _reportDispatchError(err: any) {
+    this._debug('error dispatching reply', err);
+    Promise.reject(err);
   }
 
   private _dispatchReply(reply: any) {
@@ -1663,19 +1696,24 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
       };
 
       self._call(cmd, false).then(resolveCtx => {
-        const result = resolveCtx.reply.refresh;
-        self._refreshResponse(result);
-        if (resolveCtx.next) {
-          resolveCtx.next();
+        try {
+          self._refreshResponse(resolveCtx.reply.refresh);
+        } finally {
+          if (resolveCtx.next) {
+            resolveCtx.next();
+          }
         }
       }, rejectCtx => {
-        // A disconnect rejects the pending command too: nothing to retry then,
-        // the connection this refresh was for is gone.
-        if (clientId === self._client) {
-          self._refreshError(rejectCtx.error);
-        }
-        if (rejectCtx.next) {
-          rejectCtx.next();
+        try {
+          // A disconnect rejects the pending command too: nothing to retry then,
+          // the connection this refresh was for is gone.
+          if (clientId === self._client) {
+            self._refreshError(rejectCtx.error);
+          }
+        } finally {
+          if (rejectCtx.next) {
+            rejectCtx.next();
+          }
         }
       });
     }).catch(function (e) {
@@ -2028,6 +2066,11 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
       return;
     }
     // @ts-ignore – we are hiding some symbols from public API autocompletion.
+    if (!sub._isSubscribed()) {
+      this._debug('join for a subscription that is not subscribed', channel);
+      return;
+    }
+    // @ts-ignore – we are hiding some symbols from public API autocompletion.
     sub._handleJoin(join);
   }
 
@@ -2040,6 +2083,11 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
         const ctx = { channel: channel, info: this._getJoinLeaveContext(leave.info) };
         this.emit('leave', ctx);
       }
+      return;
+    }
+    // @ts-ignore – we are hiding some symbols from public API autocompletion.
+    if (!sub._isSubscribed()) {
+      this._debug('leave for a subscription that is not subscribed', channel);
       return;
     }
     // @ts-ignore – we are hiding some symbols from public API autocompletion.
@@ -2138,6 +2186,12 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
           this._serverSubs[channel].offset = pub.offset;
         }
       }
+      return;
+    }
+    // @ts-ignore – we are hiding some symbols from public API autocompletion.
+    if (!sub._isSubscribed()) {
+      // E.g. a publication already on its way when the app called unsubscribe().
+      this._debug('publication for a subscription that is not subscribed', channel);
       return;
     }
     // @ts-ignore – we are hiding some symbols from public API autocompletion.

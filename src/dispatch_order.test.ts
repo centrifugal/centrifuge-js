@@ -1,4 +1,5 @@
 import { Centrifuge } from './centrifuge';
+import { SubscriptionState } from './types';
 
 // Frames received in the same tick must be dispatched in order. ws emits several
 // 'message' events from one TCP read, e.g. right after a reconnect: a subscribe
@@ -20,6 +21,8 @@ function range(from: number, to: number): number[] {
 async function deliver(frames: string[]): Promise<number[]> {
   const c = new Centrifuge('ws://localhost/connection/websocket', { websocket: StubWebSocket });
   const sub = c.newSubscription('ch');
+  // Pushes are only delivered to a subscribed subscription.
+  (sub as any)._setState(SubscriptionState.Subscribed);
   const received: number[] = [];
   sub.on('publication', (ctx) => received.push(ctx.data.n));
   for (const frame of frames) {

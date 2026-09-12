@@ -752,19 +752,25 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
     const cmd = this._buildSubscribeCommand(token);
 
     // @ts-ignore – we are hiding some symbols from public API autocompletion.
+    // next() is called in finally: an exception while handling the reply must not
+    // stop the client from dispatching later replies.
     this._centrifuge._call(cmd).then(resolveCtx => {
-      this._inflight = false;
-      const result = resolveCtx.reply.subscribe;
-      this._handleSubscribeResponse(result);
-      if (resolveCtx.next) {
-        resolveCtx.next();
+      try {
+        this._inflight = false;
+        this._handleSubscribeResponse(resolveCtx.reply.subscribe);
+      } finally {
+        if (resolveCtx.next) {
+          resolveCtx.next();
+        }
       }
     }, rejectCtx => {
-      this._inflight = false;
-      this._handleSubscribeError(rejectCtx.error);
-
-      if (rejectCtx.next) {
-        rejectCtx.next();
+      try {
+        this._inflight = false;
+        this._handleSubscribeError(rejectCtx.error);
+      } finally {
+        if (rejectCtx.next) {
+          rejectCtx.next();
+        }
       }
     });
 
@@ -888,20 +894,21 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
       // For map and shared poll subs, delta is per-key.
       // For non-map subs, delta is a single chain regardless of pub.key.
       const deltaKey = (this._map || this._sharedPoll) ? (pub.key || '') : '';
-      // @ts-ignore – we are hiding some methods from public API autocompletion.
-      const { newData, newPrevValue, isDelta, wireBytes, fullBytes } = this._centrifuge._codec.applyDeltaIfNeeded(pub, this._prevValueMap.get(deltaKey))
-      pub.data = newData;
-      this._deltaNumPubs++;
-      this._deltaBytesReceived += wireBytes;
-      this._deltaBytesDecoded += fullBytes;
-      if (isDelta) {
-        this._deltaNumDelta++;
-      } else {
-        this._deltaNumFull++;
-      }
       if (pub.removed) {
+        // A removal carries no payload to decode, and ends the key's delta chain.
         this._prevValueMap.delete(deltaKey);
       } else {
+        // @ts-ignore – we are hiding some methods from public API autocompletion.
+        const { newData, newPrevValue, isDelta, wireBytes, fullBytes } = this._centrifuge._codec.applyDeltaIfNeeded(pub, this._prevValueMap.get(deltaKey))
+        pub.data = newData;
+        this._deltaNumPubs++;
+        this._deltaBytesReceived += wireBytes;
+        this._deltaBytesDecoded += fullBytes;
+        if (isDelta) {
+          this._deltaNumDelta++;
+        } else {
+          this._deltaNumFull++;
+        }
         this._prevValueMap.set(deltaKey, newPrevValue);
       }
     }
@@ -950,16 +957,17 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
    * Decodes escaped data back to original format for user consumption. */
   private _seedDeltaTracking(pub: any): void {
     if (!this._delta || !pub.key) return;
+    if (pub.removed) {
+      // A removal carries no payload to decode, and ends the key's delta chain.
+      this._prevValueMap.delete(pub.key);
+      return;
+    }
     if (typeof pub.data === 'string') {
       // JSON transport with server-side delta escaping.
       // Store raw bytes for delta, decode for user.
       const rawBytes = pub.data;
       const encoded = new TextEncoder().encode(rawBytes);
-      if (!pub.removed) {
-        this._prevValueMap.set(pub.key, encoded);
-      } else {
-        this._prevValueMap.delete(pub.key);
-      }
+      this._prevValueMap.set(pub.key, encoded);
       // Count as full payload in delta stats. Use the UTF-8 byte length, not
       // rawBytes.length (JS string length counts UTF-16 code units, which
       // undercounts any non-ASCII content).
@@ -971,11 +979,7 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
       pub.data = JSON.parse(rawBytes);
     } else if (pub.data instanceof Uint8Array) {
       // Protobuf transport.
-      if (!pub.removed) {
-        this._prevValueMap.set(pub.key, pub.data);
-      } else {
-        this._prevValueMap.delete(pub.key);
-      }
+      this._prevValueMap.set(pub.key, pub.data);
       // Count as full payload in delta stats.
       const byteLen = pub.data.length;
       this._deltaNumPubs++;
@@ -1214,15 +1218,20 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
       };
       // @ts-ignore – we are hiding some symbols from public API autocompletion.
       self._centrifuge._call(msg).then(resolveCtx => {
-        const result = resolveCtx.reply.sub_refresh;
-        self._refreshResponse(result);
-        if (resolveCtx.next) {
-          resolveCtx.next();
+        try {
+          self._refreshResponse(resolveCtx.reply.sub_refresh);
+        } finally {
+          if (resolveCtx.next) {
+            resolveCtx.next();
+          }
         }
       }, rejectCtx => {
-        self._refreshError(rejectCtx.error);
-        if (rejectCtx.next) {
-          rejectCtx.next();
+        try {
+          self._refreshError(rejectCtx.error);
+        } finally {
+          if (rejectCtx.next) {
+            rejectCtx.next();
+          }
         }
       });
     }).catch(function (e) {
@@ -1327,8 +1336,11 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
         const msg = { 'sub_refresh': req };
         // @ts-ignore – we are hiding some symbols from public API autocompletion.
         this._centrifuge._call(msg).then(resolveCtx => {
-          this._handleTrackResponse(resolveCtx.reply.sub_refresh);
-          if (resolveCtx.next) resolveCtx.next();
+          try {
+            this._handleTrackResponse(resolveCtx.reply.sub_refresh);
+          } finally {
+            if (resolveCtx.next) resolveCtx.next();
+          }
           resolve();
         }, rejectCtx => {
           if (rejectCtx.next) rejectCtx.next();
@@ -1771,15 +1783,20 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
 
     // @ts-ignore – we are hiding some symbols from public API autocompletion.
     this._centrifuge._call(cmd).then(resolveCtx => {
-      const result = resolveCtx.reply.subscribe;
-      this._handleMapStateResponse(result);
-      if (resolveCtx.next) {
-        resolveCtx.next();
+      try {
+        this._handleMapStateResponse(resolveCtx.reply.subscribe);
+      } finally {
+        if (resolveCtx.next) {
+          resolveCtx.next();
+        }
       }
     }, rejectCtx => {
-      this._handleMapSubscribeError(rejectCtx.error);
-      if (rejectCtx.next) {
-        rejectCtx.next();
+      try {
+        this._handleMapSubscribeError(rejectCtx.error);
+      } finally {
+        if (rejectCtx.next) {
+          rejectCtx.next();
+        }
       }
     });
   }
@@ -1864,15 +1881,20 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
 
     // @ts-ignore – we are hiding some symbols from public API autocompletion.
     this._centrifuge._call(cmd).then(resolveCtx => {
-      const result = resolveCtx.reply.subscribe;
-      this._handleMapStreamResponse(result);
-      if (resolveCtx.next) {
-        resolveCtx.next();
+      try {
+        this._handleMapStreamResponse(resolveCtx.reply.subscribe);
+      } finally {
+        if (resolveCtx.next) {
+          resolveCtx.next();
+        }
       }
     }, rejectCtx => {
-      this._handleMapSubscribeError(rejectCtx.error);
-      if (rejectCtx.next) {
-        rejectCtx.next();
+      try {
+        this._handleMapSubscribeError(rejectCtx.error);
+      } finally {
+        if (rejectCtx.next) {
+          rejectCtx.next();
+        }
       }
     });
   }
@@ -1964,22 +1986,23 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
     if (result.publications && result.publications.length > 0) {
       for (const pub of result.publications) {
         if (this._delta && result.delta) {
-          // Delta negotiated: decode and update tracking in one block.
+          // Delta negotiated: decode and update tracking in one block. A removal
+          // carries no payload to decode, and ends the key's delta chain.
           const deltaKey = pub.key || '';
-          // @ts-ignore – we are hiding some methods from public API autocompletion.
-          const { newData, newPrevValue, isDelta, wireBytes, fullBytes } = this._centrifuge._codec.applyDeltaIfNeeded(pub, this._prevValueMap.get(deltaKey));
-          pub.data = newData;
-          this._deltaNumPubs++;
-          this._deltaBytesReceived += wireBytes;
-          this._deltaBytesDecoded += fullBytes;
-          if (isDelta) {
-            this._deltaNumDelta++;
-          } else {
-            this._deltaNumFull++;
-          }
           if (pub.removed) {
             this._prevValueMap.delete(deltaKey);
           } else {
+            // @ts-ignore – we are hiding some methods from public API autocompletion.
+            const { newData, newPrevValue, isDelta, wireBytes, fullBytes } = this._centrifuge._codec.applyDeltaIfNeeded(pub, this._prevValueMap.get(deltaKey));
+            pub.data = newData;
+            this._deltaNumPubs++;
+            this._deltaBytesReceived += wireBytes;
+            this._deltaBytesDecoded += fullBytes;
+            if (isDelta) {
+              this._deltaNumDelta++;
+            } else {
+              this._deltaNumFull++;
+            }
             this._prevValueMap.set(deltaKey, newPrevValue);
           }
         } else if (this._delta && pub.key) {

@@ -199,4 +199,25 @@ describe('dispatch and subscription state', () => {
     expect(c.state).toBe(State.Connected);
     await c.publish('ch', {});
   });
+
+  // E.g. a suspended process resumes: the call's timer is overdue while its reply
+  // already waits in the socket.
+  test('a reply waiting in the socket when the call timeout is overdue is not lost', async () => {
+    const timeout = 200;
+    (c as any)._config.timeout = timeout;
+    c.connect();
+    await c.ready(3000);
+
+    server.onCommand = (cmd, s) => {
+      if (cmd.publish !== undefined) {
+        s.send({ id: cmd.id, publish: {} });
+        // Blocks the event loop past the timeout: when it resumes, the timer is
+        // overdue and the reply is waiting to be read.
+        const until = Date.now() + timeout + 100;
+        while (Date.now() < until) { /* busy wait */ }
+      }
+      return null;
+    };
+    await expect(c.publish('ch', {})).resolves.toEqual({});
+  });
 });

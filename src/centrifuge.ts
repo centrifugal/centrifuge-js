@@ -2294,10 +2294,15 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
       timeout: null
     };
     this._callbacks[id].timeout = setTimeout(() => {
-      delete this._callbacks[id];
-      if (isFunction(errback)) {
-        errback({ error: this._createErrorObject(errorCodes.timeout, 'timeout') });
-      }
+      // The reply may have been received already but not processed yet, e.g. when
+      // a suspended process resumes and this overdue timer runs before the data
+      // waiting in the socket. Let that data be processed first.
+      this._callbacks[id].timeout = setTimeout(() => {
+        delete this._callbacks[id];
+        if (isFunction(errback)) {
+          errback({ error: this._createErrorObject(errorCodes.timeout, 'timeout') });
+        }
+      }, 0);
     }, this._config.timeout);
   }
 

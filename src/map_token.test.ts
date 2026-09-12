@@ -20,7 +20,7 @@ function jwt(claims: Record<string, any>): string {
 const nowSeconds = () => Math.floor(Date.now() / 1000);
 const delay = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms));
 
-test('map subscription gets a new token when recovering with an expired one', async () => {
+test('map subscription gets a new token when its token expired while disconnected', async () => {
   const user = 'map_token_' + Date.now();
   const channel = 'privatemap:' + user;
   const c = new Centrifuge([{ transport: 'websocket' as TransportName, endpoint }], {
@@ -40,13 +40,15 @@ test('map subscription gets a new token when recovering with an expired one', as
   await sub.ready(5000);
   expect(tokenCalls).toBe(1);
 
-  // The server checks expiry in whole seconds.
+  // Nothing refreshes the token while disconnected, so it expires. The server
+  // checks expiry in whole seconds.
+  c.disconnect();
   await delay(3500);
 
-  // After reconnecting, the subscription recovers from its position with the
-  // expired token, gets "token expired" and must fetch a new token.
+  // The subscription recovers from its position with the expired token, gets
+  // "token expired" and must fetch a new token.
   const resubscribed = new Promise<void>(resolve => sub.once('subscribed', () => resolve()));
-  (c as any)._transport.close();
+  c.connect();
   await Promise.race([resubscribed, delay(10000)]);
 
   expect(sub.state).toBe(SubscriptionState.Subscribed);

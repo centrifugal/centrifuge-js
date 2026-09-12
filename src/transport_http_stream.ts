@@ -216,6 +216,10 @@ export class HttpStreamTransport {
       mode: 'cors',
       credentials: 'same-origin',
     }
-    fetchFunc(this.options.emulationEndpoint, fetchOptions);
+    fetchFunc(this.options.emulationEndpoint, fetchOptions).catch(() => {
+      // The command was not delivered. Close the transport so the client
+      // reconnects instead of waiting for the command timeout.
+      this.close();
+    });
   }
 }

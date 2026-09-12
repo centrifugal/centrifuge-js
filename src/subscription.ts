@@ -507,17 +507,14 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
     this.emit('subscribed', ctx);
     this._resolvePromises();
 
-    const pubs = result.publications;
-    if (pubs && pubs.length > 0) {
-      for (const i in pubs) {
-        if (!pubs.hasOwnProperty(i)) {
-          continue;
-        }
-        this._handlePublication(pubs[i]);
-      }
+    // A 'subscribed' or 'publication' handler may have unsubscribed: the rest of
+    // the recovered publications must not be delivered or move the position.
+    const pubs = result.publications || [];
+    for (let i = 0; i < pubs.length && this._isSubscribed(); i++) {
+      this._handlePublication(pubs[i]);
     }
 
-    if (result.expires === true) {
+    if (result.expires === true && this._isSubscribed()) {
       this._refreshTimeout = setTimeout(() => this._refresh(), ttlMilliseconds(result.ttl));
     }
   }

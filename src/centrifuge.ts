@@ -1892,7 +1892,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
 
     this._resolvePromises();
 
-    this._processServerSubs(result.subs || {});
+    this._processServerSubs(result.subs || {}, transition);
 
     if (result.ping && result.ping > 0) {
       this._serverPing = result.ping * 1000;
@@ -1903,7 +1903,10 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     }
   }
 
-  private _processServerSubs(subs: Record<string, any>) {
+  private _processServerSubs(subs: Record<string, any>, transition: number) {
+    // A 'subscribed' or 'publication' handler may call disconnect(). Positions
+    // are still stored and removed channels still reported, but no more
+    // subscribed or publication events of this connection are emitted.
     for (const channel in subs) {
       if (!subs.hasOwnProperty(channel)) {
         continue;
@@ -1914,8 +1917,10 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
         'epoch': sub.epoch,
         'recoverable': sub.recoverable || false
       };
-      const subCtx = this._getSubscribeContext(channel, sub);
-      this.emit('subscribed', subCtx);
+      if (!this._transitionSuperseded(transition)) {
+        const subCtx = this._getSubscribeContext(channel, sub);
+        this.emit('subscribed', subCtx);
+      }
     }
 
     for (const channel in subs) {
@@ -1924,13 +1929,9 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
       }
       const sub = subs[channel];
       if (sub.recovered) {
-        const pubs = sub.publications;
-        if (pubs && pubs.length > 0) {
-          for (const i in pubs) {
-            if (pubs.hasOwnProperty(i)) {
-              this._handlePublication(channel, pubs[i]);
-            }
-          }
+        const pubs = sub.publications || [];
+        for (let i = 0; i < pubs.length && !this._transitionSuperseded(transition); i++) {
+          this._handlePublication(channel, pubs[i]);
         }
       }
     }

@@ -1,0 +1,64 @@
+{
+  "client": {
+    "allowed_origins": ["http://localhost:*", "http://127.0.0.1:*"],
+    "token": {
+      "hmac_secret_key": "secret"
+    },
+    "expired_close_delay": "3s",
+    "expired_sub_close_delay": "3s"
+  },
+  "log": {
+    "level": "debug"
+  },
+  "http_stream": {
+    "enabled": true
+  },
+  "sse": {
+    "enabled": true
+  },
+  "map_broker": {},
+  "http_api": {
+    "key": "test-api-key"
+  },
+  "channel": {
+    "without_namespace": {
+      "presence": true,
+      "history_size": 100,
+      "history_ttl": "300s",
+      "force_recovery": true
+    },
+    "namespaces": [
+      {
+        "name": "recovery",
+        "force_recovery": true,
+        "history_size": 100,
+        "history_ttl": "300s",
+        "allow_subscribe_for_client": true,
+        "allow_publish_for_subscriber": true
+      },
+      {
+        "name": "smallhistory",
+        "force_recovery": true,
+        "history_size": 2,
+        "history_ttl": "300s",
+        "allow_subscribe_for_client": true,
+        "allow_publish_for_subscriber": true
+      },
+      {
+        "name": "private",
+        "force_recovery": true,
+        "history_size": 100,
+        "history_ttl": "300s",
+        "allow_publish_for_subscriber": true
+      },
+      {
+        "name": "privatemap",
+        "subscription_type": "map",
+        "map": {
+          "mode": "persistent",
+          "allow_publish_for_subscriber": true
+        }
+      }
+    ]
+  }
+}

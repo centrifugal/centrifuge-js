@@ -10,3 +10,15 @@ services:
       - ./centrifugo_test.json:/centrifugo/config.json:ro
     extra_hosts:
       - "host.docker.internal:host-gateway"
+  # Secure mode: connection tokens required, subscription tokens required outside
+  # the recovery/smallhistory namespaces, short expired close delays. For token
+  # expiry and refresh scenarios.
+  centrifugo_secure:
+    image: centrifugo/centrifugo:v6.9.4
+    command:
+      - centrifugo
+      - --config=/centrifugo/config.json
+    ports:
+      - "8002:8000"
+    volumes:
+      - ./centrifugo_secure_test.json:/centrifugo/config.json:ro

@@ -136,7 +136,9 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
   private _promises: Record<number, any>;
   private _promiseId: number;
   private _networkEvents: { target: EventTarget; onOffline: () => void; onOnline: () => void } | null;
+  private _stateTransitions: number;
   private _disconnects: number;
+  private _abortedTransportId: number;
 
   private _debugEnabled: boolean;
   private _config: Options;
@@ -186,7 +188,9 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     this._promiseId = 0;
     this._debugEnabled = false;
     this._networkEvents = null;
+    this._stateTransitions = 0;
     this._disconnects = 0;
+    this._abortedTransportId = 0;
 
     this._config = { ...defaults, ...options };
     this._configure();
@@ -687,11 +691,13 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     }
   }
 
-  private _setState(newState: State) {
+  // Returns the number of the transition made, or 0 if the client already was in newState.
+  private _setState(newState: State): number {
     if (this.state !== newState) {
       this._reconnecting = false;
       const oldState = this.state;
       this.state = newState;
+      const transition = ++this._stateTransitions;
       // Keep network listeners in sync with the state before emitting: a 'state'
       // handler may call connect() or disconnect() synchronously.
       if (newState === State.Connecting) {
@@ -700,9 +706,15 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
         this._clearNetworkEvents();
       }
       this.emit('state', { newState, oldState });
-      return true;
+      return transition;
     }
-    return false;
+    return 0;
+  }
+
+  // Whether an event handler made another state transition after the given one
+  // (as returned by _setState), so that the given one is outdated.
+  private _transitionSuperseded(transition: number): boolean {
+    return transition !== 0 && this._stateTransitions !== transition;
   }
 
   private _isDisconnected() {
@@ -735,23 +747,27 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
       const onOffline = () => {
         this._debug('offline event triggered');
         if (this.state === State.Connected || this.state === State.Connecting) {
-          this._disconnect(connectingCodes.transportClosed, 'transport closed', true);
+          // Set first: a handler of the events emitted by the disconnect may call
+          // disconnect(), which resets it.
           this._deviceWentOffline = true;
+          this._disconnect(connectingCodes.transportClosed, 'transport closed', true);
         }
       };
       const onOnline = () => {
         this._debug('online event triggered');
+        const wentOffline = this._deviceWentOffline;
+        this._deviceWentOffline = false;
         if (this.state !== State.Connecting) {
           return;
         }
-        if (this._deviceWentOffline && !this._transportClosed) {
-          // This is a workaround for mobile Safari where close callback may be
-          // not issued upon device going to the flight mode. We know for sure
-          // that transport close was called, so we start reconnecting. In this
-          // case if the close callback will be issued for some reason after some
-          // time – it will be ignored due to transport ID mismatch.
-          this._deviceWentOffline = false;
-          this._transportClosed = true;
+        if (wentOffline && !this._transportClosed) {
+          // A reconnect attempt opened a transport while the device was offline.
+          // Mobile Safari may never issue the close callback for it, so abort it
+          // explicitly and start over. The transport ID changes, so a close
+          // callback issued later is ignored. The rejection of a connect command
+          // still pending on it is not an error to report (see _sendConnect).
+          this._abortedTransportId = this._transportId;
+          this._disconnect(connectingCodes.transportClosed, 'transport closed', true);
         }
         this._clearReconnectTimeout();
         this._startReconnecting();
@@ -1136,6 +1152,9 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
   private _sendConnect(skipSending: boolean): any {
     const connectCommand = this._constructConnectCommand();
     const self = this;
+    // A teardown rejects the pending command, and the rejection is processed after
+    // it: a newer attempt may have started by then, which must not be torn down.
+    const transportId = this._transportId;
     this._call(connectCommand, skipSending).then(resolveCtx => {
       const result = resolveCtx.reply.connect;
       self._connectResponse(result);
@@ -1143,7 +1162,11 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
         resolveCtx.next();
       }
     }, rejectCtx => {
-      self._connectError(rejectCtx.error);
+      if (transportId === self._abortedTransportId) {
+        self._debug('connect command of a transport aborted by the client rejected');
+      } else {
+        self._connectError(rejectCtx.error, self._transportId !== transportId);
+      }
       if (rejectCtx.next) {
         rejectCtx.next();
       }
@@ -1264,7 +1287,9 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     }, delay);
   }
 
-  private _connectError(err: any) {
+  // stale: the error belongs to a transport that was already closed. It is still
+  // reported, but must not tear down the current connection attempt.
+  private _connectError(err: any, stale: boolean) {
     if (this.state !== State.Connecting) {
       return;
     }
@@ -1277,9 +1302,18 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
         'type': 'connect',
         'error': err
       });
+      if (stale) {
+        return;
+      }
+      if (err.code === errorCodes.timeout && !this._transportWasOpen && this._transport !== null && this._transport.emulation()) {
+        // A hanging emulation handshake moves on to the next transport. For other
+        // failures the transport's close callback does that, but it is ignored after
+        // the teardown below.
+        this._advanceTransportIndex();
+      }
       this._debug('closing transport due to connect error');
       this._disconnect(err.code, err.message, true);
-    } else {
+    } else if (!stale) {
       this._disconnect(err.code, err.message, false);
     }
   }
@@ -1482,7 +1516,12 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
 
   private _startConnecting() {
     this._debug('start connecting');
-    if (this._setState(State.Connecting)) {
+    const transition = this._setState(State.Connecting);
+    // A 'state' handler may have called disconnect() already.
+    if (this._transitionSuperseded(transition)) {
+      return;
+    }
+    if (transition) {
       this.emit('connecting', { code: connectingCodes.connectCalled, reason: 'connect called' });
     }
     this._client = null;
@@ -1519,60 +1558,71 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     if (this._isDisconnected()) {
       return;
     }
-    // Aborts token/data continuations of an attempt that had not created a
-    // transport yet (see _startReconnecting).
-    this._disconnects++;
-    // we mark transport is closed right away, because _clearConnectedState will move subscriptions to subscribing state
-    // if transport will still be open at this time, subscribe frames will be sent to closing transport
-    this._transportIsOpen = false;
     const previousState = this.state;
+    const newState = reconnect ? State.Connecting : State.Disconnected;
+
+    // Tear everything down before emitting any event: handlers may call connect()
+    // or disconnect() synchronously, and nothing below must undo what they start.
+    this._transportIsOpen = false;
     this._reconnecting = false;
+    if (previousState === State.Connecting) {
+      this._clearReconnectTimeout();
+    }
+    // Invalidates callbacks of the transport closed below (SSE issues its close
+    // callback synchronously).
+    this._nextTransportId();
+    // Aborts token/data continuations of an attempt that had not created a
+    // transport yet.
+    this._disconnects++;
+    if (this._transport) {
+      this._debug("closing existing transport");
+      const transport = this._transport;
+      this._transport = null;
+      try {
+        transport.close();
+      } catch (e) {
+        // E.g. a transport whose socket constructor threw: the teardown must complete.
+        this._debug('error closing transport', e);
+      }
+      // Its close callback is ignored, so a new attempt must not wait for it.
+      this._transportClosed = true;
+    } else {
+      this._debug("no transport to close");
+    }
+    this._clearOutgoingRequests();
+    if (!reconnect) {
+      this._rejectPromises({ code: errorCodes.clientDisconnected, message: 'disconnected' });
+      // Network listeners are removed with the state change below, so no online
+      // event can reset it.
+      this._deviceWentOffline = false;
+    }
 
     const ctx = {
       code: code,
       reason: reason
     };
-
-    let needEvent: boolean;
-
-    if (reconnect) {
-      needEvent = this._setState(State.Connecting);
-    } else {
-      needEvent = this._setState(State.Disconnected);
+    const transition = this._setState(newState);
+    if (!reconnect && !this._transitionSuperseded(transition)) {
+      // Client methods called from a 'state' handler must fail now too, not wait
+      // for a connection.
       this._rejectPromises({ code: errorCodes.clientDisconnected, message: 'disconnected' });
-    }
-
-    this._clearOutgoingRequests();
-
-    if (previousState === State.Connecting) {
-      this._clearReconnectTimeout();
     }
     if (previousState === State.Connected) {
       this._clearConnectedState();
     }
-
-    if (needEvent) {
-      if (this._isConnecting()) {
+    // A handler of the events above may have changed the state again: this
+    // transition is outdated then, and its event would arrive out of order.
+    if (transition && !this._transitionSuperseded(transition)) {
+      if (reconnect) {
         this.emit('connecting', ctx);
       } else {
         this.emit('disconnected', ctx);
       }
     }
-
-    if (this._transport) {
-      this._debug("closing existing transport");
-      const transport = this._transport;
-      this._transport = null;
-      transport.close(); // Close only after setting this._transport to null to avoid recursion when calling transport close().
-      // Need to mark as closed here, because connect call may be sync called after disconnect,
-      // transport onClose callback will not be called yet
-      this._transportClosed = true;
-    } else {
-      this._debug("no transport to close");
+    // Unless a handler has already started a new attempt.
+    if (reconnect && !this._transitionSuperseded(transition)) {
+      this._scheduleReconnect();
     }
-    // Invalidates callbacks of the closed transport.
-    this._nextTransportId();
-    this._scheduleReconnect();
   }
 
   private _failUnauthorized() {
@@ -1623,13 +1673,17 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
           resolveCtx.next();
         }
       }, rejectCtx => {
-        self._refreshError(rejectCtx.error);
+        // A disconnect rejects the pending command too: nothing to retry then,
+        // the connection this refresh was for is gone.
+        if (clientId === self._client) {
+          self._refreshError(rejectCtx.error);
+        }
         if (rejectCtx.next) {
           rejectCtx.next();
         }
       });
     }).catch(function (e) {
-      if (!self._isConnected()) {
+      if (clientId !== self._client || !self._isConnected()) {
         return;
       }
       if (e instanceof UnauthorizedError) {
@@ -1767,7 +1821,12 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     }
 
     this._client = result.client;
-    this._setState(State.Connected);
+    const transition = this._setState(State.Connected);
+    // A 'state' handler may have called disconnect(), which already tore the
+    // connection down.
+    if (this._transitionSuperseded(transition)) {
+      return;
+    }
 
     if (this._refreshTimeout) {
       clearTimeout(this._refreshTimeout);
@@ -1792,6 +1851,10 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     }
 
     this.emit('connected', ctx);
+    // Same for a 'connected' handler.
+    if (this._transitionSuperseded(transition)) {
+      return;
+    }
 
     this._resolvePromises();
 

@@ -1,3 +1,5 @@
+import { ReplyStreamBuffer } from './stream_buffer';
+
 /** @internal */
 export class HttpStreamTransport {
   endpoint: string;
@@ -41,7 +43,7 @@ export class HttpStreamTransport {
         eventTarget.dispatchEvent(new Event('open'));
         let jsonStreamBuf = '';
         let jsonStreamPos = 0;
-        let protoStreamBuf = new Uint8Array();
+        const protoStreamBuf = new ReplyStreamBuffer();
         const reader = response.body.getReader();
         return new self.options.readableStream({
           start(controller) {
@@ -70,21 +72,11 @@ export class HttpStreamTransport {
                       }
                     }
                   } else {
-                    const mergedArray = new Uint8Array(protoStreamBuf.length + value.length);
-                    mergedArray.set(protoStreamBuf);
-                    mergedArray.set(value, protoStreamBuf.length);
-                    protoStreamBuf = mergedArray;
-
-                    while (true) {
-                      const result = self.options.decoder.decodeReply(protoStreamBuf);
-                      if (result.ok) {
-                        const data = protoStreamBuf.slice(0, result.pos);
-                        eventTarget.dispatchEvent(new MessageEvent('message', { data: data }));
-                        protoStreamBuf = protoStreamBuf.slice(result.pos);
-                        continue;
-                      }
-                      break;
-                    }
+                    protoStreamBuf.push(value);
+                    protoStreamBuf.drain(
+                      data => self.options.decoder.decodeReply(data),
+                      reply => eventTarget.dispatchEvent(new MessageEvent('message', { data: reply })),
+                    );
                   }
                 } catch (error) {
                   // @ts-ignore - improve later.

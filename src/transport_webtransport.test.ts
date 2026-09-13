@@ -1,4 +1,7 @@
+import { Writer } from 'protobufjs/minimal';
 import { WebtransportTransport } from './transport_webtransport';
+import { centrifugal } from './client_proto';
+import { ProtobufCodec } from './protobuf.codec';
 
 function fakeReadableStream(chunks: (Uint8Array | undefined)[]) {
   let i = 0;
@@ -64,4 +67,32 @@ describe('WebtransportTransport._startReading UTF-8 handling', () => {
     // character straddling the chunk boundary.
     expect(messages).toEqual([payload]);
   });
+});
+
+describe('WebtransportTransport._startReading protobuf', () => {
+  it('reads a large reply arriving in many small chunks without copying the buffer for each', async () => {
+    const writer = Writer.create();
+    centrifugal.centrifuge.protocol.Reply.encodeDelimited(
+      { push: { channel: 'ch', pub: { data: new Uint8Array(4 * 1024 * 1024).fill(122), offset: 1 } } }, writer);
+    const reply = writer.finish();
+    const chunks: Uint8Array[] = [];
+    for (let i = 0; i < reply.length; i += 1024) {
+      chunks.push(reply.slice(i, i + 1024));
+    }
+
+    const transport = new WebtransportTransport('https://example.com/connection/webtransport', { decoder: new ProtobufCodec() });
+    (transport as any)._protocol = 'protobuf';
+    (transport as any)._stream = { readable: fakeReadableStream(chunks) };
+
+    const messages: any[] = [];
+    const eventTarget = new EventTarget();
+    eventTarget.addEventListener('message', (e: any) => { messages.push(e.data); });
+    const started = Date.now();
+    await (transport as any)._startReading(eventTarget);
+
+    expect(messages).toHaveLength(1);
+    expect(Buffer.from(messages[0]).equals(Buffer.from(reply))).toBe(true);
+    // Copying the whole buffer again for each of the 4097 chunks takes seconds.
+    expect(Date.now() - started).toBeLessThan(1000);
+  }, 60000);
 });

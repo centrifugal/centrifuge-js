@@ -49,6 +49,8 @@ describe('recovered publications and state', () => {
 
   describe('client-side subscription', () => {
     beforeEach(() => {
+      // After a recovery the server replies with the position recovered from, here 0,
+      // not the top of the stream (see subscribeCmd in centrifuge).
       server.onSubscribe = () => ({
         recoverable: true, epoch: 'e', offset: 0, wasRecovering: true, recovered: true, publications: publications(3),
       });
@@ -104,6 +106,7 @@ describe('recovered publications and state', () => {
 
   describe('server-side subscriptions', () => {
     beforeEach(() => {
+      // As for a client-side subscription, the offset is the position recovered from.
       const sub = { recoverable: true, epoch: 'e', offset: 0, was_recovering: true, recovered: true, publications: publications(3) };
       server.connectResult = { ...server.connectResult, subs: { ss1: sub, ss2: sub } };
     });
@@ -149,6 +152,7 @@ describe('recovered publications and state', () => {
       expect((c as any)._serverSubs.ss1.offset).toBe(1);
       expect((c as any)._serverSubs.ss2.offset).toBe(0);
     });
+
   });
 
   describe('map subscription', () => {
@@ -224,6 +228,70 @@ describe('recovered publications and state', () => {
       await delay(50);
       expect(events).toEqual(['subscribed', 'subscribed', 'sync:1']);
       expect(sub.state).toBe(SubscriptionState.Subscribed);
+    });
+
+    const subscribeRequests = () => server.received.filter(cmd => cmd.subscribe !== undefined).map(cmd => cmd.subscribe);
+
+    test('resubscribe after unsubscribe() from a publication handler recovers the rest of the catch-up', async () => {
+      server.onSubscribe = () => ({ recoverable: true, epoch: 'e', offset: 3, recovered: true, publications: [entry(1), entry(2), entry(3)] } as any);
+      const { sub } = mapSubscription();
+      sub.once('publication', () => sub.unsubscribe());
+      sub.subscribe();
+      c.connect();
+      await waitFor(() => server.received.some(cmd => cmd.unsubscribe !== undefined));
+
+      sub.subscribe();
+      await sub.ready(3000);
+      const req = subscribeRequests()[1];
+      // A stream phase recovering after the delivered entry.
+      expect(req.phase).toBe(1);
+      expect(req.recover).toBe(true);
+      expect(req.offset).toBe(1);
+      expect(req.epoch).toBe('e');
+    });
+
+    test('unsubscribe() from a subscribed handler keeps the position before the catch-up', async () => {
+      server.onSubscribe = () => ({ recoverable: true, epoch: 'e', offset: 3, recovered: true, publications: [entry(2), entry(3)] } as any);
+      const { sub, events } = mapSubscription();
+      sub.once('subscribed', () => sub.unsubscribe());
+      sub.subscribe();
+      c.connect();
+      await waitFor(() => server.received.some(cmd => cmd.unsubscribe !== undefined));
+
+      expect(events).toEqual(['subscribed']);
+      expect(sub._offset).toBe(1);
+    });
+
+    test('unsubscribe() from a subscribed handler before sync makes the next subscribe start from scratch', async () => {
+      server.onSubscribe = () => ({ recoverable: true, epoch: 'e', offset: 5, state: [entry(1)], publications: [entry(5)] } as any);
+      const { sub } = mapSubscription();
+      sub.once('subscribed', () => sub.unsubscribe());
+      sub.subscribe();
+      c.connect();
+      await waitFor(() => server.received.some(cmd => cmd.unsubscribe !== undefined));
+
+      sub.subscribe();
+      await sub.ready(3000);
+      const req = subscribeRequests()[1];
+      // A state page, not a recovery from the position: the app never got sync.
+      expect(req.phase).toBe(2);
+      expect(req.recover).toBeUndefined();
+      expect(req.offset).toBeUndefined();
+    });
+
+    test.each([
+      ['a sync', { recoverable: true, epoch: 'e', offset: 5, state: [entry(1)], publications: [entry(5)] }],
+      ['a recovered catch-up', { recoverable: true, epoch: 'e', offset: 5, recovered: true, publications: [entry(4), entry(5)] }],
+    ])('position moves to the top once %s is delivered', async (_, reply) => {
+      server.onSubscribe = () => reply as any;
+      const { sub } = mapSubscription();
+      sub.subscribe();
+      c.connect();
+      await sub.ready(3000);
+      await delay(50);
+      expect(sub._offset).toBe(5);
+      expect(sub._epoch).toBe('e');
+      expect(sub._recover).toBe(true);
     });
   });
 });

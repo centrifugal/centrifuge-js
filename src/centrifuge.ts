@@ -2255,6 +2255,11 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
   }
 
   private _handleDisconnect(disconnect: any) {
+    // The server pushed it over the transport, so the transport works: reconnect
+    // after the reconnect delay, as after a close code from the server, not at once
+    // with the next transport as for one that failed to open. An emulation transport
+    // is otherwise marked open only by a connect reply.
+    this._transportWasOpen = true;
     const code = disconnect.code;
     let reconnect = true;
     if ((code >= 3500 && code < 4000) || (code >= 4500 && code < 5000)) {

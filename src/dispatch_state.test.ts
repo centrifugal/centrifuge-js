@@ -298,4 +298,18 @@ describe('dispatch and subscription state', () => {
     expect((c as any)._transport).toBe(transport);
     expect(c.state).toBe(State.Connected);
   });
+
+  test('a thrown value without a string form still disconnects the client', async () => {
+    await subscribed('ch');
+    // Applications see the exception as an unhandled rejection; not the point here.
+    (c as any)._reportDispatchError = () => { /* ignored */ };
+    c.on('message', () => {
+      throw Object.create(null);
+    });
+    const disconnected = new Promise<any>(resolve => c.once('disconnected', resolve));
+    server.message({ hello: true });
+
+    const ctx = await Promise.race([disconnected, delay(1000).then(() => null)]);
+    expect(ctx && ctx.code).toBe(disconnectedCodes.badProtocol);
+  });
 });

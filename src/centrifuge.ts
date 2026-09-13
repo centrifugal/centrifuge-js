@@ -1102,7 +1102,12 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
       onOpen: function () {
         if (self._transportId != transportId) {
           self._debug('open callback from non-actual transport');
-          transport.close();
+          try {
+            transport.close();
+          } catch (e) {
+            // E.g. a replaced WebSocket without a working close().
+            self._debug('error closing transport', e);
+          }
           return;
         }
         // Only after the check: the connect timeout belongs to the current attempt.
@@ -1570,7 +1575,13 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
       // instead of throwing from the transport callback.
       this._debug('error decoding received data', e);
       if (this._transport) {
-        this._transport.close();
+        try {
+          this._transport.close();
+        } catch (err) {
+          // No close callback will follow: tear the connection down here.
+          this._debug('error closing transport', err);
+          this._disconnect(connectingCodes.transportClosed, 'transport closed', true);
+        }
       }
       return;
     }
@@ -1613,7 +1624,13 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
   // no later reply is processed.
   private _dispatchFailed(err: any) {
     this._reportDispatchError(err);
-    const message = err instanceof Error ? err.message : String(err);
+    let message: string;
+    try {
+      message = err instanceof Error ? err.message : String(err);
+    } catch (e) {
+      // E.g. a thrown Object.create(null): it has no string form.
+      message = 'value without a string form';
+    }
     try {
       this._disconnect(disconnectedCodes.badProtocol, `exception during message handling: ${message}`, false);
     } catch (e) {
@@ -2022,6 +2039,9 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
       this._reconnectAttempts = 0;
     }
     this._refreshRequired = false;
+    // Connected again: a later online event must not take the device for having been
+    // offline and abort a transport that works.
+    this._deviceWentOffline = false;
 
     if (this._isConnected()) {
       return;

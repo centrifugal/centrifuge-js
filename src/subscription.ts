@@ -73,6 +73,9 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
   private _mapCursor: string = '';          // Pagination cursor
   private _mapPageSize: number = 0;             // Page size (0 = use server default)
   private _mapUnrecoverableStrategy: MapUnrecoverableStrategy = 'from_scratch';
+  // Incremented when the map position is reset (setTagsFilter, state invalidation),
+  // so a subscribe that completes meanwhile doesn't store its position over that.
+  private _mapPositionResets: number = 0;
   // Publish debounce state (protocol-level, controlled by server)
   protected _debounceMs: number = 0;
   private _debouncePending: Map<string, { data: any; dirty: boolean; timer: ReturnType<typeof setTimeout> }> = new Map();
@@ -321,6 +324,7 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
       this._recover = false;
       this._offset = null;
       this._epoch = null;
+      this._mapPositionResets++;
     }
   }
 
@@ -459,6 +463,7 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
       this._offset = null;
       this._epoch = null;
       this._recover = false;
+      this._mapPositionResets++;
       this._mapStateBuffer = [];
       this._mapStreamBuffer = [];
       this._mapCursor = '';
@@ -511,13 +516,22 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
     }
 
     this._setState(SubscriptionState.Subscribed);
+    // A 'state' handler may have unsubscribed already: no subscribed event then.
+    if (!this._isSubscribed()) {
+      return;
+    }
     // @ts-ignore – we are hiding some methods from public API autocompletion.
     const ctx = this._centrifuge._getSubscribeContext(this.channel, result);
     this.emit('subscribed', ctx);
+    // A 'subscribed' handler may have unsubscribed, and subscribed again: promises
+    // made since then wait for that subscribe.
+    if (!this._isSubscribed()) {
+      return;
+    }
     this._resolvePromises();
 
-    // A 'subscribed' or 'publication' handler may have unsubscribed: the rest of
-    // the recovered publications must not be delivered or move the position.
+    // A 'publication' handler may have unsubscribed: the rest of the recovered
+    // publications must not be delivered or move the position.
     const pubs = result.publications || [];
     for (let i = 0; i < pubs.length && this._isSubscribed(); i++) {
       this._handlePublication(pubs[i]);
@@ -2051,9 +2065,9 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
       }
     }
 
-    // Update final offset/epoch — use || 0/'' to handle zero values omitted by JSON/protobuf.
-    this._offset = result.offset || 0;
-    this._epoch = result.epoch || '';
+    // Final offset/epoch — use || 0/'' to handle zero values omitted by JSON/protobuf.
+    const offset = result.offset || 0;
+    const epoch = result.epoch || '';
 
     // Clear subscribing state
     this._clearSubscribingState();
@@ -2063,9 +2077,9 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
       this._id = result.id;
     }
 
-    // Set recoverable state - enable recovery for reconnects.
+    // Recoverable state - enable recovery for reconnects.
     // In streamless mode server omits recoverable (JSON: undefined, protobuf: false).
-    this._recover = result.recoverable === true;
+    const recover = result.recoverable === true;
 
     // Handle delta negotiation
     if (result.delta) {
@@ -2078,9 +2092,6 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
     if (result.publish_debounce) {
       this._debounceMs = result.publish_debounce;
     }
-
-    // Transition to subscribed state
-    this._setState(SubscriptionState.Subscribed);
 
     // Take the buffers: a handler below may unsubscribe and subscribe again,
     // which starts a new flow using them.
@@ -2100,11 +2111,10 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
     // position recovered from (see _setSubscribed). Nor would that position cover
     // the whole catch-up here: its entries can come from several stream pages,
     // buffered until now. Until the events below reached the app, the stored
-    // position must not skip what they carry: a handler may unsubscribe, or
-    // subscribe again, in between.
-    const recover = this._recover;
-    const offset = this._offset;
-    const epoch = this._epoch;
+    // position must not skip what they carry: a handler, from the state event on,
+    // may unsubscribe, or subscribe again, in between.
+    this._recover = recover;
+    this._epoch = epoch;
     if (!ctx.recovered) {
       // Until sync, the app doesn't have the complete state: start from scratch.
       this._recover = false;
@@ -2113,17 +2123,29 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
     } else if (streamEntries.length > 0 && streamEntries[0].offset !== undefined) {
       // Before the recovered catch-up.
       this._offset = streamEntries[0].offset - 1;
+    } else {
+      this._offset = offset;
+    }
+    // A handler may also reset the position (setTagsFilter()): it's kept then.
+    const positionResets = this._mapPositionResets;
+
+    // Transition to subscribed state. A 'state' handler may have unsubscribed
+    // already: no subscribed event then.
+    this._setState(SubscriptionState.Subscribed);
+    if (!this._isSubscribed()) {
+      return;
     }
 
     // Emit subscribed event
     this.emit('subscribed', ctx);
-    this._resolvePromises();
 
     // A 'subscribed', 'sync', 'publication' or 'update' handler may have
-    // unsubscribed: the rest of this flow must not reach the app.
+    // unsubscribed: the rest of this flow must not reach the app. If it subscribed
+    // again, promises made since then wait for that subscribe.
     if (!this._isSubscribed()) {
       return;
     }
+    this._resolvePromises();
 
     // Emit sync event — complete state for simplified state management.
     // Skipped on successful recovery (app already has rendered state; stream
@@ -2146,31 +2168,41 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
         stateEntries = Array.from(stateMap.values());
         streamEntries = []; // Already applied — don't emit as updates.
       }
-      this._recover = recover;
-      this._offset = offset;
-      this._epoch = epoch;
+      if (this._mapPositionResets === positionResets) {
+        this._recover = recover;
+        this._offset = offset;
+        this._epoch = epoch;
+      }
       this.emit('sync', { entries: stateEntries });
     }
 
     // Flush remaining stream buffer as publication and update events.
     // On recovery (sync skipped above) — app already has state and just needs
-    // incremental changes.
-    for (let i = 0; i < streamEntries.length && this._isSubscribed(); i++) {
-      const entry = streamEntries[i];
-      if (entry.offset !== undefined) {
-        this._offset = entry.offset;
+    // incremental changes. An entry counts as delivered once its update event
+    // was emitted.
+    for (const entry of streamEntries) {
+      if (!this._isSubscribed()) {
+        return;
       }
       this.emit('publication', entry);
-      if (this._isSubscribed()) {
-        this.emit('update', entry);
+      if (!this._isSubscribed()) {
+        return;
+      }
+      this.emit('update', entry);
+      // Unless a handler subscribed again: that flow started from the position.
+      if (!this._isSubscribing() && entry.offset !== undefined && this._mapPositionResets === positionResets) {
+        this._offset = entry.offset;
       }
     }
-    if (this._isSubscribed()) {
+    if (!this._isSubscribed()) {
+      return;
+    }
+    if (this._mapPositionResets === positionResets) {
       this._offset = offset;
     }
 
     // Handle token expiry
-    if (result.expires === true && this._isSubscribed()) {
+    if (result.expires === true) {
       this._refreshTimeout = setTimeout(() => this._refresh(), ttlMilliseconds(result.ttl));
     }
   }

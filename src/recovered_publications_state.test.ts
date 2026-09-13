@@ -92,6 +92,40 @@ describe('recovered publications and state', () => {
       expect((sub as any)._offset).toBe(1);
     });
 
+    test('no subscribed event after unsubscribe() from a state handler', async () => {
+      const { sub, received } = subscription();
+      const events: string[] = [];
+      sub.on('state', ctx => {
+        events.push(`state:${ctx.newState}`);
+        if (ctx.newState === SubscriptionState.Subscribed) {
+          sub.unsubscribe();
+        }
+      });
+      sub.on('subscribed', () => events.push('subscribed'));
+      sub.subscribe();
+      c.connect();
+
+      await waitFor(() => events.includes('state:unsubscribed'));
+      await delay(50);
+      expect(events).toEqual(['state:subscribing', 'state:subscribed', 'state:unsubscribed']);
+      expect(received).toEqual([]);
+    });
+
+    test('ready() after unsubscribe() and subscribe() in a subscribed handler waits for that subscribe', async () => {
+      const { sub } = subscription();
+      let readyState: string | null = null;
+      sub.once('subscribed', () => {
+        sub.unsubscribe();
+        sub.subscribe();
+        sub.ready().then(() => { readyState = sub.state; });
+      });
+      sub.subscribe();
+      c.connect();
+
+      await waitFor(() => readyState !== null);
+      expect(readyState).toBe(SubscriptionState.Subscribed);
+    });
+
     test('no token refresh scheduled after unsubscribe() from a subscribed handler', async () => {
       server.onSubscribe = () => ({ expires: true, ttl: 60 });
       const { sub } = subscription({ getToken: async () => 'token' });
@@ -232,10 +266,10 @@ describe('recovered publications and state', () => {
 
     const subscribeRequests = () => server.received.filter(cmd => cmd.subscribe !== undefined).map(cmd => cmd.subscribe);
 
-    test('resubscribe after unsubscribe() from a publication handler recovers the rest of the catch-up', async () => {
+    test('resubscribe after unsubscribe() from an update handler recovers the rest of the catch-up', async () => {
       server.onSubscribe = () => ({ recoverable: true, epoch: 'e', offset: 3, recovered: true, publications: [entry(1), entry(2), entry(3)] } as any);
       const { sub } = mapSubscription();
-      sub.once('publication', () => sub.unsubscribe());
+      sub.once('update', () => sub.unsubscribe());
       sub.subscribe();
       c.connect();
       await waitFor(() => server.received.some(cmd => cmd.unsubscribe !== undefined));
@@ -292,6 +326,57 @@ describe('recovered publications and state', () => {
       expect(sub._offset).toBe(5);
       expect(sub._epoch).toBe('e');
       expect(sub._recover).toBe(true);
+    });
+
+    test('an entry whose update was not emitted is recovered again', async () => {
+      server.onSubscribe = () => ({ recoverable: true, epoch: 'e', offset: 3, recovered: true, publications: [entry(1), entry(2), entry(3)] } as any);
+      const { sub, events } = mapSubscription();
+      sub.once('publication', () => sub.unsubscribe());
+      sub.subscribe();
+      c.connect();
+      await waitFor(() => server.received.some(cmd => cmd.unsubscribe !== undefined));
+
+      expect(events).toEqual(['subscribed', 'publication:1']);
+      // Before entry 1: the app didn't get its update.
+      expect(sub._offset).toBe(0);
+    });
+
+    test('unsubscribe() and subscribe() from a state handler before sync start the next subscribe from scratch', async () => {
+      server.onSubscribe = () => ({ recoverable: true, epoch: 'e', offset: 5, state: [entry(1)] } as any);
+      const { sub, events } = mapSubscription();
+      let again = true;
+      sub.on('state', (ctx: any) => {
+        if (ctx.newState === SubscriptionState.Subscribed && again) {
+          again = false;
+          sub.unsubscribe();
+          sub.subscribe();
+        }
+      });
+      sub.subscribe();
+      c.connect();
+
+      await waitFor(() => events.includes('sync:1'));
+      await delay(50);
+      const req = subscribeRequests()[1];
+      // A state page, not a recovery from the top of the stream.
+      expect(req.phase).toBe(2);
+      expect(req.recover).toBeUndefined();
+      // No subscribed event from the outdated flow.
+      expect(events).toEqual(['subscribed', 'sync:1']);
+    });
+
+    test.each([
+      ['not a recovery, from a subscribed handler', 'subscribed', { recoverable: true, epoch: 'e', offset: 5, state: [entry(1)] }],
+      ['a recovery, from an update handler', 'update', { recoverable: true, epoch: 'e', offset: 2, recovered: true, publications: [entry(1), entry(2)] }],
+    ])('setTagsFilter() during the subscribe events, %s, makes the next subscribe re-sync the state', async (_, event, reply) => {
+      server.onSubscribe = () => reply as any;
+      const { sub } = mapSubscription();
+      sub.once(event, () => sub.setTagsFilter({ key: 't', cmp: 'eq', val: 'x' }));
+      sub.subscribe();
+      c.connect();
+      await sub.ready(3000);
+      await delay(50);
+      expect({ recover: sub._recover, offset: sub._offset, epoch: sub._epoch }).toEqual({ recover: false, offset: null, epoch: null });
     });
   });
 });

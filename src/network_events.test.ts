@@ -363,6 +363,27 @@ describe('network event listeners', () => {
     expect(c.state).toBe(State.Connected);
   });
 
+  test('transport throwing on initialize is reported and retried', async () => {
+    let sockets = 0;
+    // E.g. a malformed URL, or an insecure one from a secure page.
+    class ThrowingOnceWebSocket extends WebSocket {
+      constructor(address: string, protocols?: string) {
+        if (sockets++ === 0) {
+          throw new SyntaxError('invalid url');
+        }
+        super(address, protocols);
+      }
+    }
+    const c = newClient({ websocket: ThrowingOnceWebSocket });
+    const errors = collectErrors(c);
+
+    c.connect();
+    expect(c.state).toBe(State.Connecting);
+    await c.ready(1000);
+    expect(sockets).toBe(2);
+    expect(errors).toEqual([`transport:${errorCodes.transportClosed}`]);
+  });
+
   test('connection dropped before the connect reply is reported as connect error', async () => {
     const dropping = await startSilentServer(ws => ws.terminate());
     const c = newClient({ minReconnectDelay: 5000, maxReconnectDelay: 5000 }, dropping.url);
@@ -572,9 +593,9 @@ describe('network event listeners', () => {
   });
 
   test.each([
-    ['getToken', { getToken: async () => 'token' }, 'connectToken', errorCodes.clientConnectToken],
-    ['getData', { getData: async () => ({}) }, 'connectData', errorCodes.badConfiguration],
-  ])('socket constructor error after %s is reported, and disconnect() still completes', async (_name, options, errorType, errorCode) => {
+    ['getToken', { getToken: async () => 'token' }],
+    ['getData', { getData: async () => ({}) }],
+  ])('socket constructor error after %s is reported as transport error, and disconnect() still completes', async (_name, options) => {
     // E.g. new WebSocket('ws://...') on an https page throws SecurityError.
     class ThrowingWebSocket {
       constructor() {
@@ -586,17 +607,17 @@ describe('network event listeners', () => {
       websocket: ThrowingWebSocket,
       minReconnectDelay: 1000,
       maxReconnectDelay: 1000,
-      // The connect timeout still fires for that transport: let it happen within this test.
+      // Short, so a connect timeout left for that transport would fire within this test.
       timeout: 100,
     });
     const errors = collectErrors(c);
     const error = waitForEvent(c, 'error', 2000);
     c.connect();
     await error;
-    expect(errors).toEqual([`${errorType}:${errorCode}`]);
+    // Handled as a transport closed at once: reported, and a reconnect is scheduled.
+    expect(errors).toEqual([`transport:${errorCodes.transportClosed}`]);
     expect((c as any)._reconnectTimeout).not.toBeNull();
 
-    // That transport has no socket, so closing it throws: the teardown must still complete.
     const ready = c.ready(5000).then(() => 'resolved', (e: any) => `rejected:${e.code}`);
     const disconnected = waitForEvent(c, 'disconnected');
     expect(() => c.disconnect()).not.toThrow();
@@ -604,8 +625,9 @@ describe('network event listeners', () => {
     expect(c.state).toBe(State.Disconnected);
     expect(await ready).toBe(`rejected:${errorCodes.clientDisconnected}`);
     expect(target.counts).toEqual({ offline: 0, online: 0 });
-    // Closing that transport from its connect timeout must not throw either.
+    // Nothing of that transport fires later.
     await delay(200);
+    expect(errors).toEqual([`transport:${errorCodes.transportClosed}`]);
   });
 
   test.each(['sse', 'http_stream'])('hanging %s handshake falls back to the next transport', async (transport) => {

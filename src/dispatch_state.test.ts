@@ -312,4 +312,26 @@ describe('dispatch and subscription state', () => {
     const ctx = await Promise.race([disconnected, delay(1000).then(() => null)]);
     expect(ctx && ctx.code).toBe(disconnectedCodes.badProtocol);
   });
+
+  // E.g. a suspended process resumes, and the reply is read only after the far
+  // overdue call timer ran: browsers don't promise to run socket events first.
+  test('a reply read shortly after a far overdue call timeout is not lost', async () => {
+    const timeout = 200;
+    (c as any)._config.timeout = timeout;
+    c.connect();
+    await c.ready(3000);
+
+    server.onCommand = (cmd, s) => {
+      if (cmd.publish !== undefined) {
+        // Blocks the event loop far past the timeout, then replies a moment after
+        // it resumes, once the overdue timer has run.
+        const until = Date.now() + timeout + 1500;
+        while (Date.now() < until) { /* busy wait */ }
+        setTimeout(() => s.send({ id: cmd.id, publish: {} }), 50);
+        return {};
+      }
+      return null;
+    };
+    await expect(c.publish('ch', {})).resolves.toEqual({});
+  }, 10000);
 });

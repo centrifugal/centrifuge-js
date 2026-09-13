@@ -738,4 +738,41 @@ describe('network event listeners', () => {
     expect(emulation.connects()).toBeLessThanOrEqual(2);
     expect(c.state).toBe(State.Connecting);
   });
+
+  test.each(['sse', 'http_stream'])('emulation endpoint failing after every connect over %s keeps the backoff growing', async (transport) => {
+    // E.g. a wrong emulation endpoint path: the stream connects, and every command
+    // sent through the emulation endpoint gets a 404, which closes the transport.
+    const emulation = fakeEmulation(
+      cmd => ({ id: cmd.id, connect: { client: 'fake-client', version: '0.0.0' } }),
+      () => ({ ok: false, status: 404 }),
+    );
+    const c = newEmulationClient(transport, emulation, { minReconnectDelay: 10, maxReconnectDelay: 1000 });
+    c.newSubscription('ch').subscribe();
+
+    c.connect();
+    for (let i = 0; i < 500 && emulation.connects() < 4; i++) {
+      await delay(10);
+    }
+    expect(emulation.connects()).toBeGreaterThanOrEqual(4);
+    // Connecting didn't reset the backoff: the connection never proved usable.
+    expect((c as any)._reconnectAttempts).toBeGreaterThanOrEqual(3);
+  });
+
+  test.each(['sse', 'http_stream'])('server ping over %s resets the backoff', async (transport) => {
+    let connects = 0;
+    const emulation = fakeEmulation(cmd => {
+      connects++;
+      if (connects <= 2) {
+        return { push: { disconnect: { code: 3001, reason: 'shutdown' } } };
+      }
+      // Connected, then a server ping: the connection works.
+      return [{ id: cmd.id, connect: { client: 'fake-client', version: '0.0.0' } }, {}];
+    });
+    const c = newEmulationClient(transport, emulation, { minReconnectDelay: 10, maxReconnectDelay: 100 });
+
+    c.connect();
+    await c.ready(3000);
+    await delay(20);
+    expect((c as any)._reconnectAttempts).toBe(0);
+  });
 });

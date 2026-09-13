@@ -142,6 +142,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
   private _stateTransitions: number;
   private _disconnects: number;
   private _abortedTransportId: number;
+  private _reconnectAttemptsResetPending: boolean;
 
   private _debugEnabled: boolean;
   private _config: Options;
@@ -195,6 +196,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     this._stateTransitions = 0;
     this._disconnects = 0;
     this._abortedTransportId = 0;
+    this._reconnectAttemptsResetPending = false;
 
     this._config = { ...defaults, ...options };
     this._configure();
@@ -804,6 +806,15 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     const delay = backoff(this._reconnectAttempts, this._config.minReconnectDelay, this._config.maxReconnectDelay);
     this._reconnectAttempts += 1;
     return delay;
+  }
+
+  // See _connectResponse: an emulation connection resets the backoff once it
+  // proved usable.
+  private _resetReconnectAttemptsIfPending() {
+    if (this._reconnectAttemptsResetPending) {
+      this._reconnectAttemptsResetPending = false;
+      this._reconnectAttempts = 0;
+    }
   }
 
   private _clearOutgoingRequests() {
@@ -1722,6 +1733,8 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     } else {
       this._debug("no transport to close");
     }
+    // A connection that ends before it proved usable keeps the backoff growing.
+    this._reconnectAttemptsResetPending = false;
     this._clearOutgoingRequests();
     if (!reconnect) {
       this._rejectPromises({ code: errorCodes.clientDisconnected, message: 'disconnected' });
@@ -1966,7 +1979,15 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
   private _connectResponse(result: any) {
     this._transportIsOpen = true;
     this._transportWasOpen = true;
-    this._reconnectAttempts = 0;
+    if (this._transport !== null && this._transport.emulation()) {
+      // A connect reply over an emulation transport proves only the stream. Commands
+      // go through the emulation endpoint, which may keep failing and close the
+      // transport after every connect: reset the backoff once the server replied to
+      // a command or pinged, or such a client reconnects at the minimum delay forever.
+      this._reconnectAttemptsResetPending = true;
+    } else {
+      this._reconnectAttempts = 0;
+    }
     this._refreshRequired = false;
 
     if (this._isConnected()) {
@@ -2155,6 +2176,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
   }
 
   private _handleReply(reply: any, next: any) {
+    this._resetReconnectAttemptsIfPending();
     const id = reply.id;
     if (!(id in this._callbacks)) {
       next();
@@ -2335,6 +2357,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
   }
 
   private _handleServerPing(next: any) {
+    this._resetReconnectAttemptsIfPending();
     if (this._sendPong) {
       const cmd = {};
       this._transportSendCommands([cmd]);

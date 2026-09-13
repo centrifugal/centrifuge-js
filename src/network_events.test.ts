@@ -341,6 +341,28 @@ describe('network event listeners', () => {
     await silent.close();
   });
 
+  test('unsubscribe rejection from the teardown does not close the new attempt', async () => {
+    const c = newClient({ minReconnectDelay: 1000, maxReconnectDelay: 1000 });
+    const sub = c.newSubscription('ch');
+    sub.subscribe();
+    c.connect();
+    await sub.ready(5000);
+
+    const inits = countTransportInits(c);
+    // The unsubscribe command is still pending: disconnect() rejects it, and the
+    // rejection is processed after connect() started a new attempt.
+    sub.unsubscribe();
+    c.disconnect();
+    c.connect();
+    expect(inits.n).toBe(1);
+
+    // Closing the new transport would delay the connection by the reconnect delay.
+    await c.ready(500);
+    await delay(50);
+    expect(inits.n).toBe(1);
+    expect(c.state).toBe(State.Connected);
+  });
+
   test('connection dropped before the connect reply is reported as connect error', async () => {
     const dropping = await startSilentServer(ws => ws.terminate());
     const c = newClient({ minReconnectDelay: 5000, maxReconnectDelay: 5000 }, dropping.url);

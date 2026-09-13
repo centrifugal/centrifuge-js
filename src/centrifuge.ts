@@ -1819,6 +1819,9 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     const cmd = { unsubscribe: req };
 
     const self = this;
+    // A teardown rejects the pending command, and the rejection is processed after
+    // it: a newer attempt may have started by then, which must not be torn down.
+    const transportId = this._transportId;
 
     const unsubscribePromise = new Promise<void>((resolve, _) => {
       this._call(cmd, false).then(resolveCtx => {
@@ -1830,6 +1833,10 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
         resolve()
         if (rejectCtx.next) {
           rejectCtx.next();
+        }
+        if (self._transportId !== transportId) {
+          self._debug('unsubscribe command of a closed transport rejected');
+          return;
         }
         try {
           self._disconnect(connectingCodes.unsubscribeError, 'unsubscribe error', true);

@@ -68,8 +68,10 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
   private _mapPresenceType: number = 1;  // 1=MAP, 2=MAP_CLIENTS, 3=MAP_USERS
   // @ts-ignore – this is used for tracking map subscription phase state.
   private _mapPhase: MapPhase | null = null;
-  private _mapStateBuffer: MapUpdateContext[] = [];  // Buffer snapshot entries
-  private _mapStreamBuffer: MapUpdateContext[] = [];    // Buffer stream entries during catch-up
+  // Publications of state and stream pages, decoded once the live reply tells
+  // whether delta is on (see _handleMapLiveResponse).
+  private _mapStateBuffer: any[] = [];
+  private _mapStreamBuffer: any[] = [];
   private _mapCursor: string = '';          // Pagination cursor
   private _mapPageSize: number = 0;             // Page size (0 = use server default)
   private _mapUnrecoverableStrategy: MapUnrecoverableStrategy = 'from_scratch';
@@ -988,12 +990,18 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
 
   /** Seed per-key delta tracking from state/stream entries.
    * Handles JSON-escaped data (server-side delta escaping) and protobuf data.
-   * Decodes escaped data back to original format for user consumption. */
-  private _seedDeltaTracking(pub: any): void {
+   * Decodes escaped data back to original format for user consumption.
+   * Values are escaped only when delta is negotiated: otherwise they come as
+   * they are, and a string value must not be parsed. */
+  private _seedDeltaTracking(pub: any, deltaNegotiated: boolean): void {
     if (!this._delta || !pub.key) return;
     if (pub.removed) {
       // A removal carries no payload to decode, and ends the key's delta chain.
       this._prevValueMap.delete(pub.key);
+      return;
+    }
+    if (!deltaNegotiated) {
+      this._prevValueMap.set(pub.key, pub.data);
       return;
     }
     if (typeof pub.data === 'string') {
@@ -1905,10 +1913,7 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
 
     // Append state entries to snapshot buffer (state field, not publications).
     if (result.state && result.state.length > 0) {
-      for (const pub of result.state) {
-        this._seedDeltaTracking(pub);
-        this._mapStateBuffer.push(this._getMapUpdateContext(pub));
-      }
+      this._mapStateBuffer.push(...result.state);
     }
 
     // Check if there's more data to fetch
@@ -2016,10 +2021,7 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
 
     // Append publications to stream buffer
     if (result.publications && result.publications.length > 0) {
-      for (const pub of result.publications) {
-        this._seedDeltaTracking(pub);
-        this._mapStreamBuffer.push(this._getMapUpdateContext(pub));
-      }
+      this._mapStreamBuffer.push(...result.publications);
     }
 
     // Page from the offset in the result. Server returns the last publication's
@@ -2053,20 +2055,27 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
       return;
     }
 
-    // Handle state from live response (present when state-to-live transition happens).
-    if (result.state && result.state.length > 0) {
-      for (const pub of result.state) {
-        this._seedDeltaTracking(pub);
-        this._mapStateBuffer.push(this._getMapUpdateContext(pub));
-      }
-    }
+    // Values of state and stream pages are escaped only when delta is negotiated,
+    // which only the live reply tells: decode the buffered pages now. State entries
+    // (including those of this reply) first, then the stream catch-up, whose delta
+    // bases the live publications below may build on.
+    const deltaNegotiated = !!(this._delta && result.delta);
+    const statePubs = result.state && result.state.length > 0 ? this._mapStateBuffer.concat(result.state) : this._mapStateBuffer;
+    this._mapStateBuffer = statePubs.map(pub => {
+      this._seedDeltaTracking(pub, deltaNegotiated);
+      return this._getMapUpdateContext(pub);
+    });
+    this._mapStreamBuffer = this._mapStreamBuffer.map(pub => {
+      this._seedDeltaTracking(pub, deltaNegotiated);
+      return this._getMapUpdateContext(pub);
+    });
 
     // Append any remaining publications from the live response to stream buffer.
     // Recovery publications may be delta-encoded — decode before buffering.
     // Use result.delta (not this._delta_negotiated which is set later).
     if (result.publications && result.publications.length > 0) {
       for (const pub of result.publications) {
-        if (this._delta && result.delta) {
+        if (deltaNegotiated) {
           // Delta negotiated: decode and update tracking in one block. A removal
           // carries no payload to decode, and ends the key's delta chain.
           const deltaKey = pub.key || '';

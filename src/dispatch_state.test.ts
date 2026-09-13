@@ -288,4 +288,14 @@ describe('dispatch and subscription state', () => {
     expect(updates).toEqual([]);
     expect(sub._sharedPollTrackedItems.get('k1')).toBe(0);
   });
+
+  test('an empty frame does not close the transport', async () => {
+    // E.g. an empty line on a JSON http_stream, which is dispatched the same way.
+    await subscribed('ch');
+    const transport = (c as any)._transport;
+    (server as any).current.send('');
+    await delay(50);
+    expect((c as any)._transport).toBe(transport);
+    expect(c.state).toBe(State.Connected);
+  });
 });

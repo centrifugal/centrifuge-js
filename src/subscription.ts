@@ -482,6 +482,8 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
 
     if (result.recoverable) {
       this._recover = true;
+      // After a recovery the server replies with the position recovered from: each
+      // recovered publication delivered below moves it.
       this._offset = result.offset || 0;
       this._epoch = result.epoch || '';
     }
@@ -2092,6 +2094,22 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
     const ctx = this._centrifuge._getSubscribeContext(this.channel, result);
     ctx.state = stateEntries;
 
+    // The reply's offset is the top of the stream. Until the events below reached
+    // the app, the stored position must not skip what they carry: a handler may
+    // unsubscribe, or subscribe again, in between.
+    const recover = this._recover;
+    const offset = this._offset;
+    const epoch = this._epoch;
+    if (!ctx.recovered) {
+      // Until sync, the app doesn't have the complete state: start from scratch.
+      this._recover = false;
+      this._offset = null;
+      this._epoch = null;
+    } else if (streamEntries.length > 0 && streamEntries[0].offset !== undefined) {
+      // Before the recovered catch-up.
+      this._offset = streamEntries[0].offset - 1;
+    }
+
     // Emit subscribed event
     this.emit('subscribed', ctx);
     this._resolvePromises();
@@ -2123,6 +2141,9 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
         stateEntries = Array.from(stateMap.values());
         streamEntries = []; // Already applied — don't emit as updates.
       }
+      this._recover = recover;
+      this._offset = offset;
+      this._epoch = epoch;
       this.emit('sync', { entries: stateEntries });
     }
 
@@ -2130,10 +2151,17 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
     // On recovery (sync skipped above) — app already has state and just needs
     // incremental changes.
     for (let i = 0; i < streamEntries.length && this._isSubscribed(); i++) {
-      this.emit('publication', streamEntries[i]);
-      if (this._isSubscribed()) {
-        this.emit('update', streamEntries[i]);
+      const entry = streamEntries[i];
+      if (entry.offset !== undefined) {
+        this._offset = entry.offset;
       }
+      this.emit('publication', entry);
+      if (this._isSubscribed()) {
+        this.emit('update', entry);
+      }
+    }
+    if (this._isSubscribed()) {
+      this._offset = offset;
     }
 
     // Handle token expiry

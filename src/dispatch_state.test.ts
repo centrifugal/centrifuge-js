@@ -220,4 +220,72 @@ describe('dispatch and subscription state', () => {
     };
     await expect(c.publish('ch', {})).resolves.toEqual({});
   });
+
+  test('server unsubscribe of a previous subscription does not end a subscribe in progress', async () => {
+    const { sub } = await subscribed('ch');
+    // The server unsubscribes the client (e.g. through its API) while the app calls
+    // unsubscribe() and subscribe(): the push goes out before the unsubscribe reply.
+    server.onCommand = (cmd, s) => {
+      if (cmd.unsubscribe !== undefined) {
+        s.sendPush({ channel: 'ch', unsubscribe: { code: 2000, reason: 'server unsubscribe' } });
+      }
+      return null;
+    };
+    sub.unsubscribe();
+    sub.subscribe();
+
+    const result = await sub.ready(3000).then(() => 'subscribed', (e: any) => `rejected:${e.code}`);
+    expect(result).toBe('subscribed');
+    await delay(50);
+    expect(sub.state).toBe(SubscriptionState.Subscribed);
+  });
+
+  test('unsubscribe push without a channel or subscription is ignored', async () => {
+    await subscribed('ch');
+    server.sendPush({ id: 99, unsubscribe: { code: 2000, reason: 'server unsubscribe' } });
+    await delay(50);
+    expect(c.state).toBe(State.Connected);
+  });
+
+  test('a track reply of a previous shared poll subscription is not applied', async () => {
+    server.onSubscribe = () => ({});
+    const sub: any = c.newSharedPollSubscription('poll');
+    const updates: string[] = [];
+    sub.on('update', (ctx: any) => updates.push(`${ctx.key}:${ctx.version}`));
+    sub.subscribe();
+    c.connect();
+    await sub.ready(3000);
+
+    // From the track on, replies are held, to be sent later in command order.
+    const held: any[] = [];
+    server.onCommand = (cmd) => {
+      if (held.length > 0 || cmd.sub_refresh !== undefined) {
+        held.push(cmd);
+        return {};
+      }
+      return null;
+    };
+    sub.track([{ key: 'k1', version: 0 }], 'signature');
+    // The track command reaches the server before unsubscribe().
+    await waitFor(() => held.length === 1);
+    sub.unsubscribe();
+    sub.track([{ key: 'k1', version: 0 }], 'signature');
+    sub.subscribe();
+    await waitFor(() => held.some(cmd => cmd.subscribe !== undefined));
+
+    server.onCommand = null;
+    for (const cmd of held) {
+      if (cmd.sub_refresh !== undefined) {
+        server.send({ id: cmd.id, sub_refresh: { items: [{ key: 'k1', version: 5, data: { v: 5 } }] } });
+      } else if (cmd.subscribe !== undefined) {
+        server.send({ id: cmd.id, subscribe: {} });
+      } else {
+        server.send({ id: cmd.id, unsubscribe: {} });
+      }
+    }
+    await sub.ready(3000);
+    await delay(50);
+    expect(updates).toEqual([]);
+    expect(sub._sharedPollTrackedItems.get('k1')).toBe(0);
+  });
 });

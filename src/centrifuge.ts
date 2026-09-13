@@ -2245,14 +2245,22 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
 
   private _handleUnsubscribe(channel: string, unsubscribe: any) {
     const sub = this._getSub(channel, 0);
-    if (!sub && channel) {
-      if (this._isServerSub(channel)) {
+    if (!sub) {
+      if (channel && this._isServerSub(channel)) {
         delete this._serverSubs[channel];
         this.emit('unsubscribed', { channel: channel });
       }
       return;
     }
     if (unsubscribe.code < 2500) {
+      // @ts-ignore – we are hiding some symbols from public API autocompletion.
+      if (sub._isSubscribing()) {
+        // It ends a previous subscription, e.g. a server unsubscribe that raced
+        // unsubscribe() and subscribe() of the app: the server unsubscribes a
+        // subscription in progress only after replying to its subscribe.
+        this._debug('unsubscribe push for a previous subscription', channel);
+        return;
+      }
       // @ts-ignore – we are hiding some symbols from public API autocompletion.
       sub._setUnsubscribed(unsubscribe.code, unsubscribe.reason, false);
     } else {

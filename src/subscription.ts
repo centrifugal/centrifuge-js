@@ -2079,54 +2079,65 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
     // Transition to subscribed state
     this._setState(SubscriptionState.Subscribed);
 
+    // Take the buffers: a handler below may unsubscribe and subscribe again,
+    // which starts a new flow using them.
+    let stateEntries = this._mapStateBuffer;
+    let streamEntries = this._mapStreamBuffer;
+    this._mapStateBuffer = [];
+    this._mapStreamBuffer = [];
+    this._mapPhase = null;
+
     // Build subscribed context with state entries
     // @ts-ignore – we are hiding some methods from public API autocompletion.
     const ctx = this._centrifuge._getSubscribeContext(this.channel, result);
-    ctx.state = this._mapStateBuffer;
+    ctx.state = stateEntries;
 
     // Emit subscribed event
     this.emit('subscribed', ctx);
     this._resolvePromises();
 
+    // A 'subscribed', 'sync', 'publication' or 'update' handler may have
+    // unsubscribed: the rest of this flow must not reach the app.
+    if (!this._isSubscribed()) {
+      return;
+    }
+
     // Emit sync event — complete state for simplified state management.
     // Skipped on successful recovery (app already has rendered state; stream
     // catch-up is emitted as individual update events).
     if (!ctx.recovered) {
-      if (this._mapStreamBuffer.length > 0) {
+      if (streamEntries.length > 0) {
         // Apply stream catch-up buffer to state by key (last value wins, removed deletes).
         // Produces a single sync snapshot that reflects state as of LIVE transition.
         const stateMap = new Map<string, MapUpdateContext>();
-        for (const entry of this._mapStateBuffer) {
+        for (const entry of stateEntries) {
           stateMap.set(entry.key, entry);
         }
-        for (const entry of this._mapStreamBuffer) {
+        for (const entry of streamEntries) {
           if (entry.removed) {
             stateMap.delete(entry.key);
           } else {
             stateMap.set(entry.key, entry);
           }
         }
-        this._mapStateBuffer = Array.from(stateMap.values());
-        this._mapStreamBuffer = []; // Already applied — don't emit as updates.
+        stateEntries = Array.from(stateMap.values());
+        streamEntries = []; // Already applied — don't emit as updates.
       }
-      this.emit('sync', { entries: this._mapStateBuffer });
+      this.emit('sync', { entries: stateEntries });
     }
 
     // Flush remaining stream buffer as publication and update events.
     // On recovery (sync skipped above) — app already has state and just needs
     // incremental changes.
-    for (const pub of this._mapStreamBuffer) {
-      this.emit('publication', pub);
-      this.emit('update', pub);
+    for (let i = 0; i < streamEntries.length && this._isSubscribed(); i++) {
+      this.emit('publication', streamEntries[i]);
+      if (this._isSubscribed()) {
+        this.emit('update', streamEntries[i]);
+      }
     }
 
-    // Clear buffers
-    this._mapStateBuffer = [];
-    this._mapStreamBuffer = [];
-    this._mapPhase = null;
-
     // Handle token expiry
-    if (result.expires === true) {
+    if (result.expires === true && this._isSubscribed()) {
       this._refreshTimeout = setTimeout(() => this._refresh(), ttlMilliseconds(result.ttl));
     }
   }

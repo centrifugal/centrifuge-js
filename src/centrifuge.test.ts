@@ -31,6 +31,7 @@ test('state invalidated disconnect (3014) clears token and map state', () => {
     endpoint: 'ws://localhost:8000/connection/websocket',
   }], {
     websocket: WebSocket,
+    getToken: async () => 'new-connection-token',
   });
 
   // Set a connection token.
@@ -115,6 +116,31 @@ test('state invalidated disconnect (3014) resets server-side subscription recove
   // recoverable left untouched — recovery is still requested, just from the
   // sentinel position the server can never match.
   expect((c as any)._serverSubs['news'].recoverable).toBe(true);
+});
+
+test.each([
+  ['a static token', 'static-connection-token'],
+  ['no token', ''],
+])('state invalidated disconnect (3014) without getToken keeps %s and resets state', (_, token) => {
+  // Without getToken the client can't get a new token: it must reconnect with
+  // the one it has instead of stopping on a configuration error.
+  const c = new Centrifuge([{
+    transport: 'websocket' as TransportName,
+    endpoint: 'ws://localhost:8000/connection/websocket',
+  }], {
+    websocket: WebSocket,
+    token: token,
+  });
+  const streamSub = c.newSubscription('test:stream');
+  (streamSub as any)._offset = 10;
+  (streamSub as any)._epoch = 'def';
+
+  (c as any)._handleDisconnect({ code: 3014, reason: 'state invalidated' });
+
+  expect((c as any)._token).toBe(token);
+  expect((c as any)._refreshRequired).toBe(false);
+  expect((streamSub as any)._offset).toBe(0);
+  expect((streamSub as any)._epoch).toBe('_');
 });
 
 test('state invalidated unsubscribe (2502) clears sub token and map state', () => {

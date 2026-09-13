@@ -1595,8 +1595,14 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
       // or as a raw WebSocket close code — and before _clearConnectedState below
       // moves subscriptions to subscribing for the resubscribe. Runs ahead of the
       // isDisconnected guard so the invalidation is unconditional.
-      this._token = '';
-      this._refreshRequired = true;
+      // Without getToken there is no new token to get: keep the token the
+      // client has (or none) and reconnect with it. The server rejects it if
+      // it's no longer valid, instead of the client stopping on a local
+      // configuration error.
+      if (this._config.getToken !== null) {
+        this._token = '';
+        this._refreshRequired = true;
+      }
       for (const channel in this._subs) {
         if (this._subs.hasOwnProperty(channel)) {
           // @ts-ignore – _invalidateState is internal.

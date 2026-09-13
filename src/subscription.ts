@@ -1433,6 +1433,11 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
   }
 
   private _handleTrackResponse(result: any) {
+    // The reply to a track sent before unsubscribe() belongs to that subscription:
+    // its items and versions must not reach the next one.
+    if (!this._isSubscribed()) {
+      return;
+    }
     // Track succeeded — reset retry state.
     this._clearSharedPollTrackRetry();
     // Process cached items from server (publications across all batches in the request).

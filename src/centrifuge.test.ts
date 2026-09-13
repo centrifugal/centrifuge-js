@@ -38,7 +38,7 @@ test('state invalidated disconnect (3014) clears token and map state', () => {
   (c as any)._token = 'some-connection-token';
 
   // Create a map subscription and simulate having cached state.
-  const sub = c.newMapSubscription('test:map');
+  const sub = c.newMapSubscription('test:map', { getToken: async () => 'new-map-sub-token' });
   (sub as any)._token = 'some-sub-token';
   (sub as any)._offset = 42;
   (sub as any)._epoch = 'abc';
@@ -50,7 +50,7 @@ test('state invalidated disconnect (3014) clears token and map state', () => {
   (sub as any)._prevValueMap.set('k', 'prev');
 
   // Create a stream subscription and simulate having cached state.
-  const streamSub = c.newSubscription('test:stream');
+  const streamSub = c.newSubscription('test:stream', { getToken: async () => 'new-stream-sub-token' });
   (streamSub as any)._token = 'some-stream-sub-token';
   (streamSub as any)._offset = 10;
   (streamSub as any)._epoch = 'def';
@@ -131,9 +131,10 @@ test.each([
     websocket: WebSocket,
     token: token,
   });
-  const streamSub = c.newSubscription('test:stream');
+  const streamSub = c.newSubscription('test:stream', { token: 'static-stream-sub-token' });
   (streamSub as any)._offset = 10;
   (streamSub as any)._epoch = 'def';
+  const mapSub = c.newMapSubscription('test:map', { token: 'static-map-sub-token' });
 
   (c as any)._handleDisconnect({ code: 3014, reason: 'state invalidated' });
 
@@ -141,6 +142,10 @@ test.each([
   expect((c as any)._refreshRequired).toBe(false);
   expect((streamSub as any)._offset).toBe(0);
   expect((streamSub as any)._epoch).toBe('_');
+  // Same for subscriptions without getToken: they resubscribe with their token.
+  expect((streamSub as any)._token).toBe('static-stream-sub-token');
+  expect((mapSub as any)._token).toBe('static-map-sub-token');
+  expect((mapSub as any)._offset).toBeNull();
 });
 
 test('state invalidated unsubscribe (2502) clears sub token and map state', () => {
@@ -155,7 +160,7 @@ test('state invalidated unsubscribe (2502) clears sub token and map state', () =
   (c as any)._token = 'connection-token';
 
   // Create a map subscription with cached state.
-  const mapSub = c.newMapSubscription('test:map');
+  const mapSub = c.newMapSubscription('test:map', { getToken: async () => 'new-map-sub-token' });
   (mapSub as any)._token = 'map-sub-token';
   (mapSub as any)._offset = 42;
   (mapSub as any)._epoch = 'abc';

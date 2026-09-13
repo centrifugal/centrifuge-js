@@ -656,4 +656,58 @@ describe('network event listeners', () => {
     c.connect();
     expect((await connected).transport).toBe('websocket');
   });
+
+  test.each(['sse', 'http_stream'])('connect error returned over %s is retried after the reconnect delay', async (transport) => {
+    // E.g. a failing connect proxy: the transport reaches the server, which rejects the connect.
+    let attempts = 0;
+    const errorReply = (connectCommand: string) => {
+      attempts++;
+      const cmd = JSON.parse(connectCommand);
+      return JSON.stringify({ id: cmd.id, error: { code: 100, message: 'internal server error', temporary: true } });
+    };
+    class ErrorEventSource {
+      onopen: any = null;
+      onmessage: any = null;
+      onerror: any = null;
+      constructor(url: string) {
+        const reply = errorReply(new URL(url).searchParams.get('cf_connect')!);
+        setTimeout(() => {
+          this.onopen?.();
+          this.onmessage?.({ data: reply });
+        }, 0);
+      }
+      close() { /* no-op */ }
+    }
+    const errorFetch = (_url: string, opts: any) => {
+      const reply = errorReply(opts.body);
+      const body = new ReadableStream({
+        start(controller) {
+          controller.enqueue(new TextEncoder().encode(reply + '\n'));
+          opts.signal.addEventListener('abort', () => controller.error(new Error('aborted')));
+        },
+      });
+      return Promise.resolve({ ok: true, status: 200, body });
+    };
+    const c = new Centrifuge([
+      { transport: transport as TransportName, endpoint: `http://localhost:1/connection/${transport}` },
+    ], {
+      eventsource: ErrorEventSource,
+      fetch: errorFetch,
+      readableStream: ReadableStream,
+      emulationEndpoint: 'http://localhost:1/emulation',
+      minReconnectDelay: 300,
+      maxReconnectDelay: 300,
+      networkEventTarget: target,
+    });
+    clients.push(c);
+    const errors = collectErrors(c);
+
+    c.connect();
+    await delay(500);
+    // The first attempt, and one more after the reconnect delay.
+    expect(attempts).toBeGreaterThanOrEqual(1);
+    expect(attempts).toBeLessThanOrEqual(2);
+    expect(errors[0]).toBe('connect:100');
+    expect(c.state).toBe(State.Connecting);
+  });
 });

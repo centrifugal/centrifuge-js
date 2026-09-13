@@ -1235,7 +1235,9 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
         if (transportId === self._abortedTransportId) {
           self._debug('connect command of a transport aborted by the client rejected');
         } else {
-          self._connectError(rejectCtx.error, self._transportId !== transportId);
+          // An error in a reply comes with next(): a rejection by a timeout, a write
+          // error or a teardown doesn't.
+          self._connectError(rejectCtx.error, self._transportId !== transportId, rejectCtx.next !== undefined);
         }
       } catch (err) {
         self._dispatchFailed(err);
@@ -1363,7 +1365,8 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
 
   // stale: the error belongs to a transport that was already closed. It is still
   // reported, but must not tear down the current connection attempt.
-  private _connectError(err: any, stale: boolean) {
+  // replied: the server returned the error in a reply, so the transport works.
+  private _connectError(err: any, stale: boolean, replied: boolean) {
     if (this.state !== State.Connecting) {
       return;
     }
@@ -1378,6 +1381,12 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
       });
       if (stale) {
         return;
+      }
+      if (replied) {
+        // The transport reached the server: retry it after the reconnect delay, not
+        // at once with the next transport as for one that failed to open. An
+        // emulation transport is otherwise marked open only by a connect reply.
+        this._transportWasOpen = true;
       }
       if (err.code === errorCodes.timeout && !this._transportWasOpen && this._transport !== null && this._transport.emulation()) {
         // A hanging emulation handshake moves on to the next transport. For other

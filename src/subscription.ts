@@ -483,7 +483,8 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
     if (result.recoverable) {
       this._recover = true;
       // After a recovery the server replies with the position recovered from: each
-      // recovered publication delivered below moves it.
+      // recovered publication delivered below moves it. A map subscription differs:
+      // its live reply carries the top of the stream (see _handleMapLiveResponse).
       this._offset = result.offset || 0;
       this._epoch = result.epoch || '';
     }
@@ -2094,9 +2095,13 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
     const ctx = this._centrifuge._getSubscribeContext(this.channel, result);
     ctx.state = stateEntries;
 
-    // The reply's offset is the top of the stream. Until the events below reached
-    // the app, the stored position must not skip what they carry: a handler may
-    // unsubscribe, or subscribe again, in between.
+    // The reply's offset is the top of the stream, also after a recovery. This
+    // differs from a stream subscription, whose reply after a recovery carries the
+    // position recovered from (see _setSubscribed). Nor would that position cover
+    // the whole catch-up here: its entries can come from several stream pages,
+    // buffered until now. Until the events below reached the app, the stored
+    // position must not skip what they carry: a handler may unsubscribe, or
+    // subscribe again, in between.
     const recover = this._recover;
     const offset = this._offset;
     const epoch = this._epoch;

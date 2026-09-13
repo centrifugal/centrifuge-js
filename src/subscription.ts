@@ -430,10 +430,14 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
   }
 
   /** Called on "state invalidated" — unsubscribe code 2502 for this channel,
-   *  or connection disconnect code 3014. Clears the token (next subscribe
-   *  fetches a fresh one) and the fossil delta base (every subscription type
-   *  uses _prevValueMap; a stale base would corrupt decoding of the first
-   *  publication after re-subscribe).
+   *  or connection disconnect code 3014. Clears the token when getToken is set
+   *  (next subscribe fetches a fresh one) and the fossil delta base (every
+   *  subscription type uses _prevValueMap; a stale base would corrupt decoding
+   *  of the first publication after re-subscribe).
+   *
+   *  Without getToken there is no new token to get: the subscription keeps the
+   *  token it has (or none) and resubscribes with it. The server rejects it if
+   *  it's no longer valid.
    *
    *  Map subscriptions restart from scratch: their recovery position and
    *  materialized-state buffers are dropped so the next subscribe does a full
@@ -447,7 +451,9 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
    *  subscribe), while a non-recoverable one simply resubscribes. The real
    *  epoch/offset are adopted from the subscribe reply. */
   _invalidateState() {
-    this._token = '';
+    if (this._getToken !== null) {
+      this._token = '';
+    }
     this._prevValueMap = new Map();
     if (this._map) {
       this._offset = null;

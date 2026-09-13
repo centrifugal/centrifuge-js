@@ -1,5 +1,5 @@
 import { Centrifuge } from './centrifuge';
-import { DisconnectedContext, Options, State, TransportName } from './types';
+import { DisconnectedContext, Options, State, SubscriptionState, TransportName } from './types';
 import { FakeCentrifugoServer } from './fakeServer';
 import { connectingCodes, disconnectedCodes, errorCodes } from './codes';
 
@@ -775,4 +775,156 @@ describe('network event listeners', () => {
     await delay(20);
     expect((c as any)._reconnectAttempts).toBe(0);
   });
+
+  // A WebSocket constructor whose first socket goes nowhere: it only gets a close
+  // callback, called by the test. The next ones reach the server.
+  const firstSocketStub = () => {
+    const stubs: any[] = [];
+    let sockets = 0;
+    const websocket = function (this: any, url: string, protocols?: string) {
+      if (sockets++ === 0) {
+        this.send = () => { /* no-op */ };
+        this.close = () => { /* no-op */ };
+        stubs.push(this);
+        return;
+      }
+      return new WebSocket(url, protocols);
+    } as any;
+    return { websocket, stub: () => stubs[0], sockets: () => sockets };
+  };
+
+  test('disconnect() and connect() in an error handler of a connect error keep the new attempt', async () => {
+    let connects = 0;
+    server.onCommand = (cmd) => {
+      if (cmd.connect !== undefined && ++connects === 1) {
+        return { id: cmd.id, error: { code: 100, message: 'internal server error', temporary: true } };
+      }
+      return null;
+    };
+    const c = newClient({ minReconnectDelay: 1500, maxReconnectDelay: 1500 });
+    c.once('error', () => {
+      c.disconnect();
+      c.connect();
+    });
+    const error = waitForEvent(c, 'error');
+    c.connect();
+    await error;
+
+    // Tearing down the new attempt would delay the connection by the reconnect delay.
+    await c.ready(1000);
+    expect(connects).toBe(2);
+  });
+
+  test('disconnect() and connect() in an error handler of a transport close keep the new attempt', async () => {
+    const sockets = firstSocketStub();
+    const c = newClient({ websocket: sockets.websocket, minReconnectDelay: 1500, maxReconnectDelay: 1500 });
+    c.once('error', () => {
+      c.disconnect();
+      c.connect();
+    });
+    c.connect();
+    sockets.stub().onclose({ code: 1006, reason: '' });
+
+    await c.ready(1000);
+    expect(sockets.sockets()).toBe(2);
+  });
+
+  test('disconnect() and connect() in an error handler of a token error leave no stray retry', async () => {
+    let tokenCalls = 0;
+    let resolveToken: (token: string) => void = () => { /* set below */ };
+    const c = newClient({
+      minReconnectDelay: 50,
+      maxReconnectDelay: 50,
+      getToken: () => {
+        tokenCalls++;
+        if (tokenCalls === 1) {
+          return Promise.reject(new Error('token unavailable'));
+        }
+        // The token of the new attempt takes longer than the retry delay.
+        return new Promise<string>(resolve => { resolveToken = resolve; });
+      },
+    });
+    c.once('error', () => {
+      c.disconnect();
+      c.connect();
+    });
+    const error = waitForEvent(c, 'error');
+    c.connect();
+    await error;
+
+    await delay(200);
+    expect(tokenCalls).toBe(2);
+    resolveToken('token');
+    await c.ready(3000);
+  });
+
+  test('an exception in a state handler during a disconnect still moves subscriptions and reconnects', async () => {
+    const c = newClient();
+    const sub = c.newSubscription('ch');
+    sub.subscribe();
+    c.connect();
+    await sub.ready(5000);
+
+    c.once('state', () => {
+      throw new Error('handler failure');
+    });
+    // As the close callback of the socket does.
+    let thrown: any = null;
+    try {
+      (c as any)._disconnect(connectingCodes.transportClosed, 'transport closed', true);
+    } catch (e) {
+      thrown = e;
+    }
+    expect(thrown && thrown.message).toBe('handler failure');
+    expect(sub.state).toBe(SubscriptionState.Subscribing);
+    expect((c as any)._reconnectTimeout).not.toBeNull();
+
+    await c.ready(3000);
+    await sub.ready(3000);
+  });
+
+  test('an exception in an error handler of a transport close still reconnects', async () => {
+    const sockets = firstSocketStub();
+    const c = newClient({ websocket: sockets.websocket });
+    c.once('error', () => {
+      throw new Error('handler failure');
+    });
+    c.connect();
+    let thrown: any = null;
+    try {
+      sockets.stub().onclose({ code: 1006, reason: '' });
+    } catch (e) {
+      thrown = e;
+    }
+    expect(thrown && thrown.message).toBe('handler failure');
+
+    await c.ready(3000);
+    expect(sockets.sockets()).toBe(2);
+  });
+
+  test('disconnect() in an error handler of a token refresh error leaves no refresh retry', async () => {
+    // The connection token expires in a second.
+    server.connectResult = { ...server.connectResult, expires: true, ttl: 1 };
+    let tokenCalls = 0;
+    const c = newClient({
+      getToken: () => {
+        tokenCalls++;
+        return tokenCalls === 1 ? Promise.resolve('token') : Promise.reject(new Error('token unavailable'));
+      },
+    });
+    const refreshError = new Promise<void>(resolve => {
+      c.on('error', (ctx) => {
+        if (ctx.type === 'refreshToken') {
+          c.disconnect();
+          resolve();
+        }
+      });
+    });
+    c.connect();
+    await c.ready(5000);
+    await refreshError;
+
+    expect(c.state).toBe(State.Disconnected);
+    expect((c as any)._refreshTimeout).toBeNull();
+  }, 10000);
 });

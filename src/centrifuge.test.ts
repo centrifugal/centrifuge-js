@@ -1169,6 +1169,13 @@ test('initializeTransport wraps current transport index instead of going out of 
   // Simulate a client which already cycled through transports on a previous
   // connect attempt and is now resuming from the last index, not index 0.
   (c as any)._currentTransportIndex = 1;
+  const errors: string[] = [];
+  c.on('error', (ctx) => errors.push(ctx.error.message));
 
-  expect(() => { (c as any)._initializeTransport() }).toThrow('no supported transport found');
+  // Selection runs from a reconnect timer, so no supported transport is reported
+  // instead of thrown.
+  expect(() => { (c as any)._initializeTransport() }).not.toThrow();
+  expect(errors).toEqual(['no supported transport found']);
+  expect((c as any)._transport).toBeNull();
+  expect((c as any)._currentTransportIndex).toBeLessThan(2);
 });

@@ -6,6 +6,9 @@ const Command = centrifugal.centrifuge.protocol.Command;
 const Reply = centrifugal.centrifuge.protocol.Reply;
 const EmulationRequest = centrifugal.centrifuge.protocol.EmulationRequest;
 
+// A reply length beyond this means the data isn't a stream of replies.
+const maxReplyLength = 64 * 1024 * 1024;
+
 /** @internal */
 export class ProtobufCodec {
   name(): string {
@@ -71,6 +74,11 @@ export class ProtobufCodec {
         return { ok: false };
       }
       throw e;
+    }
+    if (length > maxReplyLength) {
+      // E.g. an HTML page from a captive portal: fail instead of waiting for that
+      // much data, so the transport is closed.
+      throw new Error(`reply length ${length} exceeds ${maxReplyLength}`);
     }
     if (reader.pos + length > reader.len) {
       return { ok: false };

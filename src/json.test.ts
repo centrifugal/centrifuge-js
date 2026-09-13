@@ -1,5 +1,14 @@
 import { JsonCodec } from './json';
 
+describe('JsonCodec.decodeReplies', () => {
+  const codec = new JsonCodec();
+
+  it('skips empty lines', () => {
+    expect(codec.decodeReplies('')).toEqual([]);
+    expect(codec.decodeReplies('{"id":1}\n\n{"id":2}\n')).toEqual([{ id: 1 }, { id: 2 }]);
+  });
+});
+
 describe('JsonCodec.applyDeltaIfNeeded', () => {
   const codec = new JsonCodec();
 

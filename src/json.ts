@@ -11,7 +11,9 @@ export class JsonCodec {
   }
 
   decodeReplies(data: string): any[] {
-    return data.trim().split('\n').map(r => JSON.parse(r));
+    // Empty lines carry nothing, e.g. newlines an intermediary sends to keep a
+    // stream alive: they are skipped instead of failing to parse.
+    return data.split('\n').filter(r => r.trim() !== '').map(r => JSON.parse(r));
   }
 
   applyDeltaIfNeeded(pub: any, prevValue: any) {

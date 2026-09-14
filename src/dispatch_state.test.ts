@@ -321,6 +321,101 @@ describe('dispatch and subscription state', () => {
     expect(subscribeCommands()).toHaveLength(1);
   });
 
+  // The server handles emulation requests concurrently: a subscribe sent before the
+  // unsubscribe reply may be handled first, rejected as already subscribed, and then
+  // removed by the unsubscribe. The unsubscribe reply is held here until released.
+  function holdUnsubscribeReply() {
+    let held: any = null;
+    server.onCommand = (cmd) => {
+      if (cmd.unsubscribe !== undefined && held === null) {
+        held = cmd;
+        return {};
+      }
+      return null;
+    };
+    return {
+      held: () => held !== null,
+      release: () => server.send({ id: held.id, unsubscribe: {} }),
+    };
+  }
+
+  async function subscribedOverEmulation(channel: string) {
+    const sub = c.newSubscription(channel);
+    sub.subscribe();
+    c.connect();
+    await sub.ready(3000);
+    // An emulation transport sends a subscribe only after the unsubscribe reply.
+    (c as any)._transport.emulation = () => true;
+    return sub;
+  }
+
+  test('subscribe() from an unsubscribed handler waits for the unsubscribe reply over emulation', async () => {
+    const sub = await subscribedOverEmulation('ch');
+    const unsubscribe = holdUnsubscribeReply();
+    sub.once('unsubscribed', () => sub.subscribe());
+    sub.unsubscribe();
+    await waitFor(() => unsubscribe.held());
+    await delay(50);
+    expect(subscribeCommands()).toHaveLength(1);
+
+    unsubscribe.release();
+    await sub.ready(3000);
+    expect(subscribeCommands()).toHaveLength(2);
+  });
+
+  test('a second unsubscribe() keeps the next subscribe waiting for the unsubscribe reply over emulation', async () => {
+    const sub = await subscribedOverEmulation('ch');
+    const unsubscribe = holdUnsubscribeReply();
+    sub.unsubscribe();
+    sub.unsubscribe();
+    sub.subscribe();
+    await waitFor(() => unsubscribe.held());
+    await delay(50);
+    expect(subscribeCommands()).toHaveLength(1);
+
+    unsubscribe.release();
+    await sub.ready(3000);
+  });
+
+  test('a new subscription to the channel of a removed one waits for its unsubscribe reply over emulation', async () => {
+    const sub = await subscribedOverEmulation('ch');
+    const unsubscribe = holdUnsubscribeReply();
+    c.removeSubscription(sub);
+    const next = c.newSubscription('ch');
+    next.subscribe();
+    await waitFor(() => unsubscribe.held());
+    await delay(50);
+    expect(subscribeCommands()).toHaveLength(1);
+
+    unsubscribe.release();
+    await next.ready(3000);
+  });
+
+  test('removing an already removed subscription keeps the newer one of its channel', async () => {
+    const { sub: old } = await subscribed('ch');
+    c.removeSubscription(old);
+    const next = c.newSubscription('ch');
+    const received: number[] = [];
+    next.on('publication', ctx => received.push(ctx.data.n));
+    next.subscribe();
+    await next.ready(3000);
+
+    c.removeSubscription(old);
+    expect(c.getSubscription('ch')).toBe(next);
+    server.publish('ch', { n: 1 });
+    await waitFor(() => received.length === 1);
+    expect(next.state).toBe(SubscriptionState.Subscribed);
+  });
+
+  test('subscribe() on a removed subscription throws instead of subscribing on the server', async () => {
+    const { sub } = await subscribed('ch');
+    c.removeSubscription(sub);
+    expect(() => sub.subscribe()).toThrow('was removed from the client');
+    await delay(50);
+    expect(subscribeCommands()).toHaveLength(1);
+    expect(sub.state).toBe(SubscriptionState.Unsubscribed);
+  });
+
   test('unsubscribe push without a channel or subscription is ignored', async () => {
     await subscribed('ch');
     server.sendPush({ id: 99, unsubscribe: { code: 2000, reason: 'server unsubscribe' } });

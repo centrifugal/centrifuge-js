@@ -130,6 +130,8 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
   private _session: string;
   private _node: string;
   private _subs: Record<string, _BaseSubscription>;
+  // Unsubscribes still in progress of subscriptions removed from the client, per channel.
+  private _removedUnsubscribes: Record<string, Promise<void>> = {};
   private _serverSubs: Record<string, serverSubscription>;
   private _commandId: number;
   private _commands: any[];
@@ -1967,7 +1969,28 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     if (sub === null) {
       return;
     }
+    // A subscription removed before must not remove a newer one of its channel.
+    if (this._subs[sub.channel] !== sub) {
+      return;
+    }
     delete this._subs[sub.channel];
+    // @ts-ignore – we are hiding some symbols from public API autocompletion.
+    sub._removed = true;
+    // @ts-ignore – we are hiding some symbols from public API autocompletion.
+    const unsubscribed: Promise<void> = sub._unsubPromise;
+    this._removedUnsubscribes[sub.channel] = unsubscribed;
+    unsubscribed.then(() => {
+      if (this._removedUnsubscribes[sub.channel] === unsubscribed) {
+        delete this._removedUnsubscribes[sub.channel];
+      }
+    });
+  }
+
+  // Resolves once a subscription of the channel removed from the client has
+  // unsubscribed (see BaseSubscription._setSubscribing).
+  // @ts-ignore – this is used by a subscription in subscription.ts.
+  private _removedSubscriptionUnsubscribed(channel: string): Promise<void> {
+    return this._removedUnsubscribes[channel] || Promise.resolve();
   }
 
   protected _unsubscribe(sub: _BaseSubscription) {

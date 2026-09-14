@@ -54,6 +54,8 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
   private _inflight: boolean;
   private _prevValueMap: Map<string, any>;
   private _unsubPromise: any;
+  // @ts-ignore – this is set by a client in centrifuge.ts.
+  private _removed: boolean = false;
   private _deltaNumPubs: number;
   private _deltaNumFull: number;
   private _deltaNumDelta: number;
@@ -202,6 +204,11 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
 
   /** subscribe to a channel.*/
   subscribe() {
+    if (this._removed) {
+      // The client no longer tracks it: the server would keep a subscription whose
+      // publications are dropped, and which is never subscribed again on reconnect.
+      throw new Error('Subscription to the channel ' + this.channel + ' was removed from the client');
+    }
     if (this._isSubscribed()) {
       return;
     }
@@ -211,7 +218,7 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
 
   /** unsubscribe from a channel, keeping position state.*/
   unsubscribe() {
-    this._unsubPromise = this._setUnsubscribed(unsubscribedCodes.unsubscribeCalled, 'unsubscribe called', true);
+    this._setUnsubscribed(unsubscribedCodes.unsubscribeCalled, 'unsubscribe called', true);
   }
 
   protected _debouncedPublish(key: string, data: any, isMap: boolean): Promise<PublishResult> {
@@ -572,6 +579,10 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
     // @ts-ignore – for performance reasons only await _unsubPromise for emulution case where it's required.
     if (this._centrifuge._transport && this._centrifuge._transport.emulation()) {
       await this._unsubPromise;
+      // Also for a subscription of this channel removed from the client: the server
+      // may otherwise handle this subscribe before its unsubscribe.
+      // @ts-ignore – we are hiding some symbols from public API autocompletion.
+      await this._centrifuge._removedSubscriptionUnsubscribed(this.channel);
     }
     if (!this._isSubscribing()) {
       return;
@@ -901,17 +912,19 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
     if (this._isUnsubscribed()) {
       return Promise.resolve();
     }
+    // Set before the unsubscribed event: a subscribe() from its handler waits for
+    // the unsubscribe reply over emulation (see _setSubscribing).
     let promise = Promise.resolve();
     if (this._isSubscribed()) {
       if (sendUnsubscribe) {
         // @ts-ignore – we are hiding some methods from public API autocompletion.
-        promise = this._centrifuge._unsubscribe(this);
+        promise = this._unsubPromise = this._centrifuge._unsubscribe(this);
       }
       this._clearSubscribedState();
     } else if (this._isSubscribing()) {
       if (this._inflight && sendUnsubscribe) {
         // @ts-ignore – we are hiding some methods from public API autocompletion.
-        promise = this._centrifuge._unsubscribe(this);
+        promise = this._unsubPromise = this._centrifuge._unsubscribe(this);
       }
       this._clearSubscribingState();
     }

@@ -1,18 +1,16 @@
-import { ReplyStreamBuffer } from './stream_buffer';
+import { LineStreamBuffer, ReplyStreamBuffer } from './stream_buffer';
 
 /** @internal */
 export class HttpStreamTransport {
   endpoint: string;
   options: any;
   _abortController: any | null;
-  _utf8decoder: TextDecoder;
   _protocol: string;
 
   constructor(endpoint, options) {
     this.endpoint = endpoint;
     this.options = options;
     this._abortController = null;
-    this._utf8decoder = new TextDecoder();
     this._protocol = 'json';
   }
 
@@ -41,8 +39,7 @@ export class HttpStreamTransport {
       .then(self._handleErrors)
       .then(response => {
         eventTarget.dispatchEvent(new Event('open'));
-        let jsonStreamBuf = '';
-        let jsonStreamPos = 0;
+        const jsonStreamBuf = new LineStreamBuffer();
         const protoStreamBuf = new ReplyStreamBuffer();
         const reader = response.body.getReader();
         return new self.options.readableStream({
@@ -57,20 +54,7 @@ export class HttpStreamTransport {
                 }
                 try {
                   if (self._protocol === 'json') {
-                    // stream: true keeps decoder state across reads so a multi-byte
-                    // UTF-8 character split across two chunks is not corrupted into
-                    // replacement characters.
-                    jsonStreamBuf += self._utf8decoder.decode(value, { stream: true });
-                    while (jsonStreamPos < jsonStreamBuf.length) {
-                      if (jsonStreamBuf[jsonStreamPos] === '\n') {
-                        const line = jsonStreamBuf.substring(0, jsonStreamPos);
-                        eventTarget.dispatchEvent(new MessageEvent('message', { data: line }));
-                        jsonStreamBuf = jsonStreamBuf.substring(jsonStreamPos + 1);
-                        jsonStreamPos = 0;
-                      } else {
-                        ++jsonStreamPos;
-                      }
-                    }
+                    jsonStreamBuf.push(value, line => eventTarget.dispatchEvent(new MessageEvent('message', { data: line })));
                   } else {
                     protoStreamBuf.push(value);
                     protoStreamBuf.drain(
@@ -212,8 +196,10 @@ export class HttpStreamTransport {
       signal: this._abortController.signal
     }
     fetchFunc(this.options.emulationEndpoint, fetchOptions).then(response => {
-      // The session is gone (404), or the server or an intermediary failed. Other
-      // statuses, e.g. a too large request body, reject only this command.
+      // The server has no node of the session (404), e.g. the node was restarted, or
+      // the server or an intermediary failed. Other statuses, e.g. a too large request
+      // body, reject only this command. A session gone from a running node is answered
+      // with 204: its stream ends then.
       if (response && (response.status === 404 || response.status >= 500)) {
         this.close();
       }

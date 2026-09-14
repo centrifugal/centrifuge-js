@@ -87,8 +87,12 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
   // epoch; the subscription position (_offset/_epoch) moves only with what the app
   // received.
   private _subscribeFlow: number = 0;
-  // Incremented whenever the subscription stops being subscribed (see _refresh).
-  private _refreshGeneration: number = 0;
+  // Incremented whenever the subscription stops being subscribed: a token or signature
+  // obtained for an earlier subscribed period is outdated (see _refresh).
+  protected _refreshGeneration: number = 0;
+  // Set while a shared poll subscription completes its subscribe: tracking changes of
+  // handlers of its events go out with the replay that follows, not before it too.
+  protected _sharedPollReplayPending: boolean = false;
   private _mapFlowRecovering: boolean = false;
   private _mapFlowOffset: number = 0;
   private _mapFlowEpoch: string | null = null;
@@ -912,7 +916,12 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
     if (!this._isSubscribing()) {
       return;
     }
-    this._setSubscribed(result);
+    this._sharedPollReplayPending = this._sharedPoll;
+    try {
+      this._setSubscribed(result);
+    } finally {
+      this._sharedPollReplayPending = false;
+    }
     // After shared poll subscribe, replay tracked items if any.
     if (this._sharedPoll) {
       this._sharedPollReplayTrack();
@@ -1646,8 +1655,11 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
     this._sharedPollSignatureRefreshInFlight = true;
     const keys = Array.from(this._sharedPollTrackedItems.keys());
     const self = this;
+    // A subscription ending meanwhile resets the in-flight guard for its next period.
+    const generation = this._refreshGeneration;
 
     this._sharedPollGetSignature({ keys }).then(result => {
+      if (generation !== self._refreshGeneration) return;
       self._sharedPollSignatureRefreshInFlight = false;
       if (!self._isSubscribed()) return;
 
@@ -1707,6 +1719,7 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
         self._handleTrackError(err);
       });
     }).catch(e => {
+      if (generation !== self._refreshGeneration) return;
       self._sharedPollSignatureRefreshInFlight = false;
       self._emitError({
         type: 'signatureRefresh',
@@ -1810,9 +1823,11 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
       return;
     }
     const self = this;
+    const generation = this._refreshGeneration;
 
     this._sharedPollGetSignature({ keys: uncoveredKeys }).then(result => {
-      if (!self._isSubscribed()) return;
+      // The subscription ended meanwhile, e.g. by a reconnect: its replay asks again.
+      if (generation !== self._refreshGeneration || !self._isSubscribed()) return;
       self._clearSharedPollReplayRetry();
 
       // Handle revoked keys (keys we asked about that the backend didn't authorize).
@@ -1854,6 +1869,7 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
         self._handleTrackError(err);
       });
     }).catch(e => {
+      if (generation !== self._refreshGeneration || !self._isSubscribed()) return;
       self.emit('error', {
         type: 'signatureRefresh',
         channel: self.channel,
@@ -2561,12 +2577,13 @@ export class SharedPollSubscription extends BaseSubscription {
         keys: items.map(i => i.key),
         signature: sig,
       });
-      if (this._isSubscribed()) {
+      if (this._isSubscribed() && !this._sharedPollReplayPending) {
         this._sendTrackRequest([{ items, signature: sig }]).catch(err => {
           this._handleTrackError(err);
         });
       }
-      // If not subscribed yet, _sharedPollReplayTrack will fire after subscribe.
+      // If not subscribed yet, or completing the subscribe, _sharedPollReplayTrack
+      // sends it after subscribe.
       return;
     }
 
@@ -2580,15 +2597,17 @@ export class SharedPollSubscription extends BaseSubscription {
       return;
     }
 
-    if (!this._isSubscribed()) {
+    if (!this._isSubscribed() || this._sharedPollReplayPending) {
       // Defer the getSignature call until after subscribe — _sharedPollReplayTrack
       // will obtain a signature covering all tracked keys at once.
       return;
     }
 
     const keys = items.map(i => i.key);
+    const generation = this._refreshGeneration;
     this._sharedPollGetSignature({ keys }).then(result => {
-      if (!this._isSubscribed()) return;
+      // The subscription ended meanwhile, e.g. by a reconnect: its replay asks again.
+      if (generation !== this._refreshGeneration || !this._isSubscribed()) return;
       // Handle revoked keys.
       const returnedKeys = new Set(result.keys);
       const revokedKeys: string[] = [];
@@ -2629,6 +2648,7 @@ export class SharedPollSubscription extends BaseSubscription {
         this._handleTrackError(err);
       });
     }).catch(e => {
+      if (generation !== this._refreshGeneration || !this._isSubscribed()) return;
       this.emit('error', {
         type: 'track',
         channel: this.channel,

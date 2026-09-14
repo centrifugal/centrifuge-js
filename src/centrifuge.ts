@@ -364,10 +364,19 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     if (!sub) {
       return;
     }
+    // A subscription removed before must not remove a newer one of its channel.
+    if (this._subs[sub.channel] !== sub) {
+      return;
+    }
+    // Removed before its unsubscribed event: a handler of it may create a new
+    // subscription of the channel, and must not subscribe this one again.
+    delete this._subs[sub.channel];
+    // @ts-ignore – we are hiding some symbols from public API autocompletion.
+    sub._removed = true;
     if (sub.state !== SubscriptionState.Unsubscribed) {
       sub.unsubscribe();
     }
-    this._removeSubscription(sub);
+    this._recordRemovedUnsubscribe(sub);
   }
 
   /** Remove a map subscription. */
@@ -2015,23 +2024,20 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     }
   }
 
-  private _removeSubscription(sub: _BaseSubscription | null) {
-    if (sub === null) {
-      return;
-    }
-    // A subscription removed before must not remove a newer one of its channel.
-    if (this._subs[sub.channel] !== sub) {
-      return;
-    }
-    delete this._subs[sub.channel];
+  // A new subscription of the channel waits for the unsubscribe of a removed one, and
+  // of those removed before it still unsubscribing (see _setSubscribing of a
+  // subscription): a subscription removed without sending an unsubscribe doesn't
+  // drop one still pending.
+  private _recordRemovedUnsubscribe(sub: _BaseSubscription) {
+    const channel = sub.channel;
+    const previous = this._removedUnsubscribes[channel];
     // @ts-ignore – we are hiding some symbols from public API autocompletion.
-    sub._removed = true;
-    // @ts-ignore – we are hiding some symbols from public API autocompletion.
-    const unsubscribed: Promise<void> = sub._unsubPromise;
-    this._removedUnsubscribes[sub.channel] = unsubscribed;
+    const own: Promise<void> = sub._unsubPromise;
+    const unsubscribed: Promise<void> = previous ? Promise.all([previous, own]).then(() => undefined) : own;
+    this._removedUnsubscribes[channel] = unsubscribed;
     unsubscribed.then(() => {
-      if (this._removedUnsubscribes[sub.channel] === unsubscribed) {
-        delete this._removedUnsubscribes[sub.channel];
+      if (this._removedUnsubscribes[channel] === unsubscribed) {
+        delete this._removedUnsubscribes[channel];
       }
     });
   }

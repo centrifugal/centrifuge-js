@@ -1,6 +1,6 @@
 import { Centrifuge } from './centrifuge';
 import { State, SubscriptionState, TransportName } from './types';
-import { disconnectedCodes } from './codes';
+import { connectingCodes, disconnectedCodes } from './codes';
 import { FakeCentrifugoServer } from './fakeServer';
 
 import WebSocket from 'ws';
@@ -415,4 +415,74 @@ describe('dispatch and subscription state', () => {
     };
     await expect(c.publish('ch', {})).resolves.toEqual({});
   }, 10000);
+
+  // The server pings every second, and the client allows a ping to be 200ms late.
+  function pingEverySecond() {
+    server.connectResult = { ...server.connectResult, ping: 1 };
+    (c as any)._config.maxServerPingDelay = 200;
+    const connecting: number[] = [];
+    c.on('connecting', ctx => connecting.push(ctx.code));
+    return connecting;
+  }
+
+  test('a ping waiting in the socket when the no-ping timer is overdue keeps the connection', async () => {
+    const connecting = pingEverySecond();
+    let resumed = false;
+    server.onCommand = (cmd, s) => {
+      if (cmd.send !== undefined) {
+        s.send({});
+        // Blocks the event loop past the no-ping deadline: when it resumes, the timer
+        // is overdue and the ping is waiting to be read.
+        const until = Date.now() + 700;
+        while (Date.now() < until) { /* busy wait */ }
+        resumed = true;
+      }
+      return null;
+    };
+    c.connect();
+    await c.ready(3000);
+    connecting.length = 0;
+    await delay(800);
+    await c.send({});
+    // Timers set before the block are due before the no-ping timer: wait from the resume.
+    await waitFor(() => resumed);
+    await delay(200);
+    expect(connecting).toEqual([]);
+    expect(c.state).toBe(State.Connected);
+  });
+
+  test('a ping read shortly after a far overdue no-ping timer keeps the connection', async () => {
+    const connecting = pingEverySecond();
+    let resumed = false;
+    server.onCommand = (cmd, s) => {
+      if (cmd.send !== undefined) {
+        // Blocks the event loop far past the no-ping deadline, then pings a moment
+        // after it resumes, once the overdue timer has run.
+        const until = Date.now() + 2500;
+        while (Date.now() < until) { /* busy wait */ }
+        resumed = true;
+        setTimeout(() => s.send({}), 50);
+      }
+      return null;
+    };
+    c.connect();
+    await c.ready(3000);
+    connecting.length = 0;
+    await delay(200);
+    await c.send({});
+    // Timers set before the block are due before the no-ping timer: wait from the resume.
+    await waitFor(() => resumed);
+    await delay(300);
+    expect(connecting).toEqual([]);
+    expect(c.state).toBe(State.Connected);
+  }, 10000);
+
+  test('a connection without pings is still closed with no ping', async () => {
+    const connecting = pingEverySecond();
+    c.connect();
+    await c.ready(3000);
+    connecting.length = 0;
+    await waitFor(() => connecting.length > 0, 3000);
+    expect(connecting[0]).toBe(connectingCodes.noPing);
+  });
 });

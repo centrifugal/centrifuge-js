@@ -868,6 +868,125 @@ describe('dispatch and subscription state', () => {
     expect(errors).toEqual(['signatureRefresh']);
   });
 
+  test('a track reply for an expired signature schedules a signature refresh', async () => {
+    server.onSubscribe = () => ({});
+    let signatureCalls = 0;
+    const sub: any = c.newSharedPollSubscription('poll', {
+      getSignature: (ctx: any) => {
+        signatureCalls++;
+        return Promise.resolve({ keys: ctx.keys, signature: 'fresh' });
+      },
+    } as any);
+    sub.subscribe();
+    c.connect();
+    await sub.ready(3000);
+    // The server accepts a signature within its grace period after expiry, and replies
+    // with expires but no ttl.
+    server.onCommand = (cmd) => (cmd.sub_refresh !== undefined && cmd.sub_refresh.track !== undefined
+      ? { id: cmd.id, sub_refresh: { expires: true } }
+      : null);
+    sub.track([{ key: 'k1', version: 0 }], 'old');
+    await waitFor(() => signatureCalls === 1, 3000);
+  }, 10000);
+
+  test('a signature tracked again from a subscribed handler replaces the one it covers in the replay', async () => {
+    server.onSubscribe = () => ({});
+    const sub: any = c.newSharedPollSubscription('poll');
+    sub.subscribe();
+    c.connect();
+    await sub.ready(3000);
+    sub.track([{ key: 'k1', version: 0 }], 'old');
+    await waitFor(() => trackCommands().length === 1);
+
+    // After the reconnect the old signature has expired: the app tracks with a new one.
+    const errors: number[] = [];
+    sub.on('error', (ctx: any) => errors.push(ctx.error.code));
+    server.onCommand = (cmd) => {
+      const req = cmd.sub_refresh;
+      if (req !== undefined && req.track !== undefined && req.track.some((batch: any) => batch.signature === 'old')) {
+        return { id: cmd.id, error: { code: 109, message: 'token expired' } };
+      }
+      return null;
+    };
+    sub.once('subscribed', () => sub.track([{ key: 'k1', version: 0 }], 'fresh'));
+    await reconnected(sub);
+    await waitFor(() => trackCommands().length === 2);
+    await delay(50);
+    expect(trackCommands()[1].sub_refresh.track.map((batch: any) => batch.signature)).toEqual(['fresh']);
+    expect(errors).toEqual([]);
+  });
+
+  test('a track error handler that disconnects leaves no track retry', async () => {
+    server.onSubscribe = () => ({});
+    const sub: any = c.newSharedPollSubscription('poll');
+    sub.subscribe();
+    c.connect();
+    await sub.ready(3000);
+    server.onCommand = (cmd) => (cmd.sub_refresh !== undefined
+      ? { id: cmd.id, error: { code: 100, message: 'internal server error', temporary: true } }
+      : null);
+    const trackError = new Promise<void>(resolve => {
+      sub.on('error', (ctx: any) => {
+        if (ctx.type === 'track') {
+          c.disconnect();
+          resolve();
+        }
+      });
+    });
+    sub.track([{ key: 'k1', version: 0 }], 'sig');
+    await trackError;
+    await delay(20);
+    expect(sub._sharedPollTrackRetryTimeout).toBeNull();
+  });
+
+  test('a replay signature error handler that disconnects leaves no replay retry', async () => {
+    server.onSubscribe = () => ({});
+    const sub: any = c.newSharedPollSubscription('poll', {
+      getSignature: () => Promise.reject(new Error('backend unavailable')),
+    } as any);
+    const signatureError = new Promise<void>(resolve => {
+      sub.on('error', (ctx: any) => {
+        if (ctx.type === 'signatureRefresh') {
+          c.disconnect();
+          resolve();
+        }
+      });
+    });
+    sub.track(['k1']);
+    sub.subscribe();
+    c.connect();
+    await signatureError;
+    await delay(20);
+    expect(sub._sharedPollReplayRetryTimeout).toBeNull();
+  });
+
+  test('one subscribing event when a state handler of subscribe() unsubscribes and subscribes again', async () => {
+    const sub = c.newSubscription('ch');
+    c.connect();
+    await c.ready(3000);
+    const events = recordSubscriptionEvents(sub);
+    sub.once('state', () => {
+      sub.unsubscribe();
+      sub.subscribe();
+    });
+    sub.subscribe();
+    await sub.ready(3000);
+    expect(events).toEqual(['state:subscribing', 'state:unsubscribed', 'unsubscribed', 'state:subscribing', 'subscribing', 'state:subscribed', 'subscribed']);
+  });
+
+  test('one unsubscribed event when a state handler of unsubscribe() subscribes and unsubscribes again', async () => {
+    const { sub } = await subscribed('ch');
+    const events = recordSubscriptionEvents(sub);
+    sub.once('state', () => {
+      sub.subscribe();
+      sub.unsubscribe();
+    });
+    sub.unsubscribe();
+    await delay(50);
+    expect(events).toEqual(['state:unsubscribed', 'state:subscribing', 'subscribing', 'state:unsubscribed', 'unsubscribed']);
+    expect(sub.state).toBe(SubscriptionState.Unsubscribed);
+  });
+
   test('unsubscribe() and subscribe() from a publication handler recover after that publication', async () => {
     const { sub } = await subscribed('ch');
     sub.once('publication', () => {

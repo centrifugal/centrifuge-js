@@ -588,7 +588,9 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
     // session — drop it when moving back to subscribing (e.g. on reconnect). The
     // next subscribe reply re-establishes it (the server may reuse the same id).
     this._id = 0;
-    if (this._setState(SubscriptionState.Subscribing)) {
+    // Not when a 'state' handler changed the state again: the event would come after
+    // that change's own events, out of order.
+    if (this._setState(SubscriptionState.Subscribing) && this._isSubscribing()) {
       this.emit('subscribing', { channel: this.channel, code: code, reason: reason });
     }
     // @ts-ignore – for performance reasons only await _unsubPromise for emulution case where it's required.
@@ -683,7 +685,7 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
   private _loadStreamState(): void {
     if (!this._isSubscribing()) { this._inflight = false; return; }
 
-    this._getState!().then(result => {
+    this._callAsync(() => this._getState!()).then(result => {
       if (!this._isSubscribing()) { this._inflight = false; return; }
 
       // Store stream position from app's source of truth.
@@ -719,7 +721,7 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
       return;
     }
 
-    this._getData({ channel: this.channel })
+    this._callAsync(() => this._getData!({ channel: this.channel }))
       .then(data => {
         if (!this._isSubscribing()) {
           this._inflight = false;
@@ -967,7 +969,8 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
     // Waiters fail before the events: a handler subscribing again makes waiters of
     // the new subscribe, which must not fail with this one.
     this._rejectPromises({ code: errorCodes.subscriptionUnsubscribed, message: SubscriptionState.Unsubscribed });
-    if (this._setState(SubscriptionState.Unsubscribed)) {
+    // Not when a 'state' handler subscribed again (see _setSubscribing).
+    if (this._setState(SubscriptionState.Unsubscribed) && this._isUnsubscribed()) {
       this.emit('unsubscribed', { channel: this.channel, code: code, reason: reason });
     }
     return promise;
@@ -1320,7 +1323,7 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
       }
       return Promise.reject(new UnauthorizedError(''));
     }
-    return getToken(ctx);
+    return this._callAsync(() => getToken(ctx));
   }
 
   private _refresh() {
@@ -1385,6 +1388,10 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
           message: e !== undefined ? e.toString() : ''
         }
       }, () => {
+        // A handler may have ended the subscription, e.g. by disconnecting the client.
+        if (generation !== self._refreshGeneration || !self._isSubscribed()) {
+          return;
+        }
         self._refreshTimeout = setTimeout(() => self._refresh(), self._getRefreshRetryDelay());
       });
     });
@@ -1411,6 +1418,10 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
         channel: this.channel,
         error: err
       }, () => {
+        // A handler may have ended the subscription, e.g. by disconnecting the client.
+        if (!this._isSubscribed()) {
+          return;
+        }
         this._refreshTimeout = setTimeout(() => this._refresh(), this._getRefreshRetryDelay());
       });
     } else {
@@ -1420,6 +1431,17 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
 
   private _getRefreshRetryDelay() {
     return backoff(0, 10000, 20000);
+  }
+
+  // Calls an app callback expected to return a promise: one throwing instead of
+  // returning a rejected promise fails the same way, not by throwing out of the
+  // subscribe or refresh in progress.
+  protected _callAsync<T>(callback: () => Promise<T>): Promise<T> {
+    try {
+      return Promise.resolve(callback());
+    } catch (e) {
+      return Promise.reject(e);
+    }
   }
 
   private _failUnauthorized() {
@@ -1658,7 +1680,7 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
     // A subscription ending meanwhile resets the in-flight guard for its next period.
     const generation = this._refreshGeneration;
 
-    this._sharedPollGetSignature({ keys }).then(result => {
+    this._callAsync(() => this._sharedPollGetSignature!({ keys })).then(result => {
       if (generation !== self._refreshGeneration) return;
       self._sharedPollSignatureRefreshInFlight = false;
       if (!self._isSubscribed()) return;
@@ -1729,6 +1751,10 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
           message: e !== undefined ? e.toString() : ''
         }
       }, () => {
+        // A handler may have ended the subscription, e.g. by disconnecting the client.
+        if (generation !== self._refreshGeneration || !self._isSubscribed()) {
+          return;
+        }
         // Retry after delay with exponential backoff.
         self._sharedPollSignatureRefreshTimeout = setTimeout(
           () => self._sharedPollRefreshSignature(),
@@ -1825,7 +1851,7 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
     const self = this;
     const generation = this._refreshGeneration;
 
-    this._sharedPollGetSignature({ keys: uncoveredKeys }).then(result => {
+    this._callAsync(() => this._sharedPollGetSignature!({ keys: uncoveredKeys })).then(result => {
       // The subscription ended meanwhile, e.g. by a reconnect: its replay asks again.
       if (generation !== self._refreshGeneration || !self._isSubscribed()) return;
       self._clearSharedPollReplayRetry();
@@ -2605,7 +2631,7 @@ export class SharedPollSubscription extends BaseSubscription {
 
     const keys = items.map(i => i.key);
     const generation = this._refreshGeneration;
-    this._sharedPollGetSignature({ keys }).then(result => {
+    this._callAsync(() => this._sharedPollGetSignature!({ keys })).then(result => {
       // The subscription ended meanwhile, e.g. by a reconnect: its replay asks again.
       if (generation !== this._refreshGeneration || !this._isSubscribed()) return;
       // Handle revoked keys.

@@ -190,6 +190,48 @@ describe('map subscribe flow', () => {
     expect(subscribeRequests()[2]).toMatchObject({ phase: 1, offset: 2, epoch: 'e' });
   });
 
+  test('unsubscribe() and subscribe() from the update handler of a live publication recover after it', async () => {
+    server.onSubscribe = (_ch, req) => (req.phase === 1
+      ? { recoverable: true, recovered: true, epoch: 'e', offset: 3, publications: [] }
+      : { recoverable: true, epoch: 'e', offset: 2, state: [entry(1), entry(2)] }) as any;
+    const { sub, events } = mapSubscription();
+    sub.subscribe();
+    c.connect();
+    await waitFor(() => events.includes('sync:k1,k2'));
+
+    sub.once('update', () => {
+      sub.unsubscribe();
+      sub.subscribe();
+    });
+    server.sendPush({ channel: 'm', pub: { key: 'k3', data: { n: 3 }, offset: 3 } });
+    await waitFor(() => subscribeRequests().length === 2);
+    expect(subscribeRequests()[1]).toMatchObject({ phase: 1, offset: 3, epoch: 'e' });
+  });
+
+  test('unsubscribe() and subscribe() from the update handler of a catch-up entry recover after it', async () => {
+    server.onSubscribe = (_ch, req) => (req.phase === 1
+      ? { recoverable: true, recovered: true, epoch: 'e', offset: 4, publications: [entry(3), entry(4)] }
+      : { recoverable: true, epoch: 'e', offset: 2, state: [entry(1), entry(2)] }) as any;
+    const { sub, events } = mapSubscription();
+    sub.subscribe();
+    c.connect();
+    await waitFor(() => events.includes('sync:k1,k2'));
+
+    let resubscribed = false;
+    sub.on('update', (ctx: any) => {
+      if (ctx.key === 'k3' && !resubscribed) {
+        resubscribed = true;
+        sub.unsubscribe();
+        sub.subscribe();
+      }
+    });
+    // Recovers from 2: entries 3 and 4 are caught up.
+    sub.unsubscribe();
+    sub.subscribe();
+    await waitFor(() => subscribeRequests().length === 3);
+    expect(subscribeRequests()[2]).toMatchObject({ phase: 1, offset: 3, epoch: 'e' });
+  });
+
   test('a token of an earlier flow does not start another flow', async () => {
     const resolvers: Array<(token: string) => void> = [];
     server.onSubscribe = () => ({ epoch: 'e', offset: 1, state: [entry(1)] } as any);

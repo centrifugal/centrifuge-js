@@ -779,6 +779,32 @@ describe('network event listeners', () => {
     expect(streams).toBeGreaterThanOrEqual(2);
   });
 
+  test('disconnect() and connect() from a publication handler of a server-side subscription recover after that publication', async () => {
+    // Over emulation the connect command is built within connect(), in the handler.
+    const connects: any[] = [];
+    const emulation = fakeEmulation(cmd => {
+      connects.push(cmd.connect);
+      const reply = { id: cmd.id, connect: { client: 'fake-client', version: '0.0.0', subs: { ch: { recoverable: true, epoch: 'e', offset: 0 } } } };
+      return connects.length === 1 ? [reply, { push: { channel: 'ch', pub: { data: { n: 1 }, offset: 1 } } }] : reply;
+    });
+    const c = newEmulationClient('http_stream', emulation);
+    let reconnected = false;
+    c.on('publication', () => {
+      if (!reconnected) {
+        reconnected = true;
+        c.disconnect();
+        c.connect();
+      }
+    });
+
+    c.connect();
+    for (let i = 0; i < 100 && connects.length < 2; i++) {
+      await delay(10);
+    }
+    expect(connects).toHaveLength(2);
+    expect(connects[1].subs.ch).toMatchObject({ recover: true, offset: 1, epoch: 'e' });
+  });
+
   test.each(['sse', 'http_stream'])('emulation endpoint failing after every connect over %s keeps the backoff growing', async (transport) => {
     // E.g. a wrong emulation endpoint path: the stream connects, and every command
     // sent through the emulation endpoint gets a 404, which closes the transport.

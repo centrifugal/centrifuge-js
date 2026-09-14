@@ -451,6 +451,13 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
   /** setToken allows setting connection token. Or resetting used token to be empty.  */
   setToken(token: string) {
     this._token = token;
+    if (this._config.getToken === null) {
+      // The token expired, and the app set a new one: without getToken there is no
+      // other way to get it, so the next attempt uses it instead of failing on a
+      // configuration error. With getToken, the next attempt still gets a new token:
+      // the one set meanwhile may be the expired one.
+      this._refreshRequired = false;
+    }
   }
 
   /** setData allows setting connection data. This only affects the next connection attempt,

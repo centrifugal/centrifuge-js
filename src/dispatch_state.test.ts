@@ -416,6 +416,82 @@ describe('dispatch and subscription state', () => {
     expect(sub.state).toBe(SubscriptionState.Unsubscribed);
   });
 
+  test('unsubscribe() and subscribe() from a publication handler recover after that publication', async () => {
+    const { sub } = await subscribed('ch');
+    sub.once('publication', () => {
+      sub.unsubscribe();
+      sub.subscribe();
+    });
+    sendFrame(publication('ch', 1));
+    await waitFor(() => subscribeCommands().length === 2);
+    expect(subscribeCommands()[1].subscribe).toMatchObject({ recover: true, offset: 1, epoch: 'e' });
+  });
+
+  test('a getState subscription created before a state invalidation still loads its state', async () => {
+    let getStateCalls = 0;
+    const sub = c.newSubscription('ch', {
+      getState: async () => {
+        getStateCalls++;
+        return { offset: 5, epoch: 'e' };
+      },
+    } as any);
+    c.connect();
+    await c.ready(3000);
+    server.disconnect(3014, 'state invalidated');
+    await waitFor(() => server.received.filter(cmd => cmd.connect !== undefined).length === 2);
+    await c.ready(3000);
+
+    sub.subscribe();
+    await waitFor(() => subscribeCommands().length === 1);
+    expect(getStateCalls).toBe(1);
+    expect(subscribeCommands()[0].subscribe).toMatchObject({ recover: true, offset: 5, epoch: 'e' });
+  });
+
+  test('calls that timed out waiting for a connection or a subscription leave no waiters behind', async () => {
+    const never = new Promise<string>(() => { /* never resolves */ });
+    const client = new Centrifuge([{ transport: 'websocket' as TransportName, endpoint: server.url }], {
+      websocket: WebSocket,
+      timeout: 20,
+      getToken: () => never,
+      networkEventTarget: new EventTarget(),
+    });
+    const sub = client.newSubscription('ch', { getToken: () => never });
+    sub.subscribe();
+    client.connect();
+    try {
+      for (let i = 0; i < 3; i++) {
+        await expect(client.ready(10)).rejects.toMatchObject({ message: 'timeout' });
+        await expect(client.publish('ch', {})).rejects.toMatchObject({ message: 'timeout' });
+        await expect(sub.ready(10)).rejects.toMatchObject({ message: 'timeout' });
+        await expect(sub.publish({})).rejects.toMatchObject({ message: 'timeout' });
+      }
+      expect(Object.keys((client as any)._promises)).toHaveLength(0);
+      expect(Object.keys((sub as any)._promises)).toHaveLength(0);
+    } finally {
+      client.disconnect();
+    }
+  });
+
+  test('pushes of a server-side subscription reach the app while a client-side subscription of its channel is unsubscribed', async () => {
+    // The app kept an unsubscribed subscription object for the channel.
+    server.connectResult = { ...server.connectResult, subs: { ch: {} } };
+    c.newSubscription('ch');
+    const events: string[] = [];
+    c.on('publication', ctx => events.push(`publication:${ctx.data.n}`));
+    c.on('join', () => events.push('join'));
+    c.on('leave', () => events.push('leave'));
+    c.on('unsubscribed', ctx => events.push(`unsubscribed:${ctx.channel}`));
+    c.connect();
+    await c.ready(3000);
+
+    server.publish('ch', { n: 1 });
+    server.join('ch', { client: 'x', user: 'u' });
+    server.leave('ch', { client: 'x', user: 'u' });
+    server.unsubscribe('ch', 2000, 'server unsubscribe');
+    await waitFor(() => events.length === 4);
+    expect(events).toEqual(['publication:1', 'join', 'leave', 'unsubscribed:ch']);
+  });
+
   test('unsubscribe push without a channel or subscription is ignored', async () => {
     await subscribed('ch');
     server.sendPush({ id: 99, unsubscribe: { code: 2000, reason: 'server unsubscribe' } });

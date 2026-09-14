@@ -189,16 +189,19 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
       return Promise.resolve();
     }
     return new Promise((res, rej) => {
+      const id = this._nextPromiseId();
       const ctx: any = {
         resolve: res,
         reject: rej
       };
       if (timeout) {
-        ctx.timeout = setTimeout(function () {
+        ctx.timeout = setTimeout(() => {
+          // A call that gave up waiting leaves no waiter behind.
+          delete this._promises[id];
           rej({ code: errorCodes.timeout, message: 'timeout' });
         }, timeout);
       }
-      this._promises[this._nextPromiseId()] = ctx;
+      this._promises[id] = ctx;
     });
   }
 
@@ -384,11 +387,13 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
       // @ts-ignore – we are hiding some symbols from public API autocompletion.
       const timeoutDuration = this._centrifuge._config.timeout;
 
+      const id = this._nextPromiseId();
       const timeout = setTimeout(() => {
+        delete this._promises[id];
         reject({ code: errorCodes.timeout, message: 'timeout' });
       }, timeoutDuration);
 
-      this._promises[this._nextPromiseId()] = {
+      this._promises[id] = {
         timeout,
         resolve,
         reject
@@ -488,7 +493,9 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
       this._mapStreamBuffer = [];
       this._mapCursor = '';
       this._mapPhase = null;
-    } else {
+    } else if (this._offset !== null) {
+      // Only a position that exists: without one, e.g. before getState was called,
+      // the next subscribe must still load the state.
       this._offset = 0;
       this._epoch = '_';
     }
@@ -1002,10 +1009,23 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
       // @ts-ignore – we are hiding some methods from public API autocompletion.
       ctx = this._centrifuge._getPublicationContext(this.channel, pub);
     }
-    this.emit('publication', ctx);
+    // A publication counts as delivered from its last event on: a handler of that
+    // event subscribing again recovers after it, not from it (a duplicate), and a
+    // handler of an earlier event unsubscribing doesn't skip the last one.
     if (this._map || this._sharedPoll) {
+      this.emit('publication', ctx);
+      if (!this._isSubscribed()) {
+        return;
+      }
+      this._setPublicationPosition(pub);
       this.emit('update', ctx);
+    } else {
+      this._setPublicationPosition(pub);
+      this.emit('publication', ctx);
     }
+  }
+
+  private _setPublicationPosition(pub: any) {
     if (pub.offset) {
       this._offset = pub.offset;
     }
@@ -2279,8 +2299,8 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
 
     // Flush remaining stream buffer as publication and update events.
     // On recovery (sync skipped above) — app already has state and just needs
-    // incremental changes. An entry counts as delivered once its update event
-    // was emitted.
+    // incremental changes. An entry counts as delivered from its update event on,
+    // as a live publication (see _handlePublication).
     for (const entry of streamEntries) {
       if (!this._isSubscribed()) {
         return;
@@ -2289,11 +2309,10 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
       if (!this._isSubscribed()) {
         return;
       }
-      this.emit('update', entry);
-      // Unless a handler subscribed again: that flow started from the position.
-      if (!this._isSubscribing() && entry.offset !== undefined && this._mapPositionResets === positionResets) {
+      if (entry.offset !== undefined && this._mapPositionResets === positionResets) {
         this._offset = entry.offset;
       }
+      this.emit('update', entry);
     }
     if (!this._isSubscribed()) {
       return;

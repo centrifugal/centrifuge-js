@@ -1160,9 +1160,16 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
         // behind it, e.g. a proxy completing the upgrade and then dropping frames.
         // The connect reply marks it (see _connectResponse).
         self.startBatching();
-        self._sendConnect(false);
-        self._sendSubscribeCommands();
-        self.stopBatching();
+        try {
+          self._sendConnect(false);
+          self._sendSubscribeCommands();
+        } catch (e) {
+          // E.g. thrown by an app callback of a subscription: the commands collected
+          // still go out, instead of staying batched for the next transport.
+          self._reportDispatchError(e);
+        } finally {
+          self.stopBatching();
+        }
         //@ts-ignore must be used only for debug and test purposes. Exposed only for non-emulation transport.
         self.emit('__centrifuge_debug:connect_frame_sent', {})
       },
@@ -1173,9 +1180,17 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
         }
         self._debug('transport level error', e);
       },
-      onClose: function (closeEvent) {
+      onClose: function handleClose(closeEvent: any, dispatched?: boolean) {
         if (self._transportId != transportId) {
           self._debug('close callback from non-actual transport');
+          return;
+        }
+        if (!dispatched && (transport.emulation() || transport.name() === 'webtransport')) {
+          // A stream may end in the same task as the data read before it, e.g. the
+          // server's disconnect push written before it closes the connection: that
+          // data is dispatched first, as a websocket's messages are before its close
+          // event. A disconnect push ends this transport, and this callback with it.
+          self._dispatchPromise.then(() => handleClose(closeEvent, true));
           return;
         }
         self._clearConnectTimeout();
@@ -1339,7 +1354,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     let dataResolved = false;
     if (!needTokenRefresh) {
       if (this._config.getData) {
-        this._config.getData().then(data => {
+        this._getData().then(data => {
           dataResolved = true;
           if (this._attemptAborted(disconnects)) {
             return;
@@ -1367,7 +1382,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
       self._token = token;
       self._debug('connection token refreshed');
       if (self._config.getData) {
-        self._config.getData().then(function (data: any) {
+        self._getData().then(function (data: any) {
           dataResolved = true;
           if (self._attemptAborted(disconnects)) {
             return;
@@ -1481,10 +1496,11 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
           // emulation transport is otherwise marked open only by a connect reply.
           this._transportWasOpen = true;
         }
-        if (err.code === errorCodes.timeout && this._emulation && !this._transportWasOpen) {
-          // A handshake the server never answered moves on to the next transport, also
-          // over a socket that opened. For other failures the transport's close
-          // callback does that, but it is ignored after the teardown below.
+        if (!replied && this._emulation && !this._transportWasOpen) {
+          // A handshake the server never answered, e.g. timed out or not written, moves
+          // on to the next transport, also over a socket that opened: after a round the
+          // backoff applies. For other failures the transport's close callback does
+          // that, but it is ignored after the teardown below.
           this._advanceTransportIndex();
         }
         this._debug('closing transport due to connect error');
@@ -1852,6 +1868,8 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     }
     // A connection that ends before it proved usable keeps the backoff growing.
     this._reconnectAttemptsResetPending = false;
+    // Commands collected for the closed transport must not go out on the next one.
+    this._commands = [];
     this._clearOutgoingRequests();
     if (!reconnect) {
       this._rejectPromises({ code: errorCodes.clientDisconnected, message: 'disconnected' });
@@ -1920,7 +1938,22 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
       }
       return Promise.reject(new UnauthorizedError(''));
     }
-    return this._config.getToken({});
+    // A callback throwing instead of returning a rejected promise fails the same way,
+    // not by throwing out of the attempt.
+    try {
+      return Promise.resolve(this._config.getToken({}));
+    } catch (e) {
+      return Promise.reject(e);
+    }
+  }
+
+  // See _getToken.
+  private _getData(): Promise<any> {
+    try {
+      return Promise.resolve(this._config.getData!());
+    } catch (e) {
+      return Promise.reject(e);
+    }
   }
 
   private _refresh() {

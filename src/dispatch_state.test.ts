@@ -648,6 +648,21 @@ describe('dispatch and subscription state', () => {
     expect(c.state).toBe(State.Connected);
   }, 10000);
 
+  test('blank lines do not keep a connection without pings alive', async () => {
+    const connecting = pingEverySecond();
+    c.connect();
+    await c.ready(3000);
+    connecting.length = 0;
+    // E.g. keep-alive newlines written by an intermediary.
+    const keepAlive = setInterval(() => (server as any).current?.send('\n'), 200);
+    try {
+      await waitFor(() => connecting.length > 0, 3000);
+    } finally {
+      clearInterval(keepAlive);
+    }
+    expect(connecting[0]).toBe(connectingCodes.noPing);
+  });
+
   test('a connection without pings is still closed with no ping', async () => {
     const connecting = pingEverySecond();
     c.connect();

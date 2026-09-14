@@ -416,6 +416,65 @@ describe('dispatch and subscription state', () => {
     expect(sub.state).toBe(SubscriptionState.Unsubscribed);
   });
 
+  test('subscribe() from an unsubscribed handler of removeSubscription() does not subscribe the removed subscription', async () => {
+    const { sub } = await subscribed('ch');
+    let thrown: any = null;
+    sub.once('unsubscribed', () => {
+      try {
+        sub.subscribe();
+      } catch (e) {
+        thrown = e;
+      }
+    });
+    c.removeSubscription(sub);
+    await delay(50);
+    expect(thrown && thrown.message).toContain('was removed from the client');
+    expect(subscribeCommands()).toHaveLength(1);
+    expect(sub.state).toBe(SubscriptionState.Unsubscribed);
+  });
+
+  test('a new subscription to the channel can be created from an unsubscribed handler of removeSubscription()', async () => {
+    const { sub } = await subscribed('ch');
+    let next: any = null;
+    sub.once('unsubscribed', () => {
+      next = c.newSubscription('ch');
+      next.subscribe();
+    });
+    c.removeSubscription(sub);
+    await next.ready(3000);
+    expect(c.getSubscription('ch')).toBe(next);
+  });
+
+  test('a subscription removed while waiting keeps the next one waiting for an earlier unsubscribe reply over emulation', async () => {
+    const first = await subscribedOverEmulation('ch');
+    const unsubscribe = holdUnsubscribeReply();
+    c.removeSubscription(first);
+    // E.g. a component mounted and unmounted again while the unsubscribe is pending:
+    // the second subscription sends no unsubscribe.
+    const second = c.newSubscription('ch');
+    second.subscribe();
+    c.removeSubscription(second);
+    const third = c.newSubscription('ch');
+    third.subscribe();
+    await waitFor(() => unsubscribe.held());
+    await delay(50);
+    expect(subscribeCommands()).toHaveLength(1);
+
+    unsubscribe.release();
+    await third.ready(3000);
+  });
+
+  test('ready() called from an unsubscribed handler that subscribes again waits for the new subscribe', async () => {
+    const { sub } = await subscribed('ch');
+    let ready: any = null;
+    sub.once('unsubscribed', () => {
+      sub.subscribe();
+      ready = sub.ready(3000).then(() => 'resolved', (e: any) => `rejected:${e.message}`);
+    });
+    sub.unsubscribe();
+    expect(await ready).toBe('resolved');
+  });
+
   test('unsubscribe() and subscribe() from a publication handler recover after that publication', async () => {
     const { sub } = await subscribed('ch');
     sub.once('publication', () => {

@@ -1099,6 +1099,9 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
       if (self._emulation && !self._transportWasOpen) {
         self._advanceTransportIndex();
       }
+      // The teardown rejects a connect command pending on it: the transport error
+      // below reports the failure, not a connect error too.
+      self._abortedTransportId = transportId;
       // Closes the transport and clears the connect timeout.
       self._disconnect(connectingCodes.transportClosed, 'transport closed', true);
       self.emit('error', {
@@ -1112,9 +1115,16 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     };
 
     this._clearConnectTimeout();
+    const connectDue = Date.now() + this._config.timeout;
     this._connectTimeout = setTimeout(function () {
-      self._connectTimeout = null;
-      failTransport('connect timeout');
+      // The transport may have opened already, its open callback not run yet, e.g.
+      // when a suspended process resumes: let it run first, as for a call (see
+      // _registerCall). The open callback clears this timeout.
+      const late = Date.now() - connectDue >= lateCallTimer;
+      self._connectTimeout = setTimeout(function () {
+        self._connectTimeout = null;
+        failTransport('connect timeout');
+      }, late ? lateCallGrace : 0);
     }, this._config.timeout);
 
     const callbacks = {
@@ -1137,7 +1147,9 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
           return;
         }
         self._transportIsOpen = true;
-        self._transportWasOpen = true;
+        // Not marked as reached yet: a socket that opens is not proof the server is
+        // behind it, e.g. a proxy completing the upgrade and then dropping frames.
+        // The connect reply marks it (see _connectResponse).
         self.startBatching();
         self._sendConnect(false);
         self._sendSubscribeCommands();
@@ -1256,6 +1268,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     // A teardown rejects the pending command, and the rejection is processed after
     // it: a newer attempt may have started by then, which must not be torn down.
     const transportId = this._transportId;
+    const token = this._token;
     // An exception while handling the reply stops the client (see _dispatchFailed).
     // next() is still called, so replies of a later connection aren't blocked.
     this._call(connectCommand, skipSending).then(resolveCtx => {
@@ -1275,7 +1288,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
         } else {
           // An error in a reply comes with next(): a rejection by a timeout, a write
           // error or a teardown doesn't.
-          self._connectError(rejectCtx.error, self._transportId !== transportId, rejectCtx.next !== undefined);
+          self._connectError(rejectCtx.error, self._transportId !== transportId, rejectCtx.next !== undefined, token);
         }
       } catch (err) {
         self._rejectionFailed(err, rejectCtx);
@@ -1311,16 +1324,21 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     const disconnects = this._disconnects;
     const emptyToken = this._token === '';
     const needTokenRefresh = this._refreshRequired || (emptyToken && this._config.getToken !== null);
+    // Whether the token or data promise resolved: an error caught after that was thrown
+    // by the continuation, e.g. by an event handler, and must not be lost.
+    let tokenResolved = false;
+    let dataResolved = false;
     if (!needTokenRefresh) {
       if (this._config.getData) {
         this._config.getData().then(data => {
+          dataResolved = true;
           if (this._attemptAborted(disconnects)) {
             return;
           }
           this._data = data;
           this._initializeTransport();
         })
-        .catch(e => this._handleGetDataError(e, disconnects));
+        .catch(e => this._handleGetDataError(e, disconnects, dataResolved));
       } else {
         this._initializeTransport();
       }
@@ -1329,6 +1347,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
 
     const self = this;
     this._getToken().then(function (token: string) {
+      tokenResolved = true;
       if (self._attemptAborted(disconnects)) {
         return;
       }
@@ -1340,18 +1359,22 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
       self._debug('connection token refreshed');
       if (self._config.getData) {
         self._config.getData().then(function (data: any) {
+          dataResolved = true;
           if (self._attemptAborted(disconnects)) {
             return;
           }
           self._data = data;
           self._initializeTransport();
         })
-        .catch(e => self._handleGetDataError(e, disconnects));
+        .catch(e => self._handleGetDataError(e, disconnects, dataResolved));
       } else {
         self._initializeTransport();
       }
     }).catch(function (e) {
       if (self._attemptAborted(disconnects)) {
+        if (tokenResolved) {
+          self._reportDispatchError(e);
+        }
         return;
       }
       if (e instanceof UnauthorizedError) {
@@ -1393,8 +1416,13 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     return !this._isConnecting() || this._disconnects !== disconnects;
   }
 
-  private _handleGetDataError(e: any, disconnects: number): void {
+  // resolved: the data promise resolved, so the error was thrown by its continuation.
+  private _handleGetDataError(e: any, disconnects: number, resolved: boolean): void {
     if (this._attemptAborted(disconnects)) {
+      if (resolved) {
+        // E.g. by an event handler of the teardown that ended the attempt.
+        this._reportDispatchError(e);
+      }
       return;
     }
     if (e instanceof UnauthorizedError) {
@@ -1420,12 +1448,14 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
   // stale: the error belongs to a transport that was already closed. It is still
   // reported, but must not tear down the current connection attempt.
   // replied: the server returned the error in a reply, so the transport works.
-  private _connectError(err: any, stale: boolean, replied: boolean) {
+  // token: the token the connect command carried.
+  private _connectError(err: any, stale: boolean, replied: boolean, token: string) {
     if (this.state !== State.Connecting) {
       return;
     }
-    if (err.code === 109) { // token expired.
-      // next connect attempt will try to refresh token.
+    // Token expired: the next attempt gets a new one, unless the app set a new one
+    // meanwhile (see setToken).
+    if (err.code === 109 && token === this._token) {
       this._refreshRequired = true;
     }
     if (err.code < 100 || err.temporary === true || err.code === 109) {
@@ -1442,10 +1472,10 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
           // emulation transport is otherwise marked open only by a connect reply.
           this._transportWasOpen = true;
         }
-        if (err.code === errorCodes.timeout && !this._transportWasOpen && this._transport !== null && this._transport.emulation()) {
-          // A hanging emulation handshake moves on to the next transport. For other
-          // failures the transport's close callback does that, but it is ignored after
-          // the teardown below.
+        if (err.code === errorCodes.timeout && this._emulation && !this._transportWasOpen) {
+          // A handshake the server never answered moves on to the next transport, also
+          // over a socket that opened. For other failures the transport's close
+          // callback does that, but it is ignored after the teardown below.
           this._advanceTransportIndex();
         }
         this._debug('closing transport due to connect error');
@@ -1584,9 +1614,6 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
   }
 
   private _dataReceived(data, transportId: number = this._transportId) {
-    if (this._serverPing > 0) {
-      this._waitServerPing();
-    }
     let replies: any[];
     try {
       replies = this._codec.decodeReplies(data);
@@ -1604,6 +1631,11 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
       }
       this._disconnect(connectingCodes.transportClosed, 'transport closed', true);
       return;
+    }
+    // Only data from the server proves the connection alive: not e.g. blank keep-alive
+    // lines an intermediary writes.
+    if (this._serverPing > 0 && replies.length > 0) {
+      this._waitServerPing();
     }
     // We have to guarantee order of events in replies processing - i.e. start processing
     // next reply only when we finished processing of current one. Without syncing things in
@@ -1722,16 +1754,23 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
 
   private _startConnecting() {
     this._debug('start connecting');
-    const transition = this._setState(State.Connecting);
-    // A 'state' handler may have called disconnect() already.
-    if (this._transitionSuperseded(transition)) {
-      return;
+    // The attempt starts also when a handler of the events throws (the exception
+    // propagates afterwards), or the client stays connecting with nothing scheduled,
+    // and connect() does nothing. So the number of the transition is taken before its
+    // state event.
+    const transition = this.state !== State.Connecting ? this._stateTransitions + 1 : 0;
+    try {
+      this._setState(State.Connecting);
+      // A 'state' handler may have called disconnect() already.
+      if (transition && !this._transitionSuperseded(transition)) {
+        this.emit('connecting', { code: connectingCodes.connectCalled, reason: 'connect called' });
+      }
+    } finally {
+      if (!this._transitionSuperseded(transition)) {
+        this._client = null;
+        this._startReconnecting();
+      }
     }
-    if (transition) {
-      this.emit('connecting', { code: connectingCodes.connectCalled, reason: 'connect called' });
-    }
-    this._client = null;
-    this._startReconnecting();
   }
 
   private _disconnect(code: number, reason: string, reconnect: boolean) {
@@ -1878,7 +1917,10 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
   private _refresh() {
     const clientId = this._client;
     const self = this;
+    // See _startReconnecting.
+    let tokenResolved = false;
     this._getToken().then(function (token) {
+      tokenResolved = true;
       if (clientId !== self._client) {
         return;
       }
@@ -1924,6 +1966,9 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
       });
     }).catch(function (e) {
       if (clientId !== self._client || !self._isConnected()) {
+        if (tokenResolved) {
+          self._reportDispatchError(e);
+        }
         return;
       }
       if (e instanceof UnauthorizedError) {

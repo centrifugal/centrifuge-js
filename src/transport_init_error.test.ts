@@ -284,8 +284,9 @@ describe('transport failures', () => {
       await c.ready(3000);
 
       expect(calls).toBe(1);
-      // The connect command sent with the emulation request is rejected too.
-      expect(errors).toEqual(['transport:fetch blocked by policy', 'connect:connection closed']);
+      // The connect command sent with the emulation request is rejected too, but the
+      // transport error already reports the failure.
+      expect(errors).toEqual(['transport:fetch blocked by policy']);
     });
   });
 });

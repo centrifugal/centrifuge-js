@@ -87,6 +87,8 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
   // epoch; the subscription position (_offset/_epoch) moves only with what the app
   // received.
   private _subscribeFlow: number = 0;
+  // Incremented whenever the subscription stops being subscribed (see _refresh).
+  private _refreshGeneration: number = 0;
   private _mapFlowRecovering: boolean = false;
   private _mapFlowOffset: number = 0;
   private _mapFlowEpoch: string | null = null;
@@ -442,6 +444,8 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
 
   private _clearSubscribedState() {
     this._clearRefreshTimeout();
+    // A token refresh in progress belongs to the subscription that ends here.
+    this._refreshGeneration++;
     this._cancelAllDebounce();
     this._clearSharedPollSignatureRefresh();
     this._clearSharedPollTrackRetry();
@@ -996,14 +1000,7 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
       if (pub.key && !this._sharedPollTrackedItems.has(pub.key)) {
         return;
       }
-      // Update locally tracked versions.
-      if (pub.key) {
-        if (pub.removed) {
-          this._sharedPollTrackedItems.delete(pub.key);
-        } else if (pub.version) {
-          this._sharedPollTrackedItems.set(pub.key, pub.version);
-        }
-      }
+      // The tracked version is the key's position: it moves with the position below.
       ctx = this._getSharedPollUpdateContext(pub);
     } else if (this._map) {
       ctx = this._getMapUpdateContext(pub);
@@ -1028,6 +1025,15 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
   }
 
   private _setPublicationPosition(pub: any) {
+    // Shared poll: the version of a key still tracked, which a replay of the tracked
+    // keys asks from. A publication handler may have untracked it.
+    if (this._sharedPoll && pub.key && this._sharedPollTrackedItems.has(pub.key)) {
+      if (pub.removed) {
+        this._sharedPollTrackedItems.delete(pub.key);
+      } else if (pub.version) {
+        this._sharedPollTrackedItems.set(pub.key, pub.version);
+      }
+    }
     if (pub.offset) {
       this._offset = pub.offset;
     }
@@ -1311,8 +1317,11 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
   private _refresh() {
     this._clearRefreshTimeout();
     const self = this;
+    // The subscription may end while the token is loading, and a new one start, e.g.
+    // after unsubscribe() or a reconnect: this refresh is outdated then.
+    const generation = this._refreshGeneration;
     this._getSubscriptionToken().then(function (token) {
-      if (!self._isSubscribed()) {
+      if (generation !== self._refreshGeneration || !self._isSubscribed()) {
         return;
       }
       if (!token) {
@@ -1352,6 +1361,9 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
         }
       });
     }).catch(function (e) {
+      if (generation !== self._refreshGeneration || !self._isSubscribed()) {
+        return;
+      }
       if (e instanceof UnauthorizedError) {
         self._failUnauthorized();
         return;
@@ -1514,8 +1526,16 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
     // Process cached items from server (publications across all batches in the request).
     if (result && result.items && result.items.length > 0) {
       for (const pub of result.items) {
+        // A handler may have unsubscribed or disconnected: the rest must neither be
+        // delivered nor move the tracked versions.
+        if (!this._isSubscribed()) {
+          return;
+        }
         this._handlePublication(pub);
       }
+    }
+    if (!this._isSubscribed()) {
+      return;
     }
     // Server returns MIN ttl across all batches in this request. Keep the
     // EARLIEST deadline received across all responses as the refresh target.

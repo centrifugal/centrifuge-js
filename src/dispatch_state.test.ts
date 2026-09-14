@@ -240,6 +240,87 @@ describe('dispatch and subscription state', () => {
     expect(sub.state).toBe(SubscriptionState.Subscribed);
   });
 
+  // The server answers commands in order: a subscribe reply held here is sent when the
+  // unsubscribe command that follows it arrives.
+  function holdFirstSubscribeReply(reply: (cmd: any, n: number) => any) {
+    let subscribes = 0;
+    let held: any = null;
+    server.onCommand = (cmd, s) => {
+      if (cmd.subscribe !== undefined) {
+        subscribes++;
+        if (subscribes === 1) {
+          held = cmd;
+          return {};
+        }
+        return { id: cmd.id, subscribe: reply(cmd, subscribes) };
+      }
+      if (cmd.unsubscribe !== undefined && held !== null) {
+        s.send({ id: held.id, subscribe: reply(held, 1) });
+        held = null;
+      }
+      return null;
+    };
+    return { held: () => held !== null };
+  }
+
+  const subscribeCommands = () => server.received.filter(cmd => cmd.subscribe !== undefined);
+
+  test('a subscribe reply of a cancelled subscribe does not complete the next one over emulation', async () => {
+    const hold = holdFirstSubscribeReply(() => ({}));
+    const sub = c.newSubscription('ch');
+    c.connect();
+    await waitFor(() => c.state === State.Connected);
+    // An emulation transport sends a subscribe only after the unsubscribe reply.
+    (c as any)._transport.emulation = () => true;
+    sub.subscribe();
+    await waitFor(() => hold.held());
+
+    sub.unsubscribe();
+    sub.subscribe();
+
+    // The server has the first subscription unsubscribed: the client must subscribe again.
+    await waitFor(() => subscribeCommands().length === 2);
+    await sub.ready(3000);
+    expect(sub.state).toBe(SubscriptionState.Subscribed);
+  });
+
+  test('a subscribe reply of a cancelled subscribe does not set the channel id', async () => {
+    holdFirstSubscribeReply((_cmd, n) => ({ id: n }));
+    const sub = c.newSubscription('ch');
+    const received: number[] = [];
+    sub.on('publication', ctx => received.push(ctx.data.n));
+    sub.subscribe();
+    c.connect();
+    await waitFor(() => subscribeCommands().length === 1);
+
+    sub.unsubscribe();
+    sub.subscribe();
+    await waitFor(() => subscribeCommands().length === 2);
+    await sub.ready(3000);
+    await delay(50);
+
+    // Channel id 1 was dropped by the server with the first subscription.
+    server.publish(2, { n: 1 });
+    await waitFor(() => received.length === 1);
+    expect(received).toEqual([1]);
+  });
+
+  test('a resubscribe push arriving after unsubscribe() does not subscribe again', async () => {
+    const { sub } = await subscribed('ch');
+    const events: string[] = [];
+    sub.on('subscribing', () => events.push('subscribing'));
+    sub.on('subscribed', () => events.push('subscribed'));
+    sub.unsubscribe();
+    // Sent by the server before it read the unsubscribe command, e.g. on an
+    // insufficient state.
+    server.unsubscribe('ch', 2500, 'insufficient state');
+
+    await delay(100);
+    expect(sub.state).toBe(SubscriptionState.Unsubscribed);
+    expect(events).toEqual([]);
+    expect(subscribeCommands()).toHaveLength(1);
+  });
+
   test('unsubscribe push without a channel or subscription is ignored', async () => {
     await subscribed('ch');
     server.sendPush({ id: 99, unsubscribe: { code: 2000, reason: 'server unsubscribe' } });

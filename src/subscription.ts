@@ -78,10 +78,13 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
   // Incremented when the map position is reset (setTagsFilter, state invalidation),
   // so a subscribe that completes meanwhile doesn't store its position over that.
   private _mapPositionResets: number = 0;
-  // The map subscribe flow in progress: token continuations and page replies of an
-  // earlier flow are ignored. A flow pages from its own stream offset and epoch; the
-  // subscription position (_offset/_epoch) moves only with what the app received.
-  private _mapFlow: number = 0;
+  // The subscribe flow in progress: replies and continuations of an earlier flow are
+  // ignored. Every map flow and every unsubscribe starts a new one, so a subscribe
+  // reply still in flight when the app calls unsubscribe() and subscribe() doesn't
+  // complete the new subscribe. A map flow pages from its own stream offset and
+  // epoch; the subscription position (_offset/_epoch) moves only with what the app
+  // received.
+  private _subscribeFlow: number = 0;
   private _mapFlowRecovering: boolean = false;
   private _mapFlowOffset: number = 0;
   private _mapFlowEpoch: string | null = null;
@@ -780,12 +783,17 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
     }
 
     const cmd = this._buildSubscribeCommand(token);
+    const flow = this._subscribeFlow;
 
     // @ts-ignore – we are hiding some symbols from public API autocompletion.
     // An exception while handling the reply stops the client (see _dispatchFailed).
     // next() is still called, so replies of a later connection aren't blocked.
     this._centrifuge._call(cmd).then(resolveCtx => {
       try {
+        if (flow !== this._subscribeFlow) {
+          // The app unsubscribed meanwhile, maybe to subscribe again.
+          return;
+        }
         this._inflight = false;
         this._handleSubscribeResponse(resolveCtx.reply.subscribe);
       } catch (err) {
@@ -798,6 +806,9 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
       }
     }, rejectCtx => {
       try {
+        if (flow !== this._subscribeFlow) {
+          return;
+        }
         this._inflight = false;
         this._handleSubscribeError(rejectCtx.error);
       } catch (err) {
@@ -905,6 +916,8 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
       this._clearSubscribingState();
     }
     this._inflight = false;
+    // Replies and continuations of a subscribe in progress must not complete a later one.
+    this._subscribeFlow++;
     // Channel compaction: the numeric channel id is scoped to the active
     // subscription. Drop it so a push for the old id (e.g. one in flight when we
     // unsubscribe) is no longer routed to this subscription.
@@ -1783,7 +1796,7 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
   /** Entry point for map subscriptions */
   private _mapSubscribe(): void {
     this._debug('starting map subscribe on', this.channel);
-    const flow = ++this._mapFlow;
+    const flow = ++this._subscribeFlow;
 
     // Initialize buffers and phase
     this._mapStateBuffer = [];
@@ -1818,7 +1831,7 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
       this._getSubscriptionToken()
         .then(token => {
           // A later flow owns the subscription now.
-          if (flow !== this._mapFlow) {
+          if (flow !== this._subscribeFlow) {
             return;
           }
           if (!this._isSubscribing()) {
@@ -1834,7 +1847,7 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
           start();
         })
         .catch(e => {
-          if (flow === this._mapFlow) {
+          if (flow === this._subscribeFlow) {
             this._handleTokenError(e);
           }
         });
@@ -1855,7 +1868,7 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
     this._centrifuge._call(cmd).then(resolveCtx => {
       try {
         // The reply to a page of an earlier flow is outdated.
-        if (flow === this._mapFlow) {
+        if (flow === this._subscribeFlow) {
           this._handleMapStateResponse(flow, resolveCtx.reply.subscribe);
         }
       } catch (err) {
@@ -1868,7 +1881,7 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
       }
     }, rejectCtx => {
       try {
-        if (flow === this._mapFlow) {
+        if (flow === this._subscribeFlow) {
           this._handleMapSubscribeError(rejectCtx.error);
         }
       } catch (err) {
@@ -1973,7 +1986,7 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
     this._centrifuge._call(cmd).then(resolveCtx => {
       try {
         // The reply to a page of an earlier flow is outdated.
-        if (flow === this._mapFlow) {
+        if (flow === this._subscribeFlow) {
           this._handleMapStreamResponse(flow, resolveCtx.reply.subscribe);
         }
       } catch (err) {
@@ -1986,7 +1999,7 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
       }
     }, rejectCtx => {
       try {
-        if (flow === this._mapFlow) {
+        if (flow === this._subscribeFlow) {
           this._handleMapSubscribeError(rejectCtx.error);
         }
       } catch (err) {

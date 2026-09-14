@@ -1,4 +1,4 @@
-import { ReplyStreamBuffer } from './stream_buffer';
+import { LineStreamBuffer, ReplyStreamBuffer } from './stream_buffer';
 
 /** @internal */
 export class WebtransportTransport {
@@ -7,7 +7,6 @@ export class WebtransportTransport {
   private _writer: any;
   private endpoint: string;
   private options: any;
-  _utf8decoder: TextDecoder;
   _protocol: string;
 
   constructor(endpoint: string, options: any) {
@@ -16,7 +15,6 @@ export class WebtransportTransport {
     this._transport = null;
     this._stream = null;
     this._writer = null;
-    this._utf8decoder = new TextDecoder();
     this._protocol = 'json';
   }
 
@@ -97,28 +95,14 @@ export class WebtransportTransport {
 
   async _startReading(eventTarget: any) {
     const reader = this._stream.readable.getReader();
-    let jsonStreamBuf = '';
-    let jsonStreamPos = 0;
+    const jsonStreamBuf = new LineStreamBuffer();
     const protoStreamBuf = new ReplyStreamBuffer();
     try {
       while (true) {
         const { done, value } = await reader.read();
         if (value && value.length > 0) {
           if (this._protocol === 'json') {
-            // stream: true keeps decoder state across reads so a multi-byte
-            // UTF-8 character split across two chunks is not corrupted into
-            // replacement characters.
-            jsonStreamBuf += this._utf8decoder.decode(value, { stream: true });
-            while (jsonStreamPos < jsonStreamBuf.length) {
-              if (jsonStreamBuf[jsonStreamPos] === '\n') {
-                const line = jsonStreamBuf.substring(0, jsonStreamPos);
-                eventTarget.dispatchEvent(new MessageEvent('message', { data: line }));
-                jsonStreamBuf = jsonStreamBuf.substring(jsonStreamPos + 1);
-                jsonStreamPos = 0;
-              } else {
-                ++jsonStreamPos;
-              }
-            }
+            jsonStreamBuf.push(value, line => eventTarget.dispatchEvent(new MessageEvent('message', { data: line })));
           } else {
             protoStreamBuf.push(value);
             protoStreamBuf.drain(

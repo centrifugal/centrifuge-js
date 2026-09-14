@@ -1580,15 +1580,14 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
       // misconfigured proxy. Close the transport so the client reconnects,
       // instead of throwing from the transport callback.
       this._debug('error decoding received data', e);
-      if (this._transport) {
-        try {
-          this._transport.close();
-        } catch (err) {
-          // No close callback will follow: tear the connection down here.
-          this._debug('error closing transport', err);
-          this._disconnect(connectingCodes.transportClosed, 'transport closed', true);
-        }
+      // Tear the connection down at once, as the close callback of the transport
+      // would: the data read with this, e.g. the next lines of an http_stream chunk,
+      // must not be dispatched, and the close callback comes later, or never for a
+      // transport whose close() throws.
+      if (this._emulation && !this._transportWasOpen) {
+        this._advanceTransportIndex();
       }
+      this._disconnect(connectingCodes.transportClosed, 'transport closed', true);
       return;
     }
     // We have to guarantee order of events in replies processing - i.e. start processing

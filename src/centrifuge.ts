@@ -2571,6 +2571,11 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
         if (hasOffset(pub.offset)) {
           this._serverSubs[channel].offset = pub.offset;
         }
+        // The epoch of a channel that had no stream at subscribe time comes with
+        // its first publication (see BaseSubscription._setPublicationPosition).
+        if (pub.epoch) {
+          this._serverSubs[channel].epoch = pub.epoch;
+        }
         this.emit('publication', ctx);
       }
       return;

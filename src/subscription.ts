@@ -10,7 +10,7 @@ import {
   SharedPollTrackItem, SharedPollSignatureContext, SharedPollSignatureResult,
   SubscriptionErrorContext
 } from './types';
-import { ttlMilliseconds, backoff } from './utils';
+import { ttlMilliseconds, backoff, hasOffset } from './utils';
 
 // Internal-only — phases the SDK walks through during a map subscribe.
 // Not exposed on the public surface; kept here so it doesn't leak via
@@ -1053,7 +1053,7 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
         this._sharedPollTrackedItems.set(pub.key, pub.version);
       }
     }
-    if (pub.offset) {
+    if (hasOffset(pub.offset)) {
       this._offset = pub.offset;
     }
     if (pub.epoch) {

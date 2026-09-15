@@ -7,6 +7,7 @@ import { disconnectedCodes, unsubscribedCodes } from './codes';
 import WebSocket from 'ws';
 import { fetch } from 'undici';
 import { ReadableStream } from 'node:stream/web';
+import { centrifugal } from './client_proto';
 
 const transportCases = [
   ['websocket', 'ws://localhost:8000/connection/websocket'],
@@ -190,4 +191,33 @@ test.each(transportCases)("%s (Protobuf): subscribe and presence", async (transp
   c.disconnect();
   await disconnectedPromise;
   expect(c.state).toBe(State.Disconnected);
+});
+
+// Protobuf decodes a publication without an offset (e.g. published without
+// history) with offset 0, a Long where long.js is available. It must not replace
+// the stored position, or a later recovery starts from offset 0.
+test('Protobuf: a publication without an offset keeps the stored position', () => {
+  const Publication = centrifugal.centrifuge.protocol.Publication;
+  const withoutOffset = Publication.decode(Publication.encode({ data: new Uint8Array([1]) }).finish());
+  const withOffset = Publication.decode(Publication.encode({ data: new Uint8Array([1]), offset: 7 }).finish());
+
+  const c = new Centrifuge([{
+    transport: 'websocket' as TransportName,
+    endpoint: 'ws://localhost:8000/connection/websocket',
+  }], {
+    websocket: WebSocket,
+  });
+
+  const sub = c.newSubscription('positioned');
+  (sub as any)._offset = 42;
+  (sub as any)._setPublicationPosition(withoutOffset);
+  expect(Number((sub as any)._offset)).toBe(42);
+  (sub as any)._setPublicationPosition(withOffset);
+  expect(Number((sub as any)._offset)).toBe(7);
+
+  (c as any)._serverSubs['server-side'] = { offset: 5, epoch: 'e', recoverable: true };
+  (c as any)._handlePublication('server-side', withoutOffset);
+  expect(Number((c as any)._serverSubs['server-side'].offset)).toBe(5);
+  (c as any)._handlePublication('server-side', withOffset);
+  expect(Number((c as any)._serverSubs['server-side'].offset)).toBe(7);
 });

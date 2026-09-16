@@ -1825,7 +1825,10 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
       // Server-side subscriptions carry their own cached recovery position,
       // separate from the client-side subscriptions above — reset it to the
       // same unrecoverable sentinel so the next connect can't recover from
-      // now-invalidated state.
+      // now-invalidated state. "_" is a sentinel, not an epoch the server can
+      // produce: the recovery of the next connect is meant to fail. It has to be
+      // non-empty — an empty epoch means "any epoch" to the server (see
+      // _invalidateState of a subscription).
       for (const channel in this._serverSubs) {
         if (this._serverSubs.hasOwnProperty(channel)) {
           this._serverSubs[channel].offset = 0;

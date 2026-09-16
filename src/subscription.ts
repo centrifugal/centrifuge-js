@@ -509,6 +509,11 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
     } else if (this._offset !== null) {
       // Only a position that exists: without one, e.g. before getState was called,
       // the next subscribe must still load the state.
+      // "_" is a sentinel, not an epoch the server can produce: the recovery of the
+      // next subscribe is meant to fail, so the app reloads through its
+      // recovery-failure path instead of taking the resubscribe for a first one.
+      // It has to be non-empty — an empty epoch means "any epoch" to the server,
+      // which would let the recovery succeed from now-invalidated state.
       this._offset = 0;
       this._epoch = '_';
     }

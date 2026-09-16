@@ -37,6 +37,22 @@ function waitForEvent<T>(emitter: any, event: string, timeout = 5000): Promise<T
 
 const delay = (ms: number) => new Promise<void>(r => setTimeout(r, ms));
 
+function waitFor(check: () => boolean, timeout = 5000): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const started = Date.now();
+    const tick = () => {
+      if (check()) {
+        resolve();
+      } else if (Date.now() - started > timeout) {
+        reject(new Error('timeout'));
+      } else {
+        setTimeout(tick, 5);
+      }
+    };
+    tick();
+  });
+}
+
 // Counts transports the client initializes from now on.
 function countTransportInits(c: Centrifuge): { n: number } {
   const counter = { n: 0 };
@@ -1674,4 +1690,61 @@ describe('network event listeners', () => {
     await c.ready(3000);
     expect(sockets.sockets()).toBe(2);
   });
+
+  test('a connection token refresh keeps the client id its stale checks compare against', async () => {
+    // Centrifugo answers a refresh without a client id — it never sets that field.
+    // Taking it as the new one leaves the client without an id, and a token fetch of a
+    // connection that is gone is no longer recognised as stale: its token is then used
+    // for the connection that replaced it.
+    let connects = 0;
+    let tokens = 0;
+    let holdNext = false;
+    let held: ((token: string) => void) | null = null;
+    const refreshTokens: string[] = [];
+    server.onCommand = (cmd) => {
+      if (cmd.connect !== undefined) {
+        connects++;
+        return { id: cmd.id, connect: { client: `c${connects}`, version: '0.0.0', ping: 25, expires: true, ttl: 1 } };
+      }
+      if (cmd.refresh !== undefined) {
+        refreshTokens.push(cmd.refresh.token);
+        // The reply of a refresh carries no client id.
+        return { id: cmd.id, refresh: { expires: true, ttl: 1 } };
+      }
+      return null;
+    };
+    const c = newClient({
+      getToken: () => new Promise<string>(resolve => {
+        if (holdNext) {
+          holdNext = false;
+          held = resolve;
+          return;
+        }
+        resolve(`token-${++tokens}`);
+      }),
+    });
+    const errors = collectErrors(c);
+
+    c.connect();
+    await c.ready(5000);
+    // The first refresh of the connection, answered without a client id.
+    await waitFor(() => refreshTokens.length === 1);
+    // The token of the next refresh of this connection never arrives before it's gone.
+    holdNext = true;
+    await waitFor(() => held !== null);
+
+    server.closeConnection();
+    await waitFor(() => connects === 2);
+    // The refresh of the new connection is answered without a client id too.
+    await waitFor(() => refreshTokens.length === 2);
+
+    // The token of the connection that is gone arrives now.
+    held!('stale-token');
+    await delay(100);
+
+    expect(refreshTokens).not.toContain('stale-token');
+    expect((c as any)._token).not.toBe('stale-token');
+    expect(c.state).toBe(State.Connected);
+    expect(errors).toEqual([]);
+  }, 15000);
 });

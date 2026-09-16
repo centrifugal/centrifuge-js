@@ -67,3 +67,26 @@ export function localStorageItem(key: string): string | null {
 export function hasOffset(offset: any): boolean {
   return offset !== undefined && offset !== null && Number(offset) > 0;
 }
+
+/** @internal Converts an offset of a reply or a publication to a number.
+ * Over the protobuf protocol a uint64 decodes to a Long object where long.js is
+ * available (it comes with protobufjs), and such an object must reach neither the
+ * app — the public types declare a number, and an app storing the position gets
+ * `{low, high, unsigned}` back, which compares and adds as NaN — nor the position
+ * the library keeps. A position an app stored with an earlier version, and passes
+ * back through `since`, has the same shape without the methods, so it is converted
+ * here too. Offsets above 2^53 lose exactness, as the public type implies. */
+export function toOffset(offset: any): number {
+  if (offset === undefined || offset === null) {
+    return 0;
+  }
+  if (typeof offset === 'object') {
+    const low = offset.low;
+    const high = offset.high;
+    if (typeof low === 'number' && typeof high === 'number') {
+      return (high >>> 0) * 4294967296 + (low >>> 0);
+    }
+  }
+  const value = Number(offset);
+  return isNaN(value) ? 0 : value;
+}

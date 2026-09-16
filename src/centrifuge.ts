@@ -20,7 +20,7 @@ import { JsonCodec } from './json';
 import {
   isFunction, log, startsWith, errorExists,
   backoff, ttlMilliseconds, localStorageItem,
-  hasOffset,
+  hasOffset, toOffset,
 } from './utils';
 
 import {
@@ -588,7 +588,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     return {
       publications,
       epoch: result.epoch || '',
-      offset: result.offset || 0
+      offset: toOffset(result.offset)
     };
   }
 
@@ -2269,7 +2269,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
       }
       const sub = subs[channel];
       this._serverSubs[channel] = {
-        'offset': sub.offset,
+        'offset': toOffset(sub.offset),
         'epoch': sub.epoch,
         'recoverable': sub.recoverable || false
       };
@@ -2385,7 +2385,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     }
     let offset = 0;
     if ('offset' in result) {
-      offset = result.offset;
+      offset = toOffset(result.offset);
     }
     if (ctx.positioned || ctx.recoverable) {
       ctx.streamPosition = {
@@ -2506,7 +2506,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
 
   private _handleSubscribe(channel: string, sub: any) {
     this._serverSubs[channel] = {
-      'offset': sub.offset,
+      'offset': toOffset(sub.offset),
       'epoch': sub.epoch,
       'recoverable': sub.recoverable || false
     };
@@ -2536,7 +2536,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
       data: pub.data
     };
     if (hasOffset(pub.offset)) {
-      ctx.offset = pub.offset;
+      ctx.offset = toOffset(pub.offset);
     }
     if (pub.info) {
       ctx.info = this._getJoinLeaveContext(pub.info);
@@ -2575,7 +2575,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
         // Before the event: a connect from its handler recovers after it (see
         // BaseSubscription._handlePublication).
         if (hasOffset(pub.offset)) {
-          this._serverSubs[channel].offset = pub.offset;
+          this._serverSubs[channel].offset = toOffset(pub.offset);
         }
         // The epoch of a channel that had no stream at subscribe time comes with
         // its first publication (see BaseSubscription._setPublicationPosition).

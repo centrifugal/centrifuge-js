@@ -221,3 +221,38 @@ test('Protobuf: a publication without an offset keeps the stored position', () =
   (c as any)._handlePublication('server-side', withOffset);
   expect(Number((c as any)._serverSubs['server-side'].offset)).toBe(7);
 });
+
+// Protobuf decodes a uint64 offset into a Long where long.js is available (it comes
+// with protobufjs). The public types declare a number, and an app that stores the
+// position it was given gets `{low, high, unsigned}` back, which compares and adds
+// as NaN.
+test('Protobuf: the position of a subscribe reply is a number', () => {
+  const SubscribeResult = centrifugal.centrifuge.protocol.SubscribeResult;
+  const result = SubscribeResult.decode(SubscribeResult.encode({
+    recoverable: true, positioned: true, offset: 7, epoch: 'e',
+  }).finish());
+
+  const c = new Centrifuge([{
+    transport: 'websocket' as TransportName,
+    endpoint: 'ws://localhost:8000/connection/websocket',
+  }], {
+    websocket: WebSocket,
+  });
+
+  // The position the library keeps for a client-side subscription.
+  const sub = c.newSubscription('positioned');
+  (sub as any).state = SubscriptionState.Subscribing;
+  (sub as any)._setSubscribed(result);
+  expect(typeof (sub as any)._offset).toBe('number');
+  expect((sub as any)._offset).toBe(7);
+
+  // The position handed to the app, which it may store and pass back via `since`.
+  const ctx = (c as any)._getSubscribeContext('positioned', result);
+  expect(typeof ctx.streamPosition.offset).toBe('number');
+  expect(JSON.parse(JSON.stringify(ctx.streamPosition))).toEqual({ offset: 7, epoch: 'e' });
+
+  // And the position of a server-side subscription.
+  (c as any)._handleSubscribe('server-side', result);
+  expect(typeof (c as any)._serverSubs['server-side'].offset).toBe('number');
+  expect((c as any)._serverSubs['server-side'].offset).toBe(7);
+});

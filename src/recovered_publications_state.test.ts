@@ -47,6 +47,28 @@ describe('recovered publications and state', () => {
     await server.close();
   });
 
+  describe('position of a channel the server does not recover', () => {
+    test('a subscription given a position stops asking to recover', async () => {
+      // Positioning without recovery: the reply carries a position, but never
+      // `recoverable`, so there is nothing to recover from.
+      server.onSubscribe = () => ({ positioned: true, epoch: 'e', offset: 1 } as any);
+      const sub: any = c.newSubscription('ch', { since: { offset: 1, epoch: 'e' } });
+      const subscribes: string[] = [];
+      sub.on('subscribed', () => subscribes.push('subscribed'));
+      sub.subscribe();
+      c.connect();
+      await waitFor(() => subscribes.length === 1);
+
+      server.closeConnection();
+      await waitFor(() => subscribes.length === 2);
+
+      const requests = server.received.filter(cmd => cmd.subscribe !== undefined).map(cmd => cmd.subscribe);
+      expect(requests[0].recover).toBe(true);
+      expect(requests[1].recover).toBeUndefined();
+      expect(sub._recover).toBe(false);
+    });
+  });
+
   describe('client-side subscription', () => {
     beforeEach(() => {
       // After a recovery the server replies with the position recovered from, here 0,

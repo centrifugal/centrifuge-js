@@ -10,7 +10,7 @@ import {
   SharedPollTrackItem, SharedPollSignatureContext, SharedPollSignatureResult,
   SubscriptionErrorContext
 } from './types';
-import { ttlMilliseconds, backoff, hasOffset } from './utils';
+import { ttlMilliseconds, backoff, hasOffset, toOffset } from './utils';
 
 // Internal-only — phases the SDK walks through during a map subscribe.
 // Not exposed on the public surface; kept here so it doesn't leak via
@@ -530,8 +530,15 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
       // After a recovery the server replies with the position recovered from: each
       // recovered publication delivered below moves it. A map subscription differs:
       // its live reply carries the top of the stream (see _handleMapLiveResponse).
-      this._offset = result.offset || 0;
+      this._offset = toOffset(result.offset);
       this._epoch = result.epoch || '';
+    } else {
+      // A channel the server doesn't recover is no channel to recover from. Without
+      // this, a subscription given a position by `since` or getState keeps asking to
+      // recover on every resubscribe, and the app is told a recovery failed
+      // (wasRecovering true, recovered false) every time, though nothing was lost.
+      // The flag comes from every reply, so recovery enabled later is picked up.
+      this._recover = false;
     }
     if (result.delta) {
       this._delta_negotiated = true;
@@ -695,7 +702,7 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
       if (!this._isSubscribing()) { this._inflight = false; return; }
 
       // Store stream position from app's source of truth.
-      this._offset = result.offset;
+      this._offset = toOffset(result.offset);
       this._epoch = result.epoch;
       this._recover = true;
 
@@ -1054,7 +1061,7 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
       }
     }
     if (hasOffset(pub.offset)) {
-      this._offset = pub.offset;
+      this._offset = toOffset(pub.offset);
     }
     if (pub.epoch) {
       this._epoch = pub.epoch;
@@ -1205,7 +1212,7 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
       return;
     }
     if (options.since) {
-      this._offset = options.since.offset || 0;
+      this._offset = toOffset(options.since.offset);
       this._epoch = options.since.epoch || '';
       this._recover = true;
     }
@@ -2063,7 +2070,7 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
     // from where the first state page was captured, not from a later stream.Top().
     if (!this._mapFlowEpoch && result.epoch) {
       this._mapFlowEpoch = result.epoch;
-      this._mapFlowOffset = result.offset || 0;
+      this._mapFlowOffset = toOffset(result.offset);
     }
 
     // Validate epoch on subsequent pages - if epoch changed, restart
@@ -2191,7 +2198,7 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
     // actual offset for intermediate STREAM pages (not stream.Top()). The stored
     // position doesn't move: these entries only reach the app with the live reply.
     if (result.offset !== undefined) {
-      this._mapFlowOffset = result.offset;
+      this._mapFlowOffset = toOffset(result.offset);
     }
 
     // Server controls LIVE transition. If server responded with phase=1,
@@ -2271,7 +2278,7 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
     }
 
     // Final offset/epoch — use || 0/'' to handle zero values omitted by JSON/protobuf.
-    const offset = result.offset || 0;
+    const offset = toOffset(result.offset);
     const epoch = result.epoch || '';
 
     // Clear subscribing state
@@ -2507,7 +2514,7 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
       ctx.removed = true;
     }
     if (pub.offset !== undefined) {
-      ctx.offset = pub.offset;
+      ctx.offset = toOffset(pub.offset);
     }
     if (pub.info) {
       // @ts-ignore – we are hiding some methods from public API autocompletion.

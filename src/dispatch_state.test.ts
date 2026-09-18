@@ -475,6 +475,93 @@ describe('dispatch and subscription state', () => {
     expect(await ready).toBe('resolved');
   });
 
+  test('shared poll updates skipped by a reconnect from a publication handler are requested again', async () => {
+    server.onSubscribe = () => ({});
+    const sub: any = c.newSharedPollSubscription('poll');
+    sub.subscribe();
+    c.connect();
+    await sub.ready(3000);
+
+    const publications: string[] = [];
+    let reconnected = false;
+    sub.on('publication', (ctx: any) => {
+      publications.push(`${ctx.key}:${sub.state}`);
+      if (!reconnected) {
+        reconnected = true;
+        c.disconnect();
+        c.connect();
+      }
+    });
+    server.onCommand = (cmd) => {
+      if (cmd.sub_refresh !== undefined && !reconnected) {
+        return { id: cmd.id, sub_refresh: { items: [{ key: 'k1', version: 3, data: { v: 3 } }, { key: 'k2', version: 5, data: { v: 5 } }] } };
+      }
+      return null;
+    };
+    sub.track([{ key: 'k1', version: 1 }, { key: 'k2', version: 1 }], 'signature');
+    await waitFor(() => reconnected);
+    await sub.ready(3000);
+    const refreshes = () => server.received.filter(cmd => cmd.sub_refresh !== undefined);
+    await waitFor(() => refreshes().length === 2);
+
+    // Neither update reached the app: the replay asks for both from the versions it had.
+    expect(publications).toEqual(['k1:subscribed']);
+    expect(refreshes()[1].sub_refresh.track[0].items).toEqual([{ key: 'k1', version: 1 }, { key: 'k2', version: 1 }]);
+  });
+
+  test('a subscription token refresh failing after unsubscribe() leaves no retry', async () => {
+    server.onSubscribe = () => ({ expires: true, ttl: 1 } as any);
+    let rejectRefresh: any = null;
+    let tokenCalls = 0;
+    const sub: any = c.newSubscription('ch', {
+      getToken: () => (++tokenCalls === 1
+        ? Promise.resolve('token')
+        : new Promise<string>((_, reject) => { rejectRefresh = reject; })),
+    });
+    const errors: string[] = [];
+    sub.on('error', (ctx: any) => errors.push(ctx.type));
+    sub.subscribe();
+    c.connect();
+    await sub.ready(3000);
+    await waitFor(() => rejectRefresh !== null);
+
+    sub.unsubscribe();
+    rejectRefresh(new Error('token unavailable'));
+    await delay(50);
+    expect(errors).toEqual([]);
+    expect(sub._refreshTimeout).toBeNull();
+  }, 10000);
+
+  test('a subscription token refresh failing after a reconnect leaves the refresh of the new subscription alone', async () => {
+    server.onSubscribe = () => ({ expires: true, ttl: 1 } as any);
+    let rejectRefresh: any = null;
+    let tokenCalls = 0;
+    const sub: any = c.newSubscription('ch', {
+      getToken: () => (++tokenCalls === 1
+        ? Promise.resolve('token')
+        : new Promise<string>((_, reject) => { rejectRefresh = reject; })),
+    });
+    const errors: string[] = [];
+    sub.on('error', (ctx: any) => errors.push(ctx.type));
+    sub.subscribe();
+    c.connect();
+    await sub.ready(3000);
+    await waitFor(() => rejectRefresh !== null);
+
+    // The subscription is subscribed again, with its own refresh timer, when the
+    // earlier refresh fails.
+    const subscribing = new Promise(resolve => sub.once('subscribing', resolve));
+    server.closeConnection();
+    await subscribing;
+    await sub.ready(3000);
+    const timer = sub._refreshTimeout;
+    expect(timer).not.toBeNull();
+    rejectRefresh(new Error('token unavailable'));
+    await delay(50);
+    expect(errors).toEqual([]);
+    expect(sub._refreshTimeout).toBe(timer);
+  }, 10000);
+
   test('unsubscribe() and subscribe() from a publication handler recover after that publication', async () => {
     const { sub } = await subscribed('ch');
     sub.once('publication', () => {

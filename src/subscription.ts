@@ -76,6 +76,14 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
   // Incremented when the map position is reset (setTagsFilter, state invalidation),
   // so a subscribe that completes meanwhile doesn't store its position over that.
   private _mapPositionResets: number = 0;
+  // The map subscribe flow in progress: token continuations and page replies of an
+  // earlier flow are ignored. A flow pages from its own stream offset and epoch; the
+  // subscription position (_offset/_epoch) moves only with what the app received.
+  private _mapFlow: number = 0;
+  private _mapFlowRecovering: boolean = false;
+  private _mapFlowOffset: number = 0;
+  private _mapFlowEpoch: string | null = null;
+  private _mapFlowPositionResets: number = 0;
   // Publish debounce state (protocol-level, controlled by server)
   protected _debounceMs: number = 0;
   private _debouncePending: Map<string, { data: any; dirty: boolean; timer: ReturnType<typeof setTimeout> }> = new Map();
@@ -1762,27 +1770,32 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
   /** Entry point for map subscriptions */
   private _mapSubscribe(): void {
     this._debug('starting map subscribe on', this.channel);
+    const flow = ++this._mapFlow;
 
     // Initialize buffers and phase
     this._mapStateBuffer = [];
     this._mapStreamBuffer = [];
     this._mapCursor = '';
-    // Preserve _prevValueMap when recovering — the server will send deltas
-    // against the values the client already has from the previous session.
-    // Only clear when starting from scratch (no recovery position).
-    if (!(this._recover && this._offset !== null && this._epoch !== null)) {
-      this._prevValueMap = new Map();
-    }
-
-    this._mapPhase = MapPhase.State;
 
     // If we have a position from `since`, we may skip snapshot and go to stream
     const recovering = this._recover && this._offset !== null && this._epoch !== null;
+    // Preserve _prevValueMap when recovering — the server will send deltas
+    // against the values the client already has from the previous session.
+    // Only clear when starting from scratch (no recovery position).
+    if (!recovering) {
+      this._prevValueMap = new Map();
+    }
+    this._mapFlowRecovering = recovering;
+    this._mapFlowOffset = recovering ? this._offset as number : 0;
+    this._mapFlowEpoch = recovering ? this._epoch : null;
+    this._mapFlowPositionResets = this._mapPositionResets;
+
+    this._mapPhase = MapPhase.State;
     if (recovering) {
       this._debug('map subscribe: recovering from position, skipping to stream phase');
       this._mapPhase = MapPhase.Stream;
     }
-    const start = () => recovering ? this._fetchStream() : this._fetchSnapshot();
+    const start = () => recovering ? this._fetchStream(flow) : this._fetchSnapshot(flow);
 
     // Get token if needed, then start fetching. Also when recovering: the token
     // may have been cleared, e.g. after it expired.
@@ -1791,6 +1804,10 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
     } else {
       this._getSubscriptionToken()
         .then(token => {
+          // A later flow owns the subscription now.
+          if (flow !== this._mapFlow) {
+            return;
+          }
           if (!this._isSubscribing()) {
             this._inflight = false;
             return;
@@ -1803,12 +1820,16 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
           this._token = token;
           start();
         })
-        .catch(e => this._handleTokenError(e));
+        .catch(e => {
+          if (flow === this._mapFlow) {
+            this._handleTokenError(e);
+          }
+        });
     }
   }
 
   /** Fetch a page of snapshot data */
-  private _fetchSnapshot(cursor?: string): void {
+  private _fetchSnapshot(flow: number, cursor?: string): void {
     if (!this._isSubscribing() || !this._isTransportOpen()) {
       this._inflight = false;
       return;
@@ -1820,7 +1841,10 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
     // @ts-ignore – we are hiding some symbols from public API autocompletion.
     this._centrifuge._call(cmd).then(resolveCtx => {
       try {
-        this._handleMapStateResponse(resolveCtx.reply.subscribe);
+        // The reply to a page of an earlier flow is outdated.
+        if (flow === this._mapFlow) {
+          this._handleMapStateResponse(flow, resolveCtx.reply.subscribe);
+        }
       } catch (err) {
         // @ts-ignore – we are hiding some symbols from public API autocompletion.
         this._centrifuge._dispatchFailed(err);
@@ -1831,7 +1855,9 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
       }
     }, rejectCtx => {
       try {
-        this._handleMapSubscribeError(rejectCtx.error);
+        if (flow === this._mapFlow) {
+          this._handleMapSubscribeError(rejectCtx.error);
+        }
       } catch (err) {
         // @ts-ignore – we are hiding some symbols from public API autocompletion.
         this._centrifuge._dispatchFailed(err);
@@ -1844,7 +1870,7 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
   }
 
   /** Process snapshot response */
-  private _handleMapStateResponse(result: any): void {
+  private _handleMapStateResponse(flow: number, result: any): void {
     if (!this._isSubscribing()) {
       this._inflight = false;
       return;
@@ -1857,27 +1883,23 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
     if (!result.phase) {
       this._debug('map subscribe: server forced LIVE transition during state pagination');
       // _handleMapLiveResponse will process result.state and result.publications.
-      this._handleMapLiveResponse(result);
+      this._handleMapLiveResponse(flow, result);
       return;
     }
 
     // Store epoch/offset from first response. Both are frozen for the duration
     // of state pagination to maintain consistency: the stream catch-up must start
     // from where the first state page was captured, not from a later stream.Top().
-    if (!this._epoch && result.epoch) {
-      this._epoch = result.epoch;
-      this._offset = result.offset || 0;
+    if (!this._mapFlowEpoch && result.epoch) {
+      this._mapFlowEpoch = result.epoch;
+      this._mapFlowOffset = result.offset || 0;
     }
 
     // Validate epoch on subsequent pages - if epoch changed, restart
-    if (this._epoch && result.epoch && this._epoch !== result.epoch) {
+    if (this._mapFlowEpoch && result.epoch && this._mapFlowEpoch !== result.epoch) {
       this._debug('map subscribe: epoch changed during snapshot pagination, restarting');
-      this._mapStateBuffer = [];
-      this._mapCursor = '';
-      this._epoch = null;
-      this._offset = null;
-      this._prevValueMap = new Map();
-      this._fetchSnapshot();
+      this._restartMapFlow();
+      this._fetchSnapshot(flow);
       return;
     }
 
@@ -1892,39 +1914,58 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
     // Check if there's more data to fetch
     if (result.cursor) {
       this._mapCursor = result.cursor;
-      this._fetchSnapshot(this._mapCursor);
+      this._fetchSnapshot(flow, this._mapCursor);
       return;
     }
 
     // No more snapshot pages, transition to next phase
-    this._transitionFromSnapshot();
+    this._transitionFromSnapshot(flow);
+  }
+
+  // The stream epoch changed during the flow: what it collected and the stored
+  // position are outdated. The flow continues from a snapshot.
+  private _restartMapFlow(): void {
+    this._mapStateBuffer = [];
+    this._mapStreamBuffer = [];
+    this._mapCursor = '';
+    this._mapFlowRecovering = false;
+    this._mapFlowOffset = 0;
+    this._mapFlowEpoch = null;
+    this._epoch = null;
+    this._offset = null;
+    this._recover = false;
+    this._prevValueMap = new Map();
+    this._mapPhase = MapPhase.State;
   }
 
   /** Transition from STATE to STREAM phase after snapshot pagination completes */
-  private _transitionFromSnapshot(): void {
+  private _transitionFromSnapshot(flow: number): void {
     this._debug('map subscribe: snapshot complete, transitioning to stream phase');
 
     // After STATE pagination, move to STREAM phase.
     // Client sends phase=1 requests, server decides when to go LIVE
     // by responding with phase=0.
     this._mapPhase = MapPhase.Stream;
-    this._fetchStream();
+    this._fetchStream(flow);
   }
 
   /** Fetch stream data (offset-based catch-up) */
-  private _fetchStream(): void {
+  private _fetchStream(flow: number): void {
     if (!this._isSubscribing() || !this._isTransportOpen()) {
       this._inflight = false;
       return;
     }
 
     const cmd = this._buildMapSubscribeCommand(MapPhase.Stream);
-    this._debug('map subscribe: fetching stream from offset', this._offset);
+    this._debug('map subscribe: fetching stream from offset', this._mapFlowOffset);
 
     // @ts-ignore – we are hiding some symbols from public API autocompletion.
     this._centrifuge._call(cmd).then(resolveCtx => {
       try {
-        this._handleMapStreamResponse(resolveCtx.reply.subscribe);
+        // The reply to a page of an earlier flow is outdated.
+        if (flow === this._mapFlow) {
+          this._handleMapStreamResponse(flow, resolveCtx.reply.subscribe);
+        }
       } catch (err) {
         // @ts-ignore – we are hiding some symbols from public API autocompletion.
         this._centrifuge._dispatchFailed(err);
@@ -1935,7 +1976,9 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
       }
     }, rejectCtx => {
       try {
-        this._handleMapSubscribeError(rejectCtx.error);
+        if (flow === this._mapFlow) {
+          this._handleMapSubscribeError(rejectCtx.error);
+        }
       } catch (err) {
         // @ts-ignore – we are hiding some symbols from public API autocompletion.
         this._centrifuge._dispatchFailed(err);
@@ -1948,7 +1991,7 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
   }
 
   /** Process stream response */
-  private _handleMapStreamResponse(result: any): void {
+  private _handleMapStreamResponse(flow: number, result: any): void {
     if (!this._isSubscribing()) {
       this._inflight = false;
       return;
@@ -1959,20 +2002,15 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
     // Note: phase=0 may be omitted by JSON serializer, so !result.phase handles both 0 and undefined.
     if (!result.phase) {
       this._debug('map subscribe: server forced LIVE transition during stream');
-      this._handleMapLiveResponse(result);
+      this._handleMapLiveResponse(flow, result);
       return;
     }
 
     // Validate epoch - if changed, we need to restart
-    if (this._epoch && result.epoch && this._epoch !== result.epoch) {
+    if (this._mapFlowEpoch && result.epoch && this._mapFlowEpoch !== result.epoch) {
       this._debug('map subscribe: epoch changed during stream, restarting');
-      this._mapStateBuffer = [];
-      this._mapStreamBuffer = [];
-      this._epoch = null;
-      this._offset = null;
-      this._prevValueMap = new Map();
-      this._mapPhase = MapPhase.State;
-      this._fetchSnapshot();
+      this._restartMapFlow();
+      this._fetchSnapshot(flow);
       return;
     }
 
@@ -1984,21 +2022,21 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
       }
     }
 
-    // Update offset from result. Server returns the last publication's actual
-    // offset for intermediate STREAM pages (not stream.Top()), so this correctly
-    // tracks the client's position for the next request.
+    // Page from the offset in the result. Server returns the last publication's
+    // actual offset for intermediate STREAM pages (not stream.Top()). The stored
+    // position doesn't move: these entries only reach the app with the live reply.
     if (result.offset !== undefined) {
-      this._offset = result.offset;
+      this._mapFlowOffset = result.offset;
     }
 
     // Server controls LIVE transition. If server responded with phase=1,
     // we continue STREAM pagination. Server will respond with phase=0 when ready.
-    this._fetchStream();
+    this._fetchStream(flow);
   }
 
 
   /** Process live response - complete the map subscription */
-  private _handleMapLiveResponse(result: any): void {
+  private _handleMapLiveResponse(flow: number, result: any): void {
     if (!this._isSubscribing()) {
       this._inflight = false;
       return;
@@ -2007,16 +2045,11 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
     this._inflight = false;
 
     // Validate epoch one more time
-    if (this._epoch && result.epoch && this._epoch !== result.epoch) {
+    if (this._mapFlowEpoch && result.epoch && this._mapFlowEpoch !== result.epoch) {
       this._debug('map subscribe: epoch changed during live transition, restarting');
-      this._mapStateBuffer = [];
-      this._mapStreamBuffer = [];
-      this._epoch = null;
-      this._offset = null;
-      this._prevValueMap = new Map();
+      this._restartMapFlow();
       this._inflight = true;
-      this._mapPhase = MapPhase.State;
-      this._fetchSnapshot();
+      this._fetchSnapshot(flow);
       return;
     }
 
@@ -2113,21 +2146,24 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
     // buffered until now. Until the events below reached the app, the stored
     // position must not skip what they carry: a handler, from the state event on,
     // may unsubscribe, or subscribe again, in between.
-    this._recover = recover;
-    this._epoch = epoch;
-    if (!ctx.recovered) {
-      // Until sync, the app doesn't have the complete state: start from scratch.
-      this._recover = false;
-      this._offset = null;
-      this._epoch = null;
-    } else if (streamEntries.length > 0 && streamEntries[0].offset !== undefined) {
-      // Before the recovered catch-up.
-      this._offset = streamEntries[0].offset - 1;
-    } else {
-      this._offset = offset;
+    // The position may also be reset (setTagsFilter()) since this flow started, or by
+    // a handler below: it's kept then, and the next subscribe starts from scratch.
+    const positionResets = this._mapFlowPositionResets;
+    if (this._mapPositionResets === positionResets) {
+      this._recover = recover;
+      this._epoch = epoch;
+      if (!ctx.recovered) {
+        // Until sync, the app doesn't have the complete state: start from scratch.
+        this._recover = false;
+        this._offset = null;
+        this._epoch = null;
+      } else if (streamEntries.length > 0 && streamEntries[0].offset !== undefined) {
+        // Before the recovered catch-up.
+        this._offset = streamEntries[0].offset - 1;
+      } else {
+        this._offset = offset;
+      }
     }
-    // A handler may also reset the position (setTagsFilter()): it's kept then.
-    const positionResets = this._mapPositionResets;
 
     // Transition to subscribed state. A 'state' handler may have unsubscribed
     // already: no subscribed event then.
@@ -2262,9 +2298,9 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
       if (this._mapPageSize > 0) req.limit = this._mapPageSize;
       if (cursor) req.cursor = cursor;
       // Epoch validation after first page
-      if (this._epoch) {
-        req.offset = this._offset;
-        req.epoch = this._epoch;
+      if (this._mapFlowEpoch) {
+        req.offset = this._mapFlowOffset;
+        req.epoch = this._mapFlowEpoch;
       } else {
         // First request of the flow — include custom data.
         if (this._data) req.data = this._data;
@@ -2274,9 +2310,9 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
     // STREAM phase
     if (phase === MapPhase.Stream) {
       if (this._mapPageSize > 0) req.limit = this._mapPageSize;
-      req.offset = this._offset;
-      req.epoch = this._epoch;
-      if (this._recover) {
+      req.offset = this._mapFlowOffset;
+      req.epoch = this._mapFlowEpoch;
+      if (this._mapFlowRecovering) {
         req.recover = true;
         // First request of the flow (skipped STATE) — include custom data for authorization.
         if (this._mapStreamBuffer.length === 0) {

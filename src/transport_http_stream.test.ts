@@ -76,4 +76,33 @@ describe('HttpStreamTransport protobuf stream parsing', () => {
     expect(messages).toHaveLength(1);
     expect(Buffer.from(messages[0]).equals(Buffer.from(reply))).toBe(true);
   });
+
+  it('reads a large reply arriving in many small chunks without copying the buffer for each', async () => {
+    const writer = Writer.create();
+    centrifugal.centrifuge.protocol.Reply.encodeDelimited(
+      { push: { channel: 'ch', pub: { data: new Uint8Array(4 * 1024 * 1024).fill(122), offset: 1 } } }, writer);
+    const reply = writer.finish();
+    const chunks: Uint8Array[] = [];
+    for (let i = 0; i < reply.length; i += 1024) {
+      chunks.push(reply.slice(i, i + 1024));
+    }
+
+    const transport = new HttpStreamTransport('https://example.com/connection/http_stream', {
+      fetch: async () => ({ ok: true, body: fakeBody(chunks) }),
+      readableStream: FakeReadableStream,
+      decoder: new ProtobufCodec(),
+    });
+    (transport as any)._protocol = 'protobuf';
+
+    const messages: any[] = [];
+    const started = Date.now();
+    const eventTarget = (transport as any)._fetchEventTarget(transport, 'https://example.com', {});
+    eventTarget.addEventListener('message', (e: any) => { messages.push(e.data); });
+    await new Promise<void>(resolve => eventTarget.addEventListener('close', () => resolve()));
+
+    expect(messages).toHaveLength(1);
+    expect(Buffer.from(messages[0]).equals(Buffer.from(reply))).toBe(true);
+    // Copying the whole buffer again for each of the 4097 chunks takes seconds.
+    expect(Date.now() - started).toBeLessThan(1000);
+  }, 60000);
 });

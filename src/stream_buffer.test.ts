@@ -1,0 +1,53 @@
+import { Writer } from 'protobufjs/minimal';
+import { centrifugal } from './client_proto';
+import { ProtobufCodec } from './protobuf.codec';
+import { ReplyStreamBuffer } from './stream_buffer';
+
+const Reply = centrifugal.centrifuge.protocol.Reply;
+
+function encodeReply(dataSize: number, offset: number): Uint8Array {
+  const writer = Writer.create();
+  Reply.encodeDelimited({ push: { channel: 'ch', pub: { data: new Uint8Array(dataSize).fill(122), offset } } }, writer);
+  return writer.finish();
+}
+
+function concat(parts: Uint8Array[]): Uint8Array {
+  const all = new Uint8Array(parts.reduce((n, p) => n + p.length, 0));
+  let pos = 0;
+  for (const p of parts) {
+    all.set(p, pos);
+    pos += p.length;
+  }
+  return all;
+}
+
+const hex = (data: Uint8Array) => Buffer.from(data).toString('hex');
+
+describe('ReplyStreamBuffer', () => {
+  const codec = new ProtobufCodec();
+
+  test('cuts out the replies in order, whatever the chunk boundaries', () => {
+    const replies = [encodeReply(10, 1), encodeReply(300, 2), encodeReply(0, 3), encodeReply(70000, 4), encodeReply(5, 5)];
+    const stream = concat(replies);
+    for (const chunkSize of [1, 2, 3, 7, 64, 1000, 65536, stream.length]) {
+      const buffer = new ReplyStreamBuffer();
+      const out: Uint8Array[] = [];
+      for (let i = 0; i < stream.length; i += chunkSize) {
+        buffer.push(stream.slice(i, i + chunkSize));
+        buffer.drain(data => codec.decodeReply(data), reply => out.push(reply));
+      }
+      expect(out.map(hex)).toEqual(replies.map(hex));
+    }
+  });
+
+  test('replies handed out stay intact while more data is buffered', () => {
+    const replies = [encodeReply(100, 1), encodeReply(100, 2), encodeReply(100, 3)];
+    const buffer = new ReplyStreamBuffer();
+    const out: Uint8Array[] = [];
+    for (const reply of replies) {
+      buffer.push(reply);
+      buffer.drain(data => codec.decodeReply(data), r => out.push(r));
+    }
+    expect(out.map(hex)).toEqual(replies.map(hex));
+  });
+});

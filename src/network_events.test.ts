@@ -1100,6 +1100,49 @@ describe('network event listeners', () => {
     expect(reported).toEqual(['handler failure']);
   });
 
+  test('setToken() after a token expired connect error lets a client without getToken connect', async () => {
+    // The connection token expired, and there is no getToken to get a new one.
+    let connects = 0;
+    server.onCommand = (cmd) => (cmd.connect !== undefined && ++connects === 1
+      ? { id: cmd.id, error: { code: 109, message: 'token expired' } }
+      : null);
+    const c = newClient({ token: 'expired' });
+    const errors: string[] = [];
+    c.on('error', ctx => errors.push(`${ctx.type}:${ctx.error.code}`));
+    const disconnected = new Promise<any>(resolve => c.once('disconnected', resolve));
+    c.connect();
+    expect((await disconnected).code).toBe(disconnectedCodes.unauthorized);
+    expect(errors).toEqual(['connect:109', `configuration:${errorCodes.badConfiguration}`]);
+
+    c.setToken('fresh');
+    c.connect();
+    await c.ready(3000);
+    const tokens = server.received.filter(cmd => cmd.connect !== undefined).map(cmd => cmd.connect.token);
+    expect(tokens).toEqual(['expired', 'fresh']);
+  });
+
+  test('setToken() keeps a token refresh required with getToken', async () => {
+    // A connect error 109 requires a new token: with getToken, a token set meanwhile
+    // may be the expired one.
+    let connects = 0;
+    server.onCommand = (cmd) => (cmd.connect !== undefined && ++connects === 1
+      ? { id: cmd.id, error: { code: 109, message: 'token expired' } }
+      : null);
+    let tokenCalls = 0;
+    const c = newClient({ getToken: () => Promise.resolve(`token-${++tokenCalls}`) });
+    c.on('error', ctx => {
+      if (ctx.type === 'connect') {
+        // Before the reconnect: the app sets a token meanwhile.
+        c.setToken('set-by-app');
+      }
+    });
+    c.connect();
+    await c.ready(3000);
+    const tokens = server.received.filter(cmd => cmd.connect !== undefined).map(cmd => cmd.connect.token);
+    expect(tokens).toEqual(['token-1', 'token-2']);
+    expect(tokenCalls).toBe(2);
+  });
+
   test('an exception in an error handler of a subscription token configuration error still fails the refresh', async () => {
     // The subscription token expires in a second, and there is no getToken to refresh it.
     server.onSubscribe = () => ({ expires: true, ttl: 1 });

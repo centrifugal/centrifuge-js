@@ -150,4 +150,80 @@ describe('recovered publications and state', () => {
       expect((c as any)._serverSubs.ss2.offset).toBe(0);
     });
   });
+
+  describe('map subscription', () => {
+    const entry = (n: number) => ({ key: `k${n}`, data: { n }, offset: n });
+
+    function mapSubscription(options: any = {}) {
+      const sub: any = c.newMapSubscription('m', options);
+      const events: string[] = [];
+      sub.on('subscribed', () => events.push('subscribed'));
+      sub.on('sync', (ctx: any) => events.push(`sync:${ctx.entries.length}`));
+      sub.on('publication', (ctx: any) => events.push(`publication:${ctx.data.n}`));
+      sub.on('update', (ctx: any) => events.push(`update:${ctx.data.n}`));
+      return { sub, events };
+    }
+
+    test('no sync after unsubscribe() from a subscribed handler', async () => {
+      server.onSubscribe = () => ({ epoch: 'e', offset: 1, state: [entry(1)] } as any);
+      const { sub, events } = mapSubscription();
+      sub.on('subscribed', () => sub.unsubscribe());
+      sub.subscribe();
+      c.connect();
+
+      await waitFor(() => server.received.some(cmd => cmd.unsubscribe !== undefined));
+      await delay(50);
+      expect(sub.state).toBe(SubscriptionState.Unsubscribed);
+      expect(events).toEqual(['subscribed']);
+    });
+
+    test('rest of catch-up not delivered after unsubscribe() from a publication handler', async () => {
+      server.onSubscribe = () => ({ epoch: 'e', offset: 3, recovered: true, publications: [entry(1), entry(2), entry(3)] } as any);
+      const { sub, events } = mapSubscription();
+      sub.on('publication', () => {
+        if (sub.state === SubscriptionState.Subscribed) {
+          sub.unsubscribe();
+        }
+      });
+      sub.subscribe();
+      c.connect();
+
+      await waitFor(() => sub.state === SubscriptionState.Unsubscribed);
+      await delay(50);
+      expect(events).toEqual(['subscribed', 'publication:1']);
+    });
+
+    test('no token refresh scheduled after unsubscribe() from a subscribed handler', async () => {
+      server.onSubscribe = () => ({ epoch: 'e', offset: 1, state: [entry(1)], expires: true, ttl: 60 } as any);
+      const { sub } = mapSubscription({ getToken: async () => 'token' });
+      sub.on('subscribed', () => sub.unsubscribe());
+      sub.subscribe();
+      c.connect();
+
+      await waitFor(() => server.received.some(cmd => cmd.unsubscribe !== undefined));
+      expect(sub._refreshTimeout).toBeNull();
+    });
+
+    // The new subscribe starts a new flow before the outdated one returns: the
+    // outdated one must not emit its sync (with the new flow's empty buffer).
+    test('unsubscribe() and subscribe() from a subscribed handler do not emit an outdated sync', async () => {
+      server.onSubscribe = () => ({ epoch: 'e', offset: 1, state: [entry(1)] } as any);
+      const { sub, events } = mapSubscription();
+      let resubscribed = false;
+      sub.on('subscribed', () => {
+        if (!resubscribed) {
+          resubscribed = true;
+          sub.unsubscribe();
+          sub.subscribe();
+        }
+      });
+      sub.subscribe();
+      c.connect();
+
+      await waitFor(() => events.includes('sync:1'));
+      await delay(50);
+      expect(events).toEqual(['subscribed', 'subscribed', 'sync:1']);
+      expect(sub.state).toBe(SubscriptionState.Subscribed);
+    });
+  });
 });

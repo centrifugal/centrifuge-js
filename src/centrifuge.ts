@@ -416,15 +416,18 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
 
       default:
         return new Promise((resolve, reject) => {
+          const id = this._nextPromiseId();
           const ctx: any = { resolve, reject };
 
           if (timeout) {
             ctx.timeout = setTimeout(() => {
+              // A call that gave up waiting leaves no waiter behind.
+              delete this._promises[id];
               reject({ code: errorCodes.timeout, message: 'timeout' });
             }, timeout);
           }
 
-          this._promises[this._nextPromiseId()] = ctx;
+          this._promises[id] = ctx;
         });
     }
   }
@@ -1544,10 +1547,12 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
       return Promise.resolve();
     }
     return new Promise((res, rej) => {
-      const timeout = setTimeout(function () {
+      const id = this._nextPromiseId();
+      const timeout = setTimeout(() => {
+        delete this._promises[id];
         rej({ code: errorCodes.timeout, message: 'timeout' });
       }, this._config.timeout);
-      this._promises[this._nextPromiseId()] = {
+      this._promises[id] = {
         timeout: timeout,
         resolve: res,
         reject: rej
@@ -2057,6 +2062,19 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     return this._serverSubs[channel] !== undefined;
   }
 
+  // The client-side subscription a push is for. The server allows one subscription
+  // per channel: while a server-side subscription has the channel, its pushes
+  // belong to it unless the client-side subscription is subscribed, e.g. when the
+  // app kept an unsubscribed subscription object of that channel.
+  private _getSubForPush(channel: string, id?: number) {
+    const sub = this._getSub(channel, id);
+    // @ts-ignore – we are hiding some symbols from public API autocompletion.
+    if (sub && channel && this._isServerSub(channel) && !sub._isSubscribed()) {
+      return null;
+    }
+    return sub;
+  }
+
   private _sendSubscribeCommands(): any[] {
     const commands: any[] = [];
     for (const channel in this._subs) {
@@ -2321,7 +2339,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
   }
 
   private _handleJoin(channel: string, join: any, id?: number) {
-    const sub = this._getSub(channel, id);
+    const sub = this._getSubForPush(channel, id);
     if (!sub) {
       // See _handlePublication: a compacted push with an unknown id has an empty
       // channel and no matching subscription — drop instead of crashing.
@@ -2341,7 +2359,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
   }
 
   private _handleLeave(channel: string, leave: any, id?: number) {
-    const sub = this._getSub(channel, id);
+    const sub = this._getSubForPush(channel, id);
     if (!sub) {
       // See _handlePublication: a compacted push with an unknown id has an empty
       // channel and no matching subscription — drop instead of crashing.
@@ -2361,7 +2379,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
   }
 
   private _handleUnsubscribe(channel: string, unsubscribe: any) {
-    const sub = this._getSub(channel, 0);
+    const sub = this._getSubForPush(channel, 0);
     if (!sub) {
       if (channel && this._isServerSub(channel)) {
         delete this._serverSubs[channel];
@@ -2454,7 +2472,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
   }
 
   private _handlePublication(channel: string, pub: any, id?: number) {
-    const sub = this._getSub(channel, id);
+    const sub = this._getSubForPush(channel, id);
     if (!sub) {
       // No client-side subscription. With channel compaction the push carries a
       // numeric id and no channel, so an unknown id (e.g. a publication for a
@@ -2462,10 +2480,12 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
       // be dropped, not fall through to sub._handlePublication on null.
       if (channel && this._isServerSub(channel)) {
         const ctx = this._getPublicationContext(channel, pub);
-        this.emit('publication', ctx);
+        // Before the event: a connect from its handler recovers after it (see
+        // BaseSubscription._handlePublication).
         if (pub.offset !== undefined) {
           this._serverSubs[channel].offset = pub.offset;
         }
+        this.emit('publication', ctx);
       }
       return;
     }

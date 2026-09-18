@@ -85,10 +85,11 @@ const defaults: Options = {
 
 const websocketNotFound = 'WebSocket constructor not found, make sure it is available globally or passed as a dependency in Centrifuge options';
 
-// A call timer running at least this late means the event loop didn't run
-// meanwhile: the process was suspended or blocked (see _registerCall).
+// A call or no-ping timer running at least this late means the event loop didn't
+// run meanwhile: the process was suspended or blocked (see _registerCall).
 const lateCallTimer = 1000;
-// How long such a call still waits for its reply before failing.
+// How long such a call still waits for its reply, or the connection for a ping,
+// before failing.
 const lateCallGrace = 1000;
 
 interface serverSubscription {
@@ -2205,12 +2206,23 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
       return;
     }
     this._clearServerPingTimeout();
+    const delay = this._serverPing + this._config.maxServerPingDelay;
+    const due = Date.now() + delay;
     this._serverPingTimeout = setTimeout(() => {
       if (!this._isConnected()) {
         return;
       }
-      this._disconnect(connectingCodes.noPing, 'no ping', true);
-    }, this._serverPing + this._config.maxServerPingDelay);
+      // A ping may have been received already but not processed yet, e.g. when a
+      // suspended process resumes: let that data be processed first, as for a call
+      // (see _registerCall). Any data received re-arms this timer.
+      const late = Date.now() - due >= lateCallTimer;
+      this._serverPingTimeout = setTimeout(() => {
+        if (!this._isConnected()) {
+          return;
+        }
+        this._disconnect(connectingCodes.noPing, 'no ping', true);
+      }, late ? lateCallGrace : 0);
+    }, delay);
   }
 
   private _getSubscribeContext(channel: string, result: any): SubscribedContext {

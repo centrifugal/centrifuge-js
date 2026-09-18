@@ -562,6 +562,135 @@ describe('dispatch and subscription state', () => {
     expect(sub._refreshTimeout).toBe(timer);
   }, 10000);
 
+  // getSignature calls held until the test resolves them.
+  function heldSignatures() {
+    const calls: Array<{ keys: string[]; resolve: (result: any) => void }> = [];
+    return {
+      calls,
+      getSignature: (ctx: any) => new Promise(resolve => calls.push({ keys: ctx.keys, resolve })),
+    };
+  }
+
+  const trackCommands = () => server.received.filter(cmd => cmd.sub_refresh !== undefined && cmd.sub_refresh.track !== undefined);
+
+  async function reconnected(sub: any) {
+    const subscribing = new Promise(resolve => sub.once('subscribing', resolve));
+    server.closeConnection();
+    await subscribing;
+    await sub.ready(3000);
+  }
+
+  test('a replay signature obtained before a reconnect does not track again after it', async () => {
+    server.onSubscribe = () => ({});
+    const signatures = heldSignatures();
+    const sub: any = c.newSharedPollSubscription('poll', { getSignature: signatures.getSignature } as any);
+    sub.track(['k1']);
+    sub.subscribe();
+    c.connect();
+    await sub.ready(3000);
+    await waitFor(() => signatures.calls.length === 1);
+
+    await reconnected(sub);
+    await waitFor(() => signatures.calls.length === 2);
+    signatures.calls.forEach(call => call.resolve({ keys: ['k1'], signature: 'sig' }));
+    await delay(100);
+    expect(trackCommands()).toHaveLength(1);
+    expect(sub._sharedPollSignatures).toHaveLength(1);
+  });
+
+  test('a replay signature obtained before unsubscribe() and subscribe() does not change the next subscription', async () => {
+    server.onSubscribe = () => ({});
+    const signatures = heldSignatures();
+    const sub: any = c.newSharedPollSubscription('poll', { getSignature: signatures.getSignature } as any);
+    const updates: string[] = [];
+    sub.on('update', (ctx: any) => updates.push(`${ctx.key}:${ctx.removed ? 'removed' : ctx.version}`));
+    sub.track(['b']);
+    sub.subscribe();
+    c.connect();
+    await sub.ready(3000);
+    await waitFor(() => signatures.calls.length === 1);
+
+    sub.unsubscribe();
+    sub.track(['b']);
+    sub.subscribe();
+    await sub.ready(3000);
+    await waitFor(() => signatures.calls.length === 2);
+    // The earlier request's answer no longer authorizes the key.
+    signatures.calls[0].resolve({ keys: [], signature: 'old' });
+    await delay(50);
+    expect(updates).toEqual([]);
+    expect(sub._sharedPollTrackedItems.has('b')).toBe(true);
+  });
+
+  test('a consolidated signature obtained before a reconnect does not track again after it', async () => {
+    server.onSubscribe = () => ({});
+    const signatures = heldSignatures();
+    const sub: any = c.newSharedPollSubscription('poll', { getSignature: signatures.getSignature } as any);
+    sub.subscribe();
+    c.connect();
+    await sub.ready(3000);
+    sub.track([{ key: 'k1', version: 0 }], 'sig');
+    await waitFor(() => trackCommands().length === 1);
+
+    // E.g. the signature TTL timer fires.
+    sub._sharedPollRefreshSignature();
+    await waitFor(() => signatures.calls.length === 1);
+    await reconnected(sub);
+    // The replay of the signature it had.
+    await waitFor(() => trackCommands().length === 2);
+    signatures.calls[0].resolve({ keys: ['k1'], signature: 'consolidated' });
+    await delay(100);
+    expect(trackCommands()).toHaveLength(2);
+    expect(sub._sharedPollSignatures.map((entry: any) => entry.signature)).toEqual(['sig']);
+  });
+
+  test('a track(keys) signature obtained before a reconnect does not track again after it', async () => {
+    server.onSubscribe = () => ({});
+    const signatures = heldSignatures();
+    const sub: any = c.newSharedPollSubscription('poll', { getSignature: signatures.getSignature } as any);
+    sub.subscribe();
+    c.connect();
+    await sub.ready(3000);
+    sub.track(['k1']);
+    await waitFor(() => signatures.calls.length === 1);
+
+    await reconnected(sub);
+    // The replay's own request.
+    await waitFor(() => signatures.calls.length === 2);
+    signatures.calls.forEach(call => call.resolve({ keys: ['k1'], signature: 'sig' }));
+    await delay(100);
+    expect(trackCommands()).toHaveLength(1);
+  });
+
+  test('track() from a subscribed handler is sent once', async () => {
+    server.onSubscribe = () => ({});
+    const sub: any = c.newSharedPollSubscription('poll');
+    sub.once('subscribed', () => sub.track([{ key: 'k1', version: 0 }], 'sig'));
+    sub.subscribe();
+    c.connect();
+    await sub.ready(3000);
+    await delay(100);
+    expect(trackCommands()).toHaveLength(1);
+  });
+
+  test('track(keys) from a subscribed handler gets one signature and is sent once', async () => {
+    server.onSubscribe = () => ({});
+    let calls = 0;
+    const sub: any = c.newSharedPollSubscription('poll', {
+      getSignature: (ctx: any) => {
+        calls++;
+        return Promise.resolve({ keys: ctx.keys, signature: 'sig' });
+      },
+    } as any);
+    sub.once('subscribed', () => sub.track(['k1']));
+    sub.subscribe();
+    c.connect();
+    await sub.ready(3000);
+    await delay(100);
+    expect(calls).toBe(1);
+    expect(trackCommands()).toHaveLength(1);
+  });
+
   test('unsubscribe() and subscribe() from a publication handler recover after that publication', async () => {
     const { sub } = await subscribed('ch');
     sub.once('publication', () => {

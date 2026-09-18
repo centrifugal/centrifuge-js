@@ -1226,12 +1226,14 @@ describe('network event listeners', () => {
     }
   }, 10000);
 
-  test('a websocket that opens but never answers falls back to the next transport', async () => {
-    // E.g. a proxy that completes the upgrade, then drops frames.
-    const silent = await startSilentServer();
+  test('a first connect reply slower than the timeout keeps the websocket of a transport list', async () => {
+    // As in 5.7.4: a socket that opened keeps its transport. The first connect is
+    // never answered, e.g. by an overloaded node; the next one is.
+    let connects = 0;
+    server.onCommand = (cmd) => (cmd.connect !== undefined && ++connects === 1 ? {} : null);
     const emulation = fakeEmulation(cmd => ({ id: cmd.id, connect: { client: 'fake-client', version: '0.0.0' } }));
     const c = new Centrifuge([
-      { transport: 'websocket' as TransportName, endpoint: silent.url },
+      { transport: 'websocket' as TransportName, endpoint: server.url },
       { transport: 'http_stream' as TransportName, endpoint: 'http://localhost:1/connection/http_stream' },
     ], {
       websocket: WebSocket,
@@ -1242,15 +1244,81 @@ describe('network event listeners', () => {
       networkEventTarget: target,
     } as any);
     clients.push(c);
-    try {
-      c.connect();
-      await c.ready(3000);
-      expect(emulation.connects()).toBe(1);
-      expect((c as any)._transport.name()).toBe('http_stream');
-    } finally {
-      c.disconnect();
-      await silent.close();
+    c.connect();
+    await c.ready(3000);
+    expect(connects).toBe(2);
+    expect(emulation.connects()).toBe(0);
+    expect((c as any)._transport.name()).toBe('websocket');
+  });
+
+  test('connect data that cannot be encoded over an emulation transport fails the attempt', async () => {
+    let streams = 0;
+    const emulation = fakeEmulation(cmd => {
+      streams++;
+      return { id: cmd.id, connect: { client: 'fake-client', version: '0.0.0' } };
+    });
+    const c = newEmulationClient('http_stream', emulation, {
+      data: { n: (globalThis as any).BigInt(1) },
+      minReconnectDelay: 200,
+      maxReconnectDelay: 200,
+    } as any);
+    const errors: string[] = [];
+    c.on('error', ctx => errors.push(ctx.type));
+    const inits = countTransportInits(c);
+    expect(() => c.connect()).not.toThrow();
+    await delay(500);
+    expect(streams).toBe(0);
+    expect(errors.length).toBeGreaterThan(0);
+    expect(new Set(errors)).toEqual(new Set(['transport']));
+    expect(inits.n).toBe(0);
+    expect(c.state).toBe(State.Connecting);
+  });
+
+  test('a refused emulation handshake before a websocket is reported once', async () => {
+    const c = new Centrifuge([
+      { transport: 'http_stream' as TransportName, endpoint: 'http://localhost:1/connection/http_stream' },
+      { transport: 'websocket' as TransportName, endpoint: server.url },
+    ], {
+      websocket: WebSocket,
+      fetch: () => Promise.reject(new Error('connection refused')),
+      readableStream: ReadableStream,
+      emulationEndpoint: 'http://localhost:1/emulation',
+      minReconnectDelay: 10,
+      maxReconnectDelay: 50,
+      networkEventTarget: target,
+    } as any);
+    clients.push(c);
+    const errors: string[] = [];
+    c.on('error', ctx => errors.push(ctx.type));
+    c.connect();
+    await c.ready(3000);
+    // Not also a connect error for the connect command the teardown rejected.
+    expect(errors).toEqual(['transport']);
+  });
+
+  test('the first round over a transport list does not count towards the backoff', async () => {
+    const endpoint = { transport: 'http_stream' as TransportName, endpoint: 'http://localhost:1/connection/http_stream' };
+    let streams = 0;
+    const c = new Centrifuge([endpoint, endpoint, endpoint], {
+      fetch: () => {
+        streams++;
+        return Promise.reject(new Error('connection refused'));
+      },
+      readableStream: ReadableStream,
+      emulationEndpoint: 'http://localhost:1/emulation',
+      minReconnectDelay: 1000,
+      maxReconnectDelay: 10000,
+      networkEventTarget: target,
+    } as any);
+    clients.push(c);
+    c.connect();
+    for (let i = 0; i < 100 && streams < 3; i++) {
+      await delay(5);
     }
+    await delay(50);
+    // The delay after the round is the first backoff step, not the fourth.
+    expect(streams).toBe(3);
+    expect((c as any)._reconnectAttempts).toBe(1);
   });
 
   test('setToken() while a connect with an expired token is in flight lets a client without getToken connect', async () => {

@@ -1092,8 +1092,6 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
       initialCommands.push(connectCommand);
     }
 
-    const initialData = this._codec.encodeCommands(initialCommands);
-
     this._transportClosed = false;
 
     // Fails an attempt that did not open in time or could not be initialized. It
@@ -1156,9 +1154,9 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
           return;
         }
         self._transportIsOpen = true;
-        // Not marked as reached yet: a socket that opens is not proof the server is
-        // behind it, e.g. a proxy completing the upgrade and then dropping frames.
-        // The connect reply marks it (see _connectResponse).
+        // A socket that opened keeps its transport, as in 5.7.4: a slow first connect
+        // reply must not move the client to a fallback transport for good.
+        self._transportWasOpen = true;
         self.startBatching();
         try {
           self._sendConnect(false);
@@ -1241,6 +1239,9 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
           self._disconnect(code, reason, needReconnect);
         };
         if (self._isConnecting() && !wasOpen) {
+          // The teardown rejects a connect command pending on it (emulation): this
+          // transport error reports the failure, not a connect error too.
+          self._abortedTransportId = transportId;
           self._emitError({
             type: 'transport',
             error: {
@@ -1273,7 +1274,9 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
 
     let initialized: any;
     try {
-      initialized = transport.initialize(this._codecName(), callbacks, initialData);
+      // Encoded here: commands the codec can't encode, e.g. connect data with a BigInt,
+      // fail the attempt as a transport failing to initialize, not connect().
+      initialized = transport.initialize(this._codecName(), callbacks, this._codec.encodeCommands(initialCommands));
     } catch (e) {
       onInitializeError(e);
       return;
@@ -1497,10 +1500,10 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
           this._transportWasOpen = true;
         }
         if (!replied && this._emulation && !this._transportWasOpen) {
-          // A handshake the server never answered, e.g. timed out or not written, moves
-          // on to the next transport, also over a socket that opened: after a round the
-          // backoff applies. For other failures the transport's close callback does
-          // that, but it is ignored after the teardown below.
+          // A handshake the server never answered, e.g. timed out, moves on to the next
+          // transport before any reply, but not after a socket opened (see onOpen). For
+          // other failures the transport's close callback does that, but it is ignored
+          // after the teardown below.
           this._advanceTransportIndex();
         }
         this._debug('closing transport due to connect error');
@@ -1519,10 +1522,8 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     if (this._emulation && !this._transportWasOpen && !this._triedAllTransports) {
       isInitialHandshake = true;
     }
-    let delay = this._getReconnectDelay();
-    if (isInitialHandshake) {
-      delay = 0;
-    }
+    // The first round over the transports doesn't count towards the backoff.
+    const delay = isInitialHandshake ? 0 : this._getReconnectDelay();
     this._debug('reconnect after ' + delay + ' milliseconds');
     this._clearReconnectTimeout();
     this._reconnectTimeout = setTimeout(() => {

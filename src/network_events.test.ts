@@ -77,6 +77,47 @@ async function startSilentServer(onMessage: (ws: WebSocket) => void = () => {}) 
   };
 }
 
+// Fake SSE and http_stream transports. Each connect is answered with the replies
+// onConnect returns for the connect command; emulation requests get onEmulation().
+function fakeEmulation(onConnect: (cmd: any) => any, onEmulation: () => any = () => ({ ok: true, status: 200 })) {
+  let connects = 0;
+  const encode = (cmd: any) => {
+    connects++;
+    const replies = onConnect(cmd);
+    return (Array.isArray(replies) ? replies : [replies]).map(r => JSON.stringify(r));
+  };
+  class FakeEventSource {
+    onopen: any = null;
+    onmessage: any = null;
+    onerror: any = null;
+    constructor(url: string) {
+      const lines = encode(JSON.parse(new URL(url).searchParams.get('cf_connect')!));
+      setTimeout(() => {
+        this.onopen?.();
+        lines.forEach(data => this.onmessage?.({ data }));
+      }, 0);
+    }
+    close() { /* no-op */ }
+  }
+  const fetch = (url: string, opts: any) => {
+    if (url.endsWith('/emulation')) {
+      return Promise.resolve(onEmulation());
+    }
+    const lines = encode(JSON.parse(opts.body));
+    const body = new ReadableStream({
+      start(controller) {
+        lines.forEach(line => controller.enqueue(new TextEncoder().encode(line + '\n')));
+        opts.signal.addEventListener('abort', () => controller.error(new Error('aborted')));
+      },
+    });
+    return Promise.resolve({ ok: true, status: 200, body });
+  };
+  return {
+    options: { eventsource: FakeEventSource, fetch, readableStream: ReadableStream, emulationEndpoint: 'http://localhost:1/emulation' },
+    connects: () => connects,
+  };
+}
+
 describe('network event listeners', () => {
   let server: FakeCentrifugoServer;
   let target: CountingEventTarget;
@@ -112,6 +153,18 @@ describe('network event listeners', () => {
     const errors: string[] = [];
     c.on('error', (ctx) => errors.push(`${ctx.type}:${ctx.error.code}`));
     return errors;
+  };
+
+  const newEmulationClient = (transport: string, emulation: ReturnType<typeof fakeEmulation>, options: Partial<Options> = {}) => {
+    const c = new Centrifuge([
+      { transport: transport as TransportName, endpoint: `http://localhost:1/connection/${transport}` },
+    ], {
+      ...emulation.options,
+      networkEventTarget: target,
+      ...options,
+    });
+    clients.push(c);
+    return c;
   };
 
   test('removed on disconnect() and added again on connect()', async () => {
@@ -659,55 +712,30 @@ describe('network event listeners', () => {
 
   test.each(['sse', 'http_stream'])('connect error returned over %s is retried after the reconnect delay', async (transport) => {
     // E.g. a failing connect proxy: the transport reaches the server, which rejects the connect.
-    let attempts = 0;
-    const errorReply = (connectCommand: string) => {
-      attempts++;
-      const cmd = JSON.parse(connectCommand);
-      return JSON.stringify({ id: cmd.id, error: { code: 100, message: 'internal server error', temporary: true } });
-    };
-    class ErrorEventSource {
-      onopen: any = null;
-      onmessage: any = null;
-      onerror: any = null;
-      constructor(url: string) {
-        const reply = errorReply(new URL(url).searchParams.get('cf_connect')!);
-        setTimeout(() => {
-          this.onopen?.();
-          this.onmessage?.({ data: reply });
-        }, 0);
-      }
-      close() { /* no-op */ }
-    }
-    const errorFetch = (_url: string, opts: any) => {
-      const reply = errorReply(opts.body);
-      const body = new ReadableStream({
-        start(controller) {
-          controller.enqueue(new TextEncoder().encode(reply + '\n'));
-          opts.signal.addEventListener('abort', () => controller.error(new Error('aborted')));
-        },
-      });
-      return Promise.resolve({ ok: true, status: 200, body });
-    };
-    const c = new Centrifuge([
-      { transport: transport as TransportName, endpoint: `http://localhost:1/connection/${transport}` },
-    ], {
-      eventsource: ErrorEventSource,
-      fetch: errorFetch,
-      readableStream: ReadableStream,
-      emulationEndpoint: 'http://localhost:1/emulation',
-      minReconnectDelay: 300,
-      maxReconnectDelay: 300,
-      networkEventTarget: target,
-    });
-    clients.push(c);
+    const emulation = fakeEmulation(cmd => ({ id: cmd.id, error: { code: 100, message: 'internal server error', temporary: true } }));
+    const c = newEmulationClient(transport, emulation, { minReconnectDelay: 300, maxReconnectDelay: 300 });
     const errors = collectErrors(c);
 
     c.connect();
     await delay(500);
     // The first attempt, and one more after the reconnect delay.
-    expect(attempts).toBeGreaterThanOrEqual(1);
-    expect(attempts).toBeLessThanOrEqual(2);
+    expect(emulation.connects()).toBeGreaterThanOrEqual(1);
+    expect(emulation.connects()).toBeLessThanOrEqual(2);
     expect(errors[0]).toBe('connect:100');
+    expect(c.state).toBe(State.Connecting);
+  });
+
+  test.each(['sse', 'http_stream'])('disconnect pushed during a connect over %s is retried after the reconnect delay', async (transport) => {
+    // E.g. a connect proxy returning a disconnect, or a server shutting down: the
+    // server pushes a disconnect with a reconnect code instead of a connect reply.
+    const emulation = fakeEmulation(() => ({ push: { disconnect: { code: 3001, reason: 'shutdown' } } }));
+    const c = newEmulationClient(transport, emulation, { minReconnectDelay: 300, maxReconnectDelay: 300 });
+
+    c.connect();
+    await delay(500);
+    // The first attempt, and one more after the reconnect delay.
+    expect(emulation.connects()).toBeGreaterThanOrEqual(1);
+    expect(emulation.connects()).toBeLessThanOrEqual(2);
     expect(c.state).toBe(State.Connecting);
   });
 });

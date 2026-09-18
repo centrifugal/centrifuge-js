@@ -67,6 +67,30 @@ describe('WebtransportTransport._startReading UTF-8 handling', () => {
     // character straddling the chunk boundary.
     expect(messages).toEqual([payload]);
   });
+
+  it('reads a large reply arriving in many small chunks without copying the buffered text for each', async () => {
+    const line = JSON.stringify({ push: { channel: 'ch', pub: { data: 'z'.repeat(8 * 1024 * 1024), offset: 1 } } });
+    const data = new TextEncoder().encode(line + '\n');
+    const chunks: Uint8Array[] = [];
+    for (let i = 0; i < data.length; i += 1024) {
+      chunks.push(data.slice(i, i + 1024));
+    }
+
+    const transport = new WebtransportTransport('https://example.com/connection/webtransport', {});
+    (transport as any)._protocol = 'json';
+    (transport as any)._stream = { readable: fakeReadableStream(chunks) };
+
+    const messages: any[] = [];
+    const eventTarget = new EventTarget();
+    eventTarget.addEventListener('message', (e: any) => { messages.push(e.data); });
+    const started = Date.now();
+    await (transport as any)._startReading(eventTarget);
+
+    expect(messages).toHaveLength(1);
+    expect(messages[0] === line).toBe(true);
+    // Copying the whole buffered text again for each of the 8193 chunks takes seconds.
+    expect(Date.now() - started).toBeLessThan(1000);
+  }, 60000);
 });
 
 describe('WebtransportTransport._startReading protobuf', () => {

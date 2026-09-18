@@ -1,3 +1,6 @@
+// A buffer grown beyond this for a large reply is released once the reply is cut out.
+const maxRetainedSize = 64 * 1024;
+
 /** @internal Collects the chunks of a binary stream and cuts complete replies out
  * of them. Appending a chunk and cutting a reply cost their own size only, not the
  * size of what is buffered: a large reply arriving in many small chunks is not
@@ -41,9 +44,45 @@ export class ReplyStreamBuffer {
       this._start = end;
       onReply(reply);
     }
-    if (this._start === this._end) {
+    const size = this._end - this._start;
+    if (this._buf.length > maxRetainedSize && size <= this._buf.length / 4) {
+      // Don't keep the memory of a large reply for the rest of the connection. The
+      // copy costs at most a quarter of what growing the buffer did.
+      this._buf = this._buf.slice(this._start, this._end);
+      this._start = 0;
+      this._end = size;
+    } else if (size === 0) {
       this._start = 0;
       this._end = 0;
+    }
+  }
+}
+
+/** @internal Collects the chunks of a stream of newline-delimited text replies and
+ * cuts complete lines out of them. Each chunk is scanned once, and the parts of a
+ * line arriving in many chunks are joined once: a large reply doesn't make every
+ * chunk cost more. */
+export class LineStreamBuffer {
+  private _decoder = new TextDecoder();
+  private _parts: string[] = [];
+
+  // Calls onLine with each complete line, in order, without its '\n'.
+  push(chunk: Uint8Array, onLine: (line: string) => void): void {
+    // stream: true keeps decoder state across reads so a multi-byte UTF-8 character
+    // split across two chunks is not corrupted into replacement characters.
+    const text = this._decoder.decode(chunk, { stream: true });
+    let start = 0;
+    let end = text.indexOf('\n');
+    while (end !== -1) {
+      this._parts.push(text.substring(start, end));
+      const line = this._parts.join('');
+      this._parts = [];
+      start = end + 1;
+      onLine(line);
+      end = text.indexOf('\n', start);
+    }
+    if (start < text.length) {
+      this._parts.push(text.substring(start));
     }
   }
 }

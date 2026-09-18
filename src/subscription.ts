@@ -36,6 +36,8 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
   private _maxResubscribeDelay: number;
   private _recover: boolean;
   private _offset: number | null;
+  /** The offset of the publication being dispatched, until its handler returned. See _getOffset. */
+  private _pendingOffset: number | null = null;
   private _epoch: string | null;
   // @ts-ignore – this is used by a client in centrifuge.ts.
   private _id: number;
@@ -1039,9 +1041,11 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
       // @ts-ignore – we are hiding some methods from public API autocompletion.
       ctx = this._centrifuge._getPublicationContext(this.channel, pub);
     }
-    // A publication counts as delivered from its last event on: a handler of that
-    // event subscribing again recovers after it, not from it (a duplicate), and a
-    // handler of an earlier event unsubscribing doesn't skip the last one.
+    // The position moves after the app has the publication, so the position it can
+    // observe never runs ahead of what it received: a handler that throws, or that
+    // unsubscribes before the last event, doesn't skip it. A subscribe command built
+    // while a handler runs still recovers after this publication, because _getOffset
+    // prefers the pending offset — a resubscribe from the handler gets no duplicate.
     if (this._map || this._sharedPoll) {
       this.emit('publication', ctx);
       if (!this._isSubscribed()) {
@@ -1050,8 +1054,13 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
       this._setPublicationPosition(pub);
       this.emit('update', ctx);
     } else {
+      this._pendingOffset = hasOffset(pub.offset) ? toOffset(pub.offset) : null;
+      try {
+        this.emit('publication', ctx);
+      } finally {
+        this._pendingOffset = null;
+      }
       this._setPublicationPosition(pub);
-      this.emit('publication', ctx);
     }
   }
 
@@ -1290,6 +1299,12 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
   }
 
   private _getOffset() {
+    // A publication being dispatched counts as delivered: a subscribe command built
+    // from its handler recovers after it, while the stored position still holds the
+    // previous one until that handler returned (see _handlePublication).
+    if (this._pendingOffset !== null) {
+      return this._pendingOffset;
+    }
     const offset = this._offset;
     if (offset !== null) {
       return offset;

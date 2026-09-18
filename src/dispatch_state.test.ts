@@ -998,6 +998,19 @@ describe('dispatch and subscription state', () => {
     expect(subscribeCommands()[1].subscribe).toMatchObject({ recover: true, offset: 1, epoch: 'e' });
   });
 
+  test('the stored position moves only after a publication handler returned', async () => {
+    const { sub } = await subscribed('ch');
+    const during: any[] = [];
+    sub.on('publication', () => during.push((sub as any)._offset));
+
+    sendFrame(publication('ch', 1), publication('ch', 2));
+    await waitFor(() => during.length === 2);
+
+    // The position the app can observe never runs ahead of what it received.
+    expect(during).toEqual([0, 1]);
+    expect((sub as any)._offset).toBe(2);
+  });
+
   test('a getState subscription created before a state invalidation still loads its state', async () => {
     let getStateCalls = 0;
     const sub = c.newSubscription('ch', {

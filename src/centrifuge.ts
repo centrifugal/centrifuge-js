@@ -1265,7 +1265,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
           self._connectError(rejectCtx.error, self._transportId !== transportId, rejectCtx.next !== undefined);
         }
       } catch (err) {
-        self._dispatchFailed(err);
+        self._rejectionFailed(err, rejectCtx);
       } finally {
         if (rejectCtx.next) {
           rejectCtx.next();
@@ -1651,6 +1651,18 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     Promise.reject(err);
   }
 
+  // An exception while handling a rejected command. A rejection with next() carries
+  // a reply, and is handled as any reply (see _dispatchFailed). A timeout or a teardown
+  // doesn't: stopping the client would cancel the reconnect or retry the handling
+  // scheduled, so the exception is only reported.
+  private _rejectionFailed(err: any, rejectCtx: any) {
+    if (rejectCtx.next !== undefined) {
+      this._dispatchFailed(err);
+    } else {
+      this._reportDispatchError(err);
+    }
+  }
+
   private _dispatchReply(reply: any) {
     let next: any;
     const p = new Promise(resolve => {
@@ -1832,13 +1844,18 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
   private _getToken(): Promise<string> {
     this._debug('get connection token');
     if (!this._config.getToken) {
-      this.emit('error', {
-        type: 'configuration',
-        error: {
-          code: errorCodes.badConfiguration,
-          message: 'token expired but no getToken function set in the configuration'
-        }
-      });
+      try {
+        this.emit('error', {
+          type: 'configuration',
+          error: {
+            code: errorCodes.badConfiguration,
+            message: 'token expired but no getToken function set in the configuration'
+          }
+        });
+      } catch (e) {
+        // The attempt must fail as unauthorized all the same, not stay in progress.
+        this._reportDispatchError(e);
+      }
       return Promise.reject(new UnauthorizedError(''));
     }
     return this._config.getToken({});
@@ -1884,7 +1901,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
             self._refreshError(rejectCtx.error);
           }
         } catch (err) {
-          self._dispatchFailed(err);
+          self._rejectionFailed(err, rejectCtx);
         } finally {
           if (rejectCtx.next) {
             rejectCtx.next();
@@ -1978,7 +1995,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
         try {
           self._disconnect(connectingCodes.unsubscribeError, 'unsubscribe error', true);
         } catch (err) {
-          self._dispatchFailed(err);
+          self._rejectionFailed(err, rejectCtx);
         }
       });
     });

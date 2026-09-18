@@ -2,6 +2,7 @@ import { Centrifuge } from './centrifuge';
 import {
   SubscribedContext,
   PublicationContext,
+  MapSyncContext,
   MapUpdateContext,
   TransportName,
 } from './types';
@@ -173,6 +174,158 @@ test('stream: recovery after unsubscribe/resubscribe', async () => {
   const pubs = await recoveredPubs;
   expect(pubs[0].data).toEqual({ seq: 2, msg: 'while away' });
   expect(pubs[1].data).toEqual({ seq: 3, msg: 'still away' });
+
+  await disconnectClient(c);
+});
+
+// ─── Unsubscribe from a handler during recovery ───────────────────────────
+// What a handler unsubscribing mid-recovery didn't get must come with the next
+// subscribe, not be skipped by a position moved past it.
+
+test('stream: publications not delivered after unsubscribe() from a subscribed handler are recovered later', async () => {
+  const c = createClient();
+  c.connect();
+  await c.ready(5000);
+
+  const ch = uniqueChannel('recovery');
+  const sub = c.newSubscription(ch);
+  sub.subscribe();
+  await sub.ready(5000);
+  sub.unsubscribe();
+
+  await apiPublish(ch, { seq: 1 });
+  await apiPublish(ch, { seq: 2 });
+  await apiPublish(ch, { seq: 3 });
+
+  const received: number[] = [];
+  sub.on('publication', (ctx: PublicationContext) => received.push(ctx.data.seq));
+  sub.once('subscribed', () => sub.unsubscribe());
+  const unsubscribed = waitForEvent(sub, 'unsubscribed');
+  sub.subscribe();
+  await unsubscribed;
+  expect(received).toEqual([]);
+
+  const recovered = collectEvents<PublicationContext>(sub, 'publication', 3);
+  sub.subscribe();
+  expect((await recovered).map(p => p.data.seq)).toEqual([1, 2, 3]);
+
+  await disconnectClient(c);
+});
+
+test('stream: publications not delivered after unsubscribe() from a publication handler are recovered later', async () => {
+  const c = createClient();
+  c.connect();
+  await c.ready(5000);
+
+  const ch = uniqueChannel('recovery');
+  const sub = c.newSubscription(ch);
+  sub.subscribe();
+  await sub.ready(5000);
+  sub.unsubscribe();
+
+  await apiPublish(ch, { seq: 1 });
+  await apiPublish(ch, { seq: 2 });
+  await apiPublish(ch, { seq: 3 });
+
+  const received: number[] = [];
+  sub.on('publication', (ctx: PublicationContext) => received.push(ctx.data.seq));
+  sub.once('publication', () => sub.unsubscribe());
+  const unsubscribed = waitForEvent(sub, 'unsubscribed');
+  sub.subscribe();
+  await unsubscribed;
+  expect(received).toEqual([1]);
+
+  const recovered = collectEvents<PublicationContext>(sub, 'publication', 2);
+  sub.subscribe();
+  expect((await recovered).map(p => p.data.seq)).toEqual([2, 3]);
+
+  await disconnectClient(c);
+});
+
+test('map: catch-up not delivered after unsubscribe() from an update handler is recovered later', async () => {
+  const c = createClient();
+  c.connect();
+  await c.ready(5000);
+
+  const ch = uniqueChannel('positioned');
+  const sub = c.newMapSubscription(ch);
+  sub.subscribe();
+  await sub.ready(5000);
+  sub.unsubscribe();
+
+  await apiMapPublish(ch, 'k1', { seq: 1 });
+  await apiMapPublish(ch, 'k2', { seq: 2 });
+  await apiMapPublish(ch, 'k3', { seq: 3 });
+
+  const received: string[] = [];
+  sub.on('update', (ctx: MapUpdateContext) => received.push(ctx.key));
+  sub.once('update', () => sub.unsubscribe());
+  const subscribed = waitForEvent<SubscribedContext>(sub, 'subscribed');
+  const unsubscribed = waitForEvent(sub, 'unsubscribed');
+  sub.subscribe();
+  expect((await subscribed).recovered).toBe(true);
+  await unsubscribed;
+  expect(received).toEqual(['k1']);
+
+  const recovered = collectEvents<MapUpdateContext>(sub, 'update', 2);
+  sub.subscribe();
+  expect((await recovered).map(u => u.key)).toEqual(['k2', 'k3']);
+
+  await disconnectClient(c);
+});
+
+test('map: catch-up not delivered after unsubscribe() from a subscribed handler is recovered later', async () => {
+  const c = createClient();
+  c.connect();
+  await c.ready(5000);
+
+  const ch = uniqueChannel('positioned');
+  const sub = c.newMapSubscription(ch);
+  sub.subscribe();
+  await sub.ready(5000);
+  sub.unsubscribe();
+
+  await apiMapPublish(ch, 'k1', { seq: 1 });
+  await apiMapPublish(ch, 'k2', { seq: 2 });
+  await apiMapPublish(ch, 'k3', { seq: 3 });
+
+  const received: string[] = [];
+  sub.on('update', (ctx: MapUpdateContext) => received.push(ctx.key));
+  sub.once('subscribed', () => sub.unsubscribe());
+  const unsubscribed = waitForEvent(sub, 'unsubscribed');
+  sub.subscribe();
+  await unsubscribed;
+  expect(received).toEqual([]);
+
+  const recovered = collectEvents<MapUpdateContext>(sub, 'update', 3);
+  sub.subscribe();
+  expect((await recovered).map(u => u.key)).toEqual(['k1', 'k2', 'k3']);
+
+  await disconnectClient(c);
+});
+
+test('map: sync not delivered after unsubscribe() from a subscribed handler comes with the next subscribe', async () => {
+  const ch = uniqueChannel('positioned');
+  await apiMapPublish(ch, 'k1', { seq: 1 });
+  await apiMapPublish(ch, 'k2', { seq: 2 });
+
+  const c = createClient();
+  c.connect();
+  await c.ready(5000);
+
+  const sub = c.newMapSubscription(ch);
+  const syncs: string[][] = [];
+  sub.on('sync', (ctx: MapSyncContext) => syncs.push(ctx.entries.map(e => e.key).sort()));
+  sub.once('subscribed', () => sub.unsubscribe());
+  const unsubscribed = waitForEvent(sub, 'unsubscribed');
+  sub.subscribe();
+  await unsubscribed;
+  expect(syncs).toEqual([]);
+
+  const synced = waitForEvent<MapSyncContext>(sub, 'sync');
+  sub.subscribe();
+  await synced;
+  expect(syncs).toEqual([['k1', 'k2']]);
 
   await disconnectClient(c);
 });

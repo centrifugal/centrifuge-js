@@ -10,7 +10,7 @@ import {
   SharedPollTrackItem, SharedPollSignatureContext, SharedPollSignatureResult,
   SubscriptionErrorContext
 } from './types';
-import { ttlMilliseconds, backoff } from './utils';
+import { ttlMilliseconds, backoff, hasOffset } from './utils';
 
 // Internal-only — phases the SDK walks through during a map subscribe.
 // Not exposed on the public surface; kept here so it doesn't leak via
@@ -93,6 +93,10 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
   // Set while a shared poll subscription completes its subscribe: tracking changes of
   // handlers of its events go out with the replay that follows, not before it too.
   protected _sharedPollReplayPending: boolean = false;
+  // Incremented by every state change: an event of a change a 'state' handler
+  // followed with another one is outdated, even when that one came back to the
+  // same state.
+  private _stateTransitions: number = 0;
   private _mapFlowRecovering: boolean = false;
   private _mapFlowOffset: number = 0;
   private _mapFlowEpoch: string | null = null;
@@ -431,6 +435,7 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
     if (this.state !== newState) {
       const oldState = this.state;
       this.state = newState;
+      this._stateTransitions++;
       this.emit('state', { newState, oldState, channel: this.channel });
       return true;
     }
@@ -590,7 +595,8 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
     this._id = 0;
     // Not when a 'state' handler changed the state again: the event would come after
     // that change's own events, out of order.
-    if (this._setState(SubscriptionState.Subscribing) && this._isSubscribing()) {
+    const transition = this._stateTransitions + 1;
+    if (this._setState(SubscriptionState.Subscribing) && this._stateTransitions === transition) {
       this.emit('subscribing', { channel: this.channel, code: code, reason: reason });
     }
     // @ts-ignore – for performance reasons only await _unsubPromise for emulution case where it's required.
@@ -969,8 +975,9 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
     // Waiters fail before the events: a handler subscribing again makes waiters of
     // the new subscribe, which must not fail with this one.
     this._rejectPromises({ code: errorCodes.subscriptionUnsubscribed, message: SubscriptionState.Unsubscribed });
-    // Not when a 'state' handler subscribed again (see _setSubscribing).
-    if (this._setState(SubscriptionState.Unsubscribed) && this._isUnsubscribed()) {
+    // Not when a 'state' handler changed the state again (see _setSubscribing).
+    const transition = this._stateTransitions + 1;
+    if (this._setState(SubscriptionState.Unsubscribed) && this._stateTransitions === transition) {
       this.emit('unsubscribed', { channel: this.channel, code: code, reason: reason });
     }
     return promise;
@@ -1046,7 +1053,7 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
         this._sharedPollTrackedItems.set(pub.key, pub.version);
       }
     }
-    if (pub.offset) {
+    if (hasOffset(pub.offset)) {
       this._offset = pub.offset;
     }
     if (pub.epoch) {
@@ -1572,8 +1579,11 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
     // EARLIEST deadline received across all responses as the refresh target.
     // Refreshing too early is harmless (cheap getSignature call); refreshing
     // too late risks 109 errors mid-replay, so we err earlier.
-    if (result && result.expires === true && result.ttl > 0) {
-      const targetMs = Date.now() + result.ttl * 1000;
+    if (result && result.expires === true) {
+      // Without a positive ttl a signature has expired already, still accepted within
+      // the server's grace period: refresh it soon, or the server drops the keys
+      // silently. Not at once, in case the backend keeps returning expired ones.
+      const targetMs = Date.now() + (result.ttl > 0 ? result.ttl * 1000 : 1000);
       this._maybeScheduleSharedPollSignatureRefresh(targetMs);
     }
   }
@@ -1627,6 +1637,15 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
     this._sharedPollReplayRetryAttempts = 0;
   }
 
+  // Adds a signature to the library, dropping the entries whose keys it covers
+  // entirely: they may have expired, and a replay sends every entry in one request,
+  // which a single expired signature fails as a whole.
+  protected _addSharedPollSignature(keys: string[], signature: string) {
+    const covered = new Set(keys);
+    this._sharedPollSignatures = this._sharedPollSignatures.filter(entry => !entry.keys.every(key => covered.has(key)));
+    this._sharedPollSignatures.push({ keys, signature });
+  }
+
   protected _handleTrackError(err: any) {
     if (!this._isSubscribed()) {
       return;
@@ -1636,6 +1655,10 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
       channel: this.channel,
       error: err,
     }, () => {
+      // A handler may have ended the subscription, e.g. by disconnecting the client.
+      if (!this._isSubscribed()) {
+        return;
+      }
       // Error 109 (token expired) on a track command means the signature has
       // expired past the server's grace period. Trigger a refresh — getSignature
       // will issue a fresh consolidated signature that replaces stale ones.
@@ -1887,29 +1910,29 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
       if (items.length === 0) return;
 
       // Cache the obtained signature for subsequent reconnect replays.
-      self._sharedPollSignatures.push({
-        keys: result.keys,
-        signature: result.signature,
-      });
+      self._addSharedPollSignature(result.keys, result.signature);
       self._sendTrackRequest([{ items, signature: result.signature }]).catch(err => {
         self._handleTrackError(err);
       });
     }).catch(e => {
       if (generation !== self._refreshGeneration || !self._isSubscribed()) return;
-      self.emit('error', {
+      self._emitError({
         type: 'signatureRefresh',
         channel: self.channel,
         error: {
           code: errorCodes.sharedPollGetSignature,
           message: e !== undefined ? e.toString() : ''
         }
+      }, () => {
+        // A handler may have ended the subscription, e.g. by disconnecting the client.
+        if (generation !== self._refreshGeneration || !self._isSubscribed()) return;
+        // Replay-getSignature retry uses its OWN backoff state — separate from
+        // the refresh timer so a stuck replay can't delay the next TTL refresh.
+        self._sharedPollReplayRetryTimeout = setTimeout(
+          () => self._sharedPollReplayTrack(),
+          backoff(self._sharedPollReplayRetryAttempts++, 5000, 30000)
+        );
       });
-      // Replay-getSignature retry uses its OWN backoff state — separate from
-      // the refresh timer so a stuck replay can't delay the next TTL refresh.
-      self._sharedPollReplayRetryTimeout = setTimeout(
-        () => self._sharedPollReplayTrack(),
-        backoff(self._sharedPollReplayRetryAttempts++, 5000, 30000)
-      );
     });
   }
 
@@ -2599,10 +2622,7 @@ export class SharedPollSubscription extends BaseSubscription {
 
     if (sig !== undefined) {
       // Explicit signature path — append to library and (if subscribed) send.
-      this._sharedPollSignatures.push({
-        keys: items.map(i => i.key),
-        signature: sig,
-      });
+      this._addSharedPollSignature(items.map(i => i.key), sig);
       if (this._isSubscribed() && !this._sharedPollReplayPending) {
         this._sendTrackRequest([{ items, signature: sig }]).catch(err => {
           this._handleTrackError(err);
@@ -2666,10 +2686,7 @@ export class SharedPollSubscription extends BaseSubscription {
       }
       if (authorizedItems.length === 0) return;
       // Cache the obtained signature for reconnect replay.
-      this._sharedPollSignatures.push({
-        keys: result.keys,
-        signature: result.signature,
-      });
+      this._addSharedPollSignature(result.keys, result.signature);
       this._sendTrackRequest([{ items: authorizedItems, signature: result.signature }]).catch(err => {
         this._handleTrackError(err);
       });

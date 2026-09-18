@@ -60,3 +60,10 @@ export function localStorageItem(key: string): string | null {
     return null;
   }
 }
+
+/** @internal Reports whether a publication carries an offset. Protobuf decodes a
+ * missing offset as 0 (a Long where long.js is available), which must not replace
+ * a stored position. */
+export function hasOffset(offset: any): boolean {
+  return offset !== undefined && offset !== null && Number(offset) > 0;
+}

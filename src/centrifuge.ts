@@ -19,7 +19,8 @@ import { JsonCodec } from './json';
 
 import {
   isFunction, log, startsWith, errorExists,
-  backoff, ttlMilliseconds, localStorageItem
+  backoff, ttlMilliseconds, localStorageItem,
+  hasOffset,
 } from './utils';
 
 import {
@@ -2528,7 +2529,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
       channel: channel,
       data: pub.data
     };
-    if (pub.offset) {
+    if (hasOffset(pub.offset)) {
       ctx.offset = pub.offset;
     }
     if (pub.info) {
@@ -2567,7 +2568,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
         const ctx = this._getPublicationContext(channel, pub);
         // Before the event: a connect from its handler recovers after it (see
         // BaseSubscription._handlePublication).
-        if (pub.offset !== undefined) {
+        if (hasOffset(pub.offset)) {
           this._serverSubs[channel].offset = pub.offset;
         }
         this.emit('publication', ctx);

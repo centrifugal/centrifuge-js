@@ -815,3 +815,41 @@ test('setTagsFilter forces full state re-sync on map subscription', async () => 
 
   await disconnectClient(c);
 }, 15000);
+
+// Delta requested on a channel that doesn't allow it: the server sends the values
+// as they are, not as escaped JSON strings, on state and stream pages too.
+test('string values with delta requested but not negotiated', async () => {
+  const c = createClient();
+  c.connect();
+  await c.ready(5000);
+
+  // The positioned namespace doesn't allow delta.
+  const ch = uniqueChannel('positioned');
+  await apiMapPublish(ch, 'k1', 'hello');
+  await apiMapPublish(ch, 'k2', '123');
+
+  // One entry per page, so the values come on state pages, and on stream pages below.
+  const sub = c.newMapSubscription(ch, { delta: 'fossil', pageSize: 1 });
+  const syncP = waitForEvent<MapSyncContext>(sub, 'sync');
+  sub.subscribe();
+  await sub.ready(5000);
+
+  const sync = await syncP;
+  const entries = sync.entries.map(e => [e.key, e.data]).sort((a, b) => a[0] < b[0] ? -1 : 1);
+  expect(entries).toEqual([['k1', 'hello'], ['k2', '123']]);
+
+  // Recover through stream pages.
+  sub.unsubscribe();
+  await apiMapPublish(ch, 'k3', 'world');
+  await apiMapPublish(ch, 'k4', '42');
+  await apiMapPublish(ch, 'k5', 'true');
+  const updatesP = collectEvents<MapUpdateContext>(sub, 'update', 3);
+  sub.subscribe();
+  await sub.ready(5000);
+
+  const updates = await updatesP;
+  expect(updates.map(u => [u.key, u.data])).toEqual([['k3', 'world'], ['k4', '42'], ['k5', 'true']]);
+  expect(c.state).toBe('connected');
+
+  await disconnectClient(c);
+}, 15000);

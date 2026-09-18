@@ -1071,7 +1071,7 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
       if (pub.removed) {
         this._sharedPollTrackedItems.delete(pub.key);
       } else if (pub.version) {
-        this._sharedPollTrackedItems.set(pub.key, pub.version);
+        this._sharedPollTrackedItems.set(pub.key, toOffset(pub.version));
       }
     }
     if (hasOffset(pub.offset)) {
@@ -1744,6 +1744,11 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
         if (!returnedKeys.has(key)) {
           self._sharedPollTrackedItems.delete(key);
           revokedKeys.push(key);
+          // A handler of an earlier removal may have ended the subscription: the
+          // keys are still untracked below, but nothing more is delivered.
+          if (!self._isSubscribed()) {
+            continue;
+          }
           self.emit('update', {
             channel: self.channel,
             key: key,
@@ -1913,6 +1918,11 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
         if (!returnedKeys.has(key)) {
           self._sharedPollTrackedItems.delete(key);
           revokedKeys.push(key);
+          // A handler of an earlier removal may have ended the subscription: the
+          // keys are still untracked below, but nothing more is delivered.
+          if (!self._isSubscribed()) {
+            continue;
+          }
           self.emit('update', {
             channel: self.channel,
             key: key,
@@ -2558,7 +2568,7 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
       ctx.removed = true;
     }
     if (pub.version !== undefined) {
-      ctx.version = pub.version;
+      ctx.version = toOffset(pub.version);
     }
     return ctx;
   }
@@ -2641,9 +2651,11 @@ export class SharedPollSubscription extends BaseSubscription {
     // Update per-connection tracked items (use max(existing, new) so a stale
     // page load can't downgrade a version already advanced by a publication).
     for (const item of items) {
+      // A version an app stored and restored comes back as an object, see toOffset.
+      const version = toOffset(item.version);
       const existing = this._sharedPollTrackedItems.get(item.key);
-      if (existing === undefined || item.version > existing) {
-        this._sharedPollTrackedItems.set(item.key, item.version);
+      if (existing === undefined || version > existing) {
+        this._sharedPollTrackedItems.set(item.key, version);
       }
     }
 
@@ -2688,6 +2700,11 @@ export class SharedPollSubscription extends BaseSubscription {
         if (!returnedKeys.has(key)) {
           this._sharedPollTrackedItems.delete(key);
           revokedKeys.push(key);
+          // A handler of an earlier removal may have ended the subscription: the
+          // keys are still untracked below, but nothing more is delivered.
+          if (!this._isSubscribed()) {
+            continue;
+          }
           this.emit('update', {
             channel: this.channel,
             key: key,

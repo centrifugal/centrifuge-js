@@ -951,10 +951,12 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
     this._sharedPollSignatureRefreshInFlight = false;
     this._sharedPollSignatureRefreshTargetMs = null;
     this._cancelAllDebounce();
+    // Waiters fail before the events: a handler subscribing again makes waiters of
+    // the new subscribe, which must not fail with this one.
+    this._rejectPromises({ code: errorCodes.subscriptionUnsubscribed, message: SubscriptionState.Unsubscribed });
     if (this._setState(SubscriptionState.Unsubscribed)) {
       this.emit('unsubscribed', { channel: this.channel, code: code, reason: reason });
     }
-    this._rejectPromises({ code: errorCodes.subscriptionUnsubscribed, message: this.state });
     return promise;
   }
 

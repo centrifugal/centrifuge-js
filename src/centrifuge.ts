@@ -85,6 +85,12 @@ const defaults: Options = {
 
 const websocketNotFound = 'WebSocket constructor not found, make sure it is available globally or passed as a dependency in Centrifuge options';
 
+// A call timer running at least this late means the event loop didn't run
+// meanwhile: the process was suspended or blocked (see _registerCall).
+const lateCallTimer = 1000;
+// How long such a call still waits for its reply before failing.
+const lateCallGrace = 1000;
+
 interface serverSubscription {
   offset: number;
   epoch: string;
@@ -2470,16 +2476,21 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
       errback: errback,
       timeout: null
     };
+    const due = Date.now() + this._config.timeout;
     this._callbacks[id].timeout = setTimeout(() => {
       // The reply may have been received already but not processed yet, e.g. when
       // a suspended process resumes and this overdue timer runs before the data
-      // waiting in the socket. Let that data be processed first.
+      // waiting in the socket. Let that data be processed first: one event loop
+      // turn is enough in Node. A timer running far too late means the process was
+      // suspended or blocked, and browsers don't promise to run the socket events
+      // before it: the reply gets a grace period then.
+      const late = Date.now() - due >= lateCallTimer;
       this._callbacks[id].timeout = setTimeout(() => {
         delete this._callbacks[id];
         if (isFunction(errback)) {
           errback({ error: this._createErrorObject(errorCodes.timeout, 'timeout') });
         }
-      }, 0);
+      }, late ? lateCallGrace : 0);
     }, this._config.timeout);
   }
 

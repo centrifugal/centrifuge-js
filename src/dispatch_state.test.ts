@@ -622,6 +622,30 @@ describe('dispatch and subscription state', () => {
     expect(sub._sharedPollTrackedItems.has('b')).toBe(true);
   });
 
+  test('unsubscribe() from a removal handler stops the rest of the revoked keys', async () => {
+    server.onSubscribe = () => ({});
+    const signatures = heldSignatures();
+    const sub: any = c.newSharedPollSubscription('poll', { getSignature: signatures.getSignature } as any);
+    const updates: string[] = [];
+    sub.on('update', (ctx: any) => {
+      updates.push(`${ctx.key}:${ctx.removed ? 'removed' : ctx.version}`);
+      sub.unsubscribe();
+    });
+    sub.track(['k1', 'k2', 'k3']);
+    sub.subscribe();
+    c.connect();
+    await waitFor(() => signatures.calls.length === 1);
+
+    // The backend authorizes none of them: each is revoked, and the handler of the
+    // first removal ends the subscription.
+    signatures.calls[0].resolve({ keys: [], signature: 'sig' });
+    await delay(100);
+
+    expect(updates).toEqual(['k1:removed']);
+    // Every revoked key is still untracked locally, only delivery stopped.
+    expect(sub._sharedPollTrackedItems.size).toBe(0);
+  });
+
   test('a consolidated signature obtained before a reconnect does not track again after it', async () => {
     server.onSubscribe = () => ({});
     const signatures = heldSignatures();
@@ -996,6 +1020,19 @@ describe('dispatch and subscription state', () => {
     sendFrame(publication('ch', 1));
     await waitFor(() => subscribeCommands().length === 2);
     expect(subscribeCommands()[1].subscribe).toMatchObject({ recover: true, offset: 1, epoch: 'e' });
+  });
+
+  test('the stored position moves only after a publication handler returned', async () => {
+    const { sub } = await subscribed('ch');
+    const during: any[] = [];
+    sub.on('publication', () => during.push((sub as any)._offset));
+
+    sendFrame(publication('ch', 1), publication('ch', 2));
+    await waitFor(() => during.length === 2);
+
+    // The position the app can observe never runs ahead of what it received.
+    expect(during).toEqual([0, 1]);
+    expect((sub as any)._offset).toBe(2);
   });
 
   test('a getState subscription created before a state invalidation still loads its state', async () => {

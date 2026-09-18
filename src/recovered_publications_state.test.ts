@@ -47,6 +47,28 @@ describe('recovered publications and state', () => {
     await server.close();
   });
 
+  describe('position of a channel the server does not recover', () => {
+    test('a subscription given a position stops asking to recover', async () => {
+      // Positioning without recovery: the reply carries a position, but never
+      // `recoverable`, so there is nothing to recover from.
+      server.onSubscribe = () => ({ positioned: true, epoch: 'e', offset: 1 } as any);
+      const sub: any = c.newSubscription('ch', { since: { offset: 1, epoch: 'e' } });
+      const subscribes: string[] = [];
+      sub.on('subscribed', () => subscribes.push('subscribed'));
+      sub.subscribe();
+      c.connect();
+      await waitFor(() => subscribes.length === 1);
+
+      server.closeConnection();
+      await waitFor(() => subscribes.length === 2);
+
+      const requests = server.received.filter(cmd => cmd.subscribe !== undefined).map(cmd => cmd.subscribe);
+      expect(requests[0].recover).toBe(true);
+      expect(requests[1].recover).toBeUndefined();
+      expect(sub._recover).toBe(false);
+    });
+  });
+
   describe('client-side subscription', () => {
     beforeEach(() => {
       // After a recovery the server replies with the position recovered from, here 0,
@@ -185,6 +207,37 @@ describe('recovered publications and state', () => {
       expect(received).toEqual(['ss1#1']);
       expect((c as any)._serverSubs.ss1.offset).toBe(1);
       expect((c as any)._serverSubs.ss2.offset).toBe(0);
+    });
+
+    test('the stored position moves only after a publication handler returned', async () => {
+      const during: number[] = [];
+      c.on('publication', ctx => {
+        if (ctx.channel === 'ss1') {
+          during.push((c as any)._serverSubs.ss1.offset);
+        }
+      });
+      c.connect();
+      await waitFor(() => during.length === 3);
+
+      // The position the app can observe never runs ahead of what it received.
+      expect(during).toEqual([0, 1, 2]);
+      expect((c as any)._serverSubs.ss1.offset).toBe(3);
+    });
+
+    test('connect() from a publication handler recovers after that publication', async () => {
+      let reconnected = false;
+      c.on('publication', ctx => {
+        if (ctx.channel === 'ss1' && !reconnected) {
+          reconnected = true;
+          c.disconnect();
+          c.connect();
+        }
+      });
+      c.connect();
+
+      const connects = () => server.received.filter(cmd => cmd.connect !== undefined).map(cmd => cmd.connect);
+      await waitFor(() => connects().length === 2);
+      expect(connects()[1].subs.ss1).toMatchObject({ recover: true, offset: 1, epoch: 'e' });
     });
 
   });

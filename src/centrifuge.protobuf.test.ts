@@ -221,3 +221,68 @@ test('Protobuf: a publication without an offset keeps the stored position', () =
   (c as any)._handlePublication('server-side', withOffset);
   expect(Number((c as any)._serverSubs['server-side'].offset)).toBe(7);
 });
+
+// Protobuf decodes the uint64 version of a shared poll item into a Long, as it does an
+// offset. The public types declare a number, and the version the app is given is what
+// it stores and passes back to track().
+test('Protobuf: the version of a shared poll update is a number', () => {
+  const Publication = centrifugal.centrifuge.protocol.Publication;
+  const pub = Publication.decode(Publication.encode({ key: 'k1', data: new Uint8Array([123, 125]), version: 7 }).finish());
+
+  const c = new Centrifuge([{
+    transport: 'websocket' as TransportName,
+    endpoint: 'ws://localhost:8000/connection/websocket',
+  }], {
+    websocket: WebSocket,
+  });
+
+  const sub: any = c.newSharedPollSubscription('poll');
+  sub.state = SubscriptionState.Subscribed;
+  sub._sharedPollTrackedItems.set('k1', 0);
+  const updates: any[] = [];
+  sub.on('update', (ctx: any) => updates.push(ctx));
+
+  sub._handlePublication(pub);
+
+  expect(updates).toHaveLength(1);
+  expect(typeof updates[0].version).toBe('number');
+  expect(updates[0].version).toBe(7);
+  // And the version the next track request asks from.
+  expect(typeof sub._sharedPollTrackedItems.get('k1')).toBe('number');
+  expect(sub._sharedPollTrackedItems.get('k1')).toBe(7);
+});
+
+// Protobuf decodes a uint64 offset into a Long where long.js is available (it comes
+// with protobufjs). The public types declare a number, and an app that stores the
+// position it was given gets `{low, high, unsigned}` back, which compares and adds
+// as NaN.
+test('Protobuf: the position of a subscribe reply is a number', () => {
+  const SubscribeResult = centrifugal.centrifuge.protocol.SubscribeResult;
+  const result = SubscribeResult.decode(SubscribeResult.encode({
+    recoverable: true, positioned: true, offset: 7, epoch: 'e',
+  }).finish());
+
+  const c = new Centrifuge([{
+    transport: 'websocket' as TransportName,
+    endpoint: 'ws://localhost:8000/connection/websocket',
+  }], {
+    websocket: WebSocket,
+  });
+
+  // The position the library keeps for a client-side subscription.
+  const sub = c.newSubscription('positioned');
+  (sub as any).state = SubscriptionState.Subscribing;
+  (sub as any)._setSubscribed(result);
+  expect(typeof (sub as any)._offset).toBe('number');
+  expect((sub as any)._offset).toBe(7);
+
+  // The position handed to the app, which it may store and pass back via `since`.
+  const ctx = (c as any)._getSubscribeContext('positioned', result);
+  expect(typeof ctx.streamPosition.offset).toBe('number');
+  expect(JSON.parse(JSON.stringify(ctx.streamPosition))).toEqual({ offset: 7, epoch: 'e' });
+
+  // And the position of a server-side subscription.
+  (c as any)._handleSubscribe('server-side', result);
+  expect(typeof (c as any)._serverSubs['server-side'].offset).toBe('number');
+  expect((c as any)._serverSubs['server-side'].offset).toBe(7);
+});

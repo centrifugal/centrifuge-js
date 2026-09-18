@@ -10,7 +10,7 @@ import {
   SharedPollTrackItem, SharedPollSignatureContext, SharedPollSignatureResult,
   SubscriptionErrorContext
 } from './types';
-import { ttlMilliseconds, backoff, hasOffset } from './utils';
+import { ttlMilliseconds, backoff, hasOffset, toOffset } from './utils';
 
 // Internal-only — phases the SDK walks through during a map subscribe.
 // Not exposed on the public surface; kept here so it doesn't leak via
@@ -36,6 +36,8 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
   private _maxResubscribeDelay: number;
   private _recover: boolean;
   private _offset: number | null;
+  /** The offset of the publication being dispatched, until its handler returned. See _getOffset. */
+  private _pendingOffset: number | null = null;
   private _epoch: string | null;
   // @ts-ignore – this is used by a client in centrifuge.ts.
   private _id: number;
@@ -509,6 +511,11 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
     } else if (this._offset !== null) {
       // Only a position that exists: without one, e.g. before getState was called,
       // the next subscribe must still load the state.
+      // "_" is a sentinel, not an epoch the server can produce: the recovery of the
+      // next subscribe is meant to fail, so the app reloads through its
+      // recovery-failure path instead of taking the resubscribe for a first one.
+      // It has to be non-empty — an empty epoch means "any epoch" to the server,
+      // which would let the recovery succeed from now-invalidated state.
       this._offset = 0;
       this._epoch = '_';
     }
@@ -530,8 +537,15 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
       // After a recovery the server replies with the position recovered from: each
       // recovered publication delivered below moves it. A map subscription differs:
       // its live reply carries the top of the stream (see _handleMapLiveResponse).
-      this._offset = result.offset || 0;
+      this._offset = toOffset(result.offset);
       this._epoch = result.epoch || '';
+    } else {
+      // A channel the server doesn't recover is no channel to recover from. Without
+      // this, a subscription given a position by `since` or getState keeps asking to
+      // recover on every resubscribe, and the app is told a recovery failed
+      // (wasRecovering true, recovered false) every time, though nothing was lost.
+      // The flag comes from every reply, so recovery enabled later is picked up.
+      this._recover = false;
     }
     if (result.delta) {
       this._delta_negotiated = true;
@@ -695,7 +709,7 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
       if (!this._isSubscribing()) { this._inflight = false; return; }
 
       // Store stream position from app's source of truth.
-      this._offset = result.offset;
+      this._offset = toOffset(result.offset);
       this._epoch = result.epoch;
       this._recover = true;
 
@@ -1027,9 +1041,11 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
       // @ts-ignore – we are hiding some methods from public API autocompletion.
       ctx = this._centrifuge._getPublicationContext(this.channel, pub);
     }
-    // A publication counts as delivered from its last event on: a handler of that
-    // event subscribing again recovers after it, not from it (a duplicate), and a
-    // handler of an earlier event unsubscribing doesn't skip the last one.
+    // The position moves after the app has the publication, so the position it can
+    // observe never runs ahead of what it received: a handler that throws, or that
+    // unsubscribes before the last event, doesn't skip it. A subscribe command built
+    // while a handler runs still recovers after this publication, because _getOffset
+    // prefers the pending offset — a resubscribe from the handler gets no duplicate.
     if (this._map || this._sharedPoll) {
       this.emit('publication', ctx);
       if (!this._isSubscribed()) {
@@ -1038,8 +1054,13 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
       this._setPublicationPosition(pub);
       this.emit('update', ctx);
     } else {
+      this._pendingOffset = hasOffset(pub.offset) ? toOffset(pub.offset) : null;
+      try {
+        this.emit('publication', ctx);
+      } finally {
+        this._pendingOffset = null;
+      }
       this._setPublicationPosition(pub);
-      this.emit('publication', ctx);
     }
   }
 
@@ -1050,11 +1071,11 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
       if (pub.removed) {
         this._sharedPollTrackedItems.delete(pub.key);
       } else if (pub.version) {
-        this._sharedPollTrackedItems.set(pub.key, pub.version);
+        this._sharedPollTrackedItems.set(pub.key, toOffset(pub.version));
       }
     }
     if (hasOffset(pub.offset)) {
-      this._offset = pub.offset;
+      this._offset = toOffset(pub.offset);
     }
     if (pub.epoch) {
       this._epoch = pub.epoch;
@@ -1205,7 +1226,7 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
       return;
     }
     if (options.since) {
-      this._offset = options.since.offset || 0;
+      this._offset = toOffset(options.since.offset);
       this._epoch = options.since.epoch || '';
       this._recover = true;
     }
@@ -1278,6 +1299,12 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
   }
 
   private _getOffset() {
+    // A publication being dispatched counts as delivered: a subscribe command built
+    // from its handler recovers after it, while the stored position still holds the
+    // previous one until that handler returned (see _handlePublication).
+    if (this._pendingOffset !== null) {
+      return this._pendingOffset;
+    }
     const offset = this._offset;
     if (offset !== null) {
       return offset;
@@ -1717,6 +1744,11 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
         if (!returnedKeys.has(key)) {
           self._sharedPollTrackedItems.delete(key);
           revokedKeys.push(key);
+          // A handler of an earlier removal may have ended the subscription: the
+          // keys are still untracked below, but nothing more is delivered.
+          if (!self._isSubscribed()) {
+            continue;
+          }
           self.emit('update', {
             channel: self.channel,
             key: key,
@@ -1886,6 +1918,11 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
         if (!returnedKeys.has(key)) {
           self._sharedPollTrackedItems.delete(key);
           revokedKeys.push(key);
+          // A handler of an earlier removal may have ended the subscription: the
+          // keys are still untracked below, but nothing more is delivered.
+          if (!self._isSubscribed()) {
+            continue;
+          }
           self.emit('update', {
             channel: self.channel,
             key: key,
@@ -2063,7 +2100,7 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
     // from where the first state page was captured, not from a later stream.Top().
     if (!this._mapFlowEpoch && result.epoch) {
       this._mapFlowEpoch = result.epoch;
-      this._mapFlowOffset = result.offset || 0;
+      this._mapFlowOffset = toOffset(result.offset);
     }
 
     // Validate epoch on subsequent pages - if epoch changed, restart
@@ -2191,7 +2228,7 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
     // actual offset for intermediate STREAM pages (not stream.Top()). The stored
     // position doesn't move: these entries only reach the app with the live reply.
     if (result.offset !== undefined) {
-      this._mapFlowOffset = result.offset;
+      this._mapFlowOffset = toOffset(result.offset);
     }
 
     // Server controls LIVE transition. If server responded with phase=1,
@@ -2271,7 +2308,7 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
     }
 
     // Final offset/epoch — use || 0/'' to handle zero values omitted by JSON/protobuf.
-    const offset = result.offset || 0;
+    const offset = toOffset(result.offset);
     const epoch = result.epoch || '';
 
     // Clear subscribing state
@@ -2507,7 +2544,7 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
       ctx.removed = true;
     }
     if (pub.offset !== undefined) {
-      ctx.offset = pub.offset;
+      ctx.offset = toOffset(pub.offset);
     }
     if (pub.info) {
       // @ts-ignore – we are hiding some methods from public API autocompletion.
@@ -2531,7 +2568,7 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
       ctx.removed = true;
     }
     if (pub.version !== undefined) {
-      ctx.version = pub.version;
+      ctx.version = toOffset(pub.version);
     }
     return ctx;
   }
@@ -2614,9 +2651,11 @@ export class SharedPollSubscription extends BaseSubscription {
     // Update per-connection tracked items (use max(existing, new) so a stale
     // page load can't downgrade a version already advanced by a publication).
     for (const item of items) {
+      // A version an app stored and restored comes back as an object, see toOffset.
+      const version = toOffset(item.version);
       const existing = this._sharedPollTrackedItems.get(item.key);
-      if (existing === undefined || item.version > existing) {
-        this._sharedPollTrackedItems.set(item.key, item.version);
+      if (existing === undefined || version > existing) {
+        this._sharedPollTrackedItems.set(item.key, version);
       }
     }
 
@@ -2661,6 +2700,11 @@ export class SharedPollSubscription extends BaseSubscription {
         if (!returnedKeys.has(key)) {
           this._sharedPollTrackedItems.delete(key);
           revokedKeys.push(key);
+          // A handler of an earlier removal may have ended the subscription: the
+          // keys are still untracked below, but nothing more is delivered.
+          if (!this._isSubscribed()) {
+            continue;
+          }
           this.emit('update', {
             channel: this.channel,
             key: key,

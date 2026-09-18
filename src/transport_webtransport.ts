@@ -1,3 +1,5 @@
+import { ReplyStreamBuffer } from './stream_buffer';
+
 /** @internal */
 export class WebtransportTransport {
   private _transport: any;
@@ -97,7 +99,7 @@ export class WebtransportTransport {
     const reader = this._stream.readable.getReader();
     let jsonStreamBuf = '';
     let jsonStreamPos = 0;
-    let protoStreamBuf = new Uint8Array();
+    const protoStreamBuf = new ReplyStreamBuffer();
     try {
       while (true) {
         const { done, value } = await reader.read();
@@ -118,21 +120,11 @@ export class WebtransportTransport {
               }
             }
           } else {
-            const mergedArray = new Uint8Array(protoStreamBuf.length + value.length);
-            mergedArray.set(protoStreamBuf);
-            mergedArray.set(value, protoStreamBuf.length);
-            protoStreamBuf = mergedArray;
-
-            while (true) {
-              const result = this.options.decoder.decodeReply(protoStreamBuf);
-              if (result.ok) {
-                const data = protoStreamBuf.slice(0, result.pos);
-                eventTarget.dispatchEvent(new MessageEvent('message', { data: data }));
-                protoStreamBuf = protoStreamBuf.slice(result.pos);
-                continue;
-              }
-              break;
-            }
+            protoStreamBuf.push(value);
+            protoStreamBuf.drain(
+              data => this.options.decoder.decodeReply(data),
+              reply => eventTarget.dispatchEvent(new MessageEvent('message', { data: reply })),
+            );
           }
         }
         if (done) {

@@ -60,7 +60,8 @@ export class ProtobufCodec {
   }
 
   decodeReply(data: ArrayBuffer | Uint8Array): { ok: true; pos: number } | { ok: false } {
-    const reader = Reader.create(new Uint8Array(data));
+    // Without a copy: a stream buffer passes a view of the data it holds.
+    const reader = Reader.create(data instanceof Uint8Array ? data : new Uint8Array(data));
     if (reader.pos >= reader.len) {
       return { ok: false };
     }

@@ -39,4 +39,10 @@ describe('ProtobufCodec.decodeReply', () => {
     // Length 1, then a field with the invalid wire type 7.
     expect(() => codec.decodeReply(new Uint8Array([1, 0x0f]))).toThrow();
   });
+
+  test('throws on a length prefix far beyond any reply', () => {
+    // A captive portal page starting with a UTF-8 BOM: EF BB BF 3C reads as a length of about 126 MB.
+    const page = new TextEncoder().encode('﻿<!doctype html><html></html>');
+    expect(() => codec.decodeReply(page)).toThrow(/exceeds/);
+  });
 });

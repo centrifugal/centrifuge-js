@@ -83,6 +83,8 @@ const defaults: Options = {
   networkEventTarget: null,
 }
 
+const websocketNotFound = 'WebSocket constructor not found, make sure it is available globally or passed as a dependency in Centrifuge options';
+
 interface serverSubscription {
   offset: number;
   epoch: string;
@@ -115,6 +117,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
   private _transportClosed: boolean;
   private _reconnecting: boolean;
   private _reconnectTimeout?: null | ReturnType<typeof setTimeout> = null;
+  private _connectTimeout: null | ReturnType<typeof setTimeout> = null;
   private _reconnectAttempts: number;
   private _client: null;
   private _session: string;
@@ -166,6 +169,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     this._codec = new JsonCodec();
     this._reconnecting = false;
     this._reconnectTimeout = null;
+    this._connectTimeout = null;
     this._reconnectAttempts = 0;
     this._client = null;
     this._session = '';
@@ -425,6 +429,8 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
       return;
     }
     this._debug('connect called');
+    // Throws for a configuration no retry can fix, before the state changes.
+    this._validateTransportConfig();
     this._reconnectAttempts = 0;
     this._startConnecting();
   }
@@ -880,7 +886,10 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     }
   }
 
-  private _initializeTransport() {
+  // Transport dependencies from the config, or else from globals. An absent one
+  // stays null, not undefined: supported() of sockjs, sse and http_stream only
+  // checks `!== null`.
+  private _resolveTransportDeps() {
     let websocket: any;
     if (this._config.websocket !== null) {
       websocket = this._config.websocket;
@@ -926,102 +935,111 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
       }
     }
 
+    return { websocket, sockjs, eventsource, fetchFunc, readableStream };
+  }
+
+  // Constructs a transport, without checking that it is supported.
+  private _createTransport(transportName: string, endpoint: string, deps: any): any {
+    switch (transportName) {
+      case 'websocket':
+        return new WebsocketTransport(endpoint, {
+          websocket: deps.websocket
+        });
+      case 'webtransport':
+        return new WebtransportTransport(endpoint, {
+          webtransport: globalThis.WebTransport,
+          decoder: this._codec,
+          encoder: this._codec
+        });
+      case 'http_stream':
+        return new HttpStreamTransport(endpoint, {
+          fetch: deps.fetchFunc,
+          readableStream: deps.readableStream,
+          emulationEndpoint: this._config.emulationEndpoint,
+          decoder: this._codec,
+          encoder: this._codec
+        });
+      case 'sse':
+        return new SseTransport(endpoint, {
+          eventsource: deps.eventsource,
+          fetch: deps.fetchFunc,
+          emulationEndpoint: this._config.emulationEndpoint,
+        });
+      case 'sockjs':
+        return new SockjsTransport(endpoint, {
+          sockjs: deps.sockjs,
+          sockjsOptions: this._config.sockjsOptions
+        });
+      default:
+        throw new Error('unknown transport ' + transportName);
+    }
+  }
+
+  // Throws for a configuration no retry can fix. Called from connect() before
+  // the state changes, so the client stays disconnected, and before a token or
+  // data is loaded, so it fails the same way with getToken or getData.
+  private _validateTransportConfig() {
+    const deps = this._resolveTransportDeps();
     if (!this._emulation) {
       if (startsWith(this._endpoint, 'http')) {
         throw new Error('Provide explicit transport endpoints configuration in case of using HTTP (i.e. using array of TransportEndpoint instead of a single string), or use ws(s):// scheme in an endpoint if you aimed using WebSocket transport');
-      } else {
-        this._debug('client will use websocket');
-        this._transport = new WebsocketTransport(this._endpoint as string, {
-          websocket: websocket
-        });
-        if (!this._transport.supported()) {
-          throw new Error('WebSocket constructor not found, make sure it is available globally or passed as a dependency in Centrifuge options');
-        }
+      }
+      if (!this._createTransport('websocket', this._endpoint as string, deps).supported()) {
+        throw new Error(websocketNotFound);
+      }
+      return;
+    }
+    for (const transportConfig of this._transports) {
+      if (this._createTransport(transportConfig.transport, transportConfig.endpoint, deps).supported()) {
+        return;
+      }
+    }
+    throw new Error('no supported transport found');
+  }
+
+  private _initializeTransport() {
+    const deps = this._resolveTransportDeps();
+    let selected: any = null;
+    if (!this._emulation) {
+      this._debug('client will use websocket');
+      const candidate = this._createTransport('websocket', this._endpoint as string, deps);
+      if (candidate.supported()) {
+        selected = candidate;
       }
     } else {
       if (this._currentTransportIndex >= this._transports.length) {
         this._triedAllTransports = true;
         this._currentTransportIndex = 0;
       }
-      let count = 0;
-      while (true) {
-        if (count >= this._transports.length) {
-          throw new Error('no supported transport found');
-        }
+      for (let count = 0; count < this._transports.length; count++) {
         const transportConfig = this._transports[this._currentTransportIndex];
-        const transportName = transportConfig.transport;
-        const transportEndpoint = transportConfig.endpoint;
-
-        if (transportName === 'websocket') {
-          this._debug('trying websocket transport');
-          this._transport = new WebsocketTransport(transportEndpoint, {
-            websocket: websocket
-          });
-          if (!this._transport.supported()) {
-            this._debug('websocket transport not available');
-            this._advanceTransportIndex();
-            count++;
-            continue;
-          }
-        } else if (transportName === 'webtransport') {
-          this._debug('trying webtransport transport');
-          this._transport = new WebtransportTransport(transportEndpoint, {
-            webtransport: globalThis.WebTransport,
-            decoder: this._codec,
-            encoder: this._codec
-          });
-          if (!this._transport.supported()) {
-            this._debug('webtransport transport not available');
-            this._advanceTransportIndex();
-            count++;
-            continue;
-          }
-        } else if (transportName === 'http_stream') {
-          this._debug('trying http_stream transport');
-          this._transport = new HttpStreamTransport(transportEndpoint, {
-            fetch: fetchFunc,
-            readableStream: readableStream,
-            emulationEndpoint: this._config.emulationEndpoint,
-            decoder: this._codec,
-            encoder: this._codec
-          });
-          if (!this._transport.supported()) {
-            this._debug('http_stream transport not available');
-            this._advanceTransportIndex();
-            count++;
-            continue;
-          }
-        } else if (transportName === 'sse') {
-          this._debug('trying sse transport');
-          this._transport = new SseTransport(transportEndpoint, {
-            eventsource: eventsource,
-            fetch: fetchFunc,
-            emulationEndpoint: this._config.emulationEndpoint,
-          });
-          if (!this._transport.supported()) {
-            this._debug('sse transport not available');
-            this._advanceTransportIndex();
-            count++;
-            continue;
-          }
-        } else if (transportName === 'sockjs') {
-          this._debug('trying sockjs');
-          this._transport = new SockjsTransport(transportEndpoint, {
-            sockjs: sockjs,
-            sockjsOptions: this._config.sockjsOptions
-          });
-          if (!this._transport.supported()) {
-            this._debug('sockjs transport not available');
-            this._advanceTransportIndex();
-            count++;
-            continue;
-          }
-        } else {
-          throw new Error('unknown transport ' + transportName);
+        this._debug('trying ' + transportConfig.transport + ' transport');
+        const candidate = this._createTransport(transportConfig.transport, transportConfig.endpoint, deps);
+        if (candidate.supported()) {
+          selected = candidate;
+          break;
         }
-        break;
+        this._debug(transportConfig.transport + ' transport not available');
+        this._advanceTransportIndex();
       }
     }
+    if (selected === null) {
+      // connect() checked that a transport can be used, so a dependency went away
+      // under a running client. A reconnect timer has no caller to throw to:
+      // report it as a transport failure and retry.
+      const message = this._emulation ? 'no supported transport found' : websocketNotFound;
+      this._debug(message);
+      this._disconnect(connectingCodes.transportClosed, 'transport closed', true);
+      this.emit('error', {
+        type: 'transport',
+        error: {
+          code: errorCodes.transportClosed,
+          message: message
+        }
+      });
+      return;
+    }
+    this._transport = selected;
 
     const self = this;
     const transport = this._transport;
@@ -1039,22 +1057,45 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
 
     this._transportClosed = false;
 
-    let connectTimeout: any;
-    connectTimeout = setTimeout(function () {
-      transport.close();
+    // Fails an attempt that did not open in time or could not be initialized. It
+    // does not wait for the transport's close callback: a transport may never
+    // issue one, e.g. a replaced WebSocket whose close() does nothing.
+    const failTransport = function (reason: string) {
+      if (self._transportId != transportId) {
+        self._debug('failure of non-actual transport', reason);
+        return;
+      }
+      self._debug(transport.name(), 'transport failed:', reason);
+      if (self._emulation && !self._transportWasOpen) {
+        self._advanceTransportIndex();
+      }
+      // Closes the transport and clears the connect timeout.
+      self._disconnect(connectingCodes.transportClosed, 'transport closed', true);
+      self.emit('error', {
+        type: 'transport',
+        error: {
+          code: errorCodes.transportClosed,
+          message: reason
+        },
+        transport: transport.name()
+      });
+    };
+
+    this._clearConnectTimeout();
+    this._connectTimeout = setTimeout(function () {
+      self._connectTimeout = null;
+      failTransport('connect timeout');
     }, this._config.timeout);
 
     const callbacks = {
       onOpen: function () {
-        if (connectTimeout) {
-          clearTimeout(connectTimeout);
-          connectTimeout = null;
-        }
         if (self._transportId != transportId) {
           self._debug('open callback from non-actual transport');
           transport.close();
           return;
         }
+        // Only after the check: the connect timeout belongs to the current attempt.
+        self._clearConnectTimeout();
         wasOpen = true;
         self._debug(transport.subName(), 'transport open');
         if (transport.emulation()) {
@@ -1077,14 +1118,11 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
         self._debug('transport level error', e);
       },
       onClose: function (closeEvent) {
-        if (connectTimeout) {
-          clearTimeout(connectTimeout);
-          connectTimeout = null;
-        }
         if (self._transportId != transportId) {
           self._debug('close callback from non-actual transport');
           return;
         }
+        self._clearConnectTimeout();
         self._debug(transport.subName(), 'transport closed');
         self._transportClosed = true;
         self._transportIsOpen = false;
@@ -1153,30 +1191,10 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
 
     // A transport that fails to initialize, e.g. a socket constructor throwing on
     // a malformed URL or on an insecure one from a secure page, issues no close
-    // callback. Handle it as a transport closed at once: otherwise the client
-    // waits for that callback forever.
+    // callback either.
     const onInitializeError = function (e: any) {
-      if (connectTimeout) {
-        clearTimeout(connectTimeout);
-        connectTimeout = null;
-      }
-      if (self._transportId != transportId) {
-        self._debug('initialize error from non-actual transport');
-        return;
-      }
       self._debug('error initializing transport', e);
-      if (self._emulation && !self._transportWasOpen) {
-        self._advanceTransportIndex();
-      }
-      self._disconnect(connectingCodes.transportClosed, 'transport closed', true);
-      self.emit('error', {
-        type: 'transport',
-        error: {
-          code: errorCodes.transportClosed,
-          message: e instanceof Error ? e.message : String(e)
-        },
-        transport: transport.name()
-      });
+      failTransport(e instanceof Error ? e.message : String(e));
     };
 
     let initialized: any;
@@ -1673,6 +1691,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     if (previousState === State.Connecting) {
       this._clearReconnectTimeout();
     }
+    this._clearConnectTimeout();
     // Invalidates callbacks of the transport closed below (SSE issues its close
     // callback synchronously).
     this._nextTransportId();
@@ -2049,6 +2068,13 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     if (this._reconnectTimeout !== null) {
       clearTimeout(this._reconnectTimeout);
       this._reconnectTimeout = null;
+    }
+  }
+
+  private _clearConnectTimeout() {
+    if (this._connectTimeout !== null) {
+      clearTimeout(this._connectTimeout);
+      this._connectTimeout = null;
     }
   }
 

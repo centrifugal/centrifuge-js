@@ -1044,7 +1044,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
       transport.close();
     }, this._config.timeout);
 
-    this._transport.initialize(this._codecName(), {
+    const callbacks = {
       onOpen: function () {
         if (connectTimeout) {
           clearTimeout(connectTimeout);
@@ -1149,7 +1149,47 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
         }
         self._dataReceived(data, transportId);
       }
-    }, initialData);
+    };
+
+    // A transport that fails to initialize, e.g. a socket constructor throwing on
+    // a malformed URL or on an insecure one from a secure page, issues no close
+    // callback. Handle it as a transport closed at once: otherwise the client
+    // waits for that callback forever.
+    const onInitializeError = function (e: any) {
+      if (connectTimeout) {
+        clearTimeout(connectTimeout);
+        connectTimeout = null;
+      }
+      if (self._transportId != transportId) {
+        self._debug('initialize error from non-actual transport');
+        return;
+      }
+      self._debug('error initializing transport', e);
+      if (self._emulation && !self._transportWasOpen) {
+        self._advanceTransportIndex();
+      }
+      self._disconnect(connectingCodes.transportClosed, 'transport closed', true);
+      self.emit('error', {
+        type: 'transport',
+        error: {
+          code: errorCodes.transportClosed,
+          message: e instanceof Error ? e.message : String(e)
+        },
+        transport: transport.name()
+      });
+    };
+
+    let initialized: any;
+    try {
+      initialized = transport.initialize(this._codecName(), callbacks, initialData);
+    } catch (e) {
+      onInitializeError(e);
+      return;
+    }
+    if (initialized && isFunction(initialized.then)) {
+      // WebTransport initializes asynchronously.
+      initialized.then(null, onInitializeError);
+    }
     //@ts-ignore must be used only for debug and test purposes.
     self.emit('__centrifuge_debug:transport_initialized', {})
   }

@@ -118,6 +118,27 @@ test('state invalidated disconnect (3014) resets server-side subscription recove
   expect((c as any)._serverSubs['news'].recoverable).toBe(true);
 });
 
+test('server-side subscription recovers with the epoch of its first publication', () => {
+  // A connect reply has no epoch for a channel that had no stream yet: the server
+  // sends the epoch with the first publication and checks it on recovery.
+  const c = new Centrifuge([{
+    transport: 'websocket' as TransportName,
+    endpoint: 'ws://localhost:8000/connection/websocket',
+  }], {
+    websocket: WebSocket,
+  });
+
+  (c as any)._serverSubs['news'] = { offset: 0, epoch: '', recoverable: true };
+
+  (c as any)._handlePublication('news', { data: {}, offset: 1, epoch: 'e1' });
+  expect((c as any)._serverSubs['news'].offset).toBe(1);
+  expect((c as any)._serverSubs['news'].epoch).toBe('e1');
+
+  (c as any)._handlePublication('news', { data: {}, offset: 2 });
+  expect((c as any)._serverSubs['news'].offset).toBe(2);
+  expect((c as any)._serverSubs['news'].epoch).toBe('e1');
+});
+
 test.each([
   ['a static token', 'static-connection-token'],
   ['no token', ''],

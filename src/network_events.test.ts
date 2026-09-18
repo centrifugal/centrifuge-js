@@ -927,4 +927,68 @@ describe('network event listeners', () => {
     expect(c.state).toBe(State.Disconnected);
     expect((c as any)._refreshTimeout).toBeNull();
   }, 10000);
+
+  test('online long after reconnecting from offline does not abort a transport opening', async () => {
+    const c = newClient();
+    c.connect();
+    await c.ready(5000);
+
+    // Reconnected while the device is reported offline, with no online event yet.
+    target.dispatchEvent(new Event('offline'));
+    await c.ready(5000);
+
+    const inits = countTransportInits(c);
+    const initialized = waitForEvent(c, '__centrifuge_debug:transport_initialized');
+    server.closeConnection();
+    await initialized;
+    // The online event arrives while the next attempt opens its transport.
+    target.dispatchEvent(new Event('online'));
+
+    await c.ready(5000);
+    expect(inits.n).toBe(1);
+  });
+
+  // A WebSocket constructor whose first socket is a stub, driven by the test, with a
+  // throwing close(). The next ones reach the server.
+  const throwingCloseStub = () => {
+    const stubs: any[] = [];
+    let sockets = 0;
+    const websocket = function (this: any, url: string, protocols?: string) {
+      if (sockets++ === 0) {
+        this.send = () => { /* no-op */ };
+        this.close = () => {
+          throw new Error('close is not available');
+        };
+        stubs.push(this);
+        return;
+      }
+      return new WebSocket(url, protocols);
+    } as any;
+    return { websocket, stub: () => stubs[0], sockets: () => sockets };
+  };
+
+  test('open callback of a replaced transport whose close() throws does not throw', async () => {
+    const sockets = throwingCloseStub();
+    const c = newClient({ websocket: sockets.websocket });
+    c.connect();
+    c.disconnect();
+    c.connect();
+    await c.ready(3000);
+
+    // The replaced socket opens late.
+    expect(() => sockets.stub().onopen()).not.toThrow();
+    expect(c.state).toBe(State.Connected);
+  });
+
+  test('undecodable data on a transport whose close() throws still reconnects', async () => {
+    const sockets = throwingCloseStub();
+    const c = newClient({ websocket: sockets.websocket, minReconnectDelay: 10, maxReconnectDelay: 10 });
+    c.connect();
+    sockets.stub().onopen();
+
+    // E.g. a captive portal answering with an HTML page.
+    expect(() => sockets.stub().onmessage({ data: '<!doctype html>' })).not.toThrow();
+    await c.ready(3000);
+    expect(sockets.sockets()).toBe(2);
+  });
 });

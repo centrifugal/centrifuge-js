@@ -1176,19 +1176,22 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
           self._transportWasOpen = true;
         }
 
+        const teardown = function () {
+          self._reconnecting = false;
+          self._disconnect(code, reason, needReconnect);
+        };
         if (self._isConnecting() && !wasOpen) {
-          self.emit('error', {
+          self._emitError({
             type: 'transport',
             error: {
               code: errorCodes.transportClosed,
               message: 'transport closed'
             },
             transport: transport.name()
-          });
+          }, teardown);
+        } else {
+          teardown();
         }
-
-        self._reconnecting = false;
-        self._disconnect(code, reason, needReconnect);
       },
       onMessage: function (data) {
         if (self._transportId != transportId) {
@@ -1331,20 +1334,35 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
         self._failUnauthorized();
         return;
       }
-      self.emit('error', {
+      self._emitError({
         'type': 'connectToken',
         'error': {
           code: errorCodes.clientConnectToken,
           message: e !== undefined ? e.toString() : ''
         }
+      }, () => {
+        const delay = self._getReconnectDelay();
+        self._debug('error on getting connection token, reconnect after ' + delay + ' milliseconds', e);
+        self._reconnecting = false;
+        self._reconnectTimeout = setTimeout(() => {
+          self._startReconnecting();
+        }, delay);
       });
-      const delay = self._getReconnectDelay();
-      self._debug('error on getting connection token, reconnect after ' + delay + ' milliseconds', e);
-      self._reconnecting = false;
-      self._reconnectTimeout = setTimeout(() => {
-        self._startReconnecting();
-      }, delay);
     });
+  }
+
+  // Emits an error event, then runs the continuation: also when a handler threw
+  // (the exception propagates afterwards), not when a handler disconnected the
+  // client, maybe to connect again, whose new attempt the continuation must not touch.
+  private _emitError(ctx: any, continuation: () => void) {
+    const disconnects = this._disconnects;
+    try {
+      this.emit('error', ctx);
+    } finally {
+      if (this._disconnects === disconnects) {
+        continuation();
+      }
+    }
   }
 
   private _attemptAborted(disconnects: number): boolean {
@@ -1359,19 +1377,20 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
       this._failUnauthorized();
       return;
     }
-    this.emit('error', {
+    this._emitError({
       type: 'connectData',
       error: {
         code: errorCodes.badConfiguration,
         message: e?.toString() || ''
       }
+    }, () => {
+      const delay = this._getReconnectDelay();
+      this._debug('error on getting connect data, reconnect after ' + delay + ' milliseconds', e);
+      this._reconnecting = false;
+      this._reconnectTimeout = setTimeout(() => {
+        this._startReconnecting();
+      }, delay);
     });
-    const delay = this._getReconnectDelay();
-    this._debug('error on getting connect data, reconnect after ' + delay + ' milliseconds', e);
-    this._reconnecting = false;
-    this._reconnectTimeout = setTimeout(() => {
-      this._startReconnecting();
-    }, delay);
   }
 
   // stale: the error belongs to a transport that was already closed. It is still
@@ -1386,27 +1405,28 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
       this._refreshRequired = true;
     }
     if (err.code < 100 || err.temporary === true || err.code === 109) {
-      this.emit('error', {
+      this._emitError({
         'type': 'connect',
         'error': err
+      }, () => {
+        if (stale) {
+          return;
+        }
+        if (replied) {
+          // The transport reached the server: retry it after the reconnect delay, not
+          // at once with the next transport as for one that failed to open. An
+          // emulation transport is otherwise marked open only by a connect reply.
+          this._transportWasOpen = true;
+        }
+        if (err.code === errorCodes.timeout && !this._transportWasOpen && this._transport !== null && this._transport.emulation()) {
+          // A hanging emulation handshake moves on to the next transport. For other
+          // failures the transport's close callback does that, but it is ignored after
+          // the teardown below.
+          this._advanceTransportIndex();
+        }
+        this._debug('closing transport due to connect error');
+        this._disconnect(err.code, err.message, true);
       });
-      if (stale) {
-        return;
-      }
-      if (replied) {
-        // The transport reached the server: retry it after the reconnect delay, not
-        // at once with the next transport as for one that failed to open. An
-        // emulation transport is otherwise marked open only by a connect reply.
-        this._transportWasOpen = true;
-      }
-      if (err.code === errorCodes.timeout && !this._transportWasOpen && this._transport !== null && this._transport.emulation()) {
-        // A hanging emulation handshake moves on to the next transport. For other
-        // failures the transport's close callback does that, but it is ignored after
-        // the teardown below.
-        this._advanceTransportIndex();
-      }
-      this._debug('closing transport due to connect error');
-      this._disconnect(err.code, err.message, true);
     } else if (!stale) {
       this._disconnect(err.code, err.message, false);
     }
@@ -1747,27 +1767,38 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
       code: code,
       reason: reason
     };
-    const transition = this._setState(newState);
-    if (!reconnect && !this._transitionSuperseded(transition)) {
-      // Client methods called from a 'state' handler must fail now too, not wait
-      // for a connection.
-      this._rejectPromises({ code: errorCodes.clientDisconnected, message: 'disconnected' });
-    }
-    if (previousState === State.Connected) {
-      this._clearConnectedState();
-    }
-    // A handler of the events above may have changed the state again: this
-    // transition is outdated then, and its event would arrive out of order.
-    if (transition && !this._transitionSuperseded(transition)) {
-      if (reconnect) {
-        this.emit('connecting', ctx);
-      } else {
-        this.emit('disconnected', ctx);
+    // The rest runs also when a handler of the events throws (the exception
+    // propagates afterwards): subscriptions must move to subscribing and a reconnect
+    // must be scheduled, or the client is left stuck. So the number of the
+    // transition is taken before its state event.
+    const transition = this.state !== newState ? this._stateTransitions + 1 : 0;
+    try {
+      try {
+        this._setState(newState);
+      } finally {
+        if (!reconnect && !this._transitionSuperseded(transition)) {
+          // Client methods called from a 'state' handler must fail now too, not wait
+          // for a connection.
+          this._rejectPromises({ code: errorCodes.clientDisconnected, message: 'disconnected' });
+        }
+        if (previousState === State.Connected) {
+          this._clearConnectedState();
+        }
       }
-    }
-    // Unless a handler has already started a new attempt.
-    if (reconnect && !this._transitionSuperseded(transition)) {
-      this._scheduleReconnect();
+      // A handler of the events above may have changed the state again: this
+      // transition is outdated then, and its event would arrive out of order.
+      if (transition && !this._transitionSuperseded(transition)) {
+        if (reconnect) {
+          this.emit('connecting', ctx);
+        } else {
+          this.emit('disconnected', ctx);
+        }
+      }
+    } finally {
+      // Unless a handler has already started a new attempt.
+      if (reconnect && !this._transitionSuperseded(transition)) {
+        this._scheduleReconnect();
+      }
     }
   }
 
@@ -1845,24 +1876,26 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
         self._failUnauthorized();
         return;
       }
-      self.emit('error', {
+      self._emitError({
         type: 'refreshToken',
         error: {
           code: errorCodes.clientRefreshToken,
           message: e !== undefined ? e.toString() : ''
         }
+      }, () => {
+        self._refreshTimeout = setTimeout(() => self._refresh(), self._getRefreshRetryDelay());
       });
-      self._refreshTimeout = setTimeout(() => self._refresh(), self._getRefreshRetryDelay());
     });
   }
 
   private _refreshError(err: any) {
     if (err.code < 100 || err.temporary === true) {
-      this.emit('error', {
+      this._emitError({
         type: 'refresh',
         error: err
+      }, () => {
+        this._refreshTimeout = setTimeout(() => this._refresh(), this._getRefreshRetryDelay());
       });
-      this._refreshTimeout = setTimeout(() => this._refresh(), this._getRefreshRetryDelay());
     } else {
       this._disconnect(err.code, err.message, false);
     }

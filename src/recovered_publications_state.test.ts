@@ -209,6 +209,37 @@ describe('recovered publications and state', () => {
       expect((c as any)._serverSubs.ss2.offset).toBe(0);
     });
 
+    test('the stored position moves only after a publication handler returned', async () => {
+      const during: number[] = [];
+      c.on('publication', ctx => {
+        if (ctx.channel === 'ss1') {
+          during.push((c as any)._serverSubs.ss1.offset);
+        }
+      });
+      c.connect();
+      await waitFor(() => during.length === 3);
+
+      // The position the app can observe never runs ahead of what it received.
+      expect(during).toEqual([0, 1, 2]);
+      expect((c as any)._serverSubs.ss1.offset).toBe(3);
+    });
+
+    test('connect() from a publication handler recovers after that publication', async () => {
+      let reconnected = false;
+      c.on('publication', ctx => {
+        if (ctx.channel === 'ss1' && !reconnected) {
+          reconnected = true;
+          c.disconnect();
+          c.connect();
+        }
+      });
+      c.connect();
+
+      const connects = () => server.received.filter(cmd => cmd.connect !== undefined).map(cmd => cmd.connect);
+      await waitFor(() => connects().length === 2);
+      expect(connects()[1].subs.ss1).toMatchObject({ recover: true, offset: 1, epoch: 'e' });
+    });
+
   });
 
   describe('map subscription', () => {

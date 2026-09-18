@@ -133,6 +133,9 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
   private _subs: Record<string, _BaseSubscription>;
   // Unsubscribes still in progress of subscriptions removed from the client, per channel.
   private _removedUnsubscribes: Record<string, Promise<void>> = {};
+  // The offset of the publication being dispatched, per server-side channel, until its
+  // handler returned. See _handlePublication and the subs of _constructConnectCommand.
+  private _pendingServerSubOffsets: Record<string, number | null> = {};
   private _serverSubs: Record<string, serverSubscription>;
   private _commandId: number;
   private _commands: any[];
@@ -1559,8 +1562,13 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
         const sub = {
           'recover': true
         };
-        if (this._serverSubs[channel].offset) {
-          sub['offset'] = this._serverSubs[channel].offset;
+        // A publication being dispatched counts as delivered: a connect command built
+        // from its handler recovers after it, while the stored position still holds
+        // the previous one until that handler returned (see _handlePublication).
+        const pending = this._pendingServerSubOffsets[channel];
+        const offset = pending !== undefined && pending !== null ? pending : this._serverSubs[channel].offset;
+        if (offset) {
+          sub['offset'] = offset;
         }
         if (this._serverSubs[channel].epoch) {
           sub['epoch'] = this._serverSubs[channel].epoch;
@@ -2575,8 +2583,18 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
       // be dropped, not fall through to sub._handlePublication on null.
       if (channel && this._isServerSub(channel)) {
         const ctx = this._getPublicationContext(channel, pub);
-        // Before the event: a connect from its handler recovers after it (see
-        // BaseSubscription._handlePublication).
+        // The position moves after the app has the publication, so the position it can
+        // observe never runs ahead of what it received (see
+        // BaseSubscription._handlePublication). A connect command built while a handler
+        // runs takes the offset of the publication being dispatched (see the subs of
+        // _constructConnectCommand), so a connect() from that handler still recovers
+        // after it instead of receiving it again.
+        this._pendingServerSubOffsets[channel] = hasOffset(pub.offset) ? toOffset(pub.offset) : null;
+        try {
+          this.emit('publication', ctx);
+        } finally {
+          delete this._pendingServerSubOffsets[channel];
+        }
         if (hasOffset(pub.offset)) {
           this._serverSubs[channel].offset = toOffset(pub.offset);
         }
@@ -2585,7 +2603,6 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
         if (pub.epoch) {
           this._serverSubs[channel].epoch = pub.epoch;
         }
-        this.emit('publication', ctx);
       }
       return;
     }

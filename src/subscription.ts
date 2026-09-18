@@ -717,17 +717,17 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
       return;
     }
 
-    this.emit('error', {
+    this._emitError({
       type: 'subscribeData',
       channel: this.channel,
       error: {
         code: errorCodes.badConfiguration,
         message: error?.toString() || ''
       }
+    }, () => {
+      this._inflight = false;
+      this._scheduleResubscribe();
     });
-
-    this._inflight = false;
-    this._scheduleResubscribe();
   }
 
   private _handleTokenResponse(token: string | null): void {
@@ -763,17 +763,17 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
       return;
     }
 
-    this.emit('error', {
+    this._emitError({
       type: 'subscribeToken',
       channel: this.channel,
       error: {
         code: errorCodes.subscriptionSubscribeToken,
         message: error?.toString() || ''
       }
+    }, () => {
+      this._inflight = false;
+      this._scheduleResubscribe();
     });
-
-    this._inflight = false;
-    this._scheduleResubscribe();
   }
 
   private _sendSubscribe(token: string): any {
@@ -813,7 +813,7 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
         this._handleSubscribeError(rejectCtx.error);
       } catch (err) {
         // @ts-ignore – we are hiding some symbols from public API autocompletion.
-        this._centrifuge._dispatchFailed(err);
+        this._centrifuge._rejectionFailed(err, rejectCtx);
       } finally {
         if (rejectCtx.next) {
           rejectCtx.next();
@@ -1097,6 +1097,20 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
     this._debug('resubscribe scheduled after ' + delay, this.channel);
   }
 
+  // Emits an error event, then runs the continuation: also when a handler threw (the
+  // exception propagates afterwards), not when a handler unsubscribed, maybe to
+  // subscribe again, whose new subscribe the continuation must not touch.
+  private _emitError(ctx: any, continuation: () => void) {
+    const flow = this._subscribeFlow;
+    try {
+      this.emit('error', ctx);
+    } finally {
+      if (flow === this._subscribeFlow) {
+        continuation();
+      }
+    }
+  }
+
   private _subscribeError(err: any) {
     if (!this._isSubscribing()) {
       return;
@@ -1111,9 +1125,10 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
         error: err
       };
       if (this._centrifuge.state === State.Connected) {
-        this.emit('error', errContext);
+        this._emitError(errContext, () => this._scheduleResubscribe());
+      } else {
+        this._scheduleResubscribe();
       }
-      this._scheduleResubscribe();
     } else {
       this._setUnsubscribed(err.code, err.message, false);
     }
@@ -1239,14 +1254,20 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
     };
     const getToken = this._getToken;
     if (getToken === null) {
-      this.emit('error', {
-        type: 'configuration',
-        channel: this.channel,
-        error: {
-          code: errorCodes.badConfiguration,
-          message: 'provide a function to get channel subscription token'
-        }
-      });
+      try {
+        this.emit('error', {
+          type: 'configuration',
+          channel: this.channel,
+          error: {
+            code: errorCodes.badConfiguration,
+            message: 'provide a function to get channel subscription token'
+          }
+        });
+      } catch (e) {
+        // The subscribe must fail as unauthorized all the same, not stay in progress.
+        // @ts-ignore – we are hiding some symbols from public API autocompletion.
+        this._centrifuge._reportDispatchError(e);
+      }
       return Promise.reject(new UnauthorizedError(''));
     }
     return getToken(ctx);
@@ -1288,7 +1309,7 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
           self._refreshError(rejectCtx.error);
         } catch (err) {
           // @ts-ignore – we are hiding some symbols from public API autocompletion.
-          self._centrifuge._dispatchFailed(err);
+          self._centrifuge._rejectionFailed(err, rejectCtx);
         } finally {
           if (rejectCtx.next) {
             rejectCtx.next();
@@ -1300,15 +1321,16 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
         self._failUnauthorized();
         return;
       }
-      self.emit('error', {
+      self._emitError({
         type: 'refreshToken',
         channel: self.channel,
         error: {
           code: errorCodes.subscriptionRefreshToken,
           message: e !== undefined ? e.toString() : ''
         }
+      }, () => {
+        self._refreshTimeout = setTimeout(() => self._refresh(), self._getRefreshRetryDelay());
       });
-      self._refreshTimeout = setTimeout(() => self._refresh(), self._getRefreshRetryDelay());
     });
   }
 
@@ -1328,12 +1350,13 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
       return;
     }
     if (err.code < 100 || err.temporary === true) {
-      this.emit('error', {
+      this._emitError({
         type: 'refresh',
         channel: this.channel,
         error: err
+      }, () => {
+        this._refreshTimeout = setTimeout(() => this._refresh(), this._getRefreshRetryDelay());
       });
-      this._refreshTimeout = setTimeout(() => this._refresh(), this._getRefreshRetryDelay());
     } else {
       this._setUnsubscribed(err.code, err.message, true);
     }
@@ -1522,27 +1545,28 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
     if (!this._isSubscribed()) {
       return;
     }
-    this.emit('error', {
+    this._emitError({
       type: 'track',
       channel: this.channel,
       error: err,
+    }, () => {
+      // Error 109 (token expired) on a track command means the signature has
+      // expired past the server's grace period. Trigger a refresh — getSignature
+      // will issue a fresh consolidated signature that replaces stale ones.
+      // The in-flight guard inside _sharedPollRefreshSignature prevents
+      // duplicate refresh calls when multiple track retries all hit 109.
+      if (err.code === 109) {
+        this._sharedPollRefreshSignature();
+        return;
+      }
+      if (err.code < 100 || err.temporary === true) {
+        // Temporary error — retry full track replay with backoff.
+        this._sharedPollTrackRetryTimeout = setTimeout(
+          () => this._sharedPollReplayTrack(),
+          backoff(this._sharedPollTrackRetryAttempts++, 1000, 15000)
+        );
+      }
     });
-    // Error 109 (token expired) on a track command means the signature has
-    // expired past the server's grace period. Trigger a refresh — getSignature
-    // will issue a fresh consolidated signature that replaces stale ones.
-    // The in-flight guard inside _sharedPollRefreshSignature prevents
-    // duplicate refresh calls when multiple track retries all hit 109.
-    if (err.code === 109) {
-      this._sharedPollRefreshSignature();
-      return;
-    }
-    if (err.code < 100 || err.temporary === true) {
-      // Temporary error — retry full track replay with backoff.
-      this._sharedPollTrackRetryTimeout = setTimeout(
-        () => this._sharedPollReplayTrack(),
-        backoff(this._sharedPollTrackRetryAttempts++, 1000, 15000)
-      );
-    }
   }
 
   // _sharedPollRefreshSignature obtains a fresh consolidated signature
@@ -1629,19 +1653,20 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
       });
     }).catch(e => {
       self._sharedPollSignatureRefreshInFlight = false;
-      self.emit('error', {
+      self._emitError({
         type: 'signatureRefresh',
         channel: self.channel,
         error: {
           code: errorCodes.sharedPollGetSignature,
           message: e !== undefined ? e.toString() : ''
         }
+      }, () => {
+        // Retry after delay with exponential backoff.
+        self._sharedPollSignatureRefreshTimeout = setTimeout(
+          () => self._sharedPollRefreshSignature(),
+          backoff(self._sharedPollSignatureRefreshAttempts++, 5000, 30000)
+        );
       });
-      // Retry after delay with exponential backoff.
-      self._sharedPollSignatureRefreshTimeout = setTimeout(
-        () => self._sharedPollRefreshSignature(),
-        backoff(self._sharedPollSignatureRefreshAttempts++, 5000, 30000)
-      );
     });
   }
 
@@ -1886,7 +1911,7 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
         }
       } catch (err) {
         // @ts-ignore – we are hiding some symbols from public API autocompletion.
-        this._centrifuge._dispatchFailed(err);
+        this._centrifuge._rejectionFailed(err, rejectCtx);
       } finally {
         if (rejectCtx.next) {
           rejectCtx.next();
@@ -2004,7 +2029,7 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
         }
       } catch (err) {
         // @ts-ignore – we are hiding some symbols from public API autocompletion.
-        this._centrifuge._dispatchFailed(err);
+        this._centrifuge._rejectionFailed(err, rejectCtx);
       } finally {
         if (rejectCtx.next) {
           rejectCtx.next();

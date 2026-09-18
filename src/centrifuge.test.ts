@@ -174,7 +174,9 @@ test('state invalidated unsubscribe (2502) clears sub token and map state', () =
   (streamSub as any)._token = 'stream-sub-token';
   (streamSub as any)._offset = 10;
 
-  // Simulate server sending unsubscribe code 2502 for the map subscription only.
+  // Simulate server sending unsubscribe code 2502 for the map subscription only. The
+  // server sends it for a subscribed map subscription only.
+  (mapSub as any).state = 'subscribed';
   (c as any)._handleUnsubscribe('test:map', { code: 2502, reason: 'server tags filter changed' });
 
   // Map subscription: token and state cleared, moves to subscribing.

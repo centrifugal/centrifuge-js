@@ -2311,15 +2311,17 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
       }
       return;
     }
+    // @ts-ignore – we are hiding some symbols from public API autocompletion.
+    if (!sub._isSubscribed()) {
+      // It ends a previous subscription: one the app unsubscribed, or one that raced
+      // unsubscribe() and subscribe() of the app. The server unsubscribes a
+      // subscription in progress only after replying to its subscribe, and it sends
+      // the push also when the subscription is already gone. A resubscribe code must
+      // not subscribe again, nor invalidate the state of a subscribe in progress.
+      this._debug('unsubscribe push for a previous subscription', channel);
+      return;
+    }
     if (unsubscribe.code < 2500) {
-      // @ts-ignore – we are hiding some symbols from public API autocompletion.
-      if (sub._isSubscribing()) {
-        // It ends a previous subscription, e.g. a server unsubscribe that raced
-        // unsubscribe() and subscribe() of the app: the server unsubscribes a
-        // subscription in progress only after replying to its subscribe.
-        this._debug('unsubscribe push for a previous subscription', channel);
-        return;
-      }
       // @ts-ignore – we are hiding some symbols from public API autocompletion.
       sub._setUnsubscribed(unsubscribe.code, unsubscribe.reason, false);
     } else {

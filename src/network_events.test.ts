@@ -1326,6 +1326,157 @@ describe('network event listeners', () => {
     expect(reported).toEqual(['handler failure']);
   }, 10000);
 
+  test('a subscription callback throwing on open does not hold back the connect command', async () => {
+    const c = newClient({ timeout: 500 });
+    const reported = captureReported(c);
+    const sub = c.newSubscription('ch', {
+      getToken: () => {
+        throw new Error('sync getToken failure');
+      },
+    });
+    sub.subscribe();
+    c.connect();
+    await c.ready(3000);
+    await delay(700);
+    // Sent on the first socket, not left for the next one next to a second connect.
+    expect(server.received.filter(cmd => cmd.connect !== undefined)).toHaveLength(1);
+    expect(c.state).toBe(State.Connected);
+    expect(reported.length).toBeLessThanOrEqual(1);
+  });
+
+  test('commands batched for a closed connection are not sent on the next one', async () => {
+    const c = newClient();
+    c.connect();
+    await c.ready(3000);
+    c.startBatching();
+    const published = c.publish('ch', { n: 1 }).then(() => 'published', (e: any) => `rejected:${e.code}`);
+    await delay(20);
+
+    c.disconnect();
+    c.connect();
+    await c.ready(3000);
+    c.stopBatching();
+    await delay(100);
+    expect(await published).toMatch(/^rejected:/);
+    expect(server.received.filter(cmd => cmd.publish !== undefined)).toHaveLength(0);
+  });
+
+  test('a disconnect push read with the end of an http_stream is applied', async () => {
+    let controller: any = null;
+    let streams = 0;
+    const encoder = new TextEncoder();
+    const fetch = (url: string, opts: any) => {
+      if (url.endsWith('/emulation')) {
+        return Promise.resolve({ ok: true, status: 200 });
+      }
+      streams++;
+      const cmd = JSON.parse(opts.body);
+      const body = new ReadableStream({
+        start(ctrl) {
+          controller = ctrl;
+          ctrl.enqueue(encoder.encode(JSON.stringify({ id: cmd.id, connect: { client: 'fake-client', version: '0.0.0' } }) + '\n'));
+        },
+      });
+      return Promise.resolve({ ok: true, status: 200, body });
+    };
+    const c = newEmulationClient('http_stream', {
+      options: { fetch, readableStream: ReadableStream, emulationEndpoint: 'http://localhost:1/emulation' },
+      connects: () => streams,
+    } as any, { minReconnectDelay: 10, maxReconnectDelay: 50 });
+    const disconnected: any[] = [];
+    c.on('disconnected', ctx => disconnected.push(ctx));
+    c.connect();
+    await c.ready(3000);
+
+    // The server writes a disconnect push, then ends the stream.
+    controller.enqueue(encoder.encode(JSON.stringify({ push: { disconnect: { code: 3501, reason: 'bad request' } } }) + '\n'));
+    controller.close();
+    for (let i = 0; i < 100 && disconnected.length === 0; i++) {
+      await delay(10);
+    }
+    await delay(100);
+    expect(disconnected.map(ctx => ctx.code)).toEqual([3501]);
+    expect(streams).toBe(1);
+  });
+
+  test('a connect command that cannot be written over a transport list backs off', async () => {
+    // E.g. connect data the codec can't encode.
+    const c = new Centrifuge([{ transport: 'websocket' as TransportName, endpoint: server.url }], {
+      websocket: WebSocket,
+      data: { n: (globalThis as any).BigInt(1) },
+      minReconnectDelay: 200,
+      maxReconnectDelay: 200,
+      networkEventTarget: target,
+    } as any);
+    clients.push(c);
+    const inits = countTransportInits(c);
+    c.connect();
+    await delay(500);
+    expect(inits.n).toBeLessThanOrEqual(4);
+  });
+
+  test('a connection getToken throwing synchronously is retried', async () => {
+    let calls = 0;
+    const c = newClient({
+      getToken: () => {
+        if (++calls === 1) {
+          throw new Error('sync getToken failure');
+        }
+        return Promise.resolve('token');
+      },
+    });
+    const errors: string[] = [];
+    c.on('error', ctx => errors.push(ctx.type));
+    expect(() => c.connect()).not.toThrow();
+    await c.ready(3000);
+    expect(calls).toBe(2);
+    expect(errors).toEqual(['connectToken']);
+  });
+
+  test('a connection getData throwing synchronously is retried', async () => {
+    let calls = 0;
+    const c = newClient({
+      getData: () => {
+        if (++calls === 1) {
+          throw new Error('sync getData failure');
+        }
+        return Promise.resolve({});
+      },
+    });
+    const errors: string[] = [];
+    c.on('error', ctx => errors.push(ctx.type));
+    expect(() => c.connect()).not.toThrow();
+    await c.ready(3000);
+    expect(calls).toBe(2);
+    expect(errors).toEqual(['connectData']);
+  });
+
+  test('a connection token refresh with getToken throwing synchronously is retried', async () => {
+    // The connection token expires in a second.
+    server.connectResult = { ...server.connectResult, expires: true, ttl: 1 };
+    let calls = 0;
+    const c = newClient({
+      getToken: () => {
+        if (++calls === 2) {
+          throw new Error('sync getToken failure');
+        }
+        return Promise.resolve('token');
+      },
+    });
+    const refreshError = new Promise<void>(resolve => {
+      c.on('error', ctx => {
+        if (ctx.type === 'refreshToken') {
+          resolve();
+        }
+      });
+    });
+    c.connect();
+    await c.ready(3000);
+    await refreshError;
+    expect(c.state).toBe(State.Connected);
+    expect((c as any)._refreshTimeout).not.toBeNull();
+  }, 10000);
+
   test('an exception in an error handler of a subscription token configuration error still fails the refresh', async () => {
     // The subscription token expires in a second, and there is no getToken to refresh it.
     server.onSubscribe = () => ({ expires: true, ttl: 1 });

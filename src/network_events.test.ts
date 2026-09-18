@@ -4,6 +4,7 @@ import { FakeCentrifugoServer } from './fakeServer';
 import { connectingCodes, disconnectedCodes, errorCodes, unsubscribedCodes } from './codes';
 
 import WebSocket, { WebSocketServer } from 'ws';
+import http from 'node:http';
 import { ReadableStream } from 'node:stream/web';
 
 // Regression guard for #389: online/offline listeners must be removed once the
@@ -1168,6 +1169,162 @@ describe('network event listeners', () => {
     expect(tokens).toEqual(['token-1', 'token-2']);
     expect(tokenCalls).toBe(2);
   });
+
+  test('a websocket opened while the process was blocked past the connect timeout keeps the attempt', async () => {
+    (server as any).wss.on('connection', () => {
+      // The upgrade completed: the client's open event waits while the process is
+      // blocked past the connect timeout.
+      const until = Date.now() + 600;
+      while (Date.now() < until) { /* busy wait */ }
+    });
+    const c = newClient({ timeout: 300 });
+    const errors: string[] = [];
+    c.on('error', ctx => errors.push(`${ctx.type}:${ctx.error.message}`));
+    c.connect();
+    await c.ready(3000);
+    expect(errors).toEqual([]);
+    expect(server.received.filter(cmd => cmd.connect !== undefined)).toHaveLength(1);
+  });
+
+  test('a websocket opened shortly after a far overdue connect timeout keeps the attempt', async () => {
+    // Blocks the event loop far past the connect timeout while the upgrade request
+    // waits, then completes the upgrade a moment after it resumes, once the overdue
+    // timer has run.
+    const httpServer = http.createServer();
+    const wss = new WebSocketServer({ noServer: true });
+    let connects = 0;
+    httpServer.on('upgrade', (req, socket, head) => {
+      const until = Date.now() + 1600;
+      while (Date.now() < until) { /* busy wait */ }
+      setTimeout(() => wss.handleUpgrade(req, socket, head, ws => {
+        ws.on('message', (data: Buffer) => {
+          for (const line of data.toString().split('\n').filter(Boolean)) {
+            const cmd = JSON.parse(line);
+            if (cmd.connect !== undefined) {
+              connects++;
+              ws.send(JSON.stringify({ id: cmd.id, connect: { client: 'fake-client', version: '0.0.0' } }));
+            }
+          }
+        });
+      }), 50);
+    });
+    await new Promise<void>(r => httpServer.listen(0, () => r()));
+    const port = (httpServer.address() as any).port;
+    const c = newClient({ timeout: 300 }, `ws://localhost:${port}/connection/websocket`);
+    const errors: string[] = [];
+    c.on('error', ctx => errors.push(`${ctx.type}:${ctx.error.message}`));
+    try {
+      c.connect();
+      await c.ready(5000);
+      expect(errors).toEqual([]);
+      expect(connects).toBe(1);
+    } finally {
+      c.disconnect();
+      wss.clients.forEach(ws => ws.terminate());
+      httpServer.closeAllConnections();
+      await new Promise<void>(r => httpServer.close(() => r()));
+    }
+  }, 10000);
+
+  test('a websocket that opens but never answers falls back to the next transport', async () => {
+    // E.g. a proxy that completes the upgrade, then drops frames.
+    const silent = await startSilentServer();
+    const emulation = fakeEmulation(cmd => ({ id: cmd.id, connect: { client: 'fake-client', version: '0.0.0' } }));
+    const c = new Centrifuge([
+      { transport: 'websocket' as TransportName, endpoint: silent.url },
+      { transport: 'http_stream' as TransportName, endpoint: 'http://localhost:1/connection/http_stream' },
+    ], {
+      websocket: WebSocket,
+      ...emulation.options,
+      timeout: 200,
+      minReconnectDelay: 10,
+      maxReconnectDelay: 50,
+      networkEventTarget: target,
+    } as any);
+    clients.push(c);
+    try {
+      c.connect();
+      await c.ready(3000);
+      expect(emulation.connects()).toBe(1);
+      expect((c as any)._transport.name()).toBe('http_stream');
+    } finally {
+      c.disconnect();
+      await silent.close();
+    }
+  });
+
+  test('setToken() while a connect with an expired token is in flight lets a client without getToken connect', async () => {
+    let held: any = null;
+    server.onCommand = (cmd) => {
+      if (cmd.connect !== undefined && held === null) {
+        held = cmd;
+        return {};
+      }
+      return null;
+    };
+    const c = newClient({ token: 'expired' });
+    const errors: string[] = [];
+    c.on('error', ctx => errors.push(`${ctx.type}:${ctx.error.code}`));
+    c.connect();
+    for (let i = 0; i < 100 && held === null; i++) {
+      await delay(10);
+    }
+
+    // The app renews the token, then the server rejects the one it got.
+    c.setToken('fresh');
+    server.send({ id: held.id, error: { code: 109, message: 'token expired' } });
+    await c.ready(3000);
+    const tokens = server.received.filter(cmd => cmd.connect !== undefined).map(cmd => cmd.connect.token);
+    expect(tokens).toEqual(['expired', 'fresh']);
+    expect(errors).toEqual(['connect:109']);
+  });
+
+  test.each(['state', 'connecting'])('an exception in a %s handler of connect() still starts the attempt', async (event) => {
+    const c = newClient();
+    c.once(event as any, () => {
+      throw new Error('handler failure');
+    });
+    expect(() => c.connect()).toThrow('handler failure');
+    await c.ready(3000);
+  });
+
+  test('an exception in a handler of a teardown started by a connection token continuation is reported', async () => {
+    const c = newClient({ getToken: () => Promise.resolve(null as any) });
+    const reported = captureReported(c);
+    const failed = throwOnce(c, 'disconnected');
+    c.connect();
+    await failed;
+    await delay(20);
+    expect(reported).toEqual(['handler failure']);
+  });
+
+  test('an exception in a handler of a teardown started by a connection data continuation is reported', async () => {
+    class ThrowingWebSocket {
+      constructor() {
+        throw new Error('constructor failure');
+      }
+    }
+    const c = newClient({ getData: () => Promise.resolve({}), websocket: ThrowingWebSocket as any });
+    const reported = captureReported(c);
+    const failed = throwOnce(c, 'error');
+    c.connect();
+    await failed;
+    await delay(20);
+    expect(reported).toEqual(['handler failure']);
+  });
+
+  test('an exception in a handler of a teardown started by a connection token refresh continuation is reported', async () => {
+    // The connection token expires in a second, and the refresh gets no token.
+    server.connectResult = { ...server.connectResult, expires: true, ttl: 1 };
+    let tokenCalls = 0;
+    const c = newClient({ getToken: () => Promise.resolve(++tokenCalls === 1 ? 'token' : (null as any)) });
+    const reported = captureReported(c);
+    c.connect();
+    await c.ready(3000);
+    await throwOnce(c, 'disconnected');
+    await delay(20);
+    expect(reported).toEqual(['handler failure']);
+  }, 10000);
 
   test('an exception in an error handler of a subscription token configuration error still fails the refresh', async () => {
     // The subscription token expires in a second, and there is no getToken to refresh it.

@@ -48,6 +48,31 @@ describe('HttpStreamTransport JSON stream parsing', () => {
     // character straddling the chunk boundary.
     expect(messages).toEqual([payload]);
   });
+
+  it('reads a large reply arriving in many small chunks without copying the buffered text for each', async () => {
+    const line = JSON.stringify({ push: { channel: 'ch', pub: { data: 'z'.repeat(8 * 1024 * 1024), offset: 1 } } });
+    const data = new TextEncoder().encode(line + '\n');
+    const chunks: Uint8Array[] = [];
+    for (let i = 0; i < data.length; i += 1024) {
+      chunks.push(data.slice(i, i + 1024));
+    }
+
+    const transport = new HttpStreamTransport('https://example.com/connection/http_stream', {
+      fetch: async () => ({ ok: true, body: fakeBody(chunks) }),
+      readableStream: FakeReadableStream
+    });
+
+    const messages: any[] = [];
+    const started = Date.now();
+    const eventTarget = (transport as any)._fetchEventTarget(transport, 'https://example.com', {});
+    eventTarget.addEventListener('message', (e: any) => { messages.push(e.data); });
+    await new Promise<void>(resolve => eventTarget.addEventListener('close', () => resolve()));
+
+    expect(messages).toHaveLength(1);
+    expect(messages[0] === line).toBe(true);
+    // Copying the whole buffered text again for each of the 8193 chunks takes seconds.
+    expect(Date.now() - started).toBeLessThan(1000);
+  }, 60000);
 });
 
 describe('HttpStreamTransport protobuf stream parsing', () => {

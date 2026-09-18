@@ -739,6 +739,46 @@ describe('network event listeners', () => {
     expect(c.state).toBe(State.Connecting);
   });
 
+  test('lines read with undecodable data over http_stream are not dispatched', async () => {
+    // E.g. a captive portal answering in the middle of the stream: the chunk read
+    // with its page holds more lines, which decode.
+    let streams = 0;
+    const fetch = (url: string, opts: any) => {
+      if (url.endsWith('/emulation')) {
+        return Promise.resolve({ ok: true, status: 200 });
+      }
+      streams++;
+      const cmd = JSON.parse(opts.body);
+      const data = [
+        JSON.stringify({ id: cmd.id, connect: { client: 'fake-client', version: '0.0.0' } }),
+        '<html>',
+        JSON.stringify({ push: { message: { data: { after: true } } } }),
+      ].join('\n') + '\n';
+      const body = new ReadableStream({
+        start(controller) {
+          controller.enqueue(new TextEncoder().encode(data));
+          opts.signal.addEventListener('abort', () => controller.error(new Error('aborted')));
+        },
+      });
+      return Promise.resolve({ ok: true, status: 200, body });
+    };
+    const c = newEmulationClient('http_stream', {
+      options: { fetch, readableStream: ReadableStream, emulationEndpoint: 'http://localhost:1/emulation' },
+      connects: () => streams,
+    } as any, { minReconnectDelay: 50, maxReconnectDelay: 50 });
+    const messages: any[] = [];
+    c.on('message', ctx => messages.push(ctx.data));
+
+    c.connect();
+    for (let i = 0; i < 100 && streams < 2; i++) {
+      await delay(10);
+    }
+    await delay(50);
+    // Nothing after the page reached the app, and the client reconnected.
+    expect(messages).toEqual([]);
+    expect(streams).toBeGreaterThanOrEqual(2);
+  });
+
   test.each(['sse', 'http_stream'])('emulation endpoint failing after every connect over %s keeps the backoff growing', async (transport) => {
     // E.g. a wrong emulation endpoint path: the stream connects, and every command
     // sent through the emulation endpoint gets a 404, which closes the transport.

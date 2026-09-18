@@ -113,8 +113,10 @@ export class SseTransport {
       signal: signal
     }
     fetchFunc(this.options.emulationEndpoint, fetchOptions).then(response => {
-      // The session is gone (404), or the server or an intermediary failed. Other
-      // statuses, e.g. a too large request body, reject only this command.
+      // The server has no node of the session (404), e.g. the node was restarted, or
+      // the server or an intermediary failed. Other statuses, e.g. a too large request
+      // body, reject only this command. A session gone from a running node is answered
+      // with 204: its stream ends then.
       if (response && (response.status === 404 || response.status >= 500)) {
         this.close();
       }

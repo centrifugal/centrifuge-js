@@ -2054,7 +2054,13 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
       this._refreshTimeout = null;
     }
     if (result.expires) {
-      this._client = result.client;
+      // The client id of the connection only changes if the reply carries one — and
+      // Centrifugo never sets that field of a refresh reply. Taking an absent one
+      // leaves the client without an id, and the checks comparing against it stop
+      // recognising a token fetch, or a reply, of a connection that is gone.
+      if (result.client) {
+        this._client = result.client;
+      }
       this._refreshTimeout = setTimeout(() => this._refresh(), ttlMilliseconds(result.ttl));
     }
   }

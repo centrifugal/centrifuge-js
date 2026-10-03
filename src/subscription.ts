@@ -667,6 +667,21 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
     return null;
   }
 
+  // Builds and registers the subscribe command sent inside the WebSocket handshake
+  // (see maxHandshakeConnectSize), before the transport opens. Returns null and
+  // changes nothing if the command can't be built right away - such a subscription
+  // subscribes after the transport opens, as usual. Mirrors _subscribe. Not private:
+  // called by Centrifuge.
+  _handshakeSubscribe(): any {
+    if (this._inflight || this._map || (this._getState && this._offset === null) ||
+      !this._canSubscribeWithoutGettingToken() || this._getData) {
+      return null;
+    }
+    this._debug('subscribing on', this.channel, 'inside handshake');
+    this._inflight = true;
+    return this._sendSubscribe(this._token, true);
+  }
+
   private _isTransportOpen(): boolean {
     // @ts-ignore – we are hiding some symbols from public API autocompletion.
     return this._centrifuge._transportIsOpen;
@@ -824,8 +839,9 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
     });
   }
 
-  private _sendSubscribe(token: string): any {
-    if (!this._isTransportOpen()) {
+  // skipSending registers the command without sending it, see _handshakeSubscribe.
+  private _sendSubscribe(token: string, skipSending = false): any {
+    if (!skipSending && !this._isTransportOpen()) {
       this._inflight = false;
       return null;
     }
@@ -836,7 +852,7 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
     // @ts-ignore – we are hiding some symbols from public API autocompletion.
     // An exception while handling the reply stops the client (see _dispatchFailed).
     // next() is still called, so replies of a later connection aren't blocked.
-    this._centrifuge._call(cmd).then(resolveCtx => {
+    this._centrifuge._call(cmd, skipSending).then(resolveCtx => {
       try {
         if (flow !== this._subscribeFlow) {
           // The app unsubscribed meanwhile, maybe to subscribe again.

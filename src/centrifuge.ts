@@ -20,7 +20,7 @@ import { JsonCodec } from './json';
 import {
   isFunction, log, startsWith, errorExists,
   backoff, ttlMilliseconds, localStorageItem,
-  hasOffset, toOffset,
+  hasOffset, toOffset, base64UrlEncode,
 } from './utils';
 
 import {
@@ -81,6 +81,7 @@ const defaults: Options = {
   maxReconnectDelay: 20000,
   timeout: 5000,
   maxServerPingDelay: 10000,
+  maxHandshakeConnectSize: 0,
   networkEventTarget: null,
 }
 
@@ -92,6 +93,24 @@ const lateCallTimer = 1000;
 // How long such a call still waits for its reply, or the connection for a ping,
 // before failing.
 const lateCallGrace = 1000;
+
+// The connect frame built for the WebSocket handshake, see _prepareHandshakeConnect.
+interface HandshakeConnect {
+  // Base64url-encoded commands sent inside the handshake, empty if none fit.
+  data: string;
+  // The connect command, then subscribe commands.
+  commands: any[];
+  // The subscription of each command, null for connect.
+  owners: Array<HandshakeSubscribe | null>;
+  // How many of the commands are inside the handshake.
+  inHandshake: number;
+}
+
+interface HandshakeSubscribe {
+  sub: any;
+  // The subscribe flow of the subscription when its command was built.
+  flow: number;
+}
 
 interface serverSubscription {
   offset: number;
@@ -122,6 +141,11 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
   private _transport?: any;
   private _transportId: number;
   private _deviceWentOffline: boolean;
+  // See maxHandshakeConnectSize: the next attempt goes without the connect frame in
+  // the handshake after one with it failed before the transport opened, and if that
+  // attempt opens, the client stops sending it.
+  private _handshakeConnectPaused: boolean;
+  private _handshakeConnectDisabled: boolean;
   private _transportClosed: boolean;
   private _reconnecting: boolean;
   private _reconnectTimeout?: null | ReturnType<typeof setTimeout> = null;
@@ -179,6 +203,8 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     this._transport = null;
     this._transportId = 0;
     this._deviceWentOffline = false;
+    this._handshakeConnectPaused = false;
+    this._handshakeConnectDisabled = false;
     this._transportClosed = true;
     this._codec = new JsonCodec();
     this._reconnecting = false;
@@ -1090,11 +1116,45 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     self._debug("id of transport", transportId);
     let wasOpen = false;
     const initialCommands: any[] = [];
+    // Commands built before the transport opens for maxHandshakeConnectSize, or null.
+    let handshake: HandshakeConnect | null = null;
+    // Whether this attempt goes without the connect frame in the handshake because
+    // the previous one with it failed.
+    const handshakePaused = this._handshakeConnectPaused;
+    // The outcome of the handshake for _handshakeConnectPaused is taken once.
+    let handshakeOutcomeTaken = false;
 
     if (this._transport.emulation()) {
       const connectCommand = self._sendConnect(true);
       initialCommands.push(connectCommand);
+    } else if (transport.name() === 'websocket' && this._config.maxHandshakeConnectSize > 0 &&
+      !this._handshakeConnectDisabled && !handshakePaused) {
+      handshake = this._prepareHandshakeConnect();
     }
+    const handshakeData = handshake !== null ? handshake.data : '';
+
+    // Called when the transport opens (opened is true) or fails before it opened.
+    const takeHandshakeOutcome = function (opened: boolean) {
+      if (handshakeOutcomeTaken) {
+        return;
+      }
+      handshakeOutcomeTaken = true;
+      if (opened) {
+        if (handshakePaused) {
+          // Opened without the data after failing with it: something on the way
+          // rejects such handshakes, e.g. a proxy limiting header size.
+          self._debug('handshake connect disabled: the handshake failed with it and succeeded without');
+          self._handshakeConnectPaused = false;
+          self._handshakeConnectDisabled = true;
+        }
+      } else if (handshakeData !== '') {
+        self._debug('handshake with connect frame failed, next attempt goes without it');
+        self._handshakeConnectPaused = true;
+      } else if (handshakePaused) {
+        // Failed without the data too: the server is likely unavailable.
+        self._handshakeConnectPaused = false;
+      }
+    };
 
     this._transportClosed = false;
 
@@ -1107,6 +1167,8 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
         return;
       }
       self._debug(transport.name(), 'transport failed:', reason);
+      // Called only before the transport opened: its open callback clears the timeout.
+      takeHandshakeOutcome(false);
       if (self._emulation && !self._transportWasOpen) {
         self._advanceTransportIndex();
       }
@@ -1161,9 +1223,18 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
         // A socket that opened keeps its transport, as in 5.7.4: a slow first connect
         // reply must not move the client to a fallback transport for good.
         self._transportWasOpen = true;
+        takeHandshakeOutcome(true);
         self.startBatching();
         try {
-          self._sendConnect(false);
+          if (handshake !== null) {
+            // Commands built before the transport opened: the ones from the handshake
+            // are sent too unless the server took them.
+            const accepted = handshakeData !== '' && transport.handshakeConnectAccepted();
+            self._debug('connect frame inside handshake', handshakeData === '' ? 'not sent' : (accepted ? 'accepted' : 'not accepted'));
+            self._sendHandshakeConnectRest(handshake, accepted);
+          } else {
+            self._sendConnect(false);
+          }
           self._sendSubscribeCommands();
         } catch (e) {
           // E.g. thrown by an app callback of a subscription: the commands collected
@@ -1197,6 +1268,9 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
         }
         self._clearConnectTimeout();
         self._debug(transport.subName(), 'transport closed');
+        if (!wasOpen && self._isConnecting()) {
+          takeHandshakeOutcome(false);
+        }
         self._transportClosed = true;
         self._transportIsOpen = false;
 
@@ -1280,7 +1354,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     try {
       // Encoded here: commands the codec can't encode, e.g. connect data with a BigInt,
       // fail the attempt as a transport failing to initialize, not connect().
-      initialized = transport.initialize(this._codecName(), callbacks, this._codec.encodeCommands(initialCommands));
+      initialized = transport.initialize(this._codecName(), callbacks, this._codec.encodeCommands(initialCommands), handshakeData);
     } catch (e) {
       onInitializeError(e);
       return;
@@ -1291,6 +1365,79 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     }
     //@ts-ignore must be used only for debug and test purposes.
     self.emit('__centrifuge_debug:transport_initialized', {})
+  }
+
+  // Builds the connect frame before the WebSocket transport opens, see
+  // maxHandshakeConnectSize: the connect command and the subscribe commands which can
+  // be built right away, registered as sent. The connect command, followed by the
+  // subscribe commands in order while the encoded frame fits, goes inside the
+  // handshake; the rest is sent after the transport opens. If connect alone doesn't
+  // fit, all commands are sent after the transport opens.
+  private _prepareHandshakeConnect(): HandshakeConnect {
+    const commands = [this._sendConnect(true)];
+    const owners: Array<HandshakeSubscribe | null> = [null];
+    for (const channel in this._subs) {
+      if (!this._subs.hasOwnProperty(channel)) {
+        continue;
+      }
+      const sub = this._subs[channel];
+      if (sub.state !== SubscriptionState.Subscribing) {
+        continue;
+      }
+      // @ts-ignore – we are hiding some symbols from public API autocompletion.
+      const cmd = sub._handshakeSubscribe();
+      if (cmd) {
+        commands.push(cmd);
+        // @ts-ignore – we are hiding some symbols from public API autocompletion.
+        owners.push({ sub: sub, flow: sub._subscribeFlow });
+      }
+    }
+    let data = '';
+    let n = 0;
+    for (let i = 1; i <= commands.length; i++) {
+      const encoded = this._codec.encodeCommands(commands.slice(0, i));
+      const bytes = typeof encoded === 'string' ? new TextEncoder().encode(encoded) : encoded;
+      const candidate = base64UrlEncode(bytes);
+      if (candidate.length > this._config.maxHandshakeConnectSize) {
+        break;
+      }
+      data = candidate;
+      n = i;
+    }
+    return { data: data, commands: commands, owners: owners, inHandshake: n };
+  }
+
+  // Sends the commands built by _prepareHandshakeConnect when the transport opens:
+  // all of them, or only those which didn't fit the handshake if the server took
+  // the ones inside it. A subscription unsubscribed meanwhile (maybe to subscribe
+  // again) gets its command dropped, or, if the server took it already, an
+  // unsubscribe: while the transport wasn't open, the unsubscribe sent nothing.
+  private _sendHandshakeConnectRest(handshake: HandshakeConnect, accepted: boolean) {
+    const taken = accepted ? handshake.inHandshake : 0;
+    for (let i = 0; i < handshake.commands.length; i++) {
+      const cmd = handshake.commands[i];
+      const owner = handshake.owners[i];
+      // @ts-ignore – we are hiding some symbols from public API autocompletion.
+      const stale = owner !== null && owner.sub._subscribeFlow !== owner.flow;
+      if (i < taken) {
+        if (stale) {
+          this._unsubscribe(owner!.sub);
+        }
+      } else if (stale) {
+        this._forgetCall(cmd.id);
+      } else {
+        this._addCommand(cmd);
+      }
+    }
+  }
+
+  // Drops a registered command which won't be sent.
+  private _forgetCall(id: number) {
+    const callbacks = this._callbacks[id];
+    if (callbacks) {
+      clearTimeout(callbacks.timeout);
+      delete this._callbacks[id];
+    }
   }
 
   private _sendConnect(skipSending: boolean): any {

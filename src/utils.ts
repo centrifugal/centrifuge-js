@@ -1,4 +1,24 @@
 /** @internal */
+const base64UrlAlphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
+
+/** @internal Encodes bytes as unpadded base64url. No btoa: React Native may lack it. */
+export function base64UrlEncode(bytes: Uint8Array): string {
+  let out = '';
+  let i = 0;
+  for (; i + 2 < bytes.length; i += 3) {
+    const n = (bytes[i] << 16) | (bytes[i + 1] << 8) | bytes[i + 2];
+    out += base64UrlAlphabet[n >> 18] + base64UrlAlphabet[(n >> 12) & 63] + base64UrlAlphabet[(n >> 6) & 63] + base64UrlAlphabet[n & 63];
+  }
+  if (i + 1 === bytes.length) {
+    const n = bytes[i] << 16;
+    out += base64UrlAlphabet[n >> 18] + base64UrlAlphabet[(n >> 12) & 63];
+  } else if (i + 2 === bytes.length) {
+    const n = (bytes[i] << 16) | (bytes[i + 1] << 8);
+    out += base64UrlAlphabet[n >> 18] + base64UrlAlphabet[(n >> 12) & 63] + base64UrlAlphabet[(n >> 6) & 63];
+  }
+  return out;
+}
+
 export function startsWith(value, prefix) {
   return value.lastIndexOf(prefix, 0) === 0;
 }

@@ -249,6 +249,73 @@ describe('handshake connect', () => {
     expect(server.received).toHaveLength(1);
   });
 
+  test('a handshake failing with the data in a transport list is retried without it on websocket', async () => {
+    allowTransportErrors = true;
+    server.handshakeConnect = true;
+    server.rejectHandshake = protocols => protocols.some(isData);
+    client = createClient([
+      { transport: 'websocket' as TransportName, endpoint: server.url },
+      // Not listening: the client must not move on to it.
+      { transport: 'http_stream' as TransportName, endpoint: 'http://127.0.0.1:1/connection/http_stream' },
+    ], { maxHandshakeConnectSize: 4096 });
+    client.connect();
+    await waitFor(() => client!.state === State.Connected);
+    expect(server.handshakes).toHaveLength(2);
+    expect(server.handshakes[0].some(isData)).toBe(true);
+    expect(server.handshakes[1]).toEqual([]);
+    // @ts-ignore – internal.
+    expect(client._transport.name()).toBe('websocket');
+  });
+
+  test('falls back when a handshake with the data is left unanswered', async () => {
+    allowTransportErrors = true;
+    server.handshakeConnect = true;
+    // Like a proxy dropping requests with large headers.
+    server.holdHandshake = protocols => protocols.some(isData);
+    client = createClient(server.url, { maxHandshakeConnectSize: 4096, timeout: 300 });
+    const sub = client.newSubscription('news');
+    sub.subscribe();
+    client.connect();
+    await waitFor(() => sub.state === SubscriptionState.Subscribed);
+    expect(server.handshakes).toHaveLength(2);
+    expect(server.handshakes[0].some(isData)).toBe(true);
+    expect(server.handshakes[1]).toEqual([]);
+    expect(kinds(server.received)).toEqual(['connect', 'subscribe']);
+  });
+
+  test('a handshake failing with the data leaves subscriptions as without it', async () => {
+    allowTransportErrors = true;
+    server.handshakeConnect = true;
+    server.rejectHandshake = protocols => protocols.some(isData);
+    client = createClient(server.url, { maxHandshakeConnectSize: 4096 });
+    const sub = client.newSubscription('news');
+    const subErrors: any[] = [];
+    sub.on('error', ctx => subErrors.push(ctx));
+    // @ts-ignore – internal.
+    const resubscribes = jest.spyOn(sub, '_scheduleResubscribe');
+    sub.subscribe();
+    client.connect();
+    await waitFor(() => sub.state === SubscriptionState.Subscribed);
+    expect(resubscribes).not.toHaveBeenCalled();
+    expect(subErrors).toEqual([]);
+    // @ts-ignore – internal.
+    expect(Object.keys(client._callbacks)).toEqual([]);
+  });
+
+  test('connect data that cannot be encoded fails as without the option', async () => {
+    server.handshakeConnect = true;
+    client = createClient(server.url, { maxHandshakeConnectSize: 4096, data: { n: (globalThis as any).BigInt(1) } });
+    const errors: string[] = [];
+    client.on('error', ctx => errors.push(ctx.type));
+    expect(() => client!.connect()).not.toThrow();
+    await waitFor(() => errors.length > 0);
+    // Nothing went inside the handshake, the connect failed to be written after open.
+    expect(server.handshakes[0]).toEqual([]);
+    expect(server.received).toEqual([]);
+    expect(new Set(errors)).toEqual(new Set(['connect']));
+    expect(client.state).toBe(State.Connecting);
+  });
+
   test('works with websocket in a transport list', async () => {
     server.handshakeConnect = true;
     client = createClient([{ transport: 'websocket' as TransportName, endpoint: server.url }], { maxHandshakeConnectSize: 4096 });

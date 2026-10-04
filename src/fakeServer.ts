@@ -23,6 +23,7 @@ import WebSocket, { WebSocketServer } from 'ws';
 //   - Assert on what the client sent:        server.received / server.lastSubscribe
 //   - Take the connect frame from handshakes: server.handshakeConnect = true
 //   - Reject handshakes (e.g. as a proxy):   server.rejectHandshake = (protocols) => protocols.some(p => p.startsWith('cf-connect.'))
+//   - Leave handshakes unanswered:           server.holdHandshake = (protocols) => ...
 //   - Assert on offered subprotocols:        server.handshakes
 
 /** Options for a subscribe reply. Extend with more fields as scenarios need them. */
@@ -77,6 +78,11 @@ export class FakeCentrifugoServer {
   /** Return true to reject a handshake with HTTP 400 before upgrading. */
   rejectHandshake: ((protocols: string[]) => boolean) | null = null;
 
+  /** Return true to leave a handshake unanswered, e.g. as a proxy dropping it. */
+  holdHandshake: ((protocols: string[]) => boolean) | null = null;
+
+  private held: Array<(ok: boolean, code?: number) => void> = [];
+
   private constructor(wss: WebSocketServer) {
     this.wss = wss;
     this.wss.on('connection', (ws: WebSocket, req: any) => {
@@ -107,6 +113,10 @@ export class FakeCentrifugoServer {
       verifyClient: (info: any, done: (ok: boolean, code?: number) => void) => {
         const protocols = FakeCentrifugoServer.offered(info.req.headers['sec-websocket-protocol']);
         server!.handshakes.push(protocols);
+        if (server!.holdHandshake !== null && server!.holdHandshake(protocols)) {
+          server!.held.push(done);
+          return;
+        }
         const reject = server!.rejectHandshake !== null && server!.rejectHandshake(protocols);
         done(!reject, 400);
       },
@@ -156,6 +166,10 @@ export class FakeCentrifugoServer {
 
   /** Stop the server. */
   close(): Promise<void> {
+    for (const done of this.held) {
+      done(false, 400);
+    }
+    this.held = [];
     return new Promise<void>(resolve => this.wss.close(() => resolve()));
   }
 

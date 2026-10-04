@@ -163,8 +163,12 @@ export interface Options {
    * on the way (8 KB per header line is a common default), e.g. 4096. The server must
    * support it (Centrifugo's handshake connect option), otherwise commands are sent
    * after the connection opens as usual; if a handshake with the data fails before
-   * the connection opens, the client tries without it. WebSocket transport only.
-   * Default: 0, disabled. */
+   * the connection opens, the client tries without it. WebSocket transport only. The
+   * WebSocket implementation must report the subprotocol selected by the server in
+   * its protocol property (browsers and the ws package do): a custom websocket
+   * option not passing it through makes the client send the commands again, and
+   * the server closes the connection. Note the request header then carries what the commands contain: connection and
+   * subscription tokens and data, and the headers option. Default: 0, disabled. */
   maxHandshakeConnectSize: number;
   /** Custom WebSocket constructor. Required in Node.js environments where WebSocket is not
    * available globally. */

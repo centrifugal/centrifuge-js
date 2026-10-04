@@ -146,6 +146,9 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
   // attempt opens, the client stops sending it.
   private _handshakeConnectPaused: boolean;
   private _handshakeConnectDisabled: boolean;
+  // Commands built for the handshake of a transport not open yet, see
+  // _abandonHandshake.
+  private _handshakePending: HandshakeConnect | null;
   private _transportClosed: boolean;
   private _reconnecting: boolean;
   private _reconnectTimeout?: null | ReturnType<typeof setTimeout> = null;
@@ -205,6 +208,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     this._deviceWentOffline = false;
     this._handshakeConnectPaused = false;
     this._handshakeConnectDisabled = false;
+    this._handshakePending = null;
     this._transportClosed = true;
     this._codec = new JsonCodec();
     this._reconnecting = false;
@@ -1131,6 +1135,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
       !this._handshakeConnectDisabled && !handshakePaused) {
       handshake = this._prepareHandshakeConnect();
     }
+    this._handshakePending = handshake;
     const handshakeData = handshake !== null ? handshake.data : '';
 
     // Called when the transport opens (opened is true) or fails before it opened.
@@ -1169,7 +1174,9 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
       self._debug(transport.name(), 'transport failed:', reason);
       // Called only before the transport opened: its open callback clears the timeout.
       takeHandshakeOutcome(false);
-      if (self._emulation && !self._transportWasOpen) {
+      // An attempt with the connect frame in the handshake is retried with the same
+      // transport without it first.
+      if (self._emulation && !self._transportWasOpen && handshakeData === '') {
         self._advanceTransportIndex();
       }
       // The teardown rejects a connect command pending on it: the transport error
@@ -1231,6 +1238,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
             // are sent too unless the server took them.
             const accepted = handshakeData !== '' && transport.handshakeConnectAccepted();
             self._debug('connect frame inside handshake', handshakeData === '' ? 'not sent' : (accepted ? 'accepted' : 'not accepted'));
+            self._handshakePending = null;
             self._sendHandshakeConnectRest(handshake, accepted);
           } else {
             self._sendConnect(false);
@@ -1304,7 +1312,8 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
             code = connectingCodes.transportClosed;
             reason = 'transport closed';
           }
-          if (self._emulation && !self._transportWasOpen) {
+          // See failTransport: retried without the connect frame first.
+          if (self._emulation && !self._transportWasOpen && handshakeData === '') {
             self._advanceTransportIndex();
           }
         } else {
@@ -1369,10 +1378,11 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
 
   // Builds the connect frame before the WebSocket transport opens, see
   // maxHandshakeConnectSize: the connect command and the subscribe commands which can
-  // be built right away, registered as sent. The connect command, followed by the
-  // subscribe commands in order while the encoded frame fits, goes inside the
-  // handshake; the rest is sent after the transport opens. If connect alone doesn't
-  // fit, all commands are sent after the transport opens.
+  // be built right away, registered as sent, their timeouts started when the
+  // transport opens. The connect command, followed by the subscribe commands in order
+  // while the encoded frame fits, goes inside the handshake; the rest is sent after
+  // the transport opens. If connect alone doesn't fit, all commands are sent after
+  // the transport opens.
   private _prepareHandshakeConnect(): HandshakeConnect {
     const commands = [this._sendConnect(true)];
     const owners: Array<HandshakeSubscribe | null> = [null];
@@ -1392,17 +1402,37 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
         owners.push({ sub: sub, flow: sub._subscribeFlow });
       }
     }
+    for (const cmd of commands) {
+      this._stopCallTimeout(cmd.id);
+    }
     let data = '';
     let n = 0;
-    for (let i = 1; i <= commands.length; i++) {
-      const encoded = this._codec.encodeCommands(commands.slice(0, i));
-      const bytes = typeof encoded === 'string' ? new TextEncoder().encode(encoded) : encoded;
-      const candidate = base64UrlEncode(bytes);
-      if (candidate.length > this._config.maxHandshakeConnectSize) {
-        break;
+    try {
+      // Both codecs concatenate encoded commands, JSON separating them with a
+      // newline: the size of the frame is summed up command by command, and it's
+      // encoded once.
+      const encoder = new TextEncoder();
+      const separator = this._codecName() === 'json' ? 1 : 0;
+      let size = 0;
+      for (let i = 0; i < commands.length; i++) {
+        const encoded = this._codec.encodeCommands([commands[i]]);
+        size += (typeof encoded === 'string' ? encoder.encode(encoded).length : encoded.length) + (i > 0 ? separator : 0);
+        // Length of unpadded base64url.
+        if (Math.ceil(size * 4 / 3) > this._config.maxHandshakeConnectSize) {
+          break;
+        }
+        n = i + 1;
       }
-      data = candidate;
-      n = i;
+      if (n > 0) {
+        const encoded = this._codec.encodeCommands(commands.slice(0, n));
+        data = base64UrlEncode(typeof encoded === 'string' ? encoder.encode(encoded) : encoded);
+      }
+    } catch (e) {
+      // E.g. connect data with a BigInt: all commands go after the transport opens,
+      // failing there as without the option.
+      this._debug('error encoding connect frame for handshake', e);
+      data = '';
+      n = 0;
     }
     return { data: data, commands: commands, owners: owners, inHandshake: n };
   }
@@ -1425,8 +1455,30 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
         }
       } else if (stale) {
         this._forgetCall(cmd.id);
+        continue;
       } else {
         this._addCommand(cmd);
+      }
+      this._startCallTimeout(cmd.id);
+    }
+  }
+
+  // Drops the commands built for a handshake when the transport closes before it
+  // opened, as if they were never built: their subscriptions subscribe with the next
+  // attempt, with no error and resubscribe of their own, as without the option.
+  private _abandonHandshake() {
+    const handshake = this._handshakePending;
+    if (handshake === null) {
+      return;
+    }
+    this._handshakePending = null;
+    for (let i = 0; i < handshake.commands.length; i++) {
+      this._forgetCall(handshake.commands[i].id);
+      const owner = handshake.owners[i];
+      // @ts-ignore – we are hiding some symbols from public API autocompletion.
+      if (owner !== null && owner.sub._subscribeFlow === owner.flow) {
+        // @ts-ignore – we are hiding some symbols from public API autocompletion.
+        owner.sub._inflight = false;
       }
     }
   }
@@ -2030,6 +2082,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     this._reconnectAttemptsResetPending = false;
     // Commands collected for the closed transport must not go out on the next one.
     this._commands = [];
+    this._abandonHandshake();
     this._clearOutgoingRequests();
     if (!reconnect) {
       this._rejectPromises({ code: errorCodes.clientDisconnected, message: 'disconnected' });
@@ -2820,8 +2873,28 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
       errback: errback,
       timeout: null
     };
+    this._startCallTimeout(id);
+  }
+
+  // For a call registered before its command can be sent, see _prepareHandshakeConnect.
+  private _stopCallTimeout(id: number) {
+    const callbacks = this._callbacks[id];
+    if (callbacks) {
+      clearTimeout(callbacks.timeout);
+      callbacks.timeout = null;
+    }
+  }
+
+  // Fails a registered call with a timeout error if its reply doesn't come in time.
+  private _startCallTimeout(id: number) {
+    const callbacks = this._callbacks[id];
+    if (!callbacks) {
+      return;
+    }
+    const errback = callbacks.errback;
+    clearTimeout(callbacks.timeout);
     const due = Date.now() + this._config.timeout;
-    this._callbacks[id].timeout = setTimeout(() => {
+    callbacks.timeout = setTimeout(() => {
       // The reply may have been received already but not processed yet, e.g. when
       // a suspended process resumes and this overdue timer runs before the data
       // waiting in the socket. Let that data be processed first: one event loop

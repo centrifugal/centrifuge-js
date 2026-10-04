@@ -26,12 +26,25 @@ export class WebsocketTransport {
     return this.options.websocket !== undefined && this.options.websocket !== null;
   }
 
-  initialize(protocol: string, callbacks: any) {
+  // handshakeConnectData is the base64url-encoded connect frame to send inside the
+  // handshake (see maxHandshakeConnectSize), empty for none.
+  initialize(protocol: string, callbacks: any, _initialData?: any, handshakeConnectData?: string) {
     let subProtocol = '';
     if (protocol === 'protobuf') {
       subProtocol = 'centrifuge-protobuf';
     }
-    if (subProtocol !== '') {
+    if (handshakeConnectData) {
+      // The server confirms it takes the data by selecting the -hc subprotocol (see
+      // handshakeConnectAccepted). A server which doesn't selects the usual one,
+      // offered for JSON too: browsers fail a handshake offering subprotocols if the
+      // server selects none.
+      const protocols = [
+        protocol === 'protobuf' ? 'cf-proto-hc' : 'cf-json-hc',
+        protocol === 'protobuf' ? 'centrifuge-protobuf' : 'centrifuge-json',
+        'cf-connect.' + handshakeConnectData,
+      ];
+      this._transport = new this.options.websocket(this.endpoint, protocols);
+    } else if (subProtocol !== '') {
       this._transport = new this.options.websocket(this.endpoint, subProtocol);
     } else {
       this._transport = new this.options.websocket(this.endpoint);
@@ -55,6 +68,14 @@ export class WebsocketTransport {
     this._transport.onmessage = event => {
       callbacks.onMessage(event.data);
     };
+  }
+
+  // Whether the server took the connect frame sent inside the handshake.
+  handshakeConnectAccepted(): boolean {
+    if (this._transport === null) {
+      return false;
+    }
+    return this._transport.protocol === 'cf-json-hc' || this._transport.protocol === 'cf-proto-hc';
   }
 
   close() {

@@ -154,6 +154,22 @@ export interface Options {
   /** Extra milliseconds added on top of the server-reported ping interval before declaring the
    * connection broken. Set to 0 to disable ping-based disconnect detection. Default: 10000. */
   maxServerPingDelay: number;
+  /** Maximum size of the connect frame sent inside the WebSocket handshake request, in
+   * bytes of its encoded form. Saves one round trip before the connection is ready:
+   * the connect command, followed by the subscribe commands which fit, travels in the
+   * Sec-WebSocket-Protocol header, and the server replies right after the handshake.
+   * Commands which don't fit are sent after the connection opens. The data is added to
+   * the standard request headers, so keep it well below the header limits of proxies
+   * on the way (8 KB per header line is a common default), e.g. 4096. The server must
+   * support it (Centrifugo's handshake connect option), otherwise commands are sent
+   * after the connection opens as usual; if a handshake with the data fails before
+   * the connection opens, the client tries without it. WebSocket transport only. The
+   * WebSocket implementation must report the subprotocol selected by the server in
+   * its protocol property (browsers and the ws package do): a custom websocket
+   * option not passing it through makes the client send the commands again, and
+   * the server closes the connection. Note the request header then carries what the commands contain: connection and
+   * subscription tokens and data, and the headers option. Default: 0, disabled. */
+  maxHandshakeConnectSize: number;
   /** Custom WebSocket constructor. Required in Node.js environments where WebSocket is not
    * available globally. */
   websocket: any | null;

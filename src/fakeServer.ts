@@ -21,6 +21,10 @@ import WebSocket, { WebSocketServer } from 'ws';
 //   - Send anything the protocol allows:     server.sendPush({ disconnect: { code: 3000, reason: 'bye' } })
 //   - Drive a reconnect:                     server.closeConnection()
 //   - Assert on what the client sent:        server.received / server.lastSubscribe
+//   - Take the connect frame from handshakes: server.handshakeConnect = true
+//   - Reject handshakes (e.g. as a proxy):   server.rejectHandshake = (protocols) => protocols.some(p => p.startsWith('cf-connect.'))
+//   - Leave handshakes unanswered:           server.holdHandshake = (protocols) => ...
+//   - Assert on offered subprotocols:        server.handshakes
 
 /** Options for a subscribe reply. Extend with more fields as scenarios need them. */
 export interface SubscribeReplyOptions {
@@ -61,10 +65,38 @@ export class FakeCentrifugoServer {
   /** Customize the subscribe result per channel (default: empty result). */
   onSubscribe: SubscribeHandler | null = null;
 
+  /** Take the connect frame sent inside the handshake (cf-connect.<base64url>),
+   *  confirming with cf-json-hc, like a server with handshake connect enabled. */
+  handshakeConnect = false;
+
+  /** Subprotocols offered in each handshake, in order, including rejected ones. */
+  readonly handshakes: string[][] = [];
+
+  /** Commands taken from handshakes, in order (they are in received too). */
+  readonly handshakeCommands: any[] = [];
+
+  /** Return true to reject a handshake with HTTP 400 before upgrading. */
+  rejectHandshake: ((protocols: string[]) => boolean) | null = null;
+
+  /** Return true to leave a handshake unanswered, e.g. as a proxy dropping it. */
+  holdHandshake: ((protocols: string[]) => boolean) | null = null;
+
+  private held: Array<(ok: boolean, code?: number) => void> = [];
+
   private constructor(wss: WebSocketServer) {
     this.wss = wss;
-    this.wss.on('connection', (ws: WebSocket) => {
+    this.wss.on('connection', (ws: WebSocket, req: any) => {
       this.current = ws;
+      if (ws.protocol === 'cf-json-hc') {
+        const data = FakeCentrifugoServer.handshakeData(FakeCentrifugoServer.offered(req.headers['sec-websocket-protocol']));
+        for (const line of (data || '').split('\n')) {
+          if (line) {
+            const cmd = JSON.parse(line);
+            this.handshakeCommands.push(cmd);
+            this.dispatch(cmd);
+          }
+        }
+      }
       ws.on('message', (data: Buffer) => {
         // JSON protocol frames commands as newline-delimited JSON.
         for (const line of data.toString().trim().split('\n')) {
@@ -75,9 +107,47 @@ export class FakeCentrifugoServer {
   }
 
   static async start(): Promise<FakeCentrifugoServer> {
-    const wss = new WebSocketServer({ port: 0 });
+    let server: FakeCentrifugoServer | null = null;
+    const wss = new WebSocketServer({
+      port: 0,
+      verifyClient: (info: any, done: (ok: boolean, code?: number) => void) => {
+        const protocols = FakeCentrifugoServer.offered(info.req.headers['sec-websocket-protocol']);
+        server!.handshakes.push(protocols);
+        if (server!.holdHandshake !== null && server!.holdHandshake(protocols)) {
+          server!.held.push(done);
+          return;
+        }
+        const reject = server!.rejectHandshake !== null && server!.rejectHandshake(protocols);
+        done(!reject, 400);
+      },
+      // Like the real server: cf-json-hc only with valid data when enabled, never
+      // the data itself; otherwise the first other offered subprotocol.
+      handleProtocols: (protocols: Set<string>) => {
+        const list = Array.from(protocols);
+        if (server!.handshakeConnect && list.includes('cf-json-hc') && FakeCentrifugoServer.handshakeData(list)) {
+          return 'cf-json-hc';
+        }
+        const other = list.find(p => !p.endsWith('-hc') && !p.startsWith('cf-connect.'));
+        return other === undefined ? false : other;
+      },
+    });
+    server = new FakeCentrifugoServer(wss);
     await new Promise<void>(resolve => wss.on('listening', () => resolve()));
-    return new FakeCentrifugoServer(wss);
+    return server;
+  }
+
+  private static offered(header: string | undefined): string[] {
+    return header ? header.split(',').map(p => p.trim()).filter(p => p !== '') : [];
+  }
+
+  // The connect frame from a cf-connect.<base64url> subprotocol, or null.
+  private static handshakeData(protocols: string[]): string | null {
+    const p = protocols.find(p => p.startsWith('cf-connect.'));
+    if (!p) {
+      return null;
+    }
+    const data = Buffer.from(p.slice('cf-connect.'.length), 'base64url').toString();
+    return data === '' ? null : data;
   }
 
   get url(): string {
@@ -96,6 +166,10 @@ export class FakeCentrifugoServer {
 
   /** Stop the server. */
   close(): Promise<void> {
+    for (const done of this.held) {
+      done(false, 400);
+    }
+    this.held = [];
     return new Promise<void>(resolve => this.wss.close(() => resolve()));
   }
 

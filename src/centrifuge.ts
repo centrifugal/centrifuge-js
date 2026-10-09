@@ -1845,6 +1845,11 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
       }
     }
     if (this._isDisconnected()) {
+      if (!reconnect) {
+        // Calls made while disconnected wait for a connection: disconnect() ends
+        // that wait too.
+        this._rejectPromises({ code: errorCodes.clientDisconnected, message: 'disconnected' });
+      }
       return;
     }
     const previousState = this.state;

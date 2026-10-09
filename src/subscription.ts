@@ -235,7 +235,10 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
     if (this._isSubscribed()) {
       return;
     }
-    this._resubscribeAttempts = 0;
+    if (this._isUnsubscribed()) {
+      // A subscribe in progress keeps its backoff.
+      this._resubscribeAttempts = 0;
+    }
     this._setSubscribing(subscribingCodes.subscribeCalled, 'subscribe called');
   }
 
@@ -1296,6 +1299,25 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
 
   private _subscribeError(err: any) {
     if (!this._isSubscribing()) {
+      return;
+    }
+    if (err.code === 109 && this._getToken === null) {
+      // The token expired and there is no getToken to get another one: like a
+      // connection, unauthorized (instead of subscribing again without a token).
+      try {
+        this.emit('error', {
+          type: 'configuration',
+          channel: this.channel,
+          error: {
+            code: errorCodes.badConfiguration,
+            message: 'subscription token expired but no getToken function set'
+          }
+        });
+      } catch (e) {
+        // @ts-ignore – we are hiding some symbols from public API autocompletion.
+        this._centrifuge._reportDispatchError(e);
+      }
+      this._setUnsubscribed(unsubscribedCodes.unauthorized, 'unauthorized', false);
       return;
     }
     if (err.code < 100 || err.code === 109 || err.temporary === true) {

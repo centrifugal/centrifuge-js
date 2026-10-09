@@ -1,6 +1,6 @@
 import { Centrifuge } from './centrifuge';
 import { State, SubscriptionState, TransportName } from './types';
-import { connectingCodes, disconnectedCodes } from './codes';
+import { connectingCodes, disconnectedCodes, errorCodes, unsubscribedCodes } from './codes';
 import { FakeCentrifugoServer } from './fakeServer';
 
 import WebSocket from 'ws';
@@ -725,6 +725,35 @@ describe('dispatch and subscription state', () => {
     await waitFor(() => connects === 3);
     const connect = server.received.filter(cmd => cmd.connect !== undefined)[2].connect;
     expect(connect.subs.s2).toEqual({ recover: true, offset: 7, epoch: 'e' });
+  });
+
+  test('disconnect() fails the calls made while disconnected', async () => {
+    const call = c.rpc('method', {}).then(() => 'resolved', (e: any) => e.code);
+    c.disconnect();
+    expect(await call).toBe(errorCodes.clientDisconnected);
+  });
+
+  test('a subscription token expired without getToken unsubscribes as unauthorized', async () => {
+    server.onCommand = (cmd) => cmd.subscribe !== undefined
+      ? { id: cmd.id, error: { code: 109, message: 'token expired' } }
+      : null;
+    const sub: any = c.newSubscription('ch', { token: 'static' });
+    const unsubscribed = new Promise<any>(resolve => sub.once('unsubscribed', resolve));
+    const errors: string[] = [];
+    sub.on('error', (ctx: any) => errors.push(ctx.type));
+    sub.subscribe();
+    c.connect();
+    expect((await unsubscribed).code).toBe(unsubscribedCodes.unauthorized);
+    expect(errors).toEqual(['configuration']);
+    expect(server.received.filter(cmd => cmd.subscribe !== undefined)).toHaveLength(1);
+  });
+
+  test('subscribe() on a subscription subscribing keeps its backoff', () => {
+    const sub: any = c.newSubscription('ch');
+    sub.subscribe();
+    sub._resubscribeAttempts = 3;
+    sub.subscribe();
+    expect(sub._resubscribeAttempts).toBe(3);
   });
 
   test('a subscription token refresh failing after unsubscribe() leaves no retry', async () => {

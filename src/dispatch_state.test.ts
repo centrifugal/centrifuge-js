@@ -665,6 +665,36 @@ describe('dispatch and subscription state', () => {
     expect(sub._prevValueMap.size).toBe(0);
   });
 
+  test('a shared poll key removed while its track was in flight is untracked at the server', async () => {
+    server.onSubscribe = () => ({});
+    let held: any = null;
+    server.onCommand = (cmd) => {
+      if (cmd.sub_refresh?.track && held === null) {
+        held = cmd;
+        return {};
+      }
+      return null;
+    };
+    const sub: any = c.newSharedPollSubscription('poll');
+    const updates: string[] = [];
+    sub.on('update', (ctx: any) => updates.push(`${ctx.key}:${ctx.removed === true}`));
+    sub.subscribe();
+    c.connect();
+    await sub.ready(3000);
+    sub.track([{ key: 'k1', version: 0 }], 'signature');
+    await waitFor(() => held !== null);
+
+    // The server removes the key (e.g. revoked), then the track lands and tracks it again.
+    server.publish('poll', null, { key: 'k1', removed: true });
+    await waitFor(() => updates.length === 1);
+    server.send({ id: held.id, sub_refresh: {} });
+
+    await waitFor(() => server.received.some(cmd => cmd.sub_refresh?.untrack !== undefined));
+    const untrack = server.received.find(cmd => cmd.sub_refresh?.untrack !== undefined);
+    expect(untrack.sub_refresh.untrack).toEqual(['k1']);
+    expect(updates).toEqual(['k1:true']);
+  });
+
   test('a subscription token refresh failing after unsubscribe() leaves no retry', async () => {
     server.onSubscribe = () => ({ expires: true, ttl: 1 } as any);
     let rejectRefresh: any = null;

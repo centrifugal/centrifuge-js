@@ -1635,7 +1635,8 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
         // @ts-ignore – we are hiding some symbols from public API autocompletion.
         this._centrifuge._call(msg).then(resolveCtx => {
           try {
-            this._handleTrackResponse(resolveCtx.reply.sub_refresh);
+            this._handleTrackResponse(resolveCtx.reply.sub_refresh,
+              frame.flatMap(b => b.items.map(i => i.key)), frameUntrackKeys);
           } catch (err) {
             // @ts-ignore – we are hiding some symbols from public API autocompletion.
             this._centrifuge._dispatchFailed(err);
@@ -1719,7 +1720,7 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
     }));
   }
 
-  private _handleTrackResponse(result: any) {
+  private _handleTrackResponse(result: any, keys: string[], untrackKeys?: string[]) {
     // The reply to a track sent before unsubscribe() belongs to that subscription:
     // its items and versions must not reach the next one.
     if (!this._isSubscribed()) {
@@ -1740,6 +1741,16 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
     }
     if (!this._isSubscribed()) {
       return;
+    }
+    // Keys the request tracked at the server which the client no longer tracks,
+    // e.g. removed by the server while the request was in flight: the server
+    // would keep tracking them, untracked there too.
+    const untracked = new Set(untrackKeys || []);
+    const stale = keys.filter(key => !untracked.has(key) && !this._sharedPollTrackedItems.has(key));
+    if (stale.length > 0) {
+      this._sendUntrackRequest(stale).catch(err => {
+        this.emit('error', { type: 'untrack', channel: this.channel, error: err });
+      });
     }
     // Server returns MIN ttl across all batches in this request. Keep the
     // EARLIEST deadline received across all responses as the refresh target.

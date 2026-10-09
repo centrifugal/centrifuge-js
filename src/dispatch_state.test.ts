@@ -554,6 +554,30 @@ describe('dispatch and subscription state', () => {
     expect(updates).toEqual(['k1:3', 'k1:4']);
   });
 
+  test('a permanently failed track untracks its keys, also at the server', async () => {
+    server.onSubscribe = () => ({});
+    server.onCommand = (cmd) => cmd.sub_refresh !== undefined && cmd.sub_refresh.track
+      ? { id: cmd.id, error: { code: 106, message: 'limit exceeded' } }
+      : null;
+    const sub: any = c.newSharedPollSubscription('poll');
+    const updates: string[] = [];
+    const errors: number[] = [];
+    sub.on('update', (ctx: any) => updates.push(`${ctx.key}:${ctx.removed === true}`));
+    sub.on('error', (ctx: any) => errors.push(ctx.error.code));
+    sub.subscribe();
+    c.connect();
+    await sub.ready(3000);
+    sub.track([{ key: 'k1', version: 0 }], 'signature');
+    await waitFor(() => updates.length === 1);
+
+    expect(errors).toEqual([106]);
+    expect(updates).toEqual(['k1:true']);
+    expect([...sub.trackedKeys()]).toEqual([]);
+    await waitFor(() => server.received.some(cmd => cmd.sub_refresh?.untrack !== undefined));
+    const untrack = server.received.find(cmd => cmd.sub_refresh?.untrack !== undefined);
+    expect(untrack.sub_refresh.untrack).toEqual(['k1']);
+  });
+
   test('a subscription token refresh failing after unsubscribe() leaves no retry', async () => {
     server.onSubscribe = () => ({ expires: true, ttl: 1 } as any);
     let rejectRefresh: any = null;

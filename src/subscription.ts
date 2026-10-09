@@ -1575,7 +1575,8 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
           resolve();
         }, rejectCtx => {
           if (rejectCtx.next) rejectCtx.next();
-          reject(rejectCtx.error);
+          // With the keys of the request, which a permanent error untracks.
+          reject({ error: rejectCtx.error, keys: frame.flatMap(b => b.items.map(i => i.key)) });
         });
       });
 
@@ -1705,7 +1706,7 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
     this._sharedPollSignatures.push({ keys, signature });
   }
 
-  protected _handleTrackError(err: any) {
+  protected _handleTrackError(err: any, keys: string[]) {
     if (!this._isSubscribed()) {
       return;
     }
@@ -1733,8 +1734,42 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
           () => this._sharedPollReplayTrack(),
           backoff(this._sharedPollTrackRetryAttempts++, 1000, 15000)
         );
+        return;
       }
+      // A permanent error, e.g. limit exceeded or permission denied: retrying
+      // fails the same way. The keys are untracked like revoked ones, also at
+      // the server: an earlier request (e.g. one that timed out) may have
+      // tracked them.
+      this._untrackFailedKeys(keys);
     });
+  }
+
+  private _untrackFailedKeys(keys: string[]) {
+    const failed = keys.filter(key => this._sharedPollTrackedItems.has(key));
+    if (failed.length === 0) {
+      return;
+    }
+    for (const key of failed) {
+      this._sharedPollTrackedItems.delete(key);
+    }
+    this._sharedPollSignatures = this._sharedPollSignatures.filter(entry =>
+      entry.keys.some(k => this._sharedPollTrackedItems.has(k))
+    );
+    this._sendUntrackRequest(failed).catch(err => {
+      this.emit('error', { type: 'untrack', channel: this.channel, error: err });
+    });
+    for (const key of failed) {
+      // A handler of an earlier removal may have ended the subscription.
+      if (!this._isSubscribed()) {
+        return;
+      }
+      this.emit('update', {
+        channel: this.channel,
+        key: key,
+        data: null,
+        removed: true,
+      } as SharedPollUpdateContext);
+    }
   }
 
   // _sharedPollRefreshSignature obtains a fresh consolidated signature
@@ -1824,8 +1859,8 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
 
       if (items.length === 0) return;
 
-      self._sendTrackRequest([{ items, signature: result.signature }]).catch(err => {
-        self._handleTrackError(err);
+      self._sendTrackRequest([{ items, signature: result.signature }]).catch(e => {
+        self._handleTrackError(e.error, e.keys);
       });
     }).catch(e => {
       if (generation !== self._refreshGeneration) return;
@@ -1909,8 +1944,8 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
       // Pass untracked keys inline — server validates HMAC over the full batch
       // then immediately removes the stale keys in the same handler, eliminating
       // the previous two-round-trip track→untrack sequence.
-      this._sendTrackRequest(replayBatches, allUntrackedInReplay).catch(err => {
-        this._handleTrackError(err);
+      this._sendTrackRequest(replayBatches, allUntrackedInReplay).catch(e => {
+        this._handleTrackError(e.error, e.keys);
       });
     }
 
@@ -1980,8 +2015,8 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
 
       // Cache the obtained signature for subsequent reconnect replays.
       self._addSharedPollSignature(result.keys, result.signature);
-      self._sendTrackRequest([{ items, signature: result.signature }]).catch(err => {
-        self._handleTrackError(err);
+      self._sendTrackRequest([{ items, signature: result.signature }]).catch(e => {
+        self._handleTrackError(e.error, e.keys);
       });
     }).catch(e => {
       if (generation !== self._refreshGeneration || !self._isSubscribed()) return;
@@ -2693,8 +2728,8 @@ export class SharedPollSubscription extends BaseSubscription {
       // Explicit signature path — append to library and (if subscribed) send.
       this._addSharedPollSignature(items.map(i => i.key), sig);
       if (this._isSubscribed() && !this._sharedPollReplayPending) {
-        this._sendTrackRequest([{ items, signature: sig }]).catch(err => {
-          this._handleTrackError(err);
+        this._sendTrackRequest([{ items, signature: sig }]).catch(e => {
+          this._handleTrackError(e.error, e.keys);
         });
       }
       // If not subscribed yet, or completing the subscribe, _sharedPollReplayTrack
@@ -2761,8 +2796,8 @@ export class SharedPollSubscription extends BaseSubscription {
       if (authorizedItems.length === 0) return;
       // Cache the obtained signature for reconnect replay.
       this._addSharedPollSignature(result.keys, result.signature);
-      this._sendTrackRequest([{ items: authorizedItems, signature: result.signature }]).catch(err => {
-        this._handleTrackError(err);
+      this._sendTrackRequest([{ items: authorizedItems, signature: result.signature }]).catch(e => {
+        this._handleTrackError(e.error, e.keys);
       });
     }).catch(e => {
       if (generation !== this._refreshGeneration || !this._isSubscribed()) return;

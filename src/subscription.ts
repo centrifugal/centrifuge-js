@@ -2186,30 +2186,36 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
     this._debug('starting map subscribe on', this.channel);
     const flow = ++this._subscribeFlow;
 
-    // Initialize buffers and phase
-    this._mapStateBuffer = [];
-    this._mapStreamBuffer = [];
-    this._mapCursor = '';
+    // Decided when the first request goes, after the token if one is needed: the
+    // position may be reset meanwhile (state invalidation, setTagsFilter).
+    const start = () => {
+      // Initialize buffers and phase
+      this._mapStateBuffer = [];
+      this._mapStreamBuffer = [];
+      this._mapCursor = '';
 
-    // If we have a position from `since`, we may skip snapshot and go to stream
-    const recovering = this._recover && this._offset !== null && this._epoch !== null;
-    // Preserve _prevValueMap when recovering — the server will send deltas
-    // against the values the client already has from the previous session.
-    // Only clear when starting from scratch (no recovery position).
-    if (!recovering) {
-      this._prevValueMap = new Map();
-    }
-    this._mapFlowRecovering = recovering;
-    this._mapFlowOffset = recovering ? this._offset as number : 0;
-    this._mapFlowEpoch = recovering ? this._epoch : null;
-    this._mapFlowPositionResets = this._mapPositionResets;
+      // If we have a position from `since`, we may skip snapshot and go to stream
+      const recovering = this._recover && this._offset !== null && this._epoch !== null;
+      // Preserve _prevValueMap when recovering — the server will send deltas
+      // against the values the client already has from the previous session.
+      // Only clear when starting from scratch (no recovery position).
+      if (!recovering) {
+        this._prevValueMap = new Map();
+      }
+      this._mapFlowRecovering = recovering;
+      this._mapFlowOffset = recovering ? this._offset as number : 0;
+      this._mapFlowEpoch = recovering ? this._epoch : null;
+      this._mapFlowPositionResets = this._mapPositionResets;
 
-    this._mapPhase = MapPhase.State;
-    if (recovering) {
-      this._debug('map subscribe: recovering from position, skipping to stream phase');
-      this._mapPhase = MapPhase.Stream;
-    }
-    const start = () => recovering ? this._fetchStream(flow) : this._fetchSnapshot(flow);
+      this._mapPhase = MapPhase.State;
+      if (recovering) {
+        this._debug('map subscribe: recovering from position, skipping to stream phase');
+        this._mapPhase = MapPhase.Stream;
+        this._fetchStream(flow);
+      } else {
+        this._fetchSnapshot(flow);
+      }
+    };
 
     // Get token if needed, then start fetching. Also when recovering: the token
     // may have been cleared, e.g. after it expired.

@@ -756,6 +756,27 @@ describe('dispatch and subscription state', () => {
     expect(sub._resubscribeAttempts).toBe(3);
   });
 
+  test('a map position reset while the token loads is not recovered from', async () => {
+    let resolveToken: any = null;
+    const sub: any = c.newMapSubscription('map', {
+      getToken: () => new Promise<string>(resolve => { resolveToken = resolve; }),
+    });
+    sub._offset = 5;
+    sub._epoch = 'e';
+    sub._recover = true;
+    c.connect();
+    await waitFor(() => c.state === State.Connected);
+    sub.subscribe();
+    await waitFor(() => resolveToken !== null);
+    // E.g. a state invalidation (3014 / 2502) while the token loads.
+    sub._invalidateState();
+    resolveToken('token');
+    await waitFor(() => server.received.some(cmd => cmd.subscribe !== undefined));
+    const req = server.received.find(cmd => cmd.subscribe !== undefined).subscribe;
+    expect(req.recover).toBeUndefined();
+    expect(req.phase).toBe(2);
+  });
+
   test('a subscription token refresh failing after unsubscribe() leaves no retry', async () => {
     server.onSubscribe = () => ({ expires: true, ttl: 1 } as any);
     let rejectRefresh: any = null;

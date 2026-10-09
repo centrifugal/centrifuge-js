@@ -2189,6 +2189,11 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
       if (sub._inflight === true) {
         continue;
       }
+      // A subscribe error is retried after its backoff, also across a reconnect.
+      // @ts-ignore – we are hiding some symbols from public API autocompletion.
+      if (sub._resubscribeTimeout !== null) {
+        continue;
+      }
       if (sub.state === SubscriptionState.Subscribing) {
         // @ts-ignore – we are hiding some symbols from public API autocompletion.
         const cmd = sub._subscribe();

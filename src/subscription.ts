@@ -993,6 +993,11 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
     if (!this._isSubscribing()) {
       return;
     }
+    if (error.code === errorCodes.connectionClosed) {
+      // The transport closed with the subscribe in flight: no error of the
+      // subscribe, the next connection subscribes again without a backoff.
+      return;
+    }
     if (error.code === errorCodes.timeout) {
       // @ts-ignore – we are hiding some symbols from public API autocompletion.
       this._centrifuge._disconnect(connectingCodes.subscribeTimeout, 'subscribe timeout', true);
@@ -1263,7 +1268,11 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
     }
     const self = this;
     const delay = this._getResubscribeDelay();
+    // One timer at a time: a timer left armed would fire later, out of the
+    // backoff, and send a subscribe the emulation waits don't cover.
+    this._clearResubscribeTimeout();
     this._resubscribeTimeout = setTimeout(function () {
+      self._resubscribeTimeout = null;
       if (self._isSubscribing()) {
         self._subscribe();
       }
@@ -2632,6 +2641,11 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
     this._inflight = false;
 
     if (!this._isSubscribing()) {
+      return;
+    }
+
+    if (error.code === errorCodes.connectionClosed) {
+      // See _handleSubscribeError.
       return;
     }
 

@@ -590,6 +590,65 @@ describe('dispatch and subscription state', () => {
     expect(untrack.sub_refresh.untrack).toEqual(['k1']);
   });
 
+  test('a subscribe error is retried after its backoff, also across a reconnect', async () => {
+    let subscribes = 0;
+    server.onCommand = (cmd) => {
+      if (cmd.subscribe !== undefined && ++subscribes === 1) {
+        return { id: cmd.id, error: { code: 100, message: 'internal', temporary: true } };
+      }
+      return null;
+    };
+    const sub: any = c.newSubscription('ch', { minResubscribeDelay: 500, maxResubscribeDelay: 500 });
+    sub.subscribe();
+    c.connect();
+    await waitFor(() => subscribes === 1);
+    await waitFor(() => sub._resubscribeTimeout !== null);
+
+    // A reconnect before the backoff ends doesn't retry the subscribe at once.
+    server.closeConnection();
+    await waitFor(() => c.state === State.Connected && server.received.filter(cmd => cmd.connect).length === 2);
+    await delay(100);
+    expect(subscribes).toBe(1);
+    await sub.ready(3000);
+    expect(subscribes).toBe(2);
+  });
+
+  test('a subscribe in flight when the transport closes is sent again without a backoff', async () => {
+    let held = false;
+    server.onCommand = (cmd) => {
+      if (cmd.subscribe !== undefined && !held) {
+        held = true;
+        return {};
+      }
+      return null;
+    };
+    const sub: any = c.newSubscription('ch', { minResubscribeDelay: 2000, maxResubscribeDelay: 2000 });
+    sub.subscribe();
+    c.connect();
+    await waitFor(() => held);
+
+    // The teardown fails the subscribe in flight: no subscribe error, no backoff.
+    c.disconnect();
+    await delay(20);
+    expect(sub._resubscribeTimeout).toBeNull();
+    expect(sub._resubscribeAttempts).toBe(0);
+    // Subscribed on the next connection, not after a resubscribe delay.
+    c.connect();
+    await sub.ready(1000);
+  });
+
+  test('a resubscribe timer armed again replaces the earlier one', async () => {
+    const sub: any = c.newSubscription('ch', { minResubscribeDelay: 50, maxResubscribeDelay: 50 });
+    sub.subscribe();
+    sub._scheduleResubscribe();
+    sub._scheduleResubscribe();
+    let subscribeCalls = 0;
+    const subscribe = sub._subscribe.bind(sub);
+    sub._subscribe = () => { subscribeCalls++; return subscribe(); };
+    await delay(200);
+    expect(subscribeCalls).toBe(1);
+  });
+
   test('a subscription token refresh failing after unsubscribe() leaves no retry', async () => {
     server.onSubscribe = () => ({ expires: true, ttl: 1 } as any);
     let rejectRefresh: any = null;

@@ -188,9 +188,11 @@ describe('recovered publications and state', () => {
       await delay(50);
       expect(subscribed).toEqual(['ss1']);
       expect(received).toEqual([]);
-      // Positions are kept for recovery on the next connect.
+      // The position of ss1 is kept for recovery on the next connect; ss2, whose
+      // subscribed event the app didn't get, has none: the next connect subscribes
+      // it from scratch, so a gap can't go unreported.
       expect((c as any)._serverSubs.ss1.offset).toBe(0);
-      expect((c as any)._serverSubs.ss2.offset).toBe(0);
+      expect((c as any)._serverSubs.ss2).toBeUndefined();
     });
 
     test('rest not delivered after disconnect() from a publication handler', async () => {

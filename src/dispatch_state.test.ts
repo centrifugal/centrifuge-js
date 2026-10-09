@@ -695,6 +695,38 @@ describe('dispatch and subscription state', () => {
     expect(updates).toEqual(['k1:true']);
   });
 
+  test('a server-side subscription not announced to the app keeps its position', async () => {
+    let connects = 0;
+    server.onCommand = (cmd) => {
+      if (cmd.connect === undefined) {
+        return null;
+      }
+      connects++;
+      const subs = connects === 1
+        ? { s1: { recoverable: true, epoch: 'e', offset: 5 }, s2: { recoverable: true, epoch: 'e', offset: 7 } }
+        // s2 can't be recovered on the second connect: recovered=false from the top.
+        : { s1: { recoverable: true, recovered: true, epoch: 'e', offset: 5 },
+            s2: { recoverable: true, epoch: 'e2', offset: 20 } };
+      return { id: cmd.id, connect: { client: 'fake-client', version: '0.0.0', subs } };
+    };
+    c.connect();
+    await waitFor(() => connects === 1 && c.state === State.Connected);
+    // On the second connect, the subscribed handler of s1 disconnects: s2's
+    // subscribed (recovered=false) never reaches the app.
+    c.on('subscribed', (ctx: any) => {
+      if (connects === 2 && ctx.channel === 's1') {
+        c.disconnect();
+      }
+    });
+    server.closeConnection();
+    await waitFor(() => connects === 2 && c.state === State.Disconnected);
+
+    c.connect();
+    await waitFor(() => connects === 3);
+    const connect = server.received.filter(cmd => cmd.connect !== undefined)[2].connect;
+    expect(connect.subs.s2).toEqual({ recover: true, offset: 7, epoch: 'e' });
+  });
+
   test('a subscription token refresh failing after unsubscribe() leaves no retry', async () => {
     server.onSubscribe = () => ({ expires: true, ttl: 1 } as any);
     let rejectRefresh: any = null;

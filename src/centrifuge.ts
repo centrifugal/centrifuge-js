@@ -2276,11 +2276,16 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
   }
 
   private _processServerSubs(subs: Record<string, any>, transition: number) {
-    // A 'subscribed' or 'publication' handler may call disconnect(). Positions
-    // are still stored and removed channels still reported, but no more
-    // subscribed or publication events of this connection are emitted.
+    // A 'subscribed' or 'publication' handler may call disconnect(). Removed
+    // channels are still reported, but no more subscribed or publication events
+    // of this connection are emitted, and no more positions stored: a position
+    // whose subscribed event the app didn't get would hide a gap from it (the
+    // next connect recovering from a position after it, recovered=true).
     for (const channel in subs) {
       if (!subs.hasOwnProperty(channel)) {
+        continue;
+      }
+      if (this._transitionSuperseded(transition)) {
         continue;
       }
       const sub = subs[channel];
@@ -2289,10 +2294,8 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
         'epoch': sub.epoch,
         'recoverable': sub.recoverable || false
       };
-      if (!this._transitionSuperseded(transition)) {
-        const subCtx = this._getSubscribeContext(channel, sub);
-        this.emit('subscribed', subCtx);
-      }
+      const subCtx = this._getSubscribeContext(channel, sub);
+      this.emit('subscribed', subCtx);
     }
 
     for (const channel in subs) {

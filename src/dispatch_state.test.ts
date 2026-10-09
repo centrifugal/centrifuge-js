@@ -464,6 +464,28 @@ describe('dispatch and subscription state', () => {
     await third.ready(3000);
   });
 
+  test('a getToken of an outdated subscribe flow sends nothing', async () => {
+    const resolvers: Array<(t: string) => void> = [];
+    const sub: any = c.newSubscription('ch', {
+      getToken: () => new Promise<string>(resolve => resolvers.push(resolve)),
+    });
+    c.connect();
+    await waitFor(() => c.state === State.Connected);
+    sub.subscribe();
+    await waitFor(() => resolvers.length === 1);
+    // unsubscribe() and subscribe() while the token loads: a new flow, a new getToken.
+    sub.unsubscribe();
+    sub.subscribe();
+    await waitFor(() => resolvers.length === 2);
+
+    resolvers[0]('old');
+    resolvers[1]('new');
+    await sub.ready(3000);
+    await delay(50);
+    const subscribes = server.received.filter(cmd => cmd.subscribe !== undefined);
+    expect(subscribes.map(cmd => cmd.subscribe.token)).toEqual(['new']);
+  });
+
   test('ready() called from an unsubscribed handler that subscribes again waits for the new subscribe', async () => {
     const { sub } = await subscribed('ch');
     let ready: any = null;

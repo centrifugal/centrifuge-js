@@ -651,20 +651,29 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
     // position reset due to failed recovery). On normal reconnects with a valid
     // saved position, we skip getState and let the server try recovery — getState
     // is only called again if recovery fails (see _setSubscribed).
+    // Continuations of this flow (getState, getToken, getData) do nothing once
+    // it is outdated: after unsubscribe(), maybe followed by subscribe() and a
+    // flow of its own.
+    const flow = this._subscribeFlow;
+
     if (this._getState && this._offset === null) {
-      this._loadStreamState();
+      this._loadStreamState(flow);
       return null;
     }
 
     if (this._canSubscribeWithoutGettingToken()) {
-      return this._subscribeWithoutToken();
+      return this._subscribeWithoutToken(flow);
     }
 
     this._getSubscriptionToken()
-      .then(token => this._handleTokenResponse(token))
-      .catch(e => this._handleTokenError(e));
+      .then(token => this._handleTokenResponse(token, flow))
+      .catch(e => this._handleTokenError(e, flow));
 
     return null;
+  }
+
+  private _flowOutdated(flow: number): boolean {
+    return flow !== this._subscribeFlow;
   }
 
   private _isTransportOpen(): boolean {
@@ -676,9 +685,9 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
     return !this._usesToken() || !!this._token;
   }
 
-  private _subscribeWithoutToken(): any {
+  private _subscribeWithoutToken(flow: number): any {
     if (this._getData) {
-      this._getDataAndSubscribe(this._token);
+      this._getDataAndSubscribe(this._token, flow);
       return null;
     } else {
       return this._sendSubscribe(this._token);
@@ -702,10 +711,11 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
    * This order is critical: reading position first ensures it's a lower bound.
    * Recovered publications may overlap with data the app already loaded — this
    * requires idempotent updates or offset-based dedup. */
-  private _loadStreamState(): void {
+  private _loadStreamState(flow: number): void {
     if (!this._isSubscribing()) { this._inflight = false; return; }
 
     this._callAsync(() => this._getState!()).then(result => {
+      if (this._flowOutdated(flow)) { return; }
       if (!this._isSubscribing()) { this._inflight = false; return; }
 
       // Store stream position from app's source of truth.
@@ -715,13 +725,14 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
 
       // Proceed with normal subscribe flow (token → sendSubscribe).
       if (this._canSubscribeWithoutGettingToken()) {
-        this._subscribeWithoutToken();
+        this._subscribeWithoutToken(flow);
       } else {
         this._getSubscriptionToken()
-          .then(token => this._handleTokenResponse(token))
-          .catch(e => this._handleTokenError(e));
+          .then(token => this._handleTokenResponse(token, flow))
+          .catch(e => this._handleTokenError(e, flow));
       }
     }).catch(e => {
+      if (this._flowOutdated(flow)) { return; }
       if (!this._isSubscribing()) { this._inflight = false; return; }
       // Match map subscription error handling: route through _subscribeError
       // which emits error event and schedules resubscribe for temporary errors
@@ -735,7 +746,7 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
     });
   }
 
-  private _getDataAndSubscribe(token: string): void {
+  private _getDataAndSubscribe(token: string, flow: number): void {
     if (!this._getData) {
       this._inflight = false;
       return;
@@ -743,6 +754,9 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
 
     this._callAsync(() => this._getData!({ channel: this.channel }))
       .then(data => {
+        if (this._flowOutdated(flow)) {
+          return;
+        }
         if (!this._isSubscribing()) {
           this._inflight = false;
           return;
@@ -750,10 +764,13 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
         this._data = data;
         this._sendSubscribe(token);
       })
-      .catch(e => this._handleGetDataError(e));
+      .catch(e => this._handleGetDataError(e, flow));
   }
 
-  private _handleGetDataError(error: any): void {
+  private _handleGetDataError(error: any, flow: number): void {
+    if (this._flowOutdated(flow)) {
+      return;
+    }
     if (!this._isSubscribing()) {
       this._inflight = false;
       return;
@@ -778,7 +795,10 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
     });
   }
 
-  private _handleTokenResponse(token: string | null): void {
+  private _handleTokenResponse(token: string | null, flow: number): void {
+    if (this._flowOutdated(flow)) {
+      return;
+    }
     if (!this._isSubscribing()) {
       this._inflight = false;
       return;
@@ -793,13 +813,16 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
     this._token = token;
 
     if (this._getData) {
-      this._getDataAndSubscribe(token);
+      this._getDataAndSubscribe(token, flow);
     } else {
       this._sendSubscribe(token);
     }
   }
 
-  private _handleTokenError(error: any): void {
+  private _handleTokenError(error: any, flow: number): void {
+    if (this._flowOutdated(flow)) {
+      return;
+    }
     if (!this._isSubscribing()) {
       this._inflight = false;
       return;
@@ -2029,9 +2052,7 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
           start();
         })
         .catch(e => {
-          if (flow === this._subscribeFlow) {
-            this._handleTokenError(e);
-          }
+          this._handleTokenError(e, flow);
         });
     }
   }

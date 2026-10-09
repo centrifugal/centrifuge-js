@@ -1021,6 +1021,15 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
   }
 
   private _handlePublication(pub: any) {
+    if (this._sharedPoll && pub.key && !pub.removed && hasOffset(pub.version)) {
+      // Versions dedupe: one not newer than the version held for the key is a
+      // duplicate (e.g. the reply of a second track request of the key) or
+      // older. Dropped before delta decoding, which would move the key's base.
+      const known = this._sharedPollTrackedItems.get(pub.key);
+      if (known !== undefined && known > 0 && toOffset(pub.version) <= known) {
+        return;
+      }
+    }
     if (this._delta && this._delta_negotiated) {
       // For map and shared poll subs, delta is per-key.
       // For non-map subs, delta is a single chain regardless of pub.key.

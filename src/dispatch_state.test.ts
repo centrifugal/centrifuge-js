@@ -531,6 +531,29 @@ describe('dispatch and subscription state', () => {
     expect(refreshes()[1].sub_refresh.track[0].items).toEqual([{ key: 'k1', version: 1 }, { key: 'k2', version: 1 }]);
   });
 
+  test('shared poll updates not newer than the version held are dropped', async () => {
+    server.onSubscribe = () => ({});
+    server.onCommand = (cmd) => cmd.sub_refresh !== undefined
+      ? { id: cmd.id, sub_refresh: { items: [{ key: 'k1', version: 3, data: { v: 3 } }] } }
+      : null;
+    const sub: any = c.newSharedPollSubscription('poll');
+    const updates: string[] = [];
+    sub.on('update', (ctx: any) => updates.push(`${ctx.key}:${ctx.version}`));
+    sub.subscribe();
+    c.connect();
+    await sub.ready(3000);
+    sub.track([{ key: 'k1', version: 1 }], 'signature');
+    await waitFor(() => updates.length === 1);
+
+    // The same version again (e.g. a second track reply), an older one, a newer one.
+    server.publish('poll', { v: 3 }, { key: 'k1', version: 3 });
+    server.publish('poll', { v: 2 }, { key: 'k1', version: 2 });
+    server.publish('poll', { v: 4 }, { key: 'k1', version: 4 });
+    await waitFor(() => updates.length >= 2);
+    await delay(50);
+    expect(updates).toEqual(['k1:3', 'k1:4']);
+  });
+
   test('a subscription token refresh failing after unsubscribe() leaves no retry', async () => {
     server.onSubscribe = () => ({ expires: true, ttl: 1 } as any);
     let rejectRefresh: any = null;

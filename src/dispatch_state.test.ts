@@ -260,7 +260,13 @@ describe('dispatch and subscription state', () => {
       }
       return null;
     };
-    return { held: () => held !== null };
+    const release = () => {
+      if (held !== null) {
+        server.send({ id: held.id, subscribe: reply(held, 1) });
+        held = null;
+      }
+    };
+    return { held: () => held !== null, release };
   }
 
   const subscribeCommands = () => server.received.filter(cmd => cmd.subscribe !== undefined);
@@ -277,11 +283,17 @@ describe('dispatch and subscription state', () => {
 
     sub.unsubscribe();
     sub.subscribe();
+    // Over emulation the unsubscribe waits for the reply of the subscribe it undoes.
+    await delay(50);
+    expect(server.received.filter(cmd => cmd.unsubscribe !== undefined)).toHaveLength(0);
+    hold.release();
 
     // The server has the first subscription unsubscribed: the client must subscribe again.
     await waitFor(() => subscribeCommands().length === 2);
     await sub.ready(3000);
     expect(sub.state).toBe(SubscriptionState.Subscribed);
+    const kinds = server.received.filter(cmd => cmd.subscribe || cmd.unsubscribe).map(cmd => cmd.subscribe ? 'sub' : 'unsub');
+    expect(kinds).toEqual(['sub', 'unsub', 'sub']);
   });
 
   test('a subscribe reply of a cancelled subscribe does not set the channel id', async () => {

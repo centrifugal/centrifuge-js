@@ -99,6 +99,11 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
   // followed with another one is outdated, even when that one came back to the
   // same state.
   private _stateTransitions: number = 0;
+  // The flow of the subscribe command (or map page) waiting for its reply.
+  private _subscribeCallFlow: number | null = null;
+  // Over emulation, the unsubscribe of a subscribe in flight: sent once the
+  // subscribe's reply comes (see _setUnsubscribed).
+  private _deferredUnsubscribe: { flow: number; resolve: () => void } | null = null;
   private _mapFlowRecovering: boolean = false;
   private _mapFlowOffset: number = 0;
   private _mapFlowEpoch: string | null = null;
@@ -676,6 +681,42 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
     return flow !== this._subscribeFlow;
   }
 
+  // Over emulation commands go in separate requests the server may handle in any
+  // order: an unsubscribe of a subscribe in flight could overtake it, and the
+  // server would keep the subscription. The unsubscribe waits for the
+  // subscribe's reply then.
+  private _mustDeferUnsubscribe(): boolean {
+    // @ts-ignore – we are hiding some symbols from public API autocompletion.
+    const transport = this._centrifuge._transport;
+    return this._subscribeCallFlow === this._subscribeFlow && !!transport && transport.emulation();
+  }
+
+  // Called first by the reply handlers of a subscribe command or map page. True
+  // when the reply belongs to a subscribe whose unsubscribe was deferred, which is
+  // handled here: the unsubscribe goes out if the subscribe succeeded. A timeout
+  // leaves unknown whether the server subscribed: the client reconnects.
+  private _settleSubscribeCall(flow: number, ok: boolean, error?: any): boolean {
+    if (this._subscribeCallFlow === flow) {
+      this._subscribeCallFlow = null;
+    }
+    const deferred = this._deferredUnsubscribe;
+    if (deferred === null || deferred.flow !== flow) {
+      return false;
+    }
+    this._deferredUnsubscribe = null;
+    if (ok) {
+      // @ts-ignore – we are hiding some symbols from public API autocompletion.
+      this._centrifuge._unsubscribe(this).then(deferred.resolve);
+      return true;
+    }
+    deferred.resolve();
+    if (error && error.code === errorCodes.timeout) {
+      // @ts-ignore – we are hiding some symbols from public API autocompletion.
+      this._centrifuge._disconnect(connectingCodes.subscribeTimeout, 'subscribe timeout', true);
+    }
+    return true;
+  }
+
   private _isTransportOpen(): boolean {
     // @ts-ignore – we are hiding some symbols from public API autocompletion.
     return this._centrifuge._transportIsOpen;
@@ -855,12 +896,16 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
 
     const cmd = this._buildSubscribeCommand(token);
     const flow = this._subscribeFlow;
+    this._subscribeCallFlow = flow;
 
     // @ts-ignore – we are hiding some symbols from public API autocompletion.
     // An exception while handling the reply stops the client (see _dispatchFailed).
     // next() is still called, so replies of a later connection aren't blocked.
     this._centrifuge._call(cmd).then(resolveCtx => {
       try {
+        if (this._settleSubscribeCall(flow, true)) {
+          return;
+        }
         if (flow !== this._subscribeFlow) {
           // The app unsubscribed meanwhile, maybe to subscribe again.
           return;
@@ -877,6 +922,9 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
       }
     }, rejectCtx => {
       try {
+        if (this._settleSubscribeCall(flow, false, rejectCtx.error)) {
+          return;
+        }
         if (flow !== this._subscribeFlow) {
           return;
         }
@@ -988,8 +1036,15 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
       this._clearSubscribedState();
     } else if (this._isSubscribing()) {
       if (this._inflight && sendUnsubscribe) {
-        // @ts-ignore – we are hiding some methods from public API autocompletion.
-        promise = this._unsubPromise = this._centrifuge._unsubscribe(this);
+        if (this._mustDeferUnsubscribe()) {
+          const flow = this._subscribeFlow;
+          promise = this._unsubPromise = new Promise<void>(resolve => {
+            this._deferredUnsubscribe = { flow, resolve };
+          });
+        } else {
+          // @ts-ignore – we are hiding some methods from public API autocompletion.
+          promise = this._unsubPromise = this._centrifuge._unsubscribe(this);
+        }
       }
       this._clearSubscribingState();
     }
@@ -2111,9 +2166,13 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
     const cmd = this._buildMapSubscribeCommand(MapPhase.State, cursor);
     this._debug('map subscribe: fetching snapshot page', cursor ? `cursor=${cursor}` : 'initial');
 
+    this._subscribeCallFlow = flow;
     // @ts-ignore – we are hiding some symbols from public API autocompletion.
     this._centrifuge._call(cmd).then(resolveCtx => {
       try {
+        if (this._settleSubscribeCall(flow, true)) {
+          return;
+        }
         // The reply to a page of an earlier flow is outdated.
         if (flow === this._subscribeFlow) {
           this._handleMapStateResponse(flow, resolveCtx.reply.subscribe);
@@ -2128,6 +2187,9 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
       }
     }, rejectCtx => {
       try {
+        if (this._settleSubscribeCall(flow, false, rejectCtx.error)) {
+          return;
+        }
         if (flow === this._subscribeFlow) {
           this._handleMapSubscribeError(rejectCtx.error);
         }
@@ -2229,9 +2291,13 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
     const cmd = this._buildMapSubscribeCommand(MapPhase.Stream);
     this._debug('map subscribe: fetching stream from offset', this._mapFlowOffset);
 
+    this._subscribeCallFlow = flow;
     // @ts-ignore – we are hiding some symbols from public API autocompletion.
     this._centrifuge._call(cmd).then(resolveCtx => {
       try {
+        if (this._settleSubscribeCall(flow, true)) {
+          return;
+        }
         // The reply to a page of an earlier flow is outdated.
         if (flow === this._subscribeFlow) {
           this._handleMapStreamResponse(flow, resolveCtx.reply.subscribe);
@@ -2246,6 +2312,9 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
       }
     }, rejectCtx => {
       try {
+        if (this._settleSubscribeCall(flow, false, rejectCtx.error)) {
+          return;
+        }
         if (flow === this._subscribeFlow) {
           this._handleMapSubscribeError(rejectCtx.error);
         }

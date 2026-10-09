@@ -153,6 +153,10 @@ describe('map subscribe flow', () => {
 
     sub.unsubscribe();
     sub.subscribe();
+    // Over emulation the unsubscribe waits for the reply of the page it undoes.
+    await delay(50);
+    server.send({ id: held.id, subscribe: { epoch: 'e', offset: 1, state: [entry(1)] } });
+    held = null;
 
     // The server has the first flow unsubscribed: the client must subscribe again.
     await waitFor(() => subscribeRequests().length === 2);

@@ -131,7 +131,7 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
   // separately so it can't clobber the refresh timer or accumulate backoff
   // attempts onto refresh failures.
   private _sharedPollReplayRetryTimeout?: null | ReturnType<typeof setTimeout> = null;
-  private _sharedPollReplayRetryAttempts: number = 0;
+  protected _sharedPollReplayRetryAttempts: number = 0;
   // Library of HMAC signatures previously obtained for track() calls.
   // Each entry covers the exact key set originally signed; reused on reconnect
   // so we don't hit the application's getSignature endpoint for every client
@@ -2986,6 +2986,8 @@ export class SharedPollSubscription extends BaseSubscription {
           this.emit('error', { type: 'untrack', channel: this.channel, error: err });
         });
       }
+      // A getSignature that works again: the next failure starts the backoff over.
+      this._sharedPollReplayRetryAttempts = 0;
       // Track authorized keys.
       const authorizedItems: { key: string; version: number }[] = [];
       for (const key of result.keys) {

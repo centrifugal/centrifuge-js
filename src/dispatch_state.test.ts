@@ -598,7 +598,8 @@ describe('dispatch and subscription state', () => {
       }
       return null;
     };
-    const sub: any = c.newSubscription('ch', { minResubscribeDelay: 500, maxResubscribeDelay: 500 });
+    // Long enough that the reconnect below can't outlast it.
+    const sub: any = c.newSubscription('ch', { minResubscribeDelay: 2000, maxResubscribeDelay: 2000 });
     sub.subscribe();
     c.connect();
     await waitFor(() => subscribes === 1);
@@ -609,9 +610,9 @@ describe('dispatch and subscription state', () => {
     await waitFor(() => c.state === State.Connected && server.received.filter(cmd => cmd.connect).length === 2);
     await delay(100);
     expect(subscribes).toBe(1);
-    await sub.ready(3000);
+    await sub.ready(5000);
     expect(subscribes).toBe(2);
-  });
+  }, 10000);
 
   test('a subscribe in flight when the transport closes is sent again without a backoff', async () => {
     let held = false;

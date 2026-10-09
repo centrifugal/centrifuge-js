@@ -97,6 +97,8 @@ interface serverSubscription {
   offset: number;
   epoch: string;
   recoverable: boolean;
+  // Its subscribed event was emitted and no subscribing event since.
+  subscribed?: boolean;
 }
 
 type CallResolveContext = { reply: any; next?: () => void };
@@ -882,9 +884,10 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
       }
     }
 
-    // fire events for server-side subscriptions.
+    // fire events for server-side subscriptions, once per subscribed period.
     for (const channel in this._serverSubs) {
-      if (this._serverSubs.hasOwnProperty(channel)) {
+      if (this._serverSubs.hasOwnProperty(channel) && this._serverSubs[channel].subscribed) {
+        this._serverSubs[channel].subscribed = false;
         this.emit('subscribing', { channel: channel });
       }
     }
@@ -2297,7 +2300,8 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
       this._serverSubs[channel] = {
         'offset': toOffset(sub.offset),
         'epoch': sub.epoch,
-        'recoverable': sub.recoverable || false
+        'recoverable': sub.recoverable || false,
+        'subscribed': true
       };
       const subCtx = this._getSubscribeContext(channel, sub);
       this.emit('subscribed', subCtx);
@@ -2532,7 +2536,8 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     this._serverSubs[channel] = {
       'offset': toOffset(sub.offset),
       'epoch': sub.epoch,
-      'recoverable': sub.recoverable || false
+      'recoverable': sub.recoverable || false,
+      'subscribed': true
     };
     this.emit('subscribed', this._getSubscribeContext(channel, sub));
   }

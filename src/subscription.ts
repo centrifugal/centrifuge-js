@@ -146,6 +146,11 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
   // Guard against concurrent refresh calls — multiple 109 errors during
   // reconnect replay could otherwise trigger overlapping getSignature calls.
   protected _sharedPollSignatureRefreshInFlight: boolean = false;
+  // A refresh asked for while one was in flight for keys it doesn't cover (e.g.
+  // a 109 of a key tracked since it started): run after it.
+  private _sharedPollSignatureRefreshAgain: boolean = false;
+  // The keys of the refresh in flight.
+  private _sharedPollSignatureRefreshKeys: Set<string> = new Set();
 
   /** Subscription constructor should not be used directly, create subscriptions using Client method. */
   constructor(centrifuge: Centrifuge, channel: string, options?: Partial<InternalSubscriptionOptions>) {
@@ -477,6 +482,7 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
     this._sharedPollSignatureRefreshTargetMs = null;
     // Reset the in-flight guard so refresh can run again after reconnect.
     this._sharedPollSignatureRefreshInFlight = false;
+    this._sharedPollSignatureRefreshAgain = false;
     // NOTE: do NOT clear _sharedPollSignatures or _sharedPollTrackedItems.
     // They persist across reconnects so _sharedPollReplayTrack can re-send
     // tracks using the cached signatures — avoids hitting getSignature for
@@ -1076,6 +1082,7 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
     this._sharedPollSignatures = [];
     this._sharedPollTrackedItems.clear();
     this._sharedPollSignatureRefreshInFlight = false;
+    this._sharedPollSignatureRefreshAgain = false;
     this._sharedPollSignatureRefreshTargetMs = null;
     this._cancelAllDebounce();
     // Waiters fail before the events: a handler subscribing again makes waiters of
@@ -1286,7 +1293,7 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
   // Emits an error event, then runs the continuation: also when a handler threw (the
   // exception propagates afterwards), not when a handler unsubscribed, maybe to
   // subscribe again, whose new subscribe the continuation must not touch.
-  private _emitError(ctx: any, continuation: () => void) {
+  protected _emitError(ctx: any, continuation: () => void) {
     const flow = this._subscribeFlow;
     try {
       this.emit('error', ctx);
@@ -1640,7 +1647,10 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
     }
     if (current.length > 0) frames.push(current);
 
-    const send = (frame: typeof batches, frameUntrackKeys?: string[]): Promise<void> =>
+    // A failing frame stops the frames after it: a permanent error untracks the
+    // keys of all of them.
+    const keysFrom = (idx: number) => frames.slice(idx).flatMap(f => f.flatMap(b => b.items.map(i => i.key)));
+    const send = (frame: typeof batches, idx: number, frameUntrackKeys?: string[]): Promise<void> =>
       new Promise<void>((resolve, reject) => {
         const req: any = {
           channel: this.channel,
@@ -1670,7 +1680,7 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
           if (rejectCtx.next) rejectCtx.next();
           this._sharedPollRequestFailed(rejectCtx.error);
           // With the keys of the request, which a permanent error untracks.
-          reject({ error: rejectCtx.error, keys: frame.flatMap(b => b.items.map(i => i.key)) });
+          reject({ error: rejectCtx.error, keys: keysFrom(idx) });
         });
       });
 
@@ -1679,7 +1689,7 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
     // — which would otherwise lead to retry-with-duplicate-publications.
     // Inline untrack keys go only in the first frame.
     return this._sharedPollSerial(() => frames.reduce<Promise<void>>(
-      (chain, frame, idx) => chain.then(() => send(frame, idx === 0 ? untrackKeys : undefined)),
+      (chain, frame, idx) => chain.then(() => send(frame, idx, idx === 0 ? untrackKeys : undefined)),
       Promise.resolve(),
     ));
   }
@@ -1828,6 +1838,16 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
     this._sharedPollTrackRetryAttempts = 0;
   }
 
+  protected _scheduleSharedPollReplayRetry() {
+    if (this._sharedPollReplayRetryTimeout !== null) {
+      clearTimeout(this._sharedPollReplayRetryTimeout);
+    }
+    this._sharedPollReplayRetryTimeout = setTimeout(
+      () => this._sharedPollReplayTrack(),
+      backoff(this._sharedPollReplayRetryAttempts++, 5000, 30000)
+    );
+  }
+
   private _clearSharedPollReplayRetry() {
     if (this._sharedPollReplayRetryTimeout !== null) {
       clearTimeout(this._sharedPollReplayRetryTimeout);
@@ -1921,7 +1941,15 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
     if (!this._isSubscribed()) return;
     if (!this._sharedPollGetSignature) return;
     if (this._sharedPollTrackedItems.size === 0) return;
-    if (this._sharedPollSignatureRefreshInFlight) return;
+    if (this._sharedPollSignatureRefreshInFlight) {
+      for (const key of this._sharedPollTrackedItems.keys()) {
+        if (!this._sharedPollSignatureRefreshKeys.has(key)) {
+          this._sharedPollSignatureRefreshAgain = true;
+          break;
+        }
+      }
+      return;
+    }
 
     // Reset the global refresh target — the timer that pointed at this
     // moment has already fired, and the in-flight refresh will publish a
@@ -1932,6 +1960,7 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
     this._sharedPollSignatureRefreshTargetMs = null;
     this._sharedPollSignatureRefreshInFlight = true;
     const keys = Array.from(this._sharedPollTrackedItems.keys());
+    this._sharedPollSignatureRefreshKeys = new Set(keys);
     const self = this;
     // A subscription ending meanwhile resets the in-flight guard for its next period.
     const generation = this._refreshGeneration;
@@ -1942,12 +1971,17 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
       if (!self._isSubscribed()) return;
 
       self._sharedPollSignatureRefreshAttempts = 0;
+      if (self._sharedPollSignatureRefreshAgain) {
+        self._sharedPollSignatureRefreshAgain = false;
+        // After this refresh's track request is sent below.
+        Promise.resolve().then(() => self._sharedPollRefreshSignature());
+      }
 
       // Handle revoked keys (keys not in the returned set).
       const returnedKeys = new Set(result.keys);
       const revokedKeys: string[] = [];
       for (const key of keys) {
-        if (!returnedKeys.has(key)) {
+        if (!returnedKeys.has(key) && this._sharedPollTrackedItems.has(key)) {
           self._sharedPollTrackedItems.delete(key);
           revokedKeys.push(key);
           // A handler of an earlier removal may have ended the subscription: the
@@ -2004,6 +2038,8 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
     }).catch(e => {
       if (generation !== self._refreshGeneration) return;
       self._sharedPollSignatureRefreshInFlight = false;
+      // The retry below covers it.
+      self._sharedPollSignatureRefreshAgain = false;
       self._emitError({
         type: 'signatureRefresh',
         channel: self.channel,
@@ -2121,7 +2157,7 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
       const returnedKeys = new Set(result.keys);
       const revokedKeys: string[] = [];
       for (const key of uncoveredKeys) {
-        if (!returnedKeys.has(key)) {
+        if (!returnedKeys.has(key) && this._sharedPollTrackedItems.has(key)) {
           self._sharedPollTrackedItems.delete(key);
           revokedKeys.push(key);
           // A handler of an earlier removal may have ended the subscription: the
@@ -2927,7 +2963,7 @@ export class SharedPollSubscription extends BaseSubscription {
       const returnedKeys = new Set(result.keys);
       const revokedKeys: string[] = [];
       for (const key of keys) {
-        if (!returnedKeys.has(key)) {
+        if (!returnedKeys.has(key) && this._sharedPollTrackedItems.has(key)) {
           this._sharedPollTrackedItems.delete(key);
           revokedKeys.push(key);
           // A handler of an earlier removal may have ended the subscription: the
@@ -2966,10 +3002,14 @@ export class SharedPollSubscription extends BaseSubscription {
       });
     }).catch(e => {
       if (generation !== this._refreshGeneration || !this._isSubscribed()) return;
-      this.emit('error', {
+      this._emitError({
         type: 'track',
         channel: this.channel,
         error: { code: errorCodes.sharedPollGetSignature, message: e !== undefined ? e.toString() : 'getSignature failed' },
+      }, () => {
+        if (generation !== this._refreshGeneration || !this._isSubscribed()) return;
+        // Retried by the replay, which gets a signature for the keys without one.
+        this._scheduleSharedPollReplayRetry();
       });
     });
   }

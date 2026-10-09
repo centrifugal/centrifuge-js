@@ -777,6 +777,98 @@ describe('dispatch and subscription state', () => {
     expect(req.phase).toBe(2);
   });
 
+  test('a getSignature failing in track() is retried', async () => {
+    server.onSubscribe = () => ({});
+    const sub: any = c.newSharedPollSubscription('poll', {
+      getSignature: () => Promise.reject(new Error('backend down')),
+    });
+    sub.subscribe();
+    c.connect();
+    await sub.ready(3000);
+    const errors: string[] = [];
+    sub.on('error', (ctx: any) => errors.push(ctx.type));
+    sub.track(['k1']);
+    await waitFor(() => errors.length === 1);
+    expect(sub._sharedPollReplayRetryTimeout).not.toBeNull();
+    expect([...sub.trackedKeys()]).toEqual(['k1']);
+  });
+
+  test('a key revoked after the app untracked it gets no removal update', async () => {
+    server.onSubscribe = () => ({});
+    let resolveSignature: any = null;
+    const sub: any = c.newSharedPollSubscription('poll', {
+      getSignature: () => new Promise(resolve => { resolveSignature = resolve; }),
+    });
+    sub.subscribe();
+    c.connect();
+    await sub.ready(3000);
+    const updates: string[] = [];
+    sub.on('update', (ctx: any) => updates.push(ctx.key));
+    sub.track(['k1']);
+    await waitFor(() => resolveSignature !== null);
+    sub.untrack(['k1']);
+    resolveSignature({ keys: [], signature: 'sig' });
+    await delay(50);
+    expect(updates).toEqual([]);
+  });
+
+  test('a 109 during a signature refresh runs another refresh after it', async () => {
+    server.onSubscribe = () => ({});
+    const calls: string[][] = [];
+    const resolvers: any[] = [];
+    const sub: any = c.newSharedPollSubscription('poll', {
+      getSignature: (ctx: any) => {
+        calls.push(ctx.keys);
+        return new Promise(resolve => resolvers.push(resolve));
+      },
+    });
+    sub.subscribe();
+    c.connect();
+    await sub.ready(3000);
+    sub._sharedPollTrackedItems.set('k1', 0);
+    sub._sharedPollRefreshSignature();
+    await waitFor(() => calls.length === 1);
+    // A 109 for a key the refresh in flight doesn't cover.
+    sub._sharedPollTrackedItems.set('k2', 0);
+    sub._handleTrackError({ code: 109, message: 'expired' }, ['k2']);
+    resolvers[0]({ keys: ['k1'], signature: 's1' });
+    await waitFor(() => calls.length === 2);
+    expect(calls[1].sort()).toEqual(['k1', 'k2']);
+  });
+
+  test('a permanent error on the first frame of a track untracks the keys of the frames after it', async () => {
+    server.onSubscribe = () => ({});
+    server.onCommand = (cmd) => cmd.sub_refresh?.track
+      ? { id: cmd.id, error: { code: 106, message: 'limit exceeded' } }
+      : null;
+    const sub: any = c.newSharedPollSubscription('poll');
+    // Two batches too large for one frame, replayed in one request on subscribe.
+    const a = 'a'.repeat(40000);
+    const b = 'b'.repeat(40000);
+    sub.track([{ key: a, version: 0 }], 'sig1');
+    sub.track([{ key: b, version: 0 }], 'sig2');
+    sub.subscribe();
+    c.connect();
+    await sub.ready(3000);
+    await waitFor(() => sub.trackedKeys().size === 0);
+    expect(server.received.filter(cmd => cmd.sub_refresh?.track)).toHaveLength(1);
+  });
+
+  test('a server-side subscription gets one subscribing event per subscribed period', async () => {
+    server.connectResult = { client: 'fake-client', version: '0.0.0', subs: { s1: {} } };
+    const subscribing: string[] = [];
+    c.on('subscribing', (ctx: any) => subscribing.push(ctx.channel));
+    c.connect();
+    await waitFor(() => c.state === State.Connected);
+    // On the reconnect a connected handler disconnects before s1 is announced again.
+    c.once('connecting', () => {
+      c.once('connected', () => c.disconnect());
+    });
+    server.closeConnection();
+    await waitFor(() => c.state === State.Disconnected);
+    expect(subscribing).toEqual(['s1']);
+  });
+
   test('a subscription token refresh failing after unsubscribe() leaves no retry', async () => {
     server.onSubscribe = () => ({ expires: true, ttl: 1 } as any);
     let rejectRefresh: any = null;

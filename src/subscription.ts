@@ -2655,17 +2655,18 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
       return;
     }
 
-    // Clear map state on error
+    // Clear map state on error. The delta bases stay with the position: a
+    // recovery from it gets deltas of the values the client has.
     this._mapStateBuffer = [];
     this._mapStreamBuffer = [];
     this._mapPhase = null;
-    this._prevValueMap = new Map();
 
     // Handle unrecoverable position error (code 112) based on strategy
     if (error.code === 112) {
       if (this._mapUnrecoverableStrategy === 'from_scratch') {
         // Reset position and resubscribe from snapshot
         this._debug('map subscribe: unrecoverable position, restarting from scratch');
+        this._prevValueMap = new Map();
         this._offset = null;
         this._epoch = null;
         this._recover = false;

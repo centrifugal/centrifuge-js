@@ -649,6 +649,22 @@ describe('dispatch and subscription state', () => {
     expect(subscribeCalls).toBe(1);
   });
 
+  test('a temporary map subscribe error keeps the delta bases of the position it keeps', async () => {
+    const sub: any = c.newMapSubscription('map', { delta: 'fossil' });
+    sub.subscribe();
+    sub._offset = 5;
+    sub._epoch = 'e';
+    sub._recover = true;
+    sub._prevValueMap.set('k1', 'base');
+    sub._handleMapSubscribeError({ code: 100, message: 'internal', temporary: true });
+    expect(sub._offset).toBe(5);
+    expect(sub._prevValueMap.get('k1')).toBe('base');
+
+    sub._handleMapSubscribeError({ code: 112, message: 'unrecoverable position' });
+    expect(sub._offset).toBeNull();
+    expect(sub._prevValueMap.size).toBe(0);
+  });
+
   test('a subscription token refresh failing after unsubscribe() leaves no retry', async () => {
     server.onSubscribe = () => ({ expires: true, ttl: 1 } as any);
     let rejectRefresh: any = null;

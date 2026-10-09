@@ -71,6 +71,15 @@ class FakeEmulationServer {
     this.stream.enqueue(new TextEncoder().encode(JSON.stringify(reply) + '\n'));
   }
 
+  // A push on the stream; an unsubscribe push ends the subscription here too.
+  push(push: any) {
+    if (push.unsubscribe !== undefined) {
+      this.subscribed.delete(push.channel);
+      this.tracked.delete(push.channel);
+    }
+    this.reply({ push });
+  }
+
   // Handles the pending request at index i.
   deliver(i: number) {
     const [request] = this.pending.splice(i, 1);
@@ -198,5 +207,63 @@ describe('command order over emulation', () => {
     await server.deliverAllReversed();
     await sub.ready(3000);
     expect([...server.subscribed]).toEqual(['ch']);
+  });
+
+  const sharedPoll = async () => {
+    const sub: any = c.newSharedPollSubscription('poll');
+    sub.subscribe();
+    await waitFor(() => server.pending.length === 1);
+    server.deliver(0);
+    await sub.ready(3000);
+    return sub;
+  };
+  const trackedAtServer = () => [...(server.tracked.get('poll') || [])];
+
+  test('a shared poll untrack does not overtake the track in flight', async () => {
+    const sub = await sharedPoll();
+    sub.track([{ key: 'k1', version: 0 }], 'signature');
+    await waitFor(() => server.pending.length === 1);
+    sub.untrack(['k1']);
+
+    await server.deliverAllReversed();
+    expect(trackedAtServer()).toEqual([]);
+    expect([...sub.trackedKeys()]).toEqual([]);
+  });
+
+  test('a shared poll resubscribe waits for the requests of the earlier subscription', async () => {
+    const sub = await sharedPoll();
+    sub.track([{ key: 'k1', version: 0 }], 'signature');
+    await waitFor(() => server.pending.length === 1);
+    sub.untrack(['k1']);
+    // The server resubscribes the client (insufficient state) meanwhile.
+    server.push({ channel: 'poll', unsubscribe: { code: 2500, reason: 'insufficient state' } });
+    await waitFor(() => sub.state === 'subscribing');
+
+    await server.deliverAllReversed();
+    await sub.ready(3000);
+    await server.deliverAllReversed();
+    expect([...server.subscribed]).toEqual(['poll']);
+    expect(trackedAtServer()).toEqual([]);
+  });
+
+  test('a shared poll request timing out reconnects the client', async () => {
+    c.disconnect();
+    c = new Centrifuge([{ transport: 'http_stream' as TransportName, endpoint: 'http://localhost:1/connection/http_stream' }], {
+      ...server.options,
+      timeout: 100,
+      minReconnectDelay: 10,
+      maxReconnectDelay: 50,
+      networkEventTarget: new EventTarget(),
+    });
+    c.connect();
+    await waitFor(() => c.state === State.Connected);
+    const sub = await sharedPoll();
+    const connecting: number[] = [];
+    c.on('connecting', ctx => connecting.push(ctx.code));
+    sub.track([{ key: 'k1', version: 0 }], 'signature');
+
+    // The track is never handled: whether the server tracks the key is unknown.
+    await waitFor(() => connecting.length > 0);
+    expect(connecting[0]).toBe(connectingCodes.subscribeTimeout);
   });
 });

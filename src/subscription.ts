@@ -99,6 +99,9 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
   // followed with another one is outdated, even when that one came back to the
   // same state.
   private _stateTransitions: number = 0;
+  // Over emulation, the shared poll track / untrack requests of the channel, one
+  // at a time (see _sharedPollSerial).
+  private _sharedPollQueue: Promise<void> = Promise.resolve();
   // The flow of the subscribe command (or map page) waiting for its reply.
   private _subscribeCallFlow: number | null = null;
   // Over emulation, the unsubscribe of a subscribe in flight: sent once the
@@ -625,6 +628,9 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
       // may otherwise handle this subscribe before its unsubscribe.
       // @ts-ignore – we are hiding some symbols from public API autocompletion.
       await this._centrifuge._removedSubscriptionUnsubscribed(this.channel);
+      // And for the shared poll requests of an earlier subscription: the server
+      // may otherwise apply them to this one.
+      await this._sharedPollQueue;
     }
     if (!this._isSubscribing()) {
       return;
@@ -1630,6 +1636,7 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
           resolve();
         }, rejectCtx => {
           if (rejectCtx.next) rejectCtx.next();
+          this._sharedPollRequestFailed(rejectCtx.error);
           // With the keys of the request, which a permanent error untracks.
           reject({ error: rejectCtx.error, keys: frame.flatMap(b => b.items.map(i => i.key)) });
         });
@@ -1639,14 +1646,48 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
     // doesn't end up with some frames committed server-side and others not
     // — which would otherwise lead to retry-with-duplicate-publications.
     // Inline untrack keys go only in the first frame.
-    return frames.reduce<Promise<void>>(
+    return this._sharedPollSerial(() => frames.reduce<Promise<void>>(
       (chain, frame, idx) => chain.then(() => send(frame, idx === 0 ? untrackKeys : undefined)),
       Promise.resolve(),
-    );
+    ));
+  }
+
+  private _isEmulation(): boolean {
+    // @ts-ignore – we are hiding some symbols from public API autocompletion.
+    const transport = this._centrifuge._transport;
+    return !!transport && transport.emulation();
+  }
+
+  // Over emulation each request is a separate HTTP request the server may handle
+  // in any order: a track and an untrack of a key could overtake each other. The
+  // channel's requests go one at a time then, in the order made; one made for a
+  // subscription that has ended by its turn is dropped.
+  private _sharedPollSerial(send: () => Promise<void>): Promise<void> {
+    if (!this._isEmulation()) {
+      return send();
+    }
+    const generation = this._refreshGeneration;
+    const run = this._sharedPollQueue.then(() => {
+      if (generation !== this._refreshGeneration || !this._isSubscribed()) {
+        return;
+      }
+      return send();
+    });
+    this._sharedPollQueue = run.then(() => undefined, () => undefined);
+    return run;
+  }
+
+  // A timed-out request over emulation may still reach the server after later
+  // ones: whether the keys are tracked is unknown, the client reconnects.
+  private _sharedPollRequestFailed(error: any) {
+    if (error && error.code === errorCodes.timeout && this._isEmulation()) {
+      // @ts-ignore – we are hiding some symbols from public API autocompletion.
+      this._centrifuge._disconnect(connectingCodes.subscribeTimeout, 'shared poll request timeout', true);
+    }
   }
 
   protected _sendUntrackRequest(keys: string[]): Promise<void> {
-    return new Promise<void>((resolve, reject) => {
+    return this._sharedPollSerial(() => new Promise<void>((resolve, reject) => {
       const req: any = {
         channel: this.channel,
         type: 2,
@@ -1663,9 +1704,10 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
         if (rejectCtx.next) {
           rejectCtx.next();
         }
+        this._sharedPollRequestFailed(rejectCtx.error);
         reject(rejectCtx.error);
       });
-    });
+    }));
   }
 
   private _handleTrackResponse(result: any) {

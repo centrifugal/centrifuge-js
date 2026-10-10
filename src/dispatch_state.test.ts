@@ -1,6 +1,6 @@
 import { Centrifuge } from './centrifuge';
 import { State, SubscriptionState, TransportName } from './types';
-import { connectingCodes, disconnectedCodes } from './codes';
+import { connectingCodes, disconnectedCodes, errorCodes, unsubscribedCodes } from './codes';
 import { FakeCentrifugoServer } from './fakeServer';
 
 import WebSocket from 'ws';
@@ -260,7 +260,13 @@ describe('dispatch and subscription state', () => {
       }
       return null;
     };
-    return { held: () => held !== null };
+    const release = () => {
+      if (held !== null) {
+        server.send({ id: held.id, subscribe: reply(held, 1) });
+        held = null;
+      }
+    };
+    return { held: () => held !== null, release };
   }
 
   const subscribeCommands = () => server.received.filter(cmd => cmd.subscribe !== undefined);
@@ -277,11 +283,17 @@ describe('dispatch and subscription state', () => {
 
     sub.unsubscribe();
     sub.subscribe();
+    // Over emulation the unsubscribe waits for the reply of the subscribe it undoes.
+    await delay(50);
+    expect(server.received.filter(cmd => cmd.unsubscribe !== undefined)).toHaveLength(0);
+    hold.release();
 
     // The server has the first subscription unsubscribed: the client must subscribe again.
     await waitFor(() => subscribeCommands().length === 2);
     await sub.ready(3000);
     expect(sub.state).toBe(SubscriptionState.Subscribed);
+    const kinds = server.received.filter(cmd => cmd.subscribe || cmd.unsubscribe).map(cmd => cmd.subscribe ? 'sub' : 'unsub');
+    expect(kinds).toEqual(['sub', 'unsub', 'sub']);
   });
 
   test('a subscribe reply of a cancelled subscribe does not set the channel id', async () => {
@@ -464,6 +476,28 @@ describe('dispatch and subscription state', () => {
     await third.ready(3000);
   });
 
+  test('a getToken of an outdated subscribe flow sends nothing', async () => {
+    const resolvers: Array<(t: string) => void> = [];
+    const sub: any = c.newSubscription('ch', {
+      getToken: () => new Promise<string>(resolve => resolvers.push(resolve)),
+    });
+    c.connect();
+    await waitFor(() => c.state === State.Connected);
+    sub.subscribe();
+    await waitFor(() => resolvers.length === 1);
+    // unsubscribe() and subscribe() while the token loads: a new flow, a new getToken.
+    sub.unsubscribe();
+    sub.subscribe();
+    await waitFor(() => resolvers.length === 2);
+
+    resolvers[0]('old');
+    resolvers[1]('new');
+    await sub.ready(3000);
+    await delay(50);
+    const subscribes = server.received.filter(cmd => cmd.subscribe !== undefined);
+    expect(subscribes.map(cmd => cmd.subscribe.token)).toEqual(['new']);
+  });
+
   test('ready() called from an unsubscribed handler that subscribes again waits for the new subscribe', async () => {
     const { sub } = await subscribed('ch');
     let ready: any = null;
@@ -507,6 +541,333 @@ describe('dispatch and subscription state', () => {
     // Neither update reached the app: the replay asks for both from the versions it had.
     expect(publications).toEqual(['k1:subscribed']);
     expect(refreshes()[1].sub_refresh.track[0].items).toEqual([{ key: 'k1', version: 1 }, { key: 'k2', version: 1 }]);
+  });
+
+  test('shared poll updates not newer than the version held are dropped', async () => {
+    server.onSubscribe = () => ({});
+    server.onCommand = (cmd) => cmd.sub_refresh !== undefined
+      ? { id: cmd.id, sub_refresh: { items: [{ key: 'k1', version: 3, data: { v: 3 } }] } }
+      : null;
+    const sub: any = c.newSharedPollSubscription('poll');
+    const updates: string[] = [];
+    sub.on('update', (ctx: any) => updates.push(`${ctx.key}:${ctx.version}`));
+    sub.subscribe();
+    c.connect();
+    await sub.ready(3000);
+    sub.track([{ key: 'k1', version: 1 }], 'signature');
+    await waitFor(() => updates.length === 1);
+
+    // The same version again (e.g. a second track reply), an older one, a newer one.
+    server.publish('poll', { v: 3 }, { key: 'k1', version: 3 });
+    server.publish('poll', { v: 2 }, { key: 'k1', version: 2 });
+    server.publish('poll', { v: 4 }, { key: 'k1', version: 4 });
+    await waitFor(() => updates.length >= 2);
+    await delay(50);
+    expect(updates).toEqual(['k1:3', 'k1:4']);
+  });
+
+  test('a permanently failed track untracks its keys, also at the server', async () => {
+    server.onSubscribe = () => ({});
+    server.onCommand = (cmd) => cmd.sub_refresh !== undefined && cmd.sub_refresh.track
+      ? { id: cmd.id, error: { code: 106, message: 'limit exceeded' } }
+      : null;
+    const sub: any = c.newSharedPollSubscription('poll');
+    const updates: string[] = [];
+    const errors: number[] = [];
+    sub.on('update', (ctx: any) => updates.push(`${ctx.key}:${ctx.removed === true}`));
+    sub.on('error', (ctx: any) => errors.push(ctx.error.code));
+    sub.subscribe();
+    c.connect();
+    await sub.ready(3000);
+    sub.track([{ key: 'k1', version: 0 }], 'signature');
+    await waitFor(() => updates.length === 1);
+
+    expect(errors).toEqual([106]);
+    expect(updates).toEqual(['k1:true']);
+    expect([...sub.trackedKeys()]).toEqual([]);
+    await waitFor(() => server.received.some(cmd => cmd.sub_refresh?.untrack !== undefined));
+    const untrack = server.received.find(cmd => cmd.sub_refresh?.untrack !== undefined);
+    expect(untrack.sub_refresh.untrack).toEqual(['k1']);
+  });
+
+  test('a subscribe error is retried after its backoff, also across a reconnect', async () => {
+    let subscribes = 0;
+    server.onCommand = (cmd) => {
+      if (cmd.subscribe !== undefined && ++subscribes === 1) {
+        return { id: cmd.id, error: { code: 100, message: 'internal', temporary: true } };
+      }
+      return null;
+    };
+    // Long enough that the reconnect below can't outlast it.
+    const sub: any = c.newSubscription('ch', { minResubscribeDelay: 2000, maxResubscribeDelay: 2000 });
+    sub.subscribe();
+    c.connect();
+    await waitFor(() => subscribes === 1);
+    await waitFor(() => sub._resubscribeTimeout !== null);
+
+    // A reconnect before the backoff ends doesn't retry the subscribe at once.
+    server.closeConnection();
+    await waitFor(() => c.state === State.Connected && server.received.filter(cmd => cmd.connect).length === 2);
+    await delay(100);
+    expect(subscribes).toBe(1);
+    await sub.ready(5000);
+    expect(subscribes).toBe(2);
+  }, 10000);
+
+  test('a subscribe in flight when the transport closes is sent again without a backoff', async () => {
+    let held = false;
+    server.onCommand = (cmd) => {
+      if (cmd.subscribe !== undefined && !held) {
+        held = true;
+        return {};
+      }
+      return null;
+    };
+    const sub: any = c.newSubscription('ch', { minResubscribeDelay: 2000, maxResubscribeDelay: 2000 });
+    sub.subscribe();
+    c.connect();
+    await waitFor(() => held);
+
+    // The teardown fails the subscribe in flight: no subscribe error, no backoff.
+    c.disconnect();
+    await delay(20);
+    expect(sub._resubscribeTimeout).toBeNull();
+    expect(sub._resubscribeAttempts).toBe(0);
+    // Subscribed on the next connection, not after a resubscribe delay.
+    c.connect();
+    await sub.ready(1000);
+  });
+
+  test('a resubscribe timer armed again replaces the earlier one', async () => {
+    const sub: any = c.newSubscription('ch', { minResubscribeDelay: 50, maxResubscribeDelay: 50 });
+    sub.subscribe();
+    sub._scheduleResubscribe();
+    sub._scheduleResubscribe();
+    let subscribeCalls = 0;
+    const subscribe = sub._subscribe.bind(sub);
+    sub._subscribe = () => { subscribeCalls++; return subscribe(); };
+    await delay(200);
+    expect(subscribeCalls).toBe(1);
+  });
+
+  test('a temporary map subscribe error keeps the delta bases of the position it keeps', async () => {
+    const sub: any = c.newMapSubscription('map', { delta: 'fossil' });
+    sub.subscribe();
+    sub._offset = 5;
+    sub._epoch = 'e';
+    sub._recover = true;
+    sub._prevValueMap.set('k1', 'base');
+    sub._handleMapSubscribeError({ code: 100, message: 'internal', temporary: true });
+    expect(sub._offset).toBe(5);
+    expect(sub._prevValueMap.get('k1')).toBe('base');
+
+    sub._handleMapSubscribeError({ code: 112, message: 'unrecoverable position' });
+    expect(sub._offset).toBeNull();
+    expect(sub._prevValueMap.size).toBe(0);
+  });
+
+  test('a shared poll key removed while its track was in flight is untracked at the server', async () => {
+    server.onSubscribe = () => ({});
+    let held: any = null;
+    server.onCommand = (cmd) => {
+      if (cmd.sub_refresh?.track && held === null) {
+        held = cmd;
+        return {};
+      }
+      return null;
+    };
+    const sub: any = c.newSharedPollSubscription('poll');
+    const updates: string[] = [];
+    sub.on('update', (ctx: any) => updates.push(`${ctx.key}:${ctx.removed === true}`));
+    sub.subscribe();
+    c.connect();
+    await sub.ready(3000);
+    sub.track([{ key: 'k1', version: 0 }], 'signature');
+    await waitFor(() => held !== null);
+
+    // The server removes the key (e.g. revoked), then the track lands and tracks it again.
+    server.publish('poll', null, { key: 'k1', removed: true });
+    await waitFor(() => updates.length === 1);
+    server.send({ id: held.id, sub_refresh: {} });
+
+    await waitFor(() => server.received.some(cmd => cmd.sub_refresh?.untrack !== undefined));
+    const untrack = server.received.find(cmd => cmd.sub_refresh?.untrack !== undefined);
+    expect(untrack.sub_refresh.untrack).toEqual(['k1']);
+    expect(updates).toEqual(['k1:true']);
+  });
+
+  test('a server-side subscription not announced to the app keeps its position', async () => {
+    let connects = 0;
+    server.onCommand = (cmd) => {
+      if (cmd.connect === undefined) {
+        return null;
+      }
+      connects++;
+      const subs = connects === 1
+        ? { s1: { recoverable: true, epoch: 'e', offset: 5 }, s2: { recoverable: true, epoch: 'e', offset: 7 } }
+        // s2 can't be recovered on the second connect: recovered=false from the top.
+        : { s1: { recoverable: true, recovered: true, epoch: 'e', offset: 5 },
+            s2: { recoverable: true, epoch: 'e2', offset: 20 } };
+      return { id: cmd.id, connect: { client: 'fake-client', version: '0.0.0', subs } };
+    };
+    c.connect();
+    await waitFor(() => connects === 1 && c.state === State.Connected);
+    // On the second connect, the subscribed handler of s1 disconnects: s2's
+    // subscribed (recovered=false) never reaches the app.
+    c.on('subscribed', (ctx: any) => {
+      if (connects === 2 && ctx.channel === 's1') {
+        c.disconnect();
+      }
+    });
+    server.closeConnection();
+    await waitFor(() => connects === 2 && c.state === State.Disconnected);
+
+    c.connect();
+    await waitFor(() => connects === 3);
+    const connect = server.received.filter(cmd => cmd.connect !== undefined)[2].connect;
+    expect(connect.subs.s2).toEqual({ recover: true, offset: 7, epoch: 'e' });
+  });
+
+  test('disconnect() fails the calls made while disconnected', async () => {
+    const call = c.rpc('method', {}).then(() => 'resolved', (e: any) => e.code);
+    c.disconnect();
+    expect(await call).toBe(errorCodes.clientDisconnected);
+  });
+
+  test('a subscription token expired without getToken unsubscribes as unauthorized', async () => {
+    server.onCommand = (cmd) => cmd.subscribe !== undefined
+      ? { id: cmd.id, error: { code: 109, message: 'token expired' } }
+      : null;
+    const sub: any = c.newSubscription('ch', { token: 'static' });
+    const unsubscribed = new Promise<any>(resolve => sub.once('unsubscribed', resolve));
+    const errors: string[] = [];
+    sub.on('error', (ctx: any) => errors.push(ctx.type));
+    sub.subscribe();
+    c.connect();
+    expect((await unsubscribed).code).toBe(unsubscribedCodes.unauthorized);
+    expect(errors).toEqual(['configuration']);
+    expect(server.received.filter(cmd => cmd.subscribe !== undefined)).toHaveLength(1);
+  });
+
+  test('subscribe() on a subscription subscribing keeps its backoff', () => {
+    const sub: any = c.newSubscription('ch');
+    sub.subscribe();
+    sub._resubscribeAttempts = 3;
+    sub.subscribe();
+    expect(sub._resubscribeAttempts).toBe(3);
+  });
+
+  test('a map position reset while the token loads is not recovered from', async () => {
+    let resolveToken: any = null;
+    const sub: any = c.newMapSubscription('map', {
+      getToken: () => new Promise<string>(resolve => { resolveToken = resolve; }),
+    });
+    sub._offset = 5;
+    sub._epoch = 'e';
+    sub._recover = true;
+    c.connect();
+    await waitFor(() => c.state === State.Connected);
+    sub.subscribe();
+    await waitFor(() => resolveToken !== null);
+    // E.g. a state invalidation (3014 / 2502) while the token loads.
+    sub._invalidateState();
+    resolveToken('token');
+    await waitFor(() => server.received.some(cmd => cmd.subscribe !== undefined));
+    const req = server.received.find(cmd => cmd.subscribe !== undefined).subscribe;
+    expect(req.recover).toBeUndefined();
+    expect(req.phase).toBe(2);
+  });
+
+  test('a getSignature failing in track() is retried', async () => {
+    server.onSubscribe = () => ({});
+    const sub: any = c.newSharedPollSubscription('poll', {
+      getSignature: () => Promise.reject(new Error('backend down')),
+    });
+    sub.subscribe();
+    c.connect();
+    await sub.ready(3000);
+    const errors: string[] = [];
+    sub.on('error', (ctx: any) => errors.push(ctx.type));
+    sub.track(['k1']);
+    await waitFor(() => errors.length === 1);
+    expect(sub._sharedPollReplayRetryTimeout).not.toBeNull();
+    expect([...sub.trackedKeys()]).toEqual(['k1']);
+  });
+
+  test('a key revoked after the app untracked it gets no removal update', async () => {
+    server.onSubscribe = () => ({});
+    let resolveSignature: any = null;
+    const sub: any = c.newSharedPollSubscription('poll', {
+      getSignature: () => new Promise(resolve => { resolveSignature = resolve; }),
+    });
+    sub.subscribe();
+    c.connect();
+    await sub.ready(3000);
+    const updates: string[] = [];
+    sub.on('update', (ctx: any) => updates.push(ctx.key));
+    sub.track(['k1']);
+    await waitFor(() => resolveSignature !== null);
+    sub.untrack(['k1']);
+    resolveSignature({ keys: [], signature: 'sig' });
+    await delay(50);
+    expect(updates).toEqual([]);
+  });
+
+  test('a 109 during a signature refresh runs another refresh after it', async () => {
+    server.onSubscribe = () => ({});
+    const calls: string[][] = [];
+    const resolvers: any[] = [];
+    const sub: any = c.newSharedPollSubscription('poll', {
+      getSignature: (ctx: any) => {
+        calls.push(ctx.keys);
+        return new Promise(resolve => resolvers.push(resolve));
+      },
+    });
+    sub.subscribe();
+    c.connect();
+    await sub.ready(3000);
+    sub._sharedPollTrackedItems.set('k1', 0);
+    sub._sharedPollRefreshSignature();
+    await waitFor(() => calls.length === 1);
+    // A 109 for a key the refresh in flight doesn't cover.
+    sub._sharedPollTrackedItems.set('k2', 0);
+    sub._handleTrackError({ code: 109, message: 'expired' }, ['k2']);
+    resolvers[0]({ keys: ['k1'], signature: 's1' });
+    await waitFor(() => calls.length === 2);
+    expect(calls[1].sort()).toEqual(['k1', 'k2']);
+  });
+
+  test('a permanent error on the first frame of a track untracks the keys of the frames after it', async () => {
+    server.onSubscribe = () => ({});
+    server.onCommand = (cmd) => cmd.sub_refresh?.track
+      ? { id: cmd.id, error: { code: 106, message: 'limit exceeded' } }
+      : null;
+    const sub: any = c.newSharedPollSubscription('poll');
+    // Two batches too large for one frame, replayed in one request on subscribe.
+    const a = 'a'.repeat(40000);
+    const b = 'b'.repeat(40000);
+    sub.track([{ key: a, version: 0 }], 'sig1');
+    sub.track([{ key: b, version: 0 }], 'sig2');
+    sub.subscribe();
+    c.connect();
+    await sub.ready(3000);
+    await waitFor(() => sub.trackedKeys().size === 0);
+    expect(server.received.filter(cmd => cmd.sub_refresh?.track)).toHaveLength(1);
+  });
+
+  test('a server-side subscription gets one subscribing event per subscribed period', async () => {
+    server.connectResult = { client: 'fake-client', version: '0.0.0', subs: { s1: {} } };
+    const subscribing: string[] = [];
+    c.on('subscribing', (ctx: any) => subscribing.push(ctx.channel));
+    c.connect();
+    await waitFor(() => c.state === State.Connected);
+    // On the reconnect a connected handler disconnects before s1 is announced again.
+    c.once('connecting', () => {
+      c.once('connected', () => c.disconnect());
+    });
+    server.closeConnection();
+    await waitFor(() => c.state === State.Disconnected);
+    expect(subscribing).toEqual(['s1']);
   });
 
   test('a subscription token refresh failing after unsubscribe() leaves no retry', async () => {

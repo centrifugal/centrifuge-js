@@ -1105,9 +1105,9 @@ describe('network event listeners', () => {
     // for applications: captured here instead.
     const thrown: string[] = [];
     const handleTokenError = sub._handleTokenError.bind(sub);
-    sub._handleTokenError = (e: any) => {
+    sub._handleTokenError = (...args: any[]) => {
       try {
-        handleTokenError(e);
+        handleTokenError(...args);
       } catch (err: any) {
         thrown.push(err.message);
       }

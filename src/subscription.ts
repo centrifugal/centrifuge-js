@@ -99,6 +99,14 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
   // followed with another one is outdated, even when that one came back to the
   // same state.
   private _stateTransitions: number = 0;
+  // Over emulation, the shared poll track / untrack requests of the channel, one
+  // at a time (see _sharedPollSerial).
+  private _sharedPollQueue: Promise<void> = Promise.resolve();
+  // The flow of the subscribe command (or map page) waiting for its reply.
+  private _subscribeCallFlow: number | null = null;
+  // Over emulation, the unsubscribe of a subscribe in flight: sent once the
+  // subscribe's reply comes (see _setUnsubscribed).
+  private _deferredUnsubscribe: { flow: number; resolve: () => void } | null = null;
   private _mapFlowRecovering: boolean = false;
   private _mapFlowOffset: number = 0;
   private _mapFlowEpoch: string | null = null;
@@ -123,7 +131,7 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
   // separately so it can't clobber the refresh timer or accumulate backoff
   // attempts onto refresh failures.
   private _sharedPollReplayRetryTimeout?: null | ReturnType<typeof setTimeout> = null;
-  private _sharedPollReplayRetryAttempts: number = 0;
+  protected _sharedPollReplayRetryAttempts: number = 0;
   // Library of HMAC signatures previously obtained for track() calls.
   // Each entry covers the exact key set originally signed; reused on reconnect
   // so we don't hit the application's getSignature endpoint for every client
@@ -138,6 +146,11 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
   // Guard against concurrent refresh calls — multiple 109 errors during
   // reconnect replay could otherwise trigger overlapping getSignature calls.
   protected _sharedPollSignatureRefreshInFlight: boolean = false;
+  // A refresh asked for while one was in flight for keys it doesn't cover (e.g.
+  // a 109 of a key tracked since it started): run after it.
+  private _sharedPollSignatureRefreshAgain: boolean = false;
+  // The keys of the refresh in flight.
+  private _sharedPollSignatureRefreshKeys: Set<string> = new Set();
 
   /** Subscription constructor should not be used directly, create subscriptions using Client method. */
   constructor(centrifuge: Centrifuge, channel: string, options?: Partial<InternalSubscriptionOptions>) {
@@ -227,7 +240,10 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
     if (this._isSubscribed()) {
       return;
     }
-    this._resubscribeAttempts = 0;
+    if (this._isUnsubscribed()) {
+      // A subscribe in progress keeps its backoff.
+      this._resubscribeAttempts = 0;
+    }
     this._setSubscribing(subscribingCodes.subscribeCalled, 'subscribe called');
   }
 
@@ -466,6 +482,7 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
     this._sharedPollSignatureRefreshTargetMs = null;
     // Reset the in-flight guard so refresh can run again after reconnect.
     this._sharedPollSignatureRefreshInFlight = false;
+    this._sharedPollSignatureRefreshAgain = false;
     // NOTE: do NOT clear _sharedPollSignatures or _sharedPollTrackedItems.
     // They persist across reconnects so _sharedPollReplayTrack can re-send
     // tracks using the cached signatures — avoids hitting getSignature for
@@ -620,6 +637,9 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
       // may otherwise handle this subscribe before its unsubscribe.
       // @ts-ignore – we are hiding some symbols from public API autocompletion.
       await this._centrifuge._removedSubscriptionUnsubscribed(this.channel);
+      // And for the shared poll requests of an earlier subscription: the server
+      // may otherwise apply them to this one.
+      await this._sharedPollQueue;
     }
     if (!this._isSubscribing()) {
       return;
@@ -651,20 +671,65 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
     // position reset due to failed recovery). On normal reconnects with a valid
     // saved position, we skip getState and let the server try recovery — getState
     // is only called again if recovery fails (see _setSubscribed).
+    // Continuations of this flow (getState, getToken, getData) do nothing once
+    // it is outdated: after unsubscribe(), maybe followed by subscribe() and a
+    // flow of its own.
+    const flow = this._subscribeFlow;
+
     if (this._getState && this._offset === null) {
-      this._loadStreamState();
+      this._loadStreamState(flow);
       return null;
     }
 
     if (this._canSubscribeWithoutGettingToken()) {
-      return this._subscribeWithoutToken();
+      return this._subscribeWithoutToken(flow);
     }
 
     this._getSubscriptionToken()
-      .then(token => this._handleTokenResponse(token))
-      .catch(e => this._handleTokenError(e));
+      .then(token => this._handleTokenResponse(token, flow))
+      .catch(e => this._handleTokenError(e, flow));
 
     return null;
+  }
+
+  private _flowOutdated(flow: number): boolean {
+    return flow !== this._subscribeFlow;
+  }
+
+  // Over emulation commands go in separate requests the server may handle in any
+  // order: an unsubscribe of a subscribe in flight could overtake it, and the
+  // server would keep the subscription. The unsubscribe waits for the
+  // subscribe's reply then.
+  private _mustDeferUnsubscribe(): boolean {
+    // @ts-ignore – we are hiding some symbols from public API autocompletion.
+    const transport = this._centrifuge._transport;
+    return this._subscribeCallFlow === this._subscribeFlow && !!transport && transport.emulation();
+  }
+
+  // Called first by the reply handlers of a subscribe command or map page. True
+  // when the reply belongs to a subscribe whose unsubscribe was deferred, which is
+  // handled here: the unsubscribe goes out if the subscribe succeeded. A timeout
+  // leaves unknown whether the server subscribed: the client reconnects.
+  private _settleSubscribeCall(flow: number, ok: boolean, error?: any): boolean {
+    if (this._subscribeCallFlow === flow) {
+      this._subscribeCallFlow = null;
+    }
+    const deferred = this._deferredUnsubscribe;
+    if (deferred === null || deferred.flow !== flow) {
+      return false;
+    }
+    this._deferredUnsubscribe = null;
+    if (ok) {
+      // @ts-ignore – we are hiding some symbols from public API autocompletion.
+      this._centrifuge._unsubscribe(this).then(deferred.resolve);
+      return true;
+    }
+    deferred.resolve();
+    if (error && error.code === errorCodes.timeout) {
+      // @ts-ignore – we are hiding some symbols from public API autocompletion.
+      this._centrifuge._disconnect(connectingCodes.subscribeTimeout, 'subscribe timeout', true);
+    }
+    return true;
   }
 
   private _isTransportOpen(): boolean {
@@ -676,9 +741,9 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
     return !this._usesToken() || !!this._token;
   }
 
-  private _subscribeWithoutToken(): any {
+  private _subscribeWithoutToken(flow: number): any {
     if (this._getData) {
-      this._getDataAndSubscribe(this._token);
+      this._getDataAndSubscribe(this._token, flow);
       return null;
     } else {
       return this._sendSubscribe(this._token);
@@ -702,10 +767,11 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
    * This order is critical: reading position first ensures it's a lower bound.
    * Recovered publications may overlap with data the app already loaded — this
    * requires idempotent updates or offset-based dedup. */
-  private _loadStreamState(): void {
+  private _loadStreamState(flow: number): void {
     if (!this._isSubscribing()) { this._inflight = false; return; }
 
     this._callAsync(() => this._getState!()).then(result => {
+      if (this._flowOutdated(flow)) { return; }
       if (!this._isSubscribing()) { this._inflight = false; return; }
 
       // Store stream position from app's source of truth.
@@ -715,13 +781,14 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
 
       // Proceed with normal subscribe flow (token → sendSubscribe).
       if (this._canSubscribeWithoutGettingToken()) {
-        this._subscribeWithoutToken();
+        this._subscribeWithoutToken(flow);
       } else {
         this._getSubscriptionToken()
-          .then(token => this._handleTokenResponse(token))
-          .catch(e => this._handleTokenError(e));
+          .then(token => this._handleTokenResponse(token, flow))
+          .catch(e => this._handleTokenError(e, flow));
       }
     }).catch(e => {
+      if (this._flowOutdated(flow)) { return; }
       if (!this._isSubscribing()) { this._inflight = false; return; }
       // Match map subscription error handling: route through _subscribeError
       // which emits error event and schedules resubscribe for temporary errors
@@ -735,7 +802,7 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
     });
   }
 
-  private _getDataAndSubscribe(token: string): void {
+  private _getDataAndSubscribe(token: string, flow: number): void {
     if (!this._getData) {
       this._inflight = false;
       return;
@@ -743,6 +810,9 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
 
     this._callAsync(() => this._getData!({ channel: this.channel }))
       .then(data => {
+        if (this._flowOutdated(flow)) {
+          return;
+        }
         if (!this._isSubscribing()) {
           this._inflight = false;
           return;
@@ -750,10 +820,13 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
         this._data = data;
         this._sendSubscribe(token);
       })
-      .catch(e => this._handleGetDataError(e));
+      .catch(e => this._handleGetDataError(e, flow));
   }
 
-  private _handleGetDataError(error: any): void {
+  private _handleGetDataError(error: any, flow: number): void {
+    if (this._flowOutdated(flow)) {
+      return;
+    }
     if (!this._isSubscribing()) {
       this._inflight = false;
       return;
@@ -778,7 +851,10 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
     });
   }
 
-  private _handleTokenResponse(token: string | null): void {
+  private _handleTokenResponse(token: string | null, flow: number): void {
+    if (this._flowOutdated(flow)) {
+      return;
+    }
     if (!this._isSubscribing()) {
       this._inflight = false;
       return;
@@ -793,13 +869,16 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
     this._token = token;
 
     if (this._getData) {
-      this._getDataAndSubscribe(token);
+      this._getDataAndSubscribe(token, flow);
     } else {
       this._sendSubscribe(token);
     }
   }
 
-  private _handleTokenError(error: any): void {
+  private _handleTokenError(error: any, flow: number): void {
+    if (this._flowOutdated(flow)) {
+      return;
+    }
     if (!this._isSubscribing()) {
       this._inflight = false;
       return;
@@ -832,12 +911,16 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
 
     const cmd = this._buildSubscribeCommand(token);
     const flow = this._subscribeFlow;
+    this._subscribeCallFlow = flow;
 
     // @ts-ignore – we are hiding some symbols from public API autocompletion.
     // An exception while handling the reply stops the client (see _dispatchFailed).
     // next() is still called, so replies of a later connection aren't blocked.
     this._centrifuge._call(cmd).then(resolveCtx => {
       try {
+        if (this._settleSubscribeCall(flow, true)) {
+          return;
+        }
         if (flow !== this._subscribeFlow) {
           // The app unsubscribed meanwhile, maybe to subscribe again.
           return;
@@ -854,6 +937,9 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
       }
     }, rejectCtx => {
       try {
+        if (this._settleSubscribeCall(flow, false, rejectCtx.error)) {
+          return;
+        }
         if (flow !== this._subscribeFlow) {
           return;
         }
@@ -916,6 +1002,11 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
     if (!this._isSubscribing()) {
       return;
     }
+    if (error.code === errorCodes.connectionClosed) {
+      // The transport closed with the subscribe in flight: no error of the
+      // subscribe, the next connection subscribes again without a backoff.
+      return;
+    }
     if (error.code === errorCodes.timeout) {
       // @ts-ignore – we are hiding some symbols from public API autocompletion.
       this._centrifuge._disconnect(connectingCodes.subscribeTimeout, 'subscribe timeout', true);
@@ -965,8 +1056,15 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
       this._clearSubscribedState();
     } else if (this._isSubscribing()) {
       if (this._inflight && sendUnsubscribe) {
-        // @ts-ignore – we are hiding some methods from public API autocompletion.
-        promise = this._unsubPromise = this._centrifuge._unsubscribe(this);
+        if (this._mustDeferUnsubscribe()) {
+          const flow = this._subscribeFlow;
+          promise = this._unsubPromise = new Promise<void>(resolve => {
+            this._deferredUnsubscribe = { flow, resolve };
+          });
+        } else {
+          // @ts-ignore – we are hiding some methods from public API autocompletion.
+          promise = this._unsubPromise = this._centrifuge._unsubscribe(this);
+        }
       }
       this._clearSubscribingState();
     }
@@ -984,6 +1082,7 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
     this._sharedPollSignatures = [];
     this._sharedPollTrackedItems.clear();
     this._sharedPollSignatureRefreshInFlight = false;
+    this._sharedPollSignatureRefreshAgain = false;
     this._sharedPollSignatureRefreshTargetMs = null;
     this._cancelAllDebounce();
     // Waiters fail before the events: a handler subscribing again makes waiters of
@@ -998,6 +1097,15 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
   }
 
   private _handlePublication(pub: any) {
+    if (this._sharedPoll && pub.key && !pub.removed && hasOffset(pub.version)) {
+      // Versions dedupe: one not newer than the version held for the key is a
+      // duplicate (e.g. the reply of a second track request of the key) or
+      // older. Dropped before delta decoding, which would move the key's base.
+      const known = this._sharedPollTrackedItems.get(pub.key);
+      if (known !== undefined && known > 0 && toOffset(pub.version) <= known) {
+        return;
+      }
+    }
     if (this._delta && this._delta_negotiated) {
       // For map and shared poll subs, delta is per-key.
       // For non-map subs, delta is a single chain regardless of pub.key.
@@ -1170,7 +1278,11 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
     }
     const self = this;
     const delay = this._getResubscribeDelay();
+    // One timer at a time: a timer left armed would fire later, out of the
+    // backoff, and send a subscribe the emulation waits don't cover.
+    this._clearResubscribeTimeout();
     this._resubscribeTimeout = setTimeout(function () {
+      self._resubscribeTimeout = null;
       if (self._isSubscribing()) {
         self._subscribe();
       }
@@ -1181,7 +1293,7 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
   // Emits an error event, then runs the continuation: also when a handler threw (the
   // exception propagates afterwards), not when a handler unsubscribed, maybe to
   // subscribe again, whose new subscribe the continuation must not touch.
-  private _emitError(ctx: any, continuation: () => void) {
+  protected _emitError(ctx: any, continuation: () => void) {
     const flow = this._subscribeFlow;
     try {
       this.emit('error', ctx);
@@ -1194,6 +1306,25 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
 
   private _subscribeError(err: any) {
     if (!this._isSubscribing()) {
+      return;
+    }
+    if (err.code === 109 && this._getToken === null) {
+      // The token expired and there is no getToken to get another one: like a
+      // connection, unauthorized (instead of subscribing again without a token).
+      try {
+        this.emit('error', {
+          type: 'configuration',
+          channel: this.channel,
+          error: {
+            code: errorCodes.badConfiguration,
+            message: 'subscription token expired but no getToken function set'
+          }
+        });
+      } catch (e) {
+        // @ts-ignore – we are hiding some symbols from public API autocompletion.
+        this._centrifuge._reportDispatchError(e);
+      }
+      this._setUnsubscribed(unsubscribedCodes.unauthorized, 'unauthorized', false);
       return;
     }
     if (err.code < 100 || err.code === 109 || err.temporary === true) {
@@ -1516,7 +1647,10 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
     }
     if (current.length > 0) frames.push(current);
 
-    const send = (frame: typeof batches, frameUntrackKeys?: string[]): Promise<void> =>
+    // A failing frame stops the frames after it: a permanent error untracks the
+    // keys of all of them.
+    const keysFrom = (idx: number) => frames.slice(idx).flatMap(f => f.flatMap(b => b.items.map(i => i.key)));
+    const send = (frame: typeof batches, idx: number, frameUntrackKeys?: string[]): Promise<void> =>
       new Promise<void>((resolve, reject) => {
         const req: any = {
           channel: this.channel,
@@ -1533,7 +1667,8 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
         // @ts-ignore – we are hiding some symbols from public API autocompletion.
         this._centrifuge._call(msg).then(resolveCtx => {
           try {
-            this._handleTrackResponse(resolveCtx.reply.sub_refresh);
+            this._handleTrackResponse(resolveCtx.reply.sub_refresh,
+              frame.flatMap(b => b.items.map(i => i.key)), frameUntrackKeys);
           } catch (err) {
             // @ts-ignore – we are hiding some symbols from public API autocompletion.
             this._centrifuge._dispatchFailed(err);
@@ -1543,7 +1678,9 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
           resolve();
         }, rejectCtx => {
           if (rejectCtx.next) rejectCtx.next();
-          reject(rejectCtx.error);
+          this._sharedPollRequestFailed(rejectCtx.error);
+          // With the keys of the request, which a permanent error untracks.
+          reject({ error: rejectCtx.error, keys: keysFrom(idx) });
         });
       });
 
@@ -1551,14 +1688,48 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
     // doesn't end up with some frames committed server-side and others not
     // — which would otherwise lead to retry-with-duplicate-publications.
     // Inline untrack keys go only in the first frame.
-    return frames.reduce<Promise<void>>(
-      (chain, frame, idx) => chain.then(() => send(frame, idx === 0 ? untrackKeys : undefined)),
+    return this._sharedPollSerial(() => frames.reduce<Promise<void>>(
+      (chain, frame, idx) => chain.then(() => send(frame, idx, idx === 0 ? untrackKeys : undefined)),
       Promise.resolve(),
-    );
+    ));
+  }
+
+  private _isEmulation(): boolean {
+    // @ts-ignore – we are hiding some symbols from public API autocompletion.
+    const transport = this._centrifuge._transport;
+    return !!transport && transport.emulation();
+  }
+
+  // Over emulation each request is a separate HTTP request the server may handle
+  // in any order: a track and an untrack of a key could overtake each other. The
+  // channel's requests go one at a time then, in the order made; one made for a
+  // subscription that has ended by its turn is dropped.
+  private _sharedPollSerial(send: () => Promise<void>): Promise<void> {
+    if (!this._isEmulation()) {
+      return send();
+    }
+    const generation = this._refreshGeneration;
+    const run = this._sharedPollQueue.then(() => {
+      if (generation !== this._refreshGeneration || !this._isSubscribed()) {
+        return;
+      }
+      return send();
+    });
+    this._sharedPollQueue = run.then(() => undefined, () => undefined);
+    return run;
+  }
+
+  // A timed-out request over emulation may still reach the server after later
+  // ones: whether the keys are tracked is unknown, the client reconnects.
+  private _sharedPollRequestFailed(error: any) {
+    if (error && error.code === errorCodes.timeout && this._isEmulation()) {
+      // @ts-ignore – we are hiding some symbols from public API autocompletion.
+      this._centrifuge._disconnect(connectingCodes.subscribeTimeout, 'shared poll request timeout', true);
+    }
   }
 
   protected _sendUntrackRequest(keys: string[]): Promise<void> {
-    return new Promise<void>((resolve, reject) => {
+    return this._sharedPollSerial(() => new Promise<void>((resolve, reject) => {
       const req: any = {
         channel: this.channel,
         type: 2,
@@ -1575,12 +1746,13 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
         if (rejectCtx.next) {
           rejectCtx.next();
         }
+        this._sharedPollRequestFailed(rejectCtx.error);
         reject(rejectCtx.error);
       });
-    });
+    }));
   }
 
-  private _handleTrackResponse(result: any) {
+  private _handleTrackResponse(result: any, keys: string[], untrackKeys?: string[]) {
     // The reply to a track sent before unsubscribe() belongs to that subscription:
     // its items and versions must not reach the next one.
     if (!this._isSubscribed()) {
@@ -1601,6 +1773,16 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
     }
     if (!this._isSubscribed()) {
       return;
+    }
+    // Keys the request tracked at the server which the client no longer tracks,
+    // e.g. removed by the server while the request was in flight: the server
+    // would keep tracking them, untracked there too.
+    const untracked = new Set(untrackKeys || []);
+    const stale = keys.filter(key => !untracked.has(key) && !this._sharedPollTrackedItems.has(key));
+    if (stale.length > 0) {
+      this._sendUntrackRequest(stale).catch(err => {
+        this.emit('error', { type: 'untrack', channel: this.channel, error: err });
+      });
     }
     // Server returns MIN ttl across all batches in this request. Keep the
     // EARLIEST deadline received across all responses as the refresh target.
@@ -1656,6 +1838,16 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
     this._sharedPollTrackRetryAttempts = 0;
   }
 
+  protected _scheduleSharedPollReplayRetry() {
+    if (this._sharedPollReplayRetryTimeout !== null) {
+      clearTimeout(this._sharedPollReplayRetryTimeout);
+    }
+    this._sharedPollReplayRetryTimeout = setTimeout(
+      () => this._sharedPollReplayTrack(),
+      backoff(this._sharedPollReplayRetryAttempts++, 5000, 30000)
+    );
+  }
+
   private _clearSharedPollReplayRetry() {
     if (this._sharedPollReplayRetryTimeout !== null) {
       clearTimeout(this._sharedPollReplayRetryTimeout);
@@ -1673,7 +1865,7 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
     this._sharedPollSignatures.push({ keys, signature });
   }
 
-  protected _handleTrackError(err: any) {
+  protected _handleTrackError(err: any, keys: string[]) {
     if (!this._isSubscribed()) {
       return;
     }
@@ -1701,8 +1893,42 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
           () => this._sharedPollReplayTrack(),
           backoff(this._sharedPollTrackRetryAttempts++, 1000, 15000)
         );
+        return;
       }
+      // A permanent error, e.g. limit exceeded or permission denied: retrying
+      // fails the same way. The keys are untracked like revoked ones, also at
+      // the server: an earlier request (e.g. one that timed out) may have
+      // tracked them.
+      this._untrackFailedKeys(keys);
     });
+  }
+
+  private _untrackFailedKeys(keys: string[]) {
+    const failed = keys.filter(key => this._sharedPollTrackedItems.has(key));
+    if (failed.length === 0) {
+      return;
+    }
+    for (const key of failed) {
+      this._sharedPollTrackedItems.delete(key);
+    }
+    this._sharedPollSignatures = this._sharedPollSignatures.filter(entry =>
+      entry.keys.some(k => this._sharedPollTrackedItems.has(k))
+    );
+    this._sendUntrackRequest(failed).catch(err => {
+      this.emit('error', { type: 'untrack', channel: this.channel, error: err });
+    });
+    for (const key of failed) {
+      // A handler of an earlier removal may have ended the subscription.
+      if (!this._isSubscribed()) {
+        return;
+      }
+      this.emit('update', {
+        channel: this.channel,
+        key: key,
+        data: null,
+        removed: true,
+      } as SharedPollUpdateContext);
+    }
   }
 
   // _sharedPollRefreshSignature obtains a fresh consolidated signature
@@ -1715,7 +1941,15 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
     if (!this._isSubscribed()) return;
     if (!this._sharedPollGetSignature) return;
     if (this._sharedPollTrackedItems.size === 0) return;
-    if (this._sharedPollSignatureRefreshInFlight) return;
+    if (this._sharedPollSignatureRefreshInFlight) {
+      for (const key of this._sharedPollTrackedItems.keys()) {
+        if (!this._sharedPollSignatureRefreshKeys.has(key)) {
+          this._sharedPollSignatureRefreshAgain = true;
+          break;
+        }
+      }
+      return;
+    }
 
     // Reset the global refresh target — the timer that pointed at this
     // moment has already fired, and the in-flight refresh will publish a
@@ -1726,6 +1960,7 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
     this._sharedPollSignatureRefreshTargetMs = null;
     this._sharedPollSignatureRefreshInFlight = true;
     const keys = Array.from(this._sharedPollTrackedItems.keys());
+    this._sharedPollSignatureRefreshKeys = new Set(keys);
     const self = this;
     // A subscription ending meanwhile resets the in-flight guard for its next period.
     const generation = this._refreshGeneration;
@@ -1736,12 +1971,17 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
       if (!self._isSubscribed()) return;
 
       self._sharedPollSignatureRefreshAttempts = 0;
+      if (self._sharedPollSignatureRefreshAgain) {
+        self._sharedPollSignatureRefreshAgain = false;
+        // After this refresh's track request is sent below.
+        Promise.resolve().then(() => self._sharedPollRefreshSignature());
+      }
 
       // Handle revoked keys (keys not in the returned set).
       const returnedKeys = new Set(result.keys);
       const revokedKeys: string[] = [];
       for (const key of keys) {
-        if (!returnedKeys.has(key)) {
+        if (!returnedKeys.has(key) && this._sharedPollTrackedItems.has(key)) {
           self._sharedPollTrackedItems.delete(key);
           revokedKeys.push(key);
           // A handler of an earlier removal may have ended the subscription: the
@@ -1792,12 +2032,14 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
 
       if (items.length === 0) return;
 
-      self._sendTrackRequest([{ items, signature: result.signature }]).catch(err => {
-        self._handleTrackError(err);
+      self._sendTrackRequest([{ items, signature: result.signature }]).catch(e => {
+        self._handleTrackError(e.error, e.keys);
       });
     }).catch(e => {
       if (generation !== self._refreshGeneration) return;
       self._sharedPollSignatureRefreshInFlight = false;
+      // The retry below covers it.
+      self._sharedPollSignatureRefreshAgain = false;
       self._emitError({
         type: 'signatureRefresh',
         channel: self.channel,
@@ -1877,8 +2119,8 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
       // Pass untracked keys inline — server validates HMAC over the full batch
       // then immediately removes the stale keys in the same handler, eliminating
       // the previous two-round-trip track→untrack sequence.
-      this._sendTrackRequest(replayBatches, allUntrackedInReplay).catch(err => {
-        this._handleTrackError(err);
+      this._sendTrackRequest(replayBatches, allUntrackedInReplay).catch(e => {
+        this._handleTrackError(e.error, e.keys);
       });
     }
 
@@ -1915,7 +2157,7 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
       const returnedKeys = new Set(result.keys);
       const revokedKeys: string[] = [];
       for (const key of uncoveredKeys) {
-        if (!returnedKeys.has(key)) {
+        if (!returnedKeys.has(key) && this._sharedPollTrackedItems.has(key)) {
           self._sharedPollTrackedItems.delete(key);
           revokedKeys.push(key);
           // A handler of an earlier removal may have ended the subscription: the
@@ -1948,8 +2190,8 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
 
       // Cache the obtained signature for subsequent reconnect replays.
       self._addSharedPollSignature(result.keys, result.signature);
-      self._sendTrackRequest([{ items, signature: result.signature }]).catch(err => {
-        self._handleTrackError(err);
+      self._sendTrackRequest([{ items, signature: result.signature }]).catch(e => {
+        self._handleTrackError(e.error, e.keys);
       });
     }).catch(e => {
       if (generation !== self._refreshGeneration || !self._isSubscribed()) return;
@@ -1980,30 +2222,36 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
     this._debug('starting map subscribe on', this.channel);
     const flow = ++this._subscribeFlow;
 
-    // Initialize buffers and phase
-    this._mapStateBuffer = [];
-    this._mapStreamBuffer = [];
-    this._mapCursor = '';
+    // Decided when the first request goes, after the token if one is needed: the
+    // position may be reset meanwhile (state invalidation, setTagsFilter).
+    const start = () => {
+      // Initialize buffers and phase
+      this._mapStateBuffer = [];
+      this._mapStreamBuffer = [];
+      this._mapCursor = '';
 
-    // If we have a position from `since`, we may skip snapshot and go to stream
-    const recovering = this._recover && this._offset !== null && this._epoch !== null;
-    // Preserve _prevValueMap when recovering — the server will send deltas
-    // against the values the client already has from the previous session.
-    // Only clear when starting from scratch (no recovery position).
-    if (!recovering) {
-      this._prevValueMap = new Map();
-    }
-    this._mapFlowRecovering = recovering;
-    this._mapFlowOffset = recovering ? this._offset as number : 0;
-    this._mapFlowEpoch = recovering ? this._epoch : null;
-    this._mapFlowPositionResets = this._mapPositionResets;
+      // If we have a position from `since`, we may skip snapshot and go to stream
+      const recovering = this._recover && this._offset !== null && this._epoch !== null;
+      // Preserve _prevValueMap when recovering — the server will send deltas
+      // against the values the client already has from the previous session.
+      // Only clear when starting from scratch (no recovery position).
+      if (!recovering) {
+        this._prevValueMap = new Map();
+      }
+      this._mapFlowRecovering = recovering;
+      this._mapFlowOffset = recovering ? this._offset as number : 0;
+      this._mapFlowEpoch = recovering ? this._epoch : null;
+      this._mapFlowPositionResets = this._mapPositionResets;
 
-    this._mapPhase = MapPhase.State;
-    if (recovering) {
-      this._debug('map subscribe: recovering from position, skipping to stream phase');
-      this._mapPhase = MapPhase.Stream;
-    }
-    const start = () => recovering ? this._fetchStream(flow) : this._fetchSnapshot(flow);
+      this._mapPhase = MapPhase.State;
+      if (recovering) {
+        this._debug('map subscribe: recovering from position, skipping to stream phase');
+        this._mapPhase = MapPhase.Stream;
+        this._fetchStream(flow);
+      } else {
+        this._fetchSnapshot(flow);
+      }
+    };
 
     // Get token if needed, then start fetching. Also when recovering: the token
     // may have been cleared, e.g. after it expired.
@@ -2029,9 +2277,7 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
           start();
         })
         .catch(e => {
-          if (flow === this._subscribeFlow) {
-            this._handleTokenError(e);
-          }
+          this._handleTokenError(e, flow);
         });
     }
   }
@@ -2046,9 +2292,13 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
     const cmd = this._buildMapSubscribeCommand(MapPhase.State, cursor);
     this._debug('map subscribe: fetching snapshot page', cursor ? `cursor=${cursor}` : 'initial');
 
+    this._subscribeCallFlow = flow;
     // @ts-ignore – we are hiding some symbols from public API autocompletion.
     this._centrifuge._call(cmd).then(resolveCtx => {
       try {
+        if (this._settleSubscribeCall(flow, true)) {
+          return;
+        }
         // The reply to a page of an earlier flow is outdated.
         if (flow === this._subscribeFlow) {
           this._handleMapStateResponse(flow, resolveCtx.reply.subscribe);
@@ -2063,6 +2313,9 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
       }
     }, rejectCtx => {
       try {
+        if (this._settleSubscribeCall(flow, false, rejectCtx.error)) {
+          return;
+        }
         if (flow === this._subscribeFlow) {
           this._handleMapSubscribeError(rejectCtx.error);
         }
@@ -2164,9 +2417,13 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
     const cmd = this._buildMapSubscribeCommand(MapPhase.Stream);
     this._debug('map subscribe: fetching stream from offset', this._mapFlowOffset);
 
+    this._subscribeCallFlow = flow;
     // @ts-ignore – we are hiding some symbols from public API autocompletion.
     this._centrifuge._call(cmd).then(resolveCtx => {
       try {
+        if (this._settleSubscribeCall(flow, true)) {
+          return;
+        }
         // The reply to a page of an earlier flow is outdated.
         if (flow === this._subscribeFlow) {
           this._handleMapStreamResponse(flow, resolveCtx.reply.subscribe);
@@ -2181,6 +2438,9 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
       }
     }, rejectCtx => {
       try {
+        if (this._settleSubscribeCall(flow, false, rejectCtx.error)) {
+          return;
+        }
         if (flow === this._subscribeFlow) {
           this._handleMapSubscribeError(rejectCtx.error);
         }
@@ -2459,23 +2719,29 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
       return;
     }
 
+    if (error.code === errorCodes.connectionClosed) {
+      // See _handleSubscribeError.
+      return;
+    }
+
     if (error.code === errorCodes.timeout) {
       // @ts-ignore – we are hiding some symbols from public API autocompletion.
       this._centrifuge._disconnect(connectingCodes.subscribeTimeout, 'subscribe timeout', true);
       return;
     }
 
-    // Clear map state on error
+    // Clear map state on error. The delta bases stay with the position: a
+    // recovery from it gets deltas of the values the client has.
     this._mapStateBuffer = [];
     this._mapStreamBuffer = [];
     this._mapPhase = null;
-    this._prevValueMap = new Map();
 
     // Handle unrecoverable position error (code 112) based on strategy
     if (error.code === 112) {
       if (this._mapUnrecoverableStrategy === 'from_scratch') {
         // Reset position and resubscribe from snapshot
         this._debug('map subscribe: unrecoverable position, restarting from scratch');
+        this._prevValueMap = new Map();
         this._offset = null;
         this._epoch = null;
         this._recover = false;
@@ -2663,8 +2929,8 @@ export class SharedPollSubscription extends BaseSubscription {
       // Explicit signature path — append to library and (if subscribed) send.
       this._addSharedPollSignature(items.map(i => i.key), sig);
       if (this._isSubscribed() && !this._sharedPollReplayPending) {
-        this._sendTrackRequest([{ items, signature: sig }]).catch(err => {
-          this._handleTrackError(err);
+        this._sendTrackRequest([{ items, signature: sig }]).catch(e => {
+          this._handleTrackError(e.error, e.keys);
         });
       }
       // If not subscribed yet, or completing the subscribe, _sharedPollReplayTrack
@@ -2697,7 +2963,7 @@ export class SharedPollSubscription extends BaseSubscription {
       const returnedKeys = new Set(result.keys);
       const revokedKeys: string[] = [];
       for (const key of keys) {
-        if (!returnedKeys.has(key)) {
+        if (!returnedKeys.has(key) && this._sharedPollTrackedItems.has(key)) {
           this._sharedPollTrackedItems.delete(key);
           revokedKeys.push(key);
           // A handler of an earlier removal may have ended the subscription: the
@@ -2720,6 +2986,8 @@ export class SharedPollSubscription extends BaseSubscription {
           this.emit('error', { type: 'untrack', channel: this.channel, error: err });
         });
       }
+      // A getSignature that works again: the next failure starts the backoff over.
+      this._sharedPollReplayRetryAttempts = 0;
       // Track authorized keys.
       const authorizedItems: { key: string; version: number }[] = [];
       for (const key of result.keys) {
@@ -2731,15 +2999,19 @@ export class SharedPollSubscription extends BaseSubscription {
       if (authorizedItems.length === 0) return;
       // Cache the obtained signature for reconnect replay.
       this._addSharedPollSignature(result.keys, result.signature);
-      this._sendTrackRequest([{ items: authorizedItems, signature: result.signature }]).catch(err => {
-        this._handleTrackError(err);
+      this._sendTrackRequest([{ items: authorizedItems, signature: result.signature }]).catch(e => {
+        this._handleTrackError(e.error, e.keys);
       });
     }).catch(e => {
       if (generation !== this._refreshGeneration || !this._isSubscribed()) return;
-      this.emit('error', {
+      this._emitError({
         type: 'track',
         channel: this.channel,
         error: { code: errorCodes.sharedPollGetSignature, message: e !== undefined ? e.toString() : 'getSignature failed' },
+      }, () => {
+        if (generation !== this._refreshGeneration || !this._isSubscribed()) return;
+        // Retried by the replay, which gets a signature for the keys without one.
+        this._scheduleSharedPollReplayRetry();
       });
     });
   }

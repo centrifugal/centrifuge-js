@@ -97,6 +97,8 @@ interface serverSubscription {
   offset: number;
   epoch: string;
   recoverable: boolean;
+  // Its subscribed event was emitted and no subscribing event since.
+  subscribed?: boolean;
 }
 
 type CallResolveContext = { reply: any; next?: () => void };
@@ -882,9 +884,10 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
       }
     }
 
-    // fire events for server-side subscriptions.
+    // fire events for server-side subscriptions, once per subscribed period.
     for (const channel in this._serverSubs) {
-      if (this._serverSubs.hasOwnProperty(channel)) {
+      if (this._serverSubs.hasOwnProperty(channel) && this._serverSubs[channel].subscribed) {
+        this._serverSubs[channel].subscribed = false;
         this.emit('subscribing', { channel: channel });
       }
     }
@@ -1845,6 +1848,11 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
       }
     }
     if (this._isDisconnected()) {
+      if (!reconnect) {
+        // Calls made while disconnected wait for a connection: disconnect() ends
+        // that wait too.
+        this._rejectPromises({ code: errorCodes.clientDisconnected, message: 'disconnected' });
+      }
       return;
     }
     const previousState = this.state;
@@ -2189,6 +2197,11 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
       if (sub._inflight === true) {
         continue;
       }
+      // A subscribe error is retried after its backoff, also across a reconnect.
+      // @ts-ignore – we are hiding some symbols from public API autocompletion.
+      if (sub._resubscribeTimeout !== null) {
+        continue;
+      }
       if (sub.state === SubscriptionState.Subscribing) {
         // @ts-ignore – we are hiding some symbols from public API autocompletion.
         const cmd = sub._subscribe();
@@ -2271,23 +2284,27 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
   }
 
   private _processServerSubs(subs: Record<string, any>, transition: number) {
-    // A 'subscribed' or 'publication' handler may call disconnect(). Positions
-    // are still stored and removed channels still reported, but no more
-    // subscribed or publication events of this connection are emitted.
+    // A 'subscribed' or 'publication' handler may call disconnect(). Removed
+    // channels are still reported, but no more subscribed or publication events
+    // of this connection are emitted, and no more positions stored: a position
+    // whose subscribed event the app didn't get would hide a gap from it (the
+    // next connect recovering from a position after it, recovered=true).
     for (const channel in subs) {
       if (!subs.hasOwnProperty(channel)) {
+        continue;
+      }
+      if (this._transitionSuperseded(transition)) {
         continue;
       }
       const sub = subs[channel];
       this._serverSubs[channel] = {
         'offset': toOffset(sub.offset),
         'epoch': sub.epoch,
-        'recoverable': sub.recoverable || false
+        'recoverable': sub.recoverable || false,
+        'subscribed': true
       };
-      if (!this._transitionSuperseded(transition)) {
-        const subCtx = this._getSubscribeContext(channel, sub);
-        this.emit('subscribed', subCtx);
-      }
+      const subCtx = this._getSubscribeContext(channel, sub);
+      this.emit('subscribed', subCtx);
     }
 
     for (const channel in subs) {
@@ -2519,7 +2536,8 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     this._serverSubs[channel] = {
       'offset': toOffset(sub.offset),
       'epoch': sub.epoch,
-      'recoverable': sub.recoverable || false
+      'recoverable': sub.recoverable || false,
+      'subscribed': true
     };
     this.emit('subscribed', this._getSubscribeContext(channel, sub));
   }

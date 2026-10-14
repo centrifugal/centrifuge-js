@@ -181,7 +181,7 @@ describe('dispatch and subscription state', () => {
     c.connect();
     const ctx = await disconnected;
     expect(ctx.code).toBe(disconnectedCodes.badProtocol);
-    expect(ctx.reason).toBe('exception during message handling: handler failure');
+    expect(ctx.reason).toBe('exception in event handler: handler failure');
     expect(reported.map(e => e && e.message)).toEqual(['handler failure']);
 
     c.connect();

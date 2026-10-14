@@ -998,6 +998,16 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
     this._centrifuge._debug(...args);
   }
 
+  /** @internal An exception escaping a handler stops the client: see Centrifuge._handlerFailed. */
+  emit(event: any, ...args: any[]): boolean {
+    try {
+      return (EventEmitter.prototype.emit as any).call(this, event, ...args);
+    } catch (e) {
+      this._centrifuge._handlerFailed(e);
+      return true;
+    }
+  }
+
   private _handleSubscribeError(error) {
     if (!this._isSubscribing()) {
       return;
@@ -1150,8 +1160,8 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
       ctx = this._centrifuge._getPublicationContext(this.channel, pub);
     }
     // The position moves after the app has the publication, so the position it can
-    // observe never runs ahead of what it received: a handler that throws, or that
-    // unsubscribes before the last event, doesn't skip it. A subscribe command built
+    // observe never runs ahead of what it received: a handler that throws (which
+    // stops the client), or that unsubscribes before the last event, doesn't skip it. A subscribe command built
     // while a handler runs still recovers after this publication, because _getOffset
     // prefers the pending offset — a resubscribe from the handler gets no duplicate.
     if (this._map || this._sharedPoll) {
@@ -1163,10 +1173,16 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
       this.emit('update', ctx);
     } else {
       this._pendingOffset = hasOffset(pub.offset) ? toOffset(pub.offset) : null;
+      const failures = this._centrifuge._handlerFailures;
       try {
         this.emit('publication', ctx);
       } finally {
         this._pendingOffset = null;
+      }
+      // A publication whose handler threw isn't delivered: the position stays before
+      // it, so the next recovery delivers it again.
+      if (this._centrifuge._handlerFailures !== failures) {
+        return;
       }
       this._setPublicationPosition(pub);
     }
@@ -1290,9 +1306,8 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
     this._debug('resubscribe scheduled after ' + delay, this.channel);
   }
 
-  // Emits an error event, then runs the continuation: also when a handler threw (the
-  // exception propagates afterwards), not when a handler unsubscribed, maybe to
-  // subscribe again, whose new subscribe the continuation must not touch.
+  // Emits an error event, then runs the continuation: not when a handler unsubscribed,
+  // maybe to subscribe again, whose new subscribe the continuation must not touch.
   protected _emitError(ctx: any, continuation: () => void) {
     const flow = this._subscribeFlow;
     try {

@@ -1058,7 +1058,14 @@ If you have issues with the connection on Android when using React Native – [c
 
 ## Errors in callbacks
 
-There is currently no built-in error handling in the SDK for exceptions happening in application-level callbacks, which means you must catch any error that could be thrown in a listener. Not doing that may corrupt a state of SDK making it unusable.
+Event handlers should not throw: catch errors in your listeners. The SDK can't know what a throwing handler left undone, so it fails loudly instead of going on as if nothing happened:
+
+* the client disconnects with code `2` (bad protocol) and the reason `exception in event handler: <message>`, and doesn't reconnect – call `connect()` to start again;
+* the exception is re-raised as an unhandled promise rejection, so it reaches the browser console, `unhandledrejection` listeners or Node's `unhandledRejection` handler (in Node, an unhandled rejection ends the process unless the application handles it);
+* the SDK's own work completes as if the handler had returned, so the client is left in a consistent state;
+* a publication whose handler threw is not counted as delivered: after `connect()`, a recoverable subscription receives it again.
+
+This applies to every event of the client and of subscriptions. Callbacks that return promises, like `getToken`, `getData` and `getState`, are different: an error they throw or reject with is retried, and `UnauthorizedError` stops the client or the subscription, as described above.
 
 ## Run tests locally
 

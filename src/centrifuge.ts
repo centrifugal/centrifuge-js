@@ -104,6 +104,15 @@ interface serverSubscription {
 type CallResolveContext = { reply: any; next?: () => void };
 type CallRejectContext = { error: any; next?: () => void };
 
+function errorMessage(err: any): string {
+  try {
+    return err instanceof Error ? err.message : String(err);
+  } catch (e) {
+    // E.g. a thrown Object.create(null): it has no string form.
+    return 'value without a string form';
+  }
+}
+
 export class UnauthorizedError extends Error {
   constructor(message: any) {
     super(message);
@@ -155,6 +164,8 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
   private _promiseId: number;
   private _networkEvents: { target: EventTarget; onOffline: () => void; onOnline: () => void } | null;
   private _stateTransitions: number;
+  /** @internal The number of exceptions escaped from event handlers (see _handlerFailed). */
+  _handlerFailures = 0;
   private _disconnects: number;
   private _abortedTransportId: number;
   private _reconnectAttemptsResetPending: boolean;
@@ -1432,9 +1443,9 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     });
   }
 
-  // Emits an error event, then runs the continuation: also when a handler threw
-  // (the exception propagates afterwards), not when a handler disconnected the
-  // client, maybe to connect again, whose new attempt the continuation must not touch.
+  // Emits an error event, then runs the continuation: not when a handler disconnected
+  // the client (or threw, which disconnects it), maybe to connect again, whose new
+  // attempt the continuation must not touch.
   private _emitError(ctx: any, continuation: () => void) {
     const disconnects = this._disconnects;
     try {
@@ -1708,25 +1719,36 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     });
   }
 
-  // An exception while handling a reply, e.g. thrown by an application event
-  // handler, may have left the application state inconsistent. The client stops
-  // in a state the application can see: it disconnects without reconnecting, so
-  // no later reply is processed.
+  /** @internal Every event reaches the application's handlers through here. */
+  emit(event: any, ...args: any[]): boolean {
+    try {
+      return (EventEmitter.prototype.emit as any).call(this, event, ...args);
+    } catch (e) {
+      this._handlerFailed(e);
+      return true;
+    }
+  }
+
+  // An exception escaping an application event handler. The SDK can't know what the
+  // handler left undone, so it fails loudly instead of going on as if nothing
+  // happened: the client disconnects without reconnecting, and the exception is
+  // re-raised as an unhandled rejection. The SDK's own work continues as if the
+  // handler had returned, as for a handler calling disconnect(), so no state change
+  // is left half done.
+  /** @internal */
+  _handlerFailed(err: any) {
+    this._handlerFailures++;
+    this._reportDispatchError(err);
+    this._disconnect(disconnectedCodes.badProtocol, `exception in event handler: ${errorMessage(err)}`, false);
+  }
+
+  // An exception while handling a reply, other than one of an event handler (see
+  // _handlerFailed), may have left the client's state inconsistent. The client stops
+  // in a state the application can see: it disconnects without reconnecting, so no
+  // later reply is processed.
   private _dispatchFailed(err: any) {
     this._reportDispatchError(err);
-    let message: string;
-    try {
-      message = err instanceof Error ? err.message : String(err);
-    } catch (e) {
-      // E.g. a thrown Object.create(null): it has no string form.
-      message = 'value without a string form';
-    }
-    try {
-      this._disconnect(disconnectedCodes.badProtocol, `exception during message handling: ${message}`, false);
-    } catch (e) {
-      // Thrown by a handler of the disconnect events.
-      this._reportDispatchError(e);
-    }
+    this._disconnect(disconnectedCodes.badProtocol, `exception during message handling: ${errorMessage(err)}`, false);
   }
 
   // The exception is surfaced as an unhandled rejection, as before.
@@ -1735,10 +1757,11 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     Promise.reject(err);
   }
 
-  // An exception while handling a rejected command. A rejection with next() carries
-  // a reply, and is handled as any reply (see _dispatchFailed). A timeout or a teardown
-  // doesn't: stopping the client would cancel the reconnect or retry the handling
-  // scheduled, so the exception is only reported.
+  // An exception, other than one of an event handler, while handling a rejected
+  // command. A rejection with next() carries a reply, and is handled as any reply
+  // (see _dispatchFailed). A timeout or a teardown doesn't: stopping the client would
+  // cancel the reconnect or retry the handling scheduled, so the exception is only
+  // reported.
   private _rejectionFailed(err: any, rejectCtx: any) {
     if (rejectCtx.next !== undefined) {
       this._dispatchFailed(err);
@@ -1792,10 +1815,9 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
 
   private _startConnecting() {
     this._debug('start connecting');
-    // The attempt starts also when a handler of the events throws (the exception
-    // propagates afterwards), or the client stays connecting with nothing scheduled,
-    // and connect() does nothing. So the number of the transition is taken before its
-    // state event.
+    // The attempt starts unless a handler of the events disconnected the client (or
+    // threw, which disconnects it). So the number of the transition is taken before
+    // its state event.
     const transition = this.state !== State.Connecting ? this._stateTransitions + 1 : 0;
     try {
       this._setState(State.Connecting);
@@ -1903,10 +1925,9 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
       code: code,
       reason: reason
     };
-    // The rest runs also when a handler of the events throws (the exception
-    // propagates afterwards): subscriptions must move to subscribing and a reconnect
-    // must be scheduled, or the client is left stuck. So the number of the
-    // transition is taken before its state event.
+    // The rest runs whatever the handlers of the events do: subscriptions must move to
+    // subscribing and a reconnect must be scheduled, or the client is left stuck. So
+    // the number of the transition is taken before its state event.
     const transition = this.state !== newState ? this._stateTransitions + 1 : 0;
     try {
       try {
@@ -2608,10 +2629,16 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
         // _constructConnectCommand), so a connect() from that handler still recovers
         // after it instead of receiving it again.
         this._pendingServerSubOffsets[channel] = hasOffset(pub.offset) ? toOffset(pub.offset) : null;
+        const failures = this._handlerFailures;
         try {
           this.emit('publication', ctx);
         } finally {
           delete this._pendingServerSubOffsets[channel];
+        }
+        // A publication whose handler threw isn't delivered: the position stays before
+        // it, so the next recovery delivers it again.
+        if (this._handlerFailures !== failures) {
+          return;
         }
         if (hasOffset(pub.offset)) {
           this._serverSubs[channel].offset = toOffset(pub.offset);

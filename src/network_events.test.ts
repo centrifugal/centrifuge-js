@@ -1,7 +1,7 @@
 import { Centrifuge } from './centrifuge';
 import { DisconnectedContext, Options, State, SubscriptionState, TransportName } from './types';
 import { FakeCentrifugoServer } from './fakeServer';
-import { connectingCodes, disconnectedCodes, errorCodes, unsubscribedCodes } from './codes';
+import { connectingCodes, disconnectedCodes, errorCodes } from './codes';
 
 import WebSocket, { WebSocketServer } from 'ws';
 import http from 'node:http';
@@ -941,48 +941,36 @@ describe('network event listeners', () => {
     await c.ready(3000);
   });
 
-  test('an exception in a state handler during a disconnect still moves subscriptions and reconnects', async () => {
+  test('an exception in a state handler during a reconnect teardown stops the client', async () => {
     const c = newClient();
     const sub = c.newSubscription('ch');
     sub.subscribe();
     c.connect();
     await sub.ready(5000);
+    const reported = captureReported(c);
+    const stopped = stoppedByHandler(c);
 
     c.once('state', () => {
       throw new Error('handler failure');
     });
     // As the close callback of the socket does.
-    let thrown: any = null;
-    try {
-      (c as any)._disconnect(connectingCodes.transportClosed, 'transport closed', true);
-    } catch (e) {
-      thrown = e;
-    }
-    expect(thrown && thrown.message).toBe('handler failure');
+    (c as any)._disconnect(connectingCodes.transportClosed, 'transport closed', true);
+    await expectStopped(c, stopped, reported);
     expect(sub.state).toBe(SubscriptionState.Subscribing);
-    expect((c as any)._reconnectTimeout).not.toBeNull();
-
-    await c.ready(3000);
-    await sub.ready(3000);
   });
 
-  test('an exception in an error handler of a transport close still reconnects', async () => {
+  test('an exception in an error handler of a transport close stops the client', async () => {
     const sockets = firstSocketStub();
     const c = newClient({ websocket: sockets.websocket });
+    const reported = captureReported(c);
+    const stopped = stoppedByHandler(c);
     c.once('error', () => {
       throw new Error('handler failure');
     });
     c.connect();
-    let thrown: any = null;
-    try {
-      sockets.stub().onclose({ code: 1006, reason: '' });
-    } catch (e) {
-      thrown = e;
-    }
-    expect(thrown && thrown.message).toBe('handler failure');
-
-    await c.ready(3000);
-    expect(sockets.sockets()).toBe(2);
+    sockets.stub().onclose({ code: 1006, reason: '' });
+    await expectStopped(c, stopped, reported);
+    expect(sockets.sockets()).toBe(1);
   });
 
   // Applications see these exceptions as unhandled rejections; captured here instead.
@@ -999,148 +987,127 @@ describe('network event listeners', () => {
     });
   });
 
-  test('an exception in an error handler of a connect timeout still reconnects', async () => {
-    let connects = 0;
-    // The first connect command is never answered.
-    server.onCommand = (cmd) => (cmd.connect !== undefined && ++connects === 1 ? {} : null);
-    const c = newClient({ timeout: 200 });
-    const reported = captureReported(c);
-    const disconnected: any[] = [];
-    c.on('disconnected', ctx => disconnected.push(ctx));
-    const failed = throwOnce(c, 'error');
-    c.connect();
-    await failed;
-
-    await c.ready(3000);
-    expect(disconnected).toEqual([]);
-    expect(reported).toEqual(['handler failure']);
+  // A handler that throws stops the client: it disconnects with badProtocol and
+  // doesn't reconnect, and the exception is reported.
+  const stoppedByHandler = (c: Centrifuge) => new Promise<DisconnectedContext>(resolve => {
+    c.on('disconnected', ctx => {
+      if (ctx.code === disconnectedCodes.badProtocol) resolve(ctx);
+    });
   });
 
-  test('an exception in an error handler of a refresh timeout keeps the connection', async () => {
+  async function expectStopped(c: Centrifuge, stopped: Promise<DisconnectedContext>, reported: string[]) {
+    const ctx = await stopped;
+    expect(ctx.reason).toBe('exception in event handler: handler failure');
+    expect(reported).toEqual(['handler failure']);
+    await delay(300);
+    expect(c.state).toBe(State.Disconnected);
+    expect((c as any)._reconnectTimeout).toBeNull();
+    expect((c as any)._refreshTimeout).toBeNull();
+  }
+
+  test('an exception in an error handler of a connect timeout stops the client', async () => {
+    // The connect command is never answered.
+    server.onCommand = (cmd) => (cmd.connect !== undefined ? {} : null);
+    const c = newClient({ timeout: 200 });
+    const reported = captureReported(c);
+    const stopped = stoppedByHandler(c);
+    throwOnce(c, 'error');
+    c.connect();
+    await expectStopped(c, stopped, reported);
+  });
+
+  test('an exception in an error handler of a refresh timeout stops the client', async () => {
     // The connection token expires in a second, and the refresh command is never answered.
     server.connectResult = { ...server.connectResult, expires: true, ttl: 1 };
     server.onCommand = (cmd) => (cmd.refresh !== undefined ? {} : null);
     const c = newClient({ timeout: 200, getToken: () => Promise.resolve('token') });
     const reported = captureReported(c);
-    const failed = throwOnce(c, 'error');
+    const stopped = stoppedByHandler(c);
+    throwOnce(c, 'error');
     c.connect();
     await c.ready(3000);
-    await failed;
-    await delay(50);
-
-    expect(c.state).toBe(State.Connected);
-    expect((c as any)._refreshTimeout).not.toBeNull();
-    expect(reported).toEqual(['handler failure']);
+    await expectStopped(c, stopped, reported);
   }, 10000);
 
-  test('an exception in a connecting handler of an unsubscribe timeout still reconnects', async () => {
+  test('an exception in a connecting handler of an unsubscribe timeout stops the client', async () => {
     const c = newClient({ timeout: 200 });
     const sub = c.newSubscription('ch');
     sub.subscribe();
     c.connect();
     await sub.ready(3000);
     const reported = captureReported(c);
-    const disconnected: any[] = [];
-    c.on('disconnected', ctx => disconnected.push(ctx));
-    let unsubscribes = 0;
-    server.onCommand = (cmd) => (cmd.unsubscribe !== undefined && ++unsubscribes === 1 ? {} : null);
-    const failed = throwOnce(c, 'connecting');
+    const stopped = stoppedByHandler(c);
+    server.onCommand = (cmd) => (cmd.unsubscribe !== undefined ? {} : null);
+    throwOnce(c, 'connecting');
     sub.unsubscribe();
-    await failed;
-
-    await c.ready(3000);
-    expect(disconnected).toEqual([]);
-    expect(reported).toEqual(['handler failure']);
+    await expectStopped(c, stopped, reported);
   });
 
-  test('an exception in a connecting handler of a subscribe timeout still reconnects', async () => {
-    let subscribes = 0;
-    server.onCommand = (cmd) => (cmd.subscribe !== undefined && ++subscribes === 1 ? {} : null);
+  test('an exception in a connecting handler of a subscribe timeout stops the client', async () => {
+    server.onCommand = (cmd) => (cmd.subscribe !== undefined ? {} : null);
     const c = newClient({ timeout: 200 });
     c.connect();
     await c.ready(3000);
     const reported = captureReported(c);
-    const disconnected: any[] = [];
-    c.on('disconnected', ctx => disconnected.push(ctx));
-    const failed = throwOnce(c, 'connecting');
+    const stopped = stoppedByHandler(c);
+    throwOnce(c, 'connecting');
     const sub = c.newSubscription('ch');
     sub.subscribe();
-    await failed;
-
-    await c.ready(3000);
-    await sub.ready(3000);
-    expect(disconnected).toEqual([]);
-    expect(reported).toEqual(['handler failure']);
+    await expectStopped(c, stopped, reported);
+    expect(sub.state).toBe(SubscriptionState.Subscribing);
   });
 
-  test('an exception in a connecting handler of a map page timeout still reconnects', async () => {
-    let subscribes = 0;
-    server.onCommand = (cmd) => (cmd.subscribe !== undefined && ++subscribes === 1 ? {} : null);
+  test('an exception in a connecting handler of a map page timeout stops the client', async () => {
+    server.onCommand = (cmd) => (cmd.subscribe !== undefined ? {} : null);
     const c = newClient({ timeout: 200 });
     c.connect();
     await c.ready(3000);
     const reported = captureReported(c);
-    const disconnected: any[] = [];
-    c.on('disconnected', ctx => disconnected.push(ctx));
-    const failed = throwOnce(c, 'connecting');
+    const stopped = stoppedByHandler(c);
+    throwOnce(c, 'connecting');
     const sub = c.newMapSubscription('m');
     sub.subscribe();
-    await failed;
-
-    await c.ready(3000);
-    await sub.ready(3000);
-    expect(disconnected).toEqual([]);
-    expect(reported).toEqual(['handler failure']);
+    await expectStopped(c, stopped, reported);
+    expect(sub.state).toBe(SubscriptionState.Subscribing);
   });
 
-  test('an exception in an error handler of a subscription token error still resubscribes', async () => {
+  test('an exception in an error handler of a subscription token error stops the client', async () => {
     let tokenCalls = 0;
     const c = newClient();
-    const sub: any = c.newSubscription('ch', {
+    const reported = captureReported(c);
+    const stopped = stoppedByHandler(c);
+    const sub = c.newSubscription('ch', {
       getToken: () => (++tokenCalls === 1 ? Promise.reject(new Error('token unavailable')) : Promise.resolve('token')),
       minResubscribeDelay: 10,
       maxResubscribeDelay: 50,
     });
-    // The exception propagates from the token continuation, an unhandled rejection
-    // for applications: captured here instead.
-    const thrown: string[] = [];
-    const handleTokenError = sub._handleTokenError.bind(sub);
-    sub._handleTokenError = (...args: any[]) => {
-      try {
-        handleTokenError(...args);
-      } catch (err: any) {
-        thrown.push(err.message);
-      }
-    };
-    const failed = throwOnce(sub, 'error');
+    throwOnce(sub, 'error');
     sub.subscribe();
     c.connect();
-    await failed;
-
+    await expectStopped(c, stopped, reported);
+    expect(sub.state).toBe(SubscriptionState.Subscribing);
+    // The subscription waits for the next connect(), without retrying meanwhile.
+    expect(tokenCalls).toBe(1);
+    c.connect();
     await sub.ready(3000);
     expect(tokenCalls).toBe(2);
-    expect(thrown).toEqual(['handler failure']);
   });
 
-  test('an exception in an error handler of a connection token configuration error still fails the attempt', async () => {
+  test('an exception in an error handler of a connection token configuration error stops the client', async () => {
     // The connection token expired, and there is no getToken to get a new one.
-    let connects = 0;
-    server.onCommand = (cmd) => (cmd.connect !== undefined && ++connects === 1
+    server.onCommand = (cmd) => (cmd.connect !== undefined
       ? { id: cmd.id, error: { code: 109, message: 'token expired' } }
       : null);
     const c = newClient({ token: 'token' });
     const reported = captureReported(c);
-    const disconnected = new Promise<any>(resolve => c.once('disconnected', resolve));
+    const stopped = stoppedByHandler(c);
     c.on('error', (ctx) => {
       if (ctx.type === 'configuration') {
         throw new Error('handler failure');
       }
     });
     c.connect();
-
-    const ctx = await disconnected;
-    expect(ctx.code).toBe(disconnectedCodes.unauthorized);
-    expect(reported).toEqual(['handler failure']);
+    await expectStopped(c, stopped, reported);
   });
 
   test('setToken() after a token expired connect error lets a client without getToken connect', async () => {
@@ -1363,12 +1330,16 @@ describe('network event listeners', () => {
     expect(errors).toEqual(['connect:109']);
   });
 
-  test.each(['state', 'connecting'])('an exception in a %s handler of connect() still starts the attempt', async (event) => {
+  test.each(['state', 'connecting'])('an exception in a %s handler of connect() stops the client', async (event) => {
     const c = newClient();
+    const reported = captureReported(c);
+    const stopped = stoppedByHandler(c);
     c.once(event as any, () => {
       throw new Error('handler failure');
     });
-    expect(() => c.connect()).toThrow('handler failure');
+    c.connect();
+    await expectStopped(c, stopped, reported);
+    c.connect();
     await c.ready(3000);
   });
 
@@ -1561,13 +1532,13 @@ describe('network event listeners', () => {
     expect((c as any)._refreshTimeout).not.toBeNull();
   }, 10000);
 
-  test('an exception in an error handler of a subscription token configuration error still fails the refresh', async () => {
+  test('an exception in an error handler of a subscription token configuration error stops the client', async () => {
     // The subscription token expires in a second, and there is no getToken to refresh it.
     server.onSubscribe = () => ({ expires: true, ttl: 1 });
     const c = newClient();
     const reported = captureReported(c);
+    const stopped = stoppedByHandler(c);
     const sub = c.newSubscription('ch', { token: 'token' });
-    const unsubscribed = new Promise<any>(resolve => sub.once('unsubscribed', resolve));
     sub.on('error', (ctx) => {
       if (ctx.type === 'configuration') {
         throw new Error('handler failure');
@@ -1575,30 +1546,24 @@ describe('network event listeners', () => {
     });
     sub.subscribe();
     c.connect();
-
-    const ctx = await unsubscribed;
-    expect(ctx.code).toBe(unsubscribedCodes.unauthorized);
-    expect(reported).toEqual(['handler failure']);
+    await expectStopped(c, stopped, reported);
   }, 10000);
 
-  test('an exception in an error handler of a subscription refresh timeout keeps retrying', async () => {
+  test('an exception in an error handler of a subscription refresh timeout stops the client', async () => {
     // The subscription token expires in a second, and the refresh command is never answered.
     server.onSubscribe = () => ({ expires: true, ttl: 1 });
     server.onCommand = (cmd) => (cmd.sub_refresh !== undefined ? {} : null);
     const c = newClient({ timeout: 200 });
     const reported = captureReported(c);
+    const stopped = stoppedByHandler(c);
     const sub = c.newSubscription('ch', { getToken: () => Promise.resolve('token') });
-    const failed = throwOnce(sub, 'error');
+    throwOnce(sub, 'error');
     sub.subscribe();
     c.connect();
     await sub.ready(3000);
-    await failed;
-    await delay(50);
-
-    expect(c.state).toBe(State.Connected);
-    expect(sub.state).toBe(SubscriptionState.Subscribed);
-    expect((sub as any)._refreshTimeout).not.toBeNull();
-    expect(reported).toEqual(['handler failure']);
+    await expectStopped(c, stopped, reported);
+    expect(sub.state).toBe(SubscriptionState.Subscribing);
+    expect((sub as any)._refreshTimeout).toBeNull();
   }, 10000);
 
   test('disconnect() in an error handler of a token refresh error leaves no refresh retry', async () => {

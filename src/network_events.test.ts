@@ -25,6 +25,10 @@ class CountingEventTarget extends EventTarget {
   }
 }
 
+function pageTransitionEvent(type: 'pagehide' | 'pageshow', persisted: boolean): Event {
+  return Object.assign(new Event(type), { persisted });
+}
+
 function waitForEvent<T>(emitter: any, event: string, timeout = 5000): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error(`timeout waiting for '${event}'`)), timeout);
@@ -234,6 +238,94 @@ describe('network event listeners', () => {
 
     c.disconnect();
     expect(target.counts).toEqual({ offline: 0, online: 0 });
+  });
+
+  test('page entering back/forward cache closes the transport and reconnects on restore', async () => {
+    const sockets = trackWebSockets();
+    const page = new EventTarget();
+    // A reconnect delay longer than the test: only pageshow can reconnect in time.
+    const c = newClient({ websocket: sockets.WebSocket, pageEventTarget: page, minReconnectDelay: 60000, maxReconnectDelay: 60000 });
+    const sub = c.newSubscription('test');
+    sub.subscribe();
+    c.connect();
+    await sub.ready(5000);
+    const inits = countTransportInits(c);
+    const connecting: string[] = [];
+    c.on('connecting', (ctx) => connecting.push(`${ctx.code}:${ctx.reason}`));
+
+    page.dispatchEvent(pageTransitionEvent('pagehide', true));
+    expect(c.state).toBe(State.Connecting);
+    expect(sub.state).toBe(SubscriptionState.Subscribing);
+    expect(connecting).toEqual([`${connectingCodes.transportClosed}:page entered back/forward cache`]);
+    expect(sockets.closed()).toBe(1);
+    expect(inits.n).toBe(0);
+
+    page.dispatchEvent(pageTransitionEvent('pageshow', true));
+    await sub.ready(5000);
+    expect(c.state).toBe(State.Connected);
+    expect(inits.n).toBe(1);
+  });
+
+  test('page events are not observed on the network event target', async () => {
+    const page = new EventTarget();
+    const c = newClient({ pageEventTarget: page });
+    c.connect();
+    await c.ready(5000);
+    expect(target.counts).toEqual({ offline: 1, online: 1 });
+
+    target.dispatchEvent(pageTransitionEvent('pagehide', true));
+    expect(c.state).toBe(State.Connected);
+  });
+
+  test('page hidden into back/forward cache but not frozen reconnects after the reconnect delay', async () => {
+    const page = new EventTarget();
+    const c = newClient({ pageEventTarget: page });
+    c.connect();
+    await c.ready(5000);
+    const inits = countTransportInits(c);
+
+    // No pageshow follows: the scheduled reconnect still runs.
+    page.dispatchEvent(pageTransitionEvent('pagehide', true));
+    expect(c.state).toBe(State.Connecting);
+    await c.ready(5000);
+    expect(inits.n).toBe(1);
+
+    // A pageshow after the client reconnected changes nothing.
+    page.dispatchEvent(pageTransitionEvent('pageshow', true));
+    expect(c.state).toBe(State.Connected);
+    expect(inits.n).toBe(1);
+  });
+
+  test('page hidden or shown without back/forward cache keeps the connection', async () => {
+    const page = new EventTarget();
+    const c = newClient({ pageEventTarget: page });
+    c.connect();
+    await c.ready(5000);
+    const inits = countTransportInits(c);
+
+    page.dispatchEvent(pageTransitionEvent('pagehide', false));
+    page.dispatchEvent(pageTransitionEvent('pageshow', false));
+    expect(c.state).toBe(State.Connected);
+    expect(inits.n).toBe(0);
+  });
+
+  test('page restored from back/forward cache does not connect a client disconnected meanwhile', async () => {
+    const page = new CountingEventTarget();
+    const c = newClient({ pageEventTarget: page });
+    c.connect();
+    await c.ready(5000);
+    expect(page.counts).toMatchObject({ pagehide: 1, pageshow: 1 });
+
+    page.dispatchEvent(pageTransitionEvent('pagehide', true));
+    c.disconnect();
+    expect(page.counts).toMatchObject({ pagehide: 0, pageshow: 0 });
+    page.dispatchEvent(pageTransitionEvent('pageshow', true));
+    expect(c.state).toBe(State.Disconnected);
+
+    // A later connect() is not held back by the cached page.
+    c.connect();
+    await c.ready(5000);
+    expect(c.state).toBe(State.Connected);
   });
 
   test('removed when server disconnects the client without reconnect', async () => {

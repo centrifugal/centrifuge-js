@@ -471,6 +471,10 @@ const centrifuge = new Centrifuge(transports, {
 
 EventTarget for network online/offline events. In browser environment Centrifuge uses global window online/offline events automatically by default. This option allows providing a custom EventTarget for handling network state changes in other environments. Listeners are added when `connect()` is called and removed once the client becomes disconnected (for example, after calling `disconnect()`), so a disconnected client is not kept referenced from the event target. A custom target must implement `removeEventListener` for this – otherwise listeners stay registered.
 
+#### pageEventTarget
+
+EventTarget for page `pagehide`/`pageshow` events. A browser may freeze a page in its back/forward cache when the user navigates away, and keep the page's connection open: the server then sees a client that stopped answering pings. So when the page enters the back/forward cache, Centrifuge closes the connection (the client moves to the connecting state with code `1` and reason `page entered back/forward cache`), and reconnects as soon as the page is restored from the cache. In browser environment global window events are used by default. Only events with `persisted` set to `true` are acted on – a custom target must dispatch them with it, like the browser's `PageTransitionEvent`. Pass a target that never fires these events (for example, `new EventTarget()`) to turn this behaviour off. Listeners are added and removed the same way as for `networkEventTarget`.
+
 
 ### Connection Token
 

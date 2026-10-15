@@ -177,8 +177,9 @@ export interface Options {
   networkEventTarget: EventTarget | null;
   /** EventTarget used to observe pagehide/pageshow events: the client closes its connection when
    * the page enters the back/forward cache, and reconnects when the page is restored from it. When
-   * null (default), globalThis is used if it supports addEventListener (window in browsers). Pass a
-   * target that never fires these events to turn this off. Listeners are removed once the client
+   * null (default), globalThis is used if it supports addEventListener (window in browsers). Only
+   * events with persisted set to true are acted on, so a custom target must dispatch them with it
+   * (as PageTransitionEvent does). Pass a target that never fires these events to turn this off. Listeners are removed once the client
    * becomes disconnected (a custom target must implement removeEventListener for this). */
   pageEventTarget: EventTarget | null;
 }

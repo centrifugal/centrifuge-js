@@ -277,6 +277,35 @@ describe('network event listeners', () => {
     expect(c.state).toBe(State.Connected);
   });
 
+  test('page restored from back/forward cache recovers subscriptions from their last position', async () => {
+    server.onSubscribe = () => ({ recoverable: true, positioned: true, epoch: 'e1', offset: 5 } as any);
+    const page = new EventTarget();
+    const c = newClient({ pageEventTarget: page, minReconnectDelay: 60000, maxReconnectDelay: 60000 });
+    const sub = c.newSubscription('test', { recoverable: true });
+    const offsets: number[] = [];
+    sub.on('publication', (ctx) => offsets.push(ctx.offset!));
+    sub.subscribe();
+    c.connect();
+    await sub.ready(5000);
+    server.publish('test', { n: 1 }, { offset: 6 });
+    await waitFor(() => offsets.length === 1);
+
+    page.dispatchEvent(pageTransitionEvent('pagehide', true));
+    server.onSubscribe = () => ({
+      recoverable: true, positioned: true, epoch: 'e1', offset: 8, recovered: true, was_recovering: true,
+      publications: [{ data: { n: 2 }, offset: 7 }, { data: { n: 3 }, offset: 8 }],
+    } as any);
+    const subscribed = waitForEvent<any>(sub, 'subscribed');
+    page.dispatchEvent(pageTransitionEvent('pageshow', true));
+
+    const ctx = await subscribed;
+    expect(server.lastSubscribe).toMatchObject({ channel: 'test', recover: true, offset: 6, epoch: 'e1' });
+    expect(ctx.wasRecovering).toBe(true);
+    expect(ctx.recovered).toBe(true);
+    await waitFor(() => offsets.length === 3);
+    expect(offsets).toEqual([6, 7, 8]);
+  });
+
   test('page hidden into back/forward cache but not frozen reconnects after the reconnect delay', async () => {
     const page = new EventTarget();
     const c = newClient({ pageEventTarget: page });

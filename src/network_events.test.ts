@@ -351,7 +351,7 @@ describe('network event listeners', () => {
     page.dispatchEvent(pageTransitionEvent('pageshow', true));
     expect(c.state).toBe(State.Disconnected);
 
-    // A later connect() is not held back by the cached page.
+    // connect() works again after the disconnect.
     c.connect();
     await c.ready(5000);
     expect(c.state).toBe(State.Connected);

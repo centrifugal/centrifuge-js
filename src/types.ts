@@ -799,7 +799,12 @@ export interface SharedPollSubscriptionOptions {
   /** Called to obtain an HMAC signature authorizing the set of tracked keys. Invoked on
    * reconnect (to replay tracked keys), on signature TTL expiry, and when using the
    * simplified track(keys) overload. Required when using track(keys) or reconnect replay;
-   * optional only when every track() call supplies an explicit per-call signature. */
+   * optional only when every track() call supplies an explicit per-call signature.
+   *
+   * Return the keys the user may track - a subset of ctx.keys, which revokes the rest - with a
+   * signature over exactly those keys, in that order. Throw UnauthorizedError when the user may
+   * no longer use the subscription: it is unsubscribed with the unauthorized code, as when
+   * getToken throws it. Any other error is emitted and the call retried with backoff. */
   getSignature?: (ctx: SharedPollSignatureContext) => Promise<SharedPollSignatureResult>;
   /** Delta compression format for publications. Only 'fossil' is supported. Must be allowed on
    * the server side. */

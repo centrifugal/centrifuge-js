@@ -1624,11 +1624,30 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
     }
   }
 
-  private _failUnauthorized() {
+  protected _failUnauthorized() {
     this._setUnsubscribed(unsubscribedCodes.unauthorized, 'unauthorized', true);
   }
 
   // ============ Shared Poll Internal Helpers ============
+
+  // The track batch for a signature getSignature returned. The server verifies
+  // the signature over the keys of the track request, so the batch carries
+  // every key it covers: those no longer tracked - untracked by the app while
+  // getSignature ran, or never asked for - go to the request's inline untrack,
+  // which the server applies after verifying. tracked is false when no key of
+  // the signature is tracked any more: nothing to send then.
+  protected _signedBatch(keys: string[]): { items: SharedPollTrackItem[]; untrack: string[]; tracked: boolean } {
+    const items: SharedPollTrackItem[] = [];
+    const untrack: string[] = [];
+    for (const key of keys) {
+      const version = this._sharedPollTrackedItems.get(key);
+      if (version === undefined) {
+        untrack.push(key);
+      }
+      items.push({ key, version: version ?? 0 });
+    }
+    return { items, untrack, tracked: untrack.length < keys.length };
+  }
 
   // Send ONE or MORE signature batches in a single sub_refresh frame.
   // Splits across frames when the estimated payload exceeds the wire frame
@@ -2020,14 +2039,8 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
         });
       }
 
-      // Re-track only keys covered by the returned signature.
-      const items: { key: string; version: number }[] = [];
-      for (const key of result.keys) {
-        const version = self._sharedPollTrackedItems.get(key);
-        if (version !== undefined) {
-          items.push({ key, version });
-        }
-      }
+      // Re-track the keys the returned signature covers.
+      const { items, untrack, tracked } = self._signedBatch(result.keys);
 
       // Replace the signature library with the consolidated entry. Keep
       // any entries that cover keys NOT in the consolidation — those keys
@@ -2041,13 +2054,13 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
       // during getSignature has set its own target if its TTL was tighter.
       // The consolidated track response below will set a target unless
       // something earlier is already in place.
-      self._sharedPollSignatures = items.length > 0
+      self._sharedPollSignatures = tracked
         ? [{ keys: result.keys, signature: result.signature }, ...uncovered]
         : uncovered;
 
-      if (items.length === 0) return;
+      if (!tracked) return;
 
-      self._sendTrackRequest([{ items, signature: result.signature }]).catch(e => {
+      self._sendTrackRequest([{ items, signature: result.signature }], untrack).catch(e => {
         self._handleTrackError(e.error, e.keys);
       });
     }).catch(e => {
@@ -2055,6 +2068,11 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
       self._sharedPollSignatureRefreshInFlight = false;
       // The retry below covers it.
       self._sharedPollSignatureRefreshAgain = false;
+      // As from getToken: the user may not use the subscription any more.
+      if (e instanceof UnauthorizedError) {
+        if (self._isSubscribed()) self._failUnauthorized();
+        return;
+      }
       self._emitError({
         type: 'signatureRefresh',
         channel: self.channel,
@@ -2194,22 +2212,21 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
         });
       }
 
-      const items: SharedPollTrackItem[] = [];
-      for (const key of result.keys) {
-        const version = self._sharedPollTrackedItems.get(key);
-        if (version !== undefined) {
-          items.push({ key, version });
-        }
-      }
-      if (items.length === 0) return;
+      const { items, untrack, tracked } = self._signedBatch(result.keys);
+      if (!tracked) return;
 
       // Cache the obtained signature for subsequent reconnect replays.
       self._addSharedPollSignature(result.keys, result.signature);
-      self._sendTrackRequest([{ items, signature: result.signature }]).catch(e => {
+      self._sendTrackRequest([{ items, signature: result.signature }], untrack).catch(e => {
         self._handleTrackError(e.error, e.keys);
       });
     }).catch(e => {
       if (generation !== self._refreshGeneration || !self._isSubscribed()) return;
+      // As from getToken: the user may not use the subscription any more.
+      if (e instanceof UnauthorizedError) {
+        self._failUnauthorized();
+        return;
+      }
       self._emitError({
         type: 'signatureRefresh',
         channel: self.channel,
@@ -3003,22 +3020,21 @@ export class SharedPollSubscription extends BaseSubscription {
       }
       // A getSignature that works again: the next failure starts the backoff over.
       this._sharedPollReplayRetryAttempts = 0;
-      // Track authorized keys.
-      const authorizedItems: { key: string; version: number }[] = [];
-      for (const key of result.keys) {
-        const version = this._sharedPollTrackedItems.get(key);
-        if (version !== undefined) {
-          authorizedItems.push({ key, version });
-        }
-      }
-      if (authorizedItems.length === 0) return;
+      // Track the authorized keys.
+      const { items, untrack, tracked } = this._signedBatch(result.keys);
+      if (!tracked) return;
       // Cache the obtained signature for reconnect replay.
       this._addSharedPollSignature(result.keys, result.signature);
-      this._sendTrackRequest([{ items: authorizedItems, signature: result.signature }]).catch(e => {
+      this._sendTrackRequest([{ items, signature: result.signature }], untrack).catch(e => {
         this._handleTrackError(e.error, e.keys);
       });
     }).catch(e => {
       if (generation !== this._refreshGeneration || !this._isSubscribed()) return;
+      // As from getToken: the user may not use the subscription any more.
+      if (e instanceof UnauthorizedError) {
+        this._failUnauthorized();
+        return;
+      }
       this._emitError({
         type: 'track',
         channel: this.channel,

@@ -813,6 +813,134 @@ describe('dispatch and subscription state', () => {
     expect(updates).toEqual([]);
   });
 
+  // A signature covers exactly the keys getSignature returned, and the server
+  // verifies it over the keys of the track request: the request must carry all
+  // of them - those the app untracked meanwhile, or never tracked, go in its
+  // inline untrack - or the whole track fails.
+  const signedTrack = () => server.received
+    .map(cmd => cmd.sub_refresh)
+    .find(r => r?.track?.some((b: any) => b.signature === 'signed'));
+  const trackedKeysOf = (r: any) => r.track.flatMap((b: any) => b.items.map((i: any) => i.key));
+
+  test('track(keys): a key untracked while getSignature runs is still sent with its signature', async () => {
+    server.onSubscribe = () => ({});
+    let resolveSignature: any = null;
+    const sub: any = c.newSharedPollSubscription('poll', {
+      getSignature: () => new Promise(resolve => { resolveSignature = resolve; }),
+    });
+    sub.subscribe();
+    c.connect();
+    await sub.ready(3000);
+    sub.track(['k1', 'k2']);
+    await waitFor(() => resolveSignature !== null);
+    sub.untrack(['k2']);
+    resolveSignature({ keys: ['k1', 'k2'], signature: 'signed' });
+    await waitFor(() => signedTrack() !== undefined);
+    expect(trackedKeysOf(signedTrack())).toEqual(['k1', 'k2']);
+    expect(signedTrack().untrack).toEqual(['k2']);
+    expect([...sub.trackedKeys()]).toEqual(['k1']);
+  });
+
+  test('signature refresh: a key untracked while getSignature runs is still sent with its signature', async () => {
+    server.onSubscribe = () => ({});
+    let resolveSignature: any = null;
+    const sub: any = c.newSharedPollSubscription('poll', {
+      getSignature: () => new Promise(resolve => { resolveSignature = resolve; }),
+    });
+    sub.subscribe();
+    c.connect();
+    await sub.ready(3000);
+    sub._sharedPollTrackedItems.set('k1', 0);
+    sub._sharedPollTrackedItems.set('k2', 0);
+    sub._sharedPollRefreshSignature();
+    await waitFor(() => resolveSignature !== null);
+    sub.untrack(['k2']);
+    resolveSignature({ keys: ['k1', 'k2'], signature: 'signed' });
+    await waitFor(() => signedTrack() !== undefined);
+    expect(trackedKeysOf(signedTrack())).toEqual(['k1', 'k2']);
+    expect(signedTrack().untrack).toEqual(['k2']);
+  });
+
+  test('replay: a key untracked while getSignature runs is still sent with its signature', async () => {
+    server.onSubscribe = () => ({});
+    let resolveSignature: any = null;
+    const sub: any = c.newSharedPollSubscription('poll', {
+      getSignature: () => new Promise(resolve => { resolveSignature = resolve; }),
+    });
+    // Tracked before subscribing: the replay on subscribe asks for the signature.
+    sub.track(['k1', 'k2']);
+    sub.subscribe();
+    c.connect();
+    await sub.ready(3000);
+    await waitFor(() => resolveSignature !== null);
+    sub.untrack(['k2']);
+    resolveSignature({ keys: ['k1', 'k2'], signature: 'signed' });
+    await waitFor(() => signedTrack() !== undefined);
+    expect(trackedKeysOf(signedTrack())).toEqual(['k1', 'k2']);
+    expect(signedTrack().untrack).toEqual(['k2']);
+  });
+
+  test('a key getSignature returned without being asked for is sent with its signature, and untracked', async () => {
+    server.onSubscribe = () => ({});
+    const sub: any = c.newSharedPollSubscription('poll', {
+      getSignature: () => Promise.resolve({ keys: ['k1', 'extra'], signature: 'signed' }),
+    });
+    sub.subscribe();
+    c.connect();
+    await sub.ready(3000);
+    sub.track(['k1']);
+    await waitFor(() => signedTrack() !== undefined);
+    expect(trackedKeysOf(signedTrack())).toEqual(['k1', 'extra']);
+    expect(signedTrack().untrack).toEqual(['extra']);
+    expect([...sub.trackedKeys()]).toEqual(['k1']);
+  });
+
+  // UnauthorizedError from getSignature ends the subscription, as from getToken,
+  // on each path which calls it - and is not retried.
+  describe('getSignature throwing UnauthorizedError unsubscribes', () => {
+    const unauthorized = () => Promise.reject(new Centrifuge.UnauthorizedError('logged out'));
+    const expectUnauthorized = async (sub: any, unsubscribed: Promise<any>) => {
+      expect((await unsubscribed).code).toBe(unsubscribedCodes.unauthorized);
+      expect(sub.state).toBe(SubscriptionState.Unsubscribed);
+      expect(sub._sharedPollReplayRetryTimeout).toBeNull();
+      expect(sub._sharedPollSignatureRefreshTimeout).toBeNull();
+    };
+    const unsubscribedEvent = (sub: any) => new Promise<any>(resolve => sub.once('unsubscribed', resolve));
+
+    test('from track(keys)', async () => {
+      server.onSubscribe = () => ({});
+      const sub: any = c.newSharedPollSubscription('poll', { getSignature: unauthorized });
+      sub.subscribe();
+      c.connect();
+      await sub.ready(3000);
+      const unsubscribed = unsubscribedEvent(sub);
+      sub.track(['k1']);
+      await expectUnauthorized(sub, unsubscribed);
+    });
+
+    test('from the signature refresh', async () => {
+      server.onSubscribe = () => ({});
+      const sub: any = c.newSharedPollSubscription('poll', { getSignature: unauthorized });
+      sub.subscribe();
+      c.connect();
+      await sub.ready(3000);
+      const unsubscribed = unsubscribedEvent(sub);
+      sub._sharedPollTrackedItems.set('k1', 0);
+      sub._sharedPollRefreshSignature();
+      await expectUnauthorized(sub, unsubscribed);
+    });
+
+    test('from the replay on subscribe', async () => {
+      server.onSubscribe = () => ({});
+      const sub: any = c.newSharedPollSubscription('poll', { getSignature: unauthorized });
+      sub.track(['k1']);
+      const unsubscribed = unsubscribedEvent(sub);
+      sub.subscribe();
+      c.connect();
+      await expectUnauthorized(sub, unsubscribed);
+    });
+  });
+
   test('a 109 during a signature refresh runs another refresh after it', async () => {
     server.onSubscribe = () => ({});
     const calls: string[][] = [];

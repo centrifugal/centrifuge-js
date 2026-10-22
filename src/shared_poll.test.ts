@@ -1688,3 +1688,46 @@ test('inline untrack sent in replay frame on reconnect', async () => {
 
   await disconnectClient(c);
 }, 15000);
+
+// A key untracked while getSignature runs: the signature still covers it, and
+// the server verifies the signature over the keys of the track request. The
+// track must carry it, or the server rejects the whole batch and the keys
+// still tracked never get data.
+test('track(keys) with a key untracked while getSignature runs: the rest still tracks', async () => {
+  const c = createClient();
+  c.connect();
+  await c.ready(5000);
+
+  const ch = uniqueChannel('poll');
+  let release: (() => void) | null = null;
+  const sign = makeGetSignature(pollSecret, ch);
+  const sub = c.newSharedPollSubscription(ch, {
+    getSignature: async (ctx) => {
+      await new Promise<void>(resolve => { release = resolve; });
+      return sign(ctx);
+    },
+  });
+  sub.subscribe();
+  await sub.ready(5000);
+
+  mockItems.set('rk1', { data: { v: 1 }, version: 1 });
+  mockItems.set('rk2', { data: { v: 2 }, version: 1 });
+  const errors: any[] = [];
+  sub.on('error', (ctx: any) => errors.push(ctx));
+  const updateP = waitForEvent<SharedPollUpdateContext>(sub, 'update');
+
+  sub.track(['rk1', 'rk2']);
+  await new Promise<void>(resolve => {
+    const tick = () => (release ? resolve() : setTimeout(tick, 5));
+    tick();
+  });
+  sub.untrack(['rk2']);
+  release!();
+
+  const update = await updateP;
+  expect(update.key).toBe('rk1');
+  expect(errors).toEqual([]);
+  expect([...sub.trackedKeys()]).toEqual(['rk1']);
+
+  await disconnectClient(c);
+}, 15000);

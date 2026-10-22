@@ -128,6 +128,12 @@ export interface Options {
   /** Enables debug logging to the console. Can also be activated at runtime via
    * `localStorage.centrifuge.debug = true` without rebuilding. */
   debug: boolean;
+  /** Decodes integers a number cannot hold exactly - past 2^53 - as bigint,
+   * in every payload received: publication data, info, RPC results, history.
+   * Off by default, since it changes the types an application receives. Needs
+   * JSON.parse source text access - Chrome 114+, Firefox 135+, Safari 18.4+,
+   * Node.js 21+ - and does nothing on older runtimes. JSON protocol only. */
+  bigIntegers: boolean;
   /** Initial connection token (JWT). Sent with the connect command; not refreshed automatically —
    * provide getToken for token renewal. */
   token: string;

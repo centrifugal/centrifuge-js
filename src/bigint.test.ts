@@ -1,6 +1,6 @@
 import { Centrifuge } from './centrifuge';
 import { FakeCentrifugoServer } from './fakeServer';
-import { JsonCodec } from './json';
+import { JsonCodec, jsonSourceTextSupported } from './json';
 import WebSocket from 'ws';
 
 const BigIntFn = (globalThis as any).BigInt;
@@ -44,6 +44,32 @@ describe('JsonCodec: bigint', () => {
   test('bigIntegers applies to publication data a delta subscription receives', () => {
     const codec = new JsonCodec(true);
     expect(codec.applyDeltaIfNeeded({ delta: false, data: `{"id":${big}}` }, null).newData.id).toBe(BigIntFn(big));
+  });
+
+  test('on a runtime without JSON.rawJSON, other data encodes, and a bigint fails with a TypeError', () => {
+    const saved = (JSON as any).rawJSON;
+    delete (JSON as any).rawJSON;
+    try {
+      const codec = new JsonCodec();
+      expect(codec.encodeCommands([{ publish: { data: { n: 1 } } }])).toBe('{"publish":{"data":{"n":1}}}');
+      expect(() => codec.encodeCommands([{ publish: { data: { id: BigIntFn(big) } } }])).toThrow(/JSON\.rawJSON/);
+    } finally {
+      (JSON as any).rawJSON = saved;
+    }
+  });
+
+  test('on a runtime without JSON.parse source text, bigIntegers decodes as plain JSON.parse', () => {
+    const parse = JSON.parse;
+    // An older engine calls a reviver with key and value only.
+    JSON.parse = ((text: string, reviver?: any) =>
+      parse(text, reviver ? (key: string, value: any) => reviver(key, value) : undefined)) as any;
+    try {
+      expect(jsonSourceTextSupported()).toBe(false);
+      const codec = new JsonCodec(true);
+      expect(codec.parse(`{"id":${big},"n":1}`)).toEqual({ id: 12345678901234567000, n: 1 });
+    } finally {
+      JSON.parse = parse;
+    }
   });
 
   test('data JSON cannot hold still fails to encode', () => {

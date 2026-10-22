@@ -13,7 +13,6 @@ export enum errorCodes {
   badConfiguration = 12,
   subscriptionGetState = 13,
   sharedPollGetSignature = 14,
-  dataEncoding = 15,
 }
 
 export enum connectingCodes {

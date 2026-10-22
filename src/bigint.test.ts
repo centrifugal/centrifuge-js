@@ -1,7 +1,6 @@
 import { Centrifuge } from './centrifuge';
 import { FakeCentrifugoServer } from './fakeServer';
 import { JsonCodec } from './json';
-import { errorCodes } from './codes';
 import WebSocket from 'ws';
 
 const BigIntFn = (globalThis as any).BigInt;
@@ -113,7 +112,7 @@ describe('Centrifuge: bigint', () => {
     expect((await received).id).toBe(12345678901234567000);
   });
 
-  test('a command whose data cannot be encoded fails alone, with dataEncoding', async () => {
+  test('a command whose data cannot be encoded fails alone, with the encoder\'s TypeError', async () => {
     const { c } = await connected();
     const cyclic: any = {};
     cyclic.self = cyclic;
@@ -121,15 +120,15 @@ describe('Centrifuge: bigint', () => {
     const bad = c.publish('ch', cyclic);
     const good = c.publish('ch', { ok: true });
     c.stopBatching();
-    await expect(bad).rejects.toMatchObject({ code: errorCodes.dataEncoding });
+    await expect(bad).rejects.toBeInstanceOf(TypeError);
     await expect(good).resolves.toBeDefined();
     expect(server.received.some(cmd => cmd.publish && cmd.publish.data && cmd.publish.data.ok === true)).toBe(true);
   });
 
-  test('send with data which cannot be encoded fails with dataEncoding', async () => {
+  test('send with data which cannot be encoded fails with the encoder\'s TypeError', async () => {
     const { c } = await connected();
     const cyclic: any = {};
     cyclic.self = cyclic;
-    await expect(c.send(cyclic)).rejects.toMatchObject({ code: errorCodes.dataEncoding });
+    await expect(c.send(cyclic)).rejects.toBeInstanceOf(TypeError);
   });
 });

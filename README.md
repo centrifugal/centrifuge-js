@@ -430,7 +430,7 @@ sub.on('publication', ctx => {
 
 It is off by default because a `bigint` does not mix with a `number` - `ctx.data.orderId + 1` throws - and `JSON.stringify` refuses it. It needs `JSON.parse` source text access - Chrome 114+, Firefox 135+, Safari 18.4+, Node.js 21+ - and does nothing on older runtimes. JSON protocol only: with Protobuf, data is bytes the application decodes.
 
-Whatever the option, a `bigint` in data the client sends is written as a JSON number, exactly: `sub.publish({ orderId: 12345678901234567890n })`. Data which cannot be encoded - a cyclic object, or a `bigint` on a runtime without `JSON.rawJSON` - fails its own call with error code `15`, and other calls sent together with it go through.
+Whatever the option, a `bigint` in data the client sends is written as a JSON number, exactly: `sub.publish({ orderId: 12345678901234567890n })`. Data which cannot be encoded - a cyclic object, or a `bigint` on a runtime without `JSON.rawJSON` - fails its own call with the `TypeError` JSON encoding raised, and other calls sent together with it go through.
 
 #### minReconnectDelay
 

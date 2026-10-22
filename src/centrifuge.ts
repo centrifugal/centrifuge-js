@@ -1001,8 +1001,9 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
   }
 
   // _transportSendCommands writes commands to the transport. A command whose
-  // data cannot be encoded - a cyclic object, say - fails alone, through
-  // onEncodeError or its callback: the others are written.
+  // data cannot be encoded - a cyclic object, say - fails alone with the
+  // encoder's error, through onEncodeError or its callback: the others are
+  // written.
   private _transportSendCommands(commands: any[], onEncodeError?: (command: any, error: any) => void) {
     if (!commands.length) {
       return true;
@@ -1031,16 +1032,16 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
   }
 
   // _withoutUnencodable returns the commands which can be encoded, and fails
-  // each of the others with a dataEncoding error.
+  // each of the others with the encoder's error - a TypeError: data JSON
+  // cannot hold is a mistake of the caller's, as other misuse of the API.
   private _withoutUnencodable(commands: any[], onEncodeError?: (command: any, error: any) => void) {
     const encodable: any[] = [];
     for (const command of commands) {
       try {
         this._codec.encodeCommands([command]);
         encodable.push(command);
-      } catch (e) {
-        this._debug('data cannot be encoded', e);
-        const error = this._createErrorObject(errorCodes.dataEncoding, 'data cannot be encoded: ' + (e instanceof Error ? e.message : String(e)));
+      } catch (error) {
+        this._debug('data cannot be encoded', error);
         if (onEncodeError) {
           onEncodeError(command, error);
           continue;

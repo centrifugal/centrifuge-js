@@ -1236,7 +1236,8 @@ export class BaseSubscription extends (EventEmitter as new () => TypedEventEmitt
       this._deltaNumFull++;
       this._deltaBytesReceived += byteLen;
       this._deltaBytesDecoded += byteLen;
-      pub.data = JSON.parse(rawBytes);
+      // @ts-ignore – we are hiding some methods from public API autocompletion.
+      pub.data = this._centrifuge._codec.parse(rawBytes);
     } else if (pub.data instanceof Uint8Array) {
       // Protobuf transport.
       this._prevValueMap.set(pub.key, pub.data);

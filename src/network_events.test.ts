@@ -7,6 +7,13 @@ import WebSocket, { WebSocketServer } from 'ws';
 import http from 'node:http';
 import { ReadableStream } from 'node:stream/web';
 
+// Connect data which cannot be encoded: JSON has no cyclic objects.
+function cyclicData(): any {
+  const data: any = {};
+  data.self = data;
+  return data;
+}
+
 // Regression guard for #389: online/offline listeners must be removed once the
 // client becomes disconnected. Otherwise every disconnected client stays
 // reachable from the network event target (window by default in browsers).
@@ -1362,7 +1369,7 @@ describe('network event listeners', () => {
       return { id: cmd.id, connect: { client: 'fake-client', version: '0.0.0' } };
     });
     const c = newEmulationClient('http_stream', emulation, {
-      data: { n: (globalThis as any).BigInt(1) },
+      data: cyclicData(),
       minReconnectDelay: 200,
       maxReconnectDelay: 200,
     } as any);
@@ -1576,10 +1583,10 @@ describe('network event listeners', () => {
   });
 
   test('a connect command that cannot be written over a transport list backs off', async () => {
-    // E.g. connect data the codec can't encode.
+    // Connect data the codec can't encode.
     const c = new Centrifuge([{ transport: 'websocket' as TransportName, endpoint: server.url }], {
       websocket: WebSocket,
-      data: { n: (globalThis as any).BigInt(1) },
+      data: cyclicData(),
       minReconnectDelay: 200,
       maxReconnectDelay: 200,
       networkEventTarget: target,

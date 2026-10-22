@@ -413,6 +413,25 @@ const centrifuge = new Centrifuge('ws://localhost:8000/connection/websocket', {
 messages will be logged into javascript console. Mostly useful for development or
 troubleshooting.
 
+#### bigIntegers
+
+`bigIntegers` is a boolean option which is `false` by default. JavaScript numbers hold integers exactly only up to 2^53, so `JSON.parse` silently rounds larger ones - an ID `12345678901234567890` arrives as `12345678901234567000`. With `bigIntegers: true`, integers a number cannot hold exactly are decoded as `bigint`, in every payload the client receives: publication data, presence and join/leave info, RPC results, history. Every other number stays a `number`.
+
+```javascript
+const centrifuge = new Centrifuge('ws://localhost:8000/connection/websocket', {
+    bigIntegers: true
+});
+
+sub.on('publication', ctx => {
+    ctx.data.orderId; // 12345678901234567890n - exact
+    ctx.data.price;   // 12.5 - still a number
+});
+```
+
+It is off by default because a `bigint` does not mix with a `number` - `ctx.data.orderId + 1` throws - and `JSON.stringify` refuses it. It needs `JSON.parse` source text access - Chrome 114+, Firefox 135+, Safari 18.4+, Node.js 21+ - and does nothing on older runtimes. JSON protocol only: with Protobuf, data is bytes the application decodes.
+
+Whatever the option, a `bigint` in data the client sends is written as a JSON number, exactly: `sub.publish({ orderId: 12345678901234567890n })`. Data which cannot be encoded - a cyclic object, or a `bigint` on a runtime without `JSON.rawJSON` - fails its own call with the `TypeError` JSON encoding raised, and other calls sent together with it go through.
+
 #### minReconnectDelay
 
 When client disconnected from a server it will automatically try to reconnect using a backoff algorithm with jitter. `minReconnectDelay` option sets minimal interval value in milliseconds before first reconnect attempt. Default is `500` milliseconds.

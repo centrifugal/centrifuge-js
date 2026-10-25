@@ -415,7 +415,11 @@ troubleshooting.
 
 #### bigIntegers
 
-`bigIntegers` is a boolean option which is `false` by default. JavaScript numbers hold integers exactly only up to 2^53, so `JSON.parse` silently rounds larger ones - an ID `12345678901234567890` arrives as `12345678901234567000`. With `bigIntegers: true`, integers a number cannot hold exactly are decoded as `bigint`, in every payload the client receives: publication data, presence and join/leave info, RPC results, history. Every other number stays a `number`.
+`bigIntegers` is a boolean option which is `false` by default. JavaScript numbers hold integers exactly only up to 2^53, so `JSON.parse` silently rounds larger ones - an ID `12345678901234567890` arrives as `12345678901234567000`.
+
+The best fix is in the payload: send integers which may pass 2^53 - 64-bit IDs, say - as JSON strings, `{"orderId": "12345678901234567890"}`. A string has one type in every message and is read exactly by every language and tool, with no option needed. `bigIntegers` is for applications which cannot change how their payloads are written.
+
+With `bigIntegers: true`, integers a number cannot hold exactly are decoded as `bigint`, in every payload the client receives: publication data, presence and join/leave info, RPC results, history. Every other number stays a `number`.
 
 ```javascript
 const centrifuge = new Centrifuge('ws://localhost:8000/connection/websocket', {

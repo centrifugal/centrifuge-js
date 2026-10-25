@@ -15,7 +15,7 @@ import { HttpStreamTransport } from './transport_http_stream';
 import { SseTransport } from './transport_sse';
 import { WebtransportTransport } from './transport_webtransport';
 
-import { JsonCodec } from './json';
+import { JsonCodec, jsonSourceTextSupported } from './json';
 
 import {
   isFunction, log, startsWith, errorExists,
@@ -68,6 +68,7 @@ const defaults: Options = {
   data: null,
   getData: null,
   debug: false,
+  bigIntegers: false,
   name: 'js',
   version: '',
   fetch: null,
@@ -520,8 +521,15 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
 
     await this._methodCall();
 
-    const sent = this._transportSendCommands([cmd]); // can send message to server without id set
+    let encodeError: any = null;
+    // can send message to server without id set
+    const sent = this._transportSendCommands([cmd], (_cmd, error) => {
+      encodeError = error;
+    });
 
+    if (encodeError) {
+      throw encodeError;
+    }
     if (!sent) {
       throw this._createErrorObject(
         errorCodes.transportWriteError,
@@ -718,7 +726,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
       this._data = this._config.data;
     }
 
-    this._codec = new JsonCodec();
+    this._codec = new JsonCodec(this._config.bigIntegers === true);
     this._formatOverride();
 
     if (this._config.debug === true || localStorageItem('centrifuge.debug')) {
@@ -726,6 +734,9 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     }
 
     this._debug('config', this._config);
+    if (this._config.bigIntegers === true && !jsonSourceTextSupported()) {
+      this._debug('bigIntegers needs JSON.parse source text access, which this runtime lacks: integers past 2^53 are rounded');
+    }
 
     if (typeof this._endpoint === 'string') {
       // Single address.
@@ -989,21 +1000,62 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
     }
   }
 
-  private _transportSendCommands(commands: any[]) {
+  // _transportSendCommands writes commands to the transport. A command whose
+  // data cannot be encoded - a cyclic object, say - fails alone with the
+  // encoder's error, through onEncodeError or its callback: the others are
+  // written.
+  private _transportSendCommands(commands: any[], onEncodeError?: (command: any, error: any) => void) {
     if (!commands.length) {
       return true;
     }
     if (!this._transport) {
       return false
     }
+    let encoded: any;
     try {
-      this._transport.send(this._codec.encodeCommands(commands), this._session, this._node);
+      encoded = this._codec.encodeCommands(commands);
+    } catch {
+      commands = this._withoutUnencodable(commands, onEncodeError);
+      if (!commands.length) {
+        return true;
+      }
+      encoded = this._codec.encodeCommands(commands);
+    }
+    try {
+      this._transport.send(encoded, this._session, this._node);
     } catch (e) {
       this._debug('error writing commands', e);
       this._handleWriteError(commands);
       return false;
     }
     return true;
+  }
+
+  // _withoutUnencodable returns the commands which can be encoded, and fails
+  // each of the others with the encoder's error - a TypeError: data JSON
+  // cannot hold is a mistake of the caller's, as other misuse of the API.
+  private _withoutUnencodable(commands: any[], onEncodeError?: (command: any, error: any) => void) {
+    const encodable: any[] = [];
+    for (const command of commands) {
+      try {
+        this._codec.encodeCommands([command]);
+        encodable.push(command);
+      } catch (error) {
+        this._debug('data cannot be encoded', error);
+        if (onEncodeError) {
+          onEncodeError(command, error);
+          continue;
+        }
+        const id = command.id;
+        if (id in this._callbacks) {
+          const callbacks = this._callbacks[id];
+          clearTimeout(callbacks.timeout);
+          delete this._callbacks[id];
+          callbacks.errback({ error });
+        }
+      }
+    }
+    return encodable;
   }
 
   private _advanceTransportIndex() {
@@ -1363,7 +1415,7 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
 
     let initialized: any;
     try {
-      // Encoded here: commands the codec can't encode, e.g. connect data with a BigInt,
+      // Encoded here: commands the codec can't encode, e.g. cyclic connect data,
       // fail the attempt as a transport failing to initialize, not connect().
       initialized = transport.initialize(this._codecName(), callbacks, this._codec.encodeCommands(initialCommands));
     } catch (e) {

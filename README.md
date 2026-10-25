@@ -394,6 +394,10 @@ Set custom client name. By default, it's set to `js`. This is useful for analyti
 
 Version of your application - useful for analytics.
 
+#### profile
+
+The kind of client this is, e.g. `"trading-dashboard"`, which Centrifugo PRO may use to choose a compression [dictionary](#dictionary-compression). The server grants it only for profiles configured to allow that. Your backend can set the profile in the connection token instead, which takes precedence and needs no client release.
+
 #### headers
 
 Provide header emulation - these headers are sent with first protocol message. The backend can process those in a customized manner. In case of Centrifugo these headers are then used like real HTTP headers sent from the client. **Requires Centrifugo v6**.
@@ -943,6 +947,25 @@ centrifuge.stopBatching();
 ```
 
 This call will flush all collected commands to a network.
+
+## Dictionary compression
+
+Centrifugo PRO can compress what it sends against a dictionary trained on your traffic. There is nothing to enable here: the client tells the server it can decode such frames, and the server decides whether this connection gets a dictionary. It arrives in the connect reply and works on WebSocket connections with both JSON and Protobuf. A client that does not get one works exactly as before.
+
+The client keeps the dictionary in `localStorage`, checked against its hash before use, so a returning client is sent only its id. Where `localStorage` or WebCrypto is missing, it keeps it in memory for the life of the page instead.
+
+Which dictionary a connection gets depends on its profile, best set by your backend in the connection token. A client may also ask for one by name with the [`profile`](#profile) option.
+
+To see what compression does for a connection:
+
+```javascript
+const stats = centrifuge.dictionaryCompressionStats();
+// { accepted: true, active: true, dictionaryId: '…', frames: 120,
+//   bytesReceived: 4700, bytesDecompressed: 12700, dictionaryBytes: 360,
+//   bytesSaved: 7640, ratio: 2.7, transportBytesReceived: 5100 }
+```
+
+`accepted` says the server enabled compression for this connection, `dictionaryBytes` what the dictionary cost to receive (zero when the client already held it), and `bytesSaved` the net saving after that cost.
 
 ## Server-side subscriptions
 

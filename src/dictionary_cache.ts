@@ -185,8 +185,8 @@ export class DictionaryCache {
     if (!canVerify()) {
       return;
     }
-    let id = '';
-    let bytes: Uint8Array | null = null;
+    let id: string;
+    let bytes: Uint8Array | null;
     try {
       const raw = globalThis.localStorage?.getItem(storageKey);
       if (!raw) {

@@ -6,9 +6,10 @@ import { deflateRawSync } from 'zlib';
 
 import WebSocket from 'ws';
 
-// A dictionary the client can not use leaves it reconnecting with code 2 (bad
-// protocol). These tests check the reason says what went wrong, since that is
-// all an application gets to see of it.
+// A dictionary the client can not use is a protocol error: the client stops
+// with code 2 (bad protocol), as for any other, and forgets the dictionary.
+// These tests check the reason says what went wrong, since that is all an
+// application gets to see of it.
 
 function createClient(url: string): Centrifuge {
   return new Centrifuge([{
@@ -44,26 +45,29 @@ describe('dictionary compression errors', () => {
     await server.close();
   });
 
-  test('a dictionary that does not inflate is reported as a connect error', async () => {
+  test('a dictionary that does not inflate disconnects with bad protocol and says why', async () => {
     server.connectResult = {
       ...baseConnectResult,
       flag: 1,
       dict: { id: 'abc', data_b64: Buffer.from([1, 2, 3, 4]).toString('base64') },
     };
     const c = createClient(server.url);
-    const error = waitForEvent<any>(c, 'error');
+    const disconnected = waitForEvent<any>(c, 'disconnected');
     c.connect();
 
-    const ctx = await error;
-    expect(ctx.type).toBe('connect');
-    expect(ctx.error.message).toMatch(/^dictionary compression: dictionary abc does not inflate/);
+    const ctx = await disconnected;
+    expect(ctx.code).toBe(2);
+    expect(ctx.reason).toMatch(/^dictionary compression: dictionary abc does not inflate: /);
+    expect(c.state).toBe('disconnected');
 
+    // Connecting again, as an application would, works without it.
     server.connectResult = baseConnectResult;
+    c.connect();
     await waitForEvent(c, 'connected');
     c.disconnect();
   });
 
-  test('a frame that does not decode reconnects with bad protocol and says why', async () => {
+  test('a frame that does not decode disconnects with bad protocol and says why', async () => {
     const dict = Buffer.from('{"push":{"channel":"demo","pub":{"data":{"symbol":"'.repeat(20));
     server.connectResult = {
       ...baseConnectResult,
@@ -74,13 +78,13 @@ describe('dictionary compression errors', () => {
     c.connect();
     await waitForEvent(c, 'connected');
 
-    const connecting = waitForEvent<any>(c, 'connecting');
+    const disconnected = waitForEvent<any>(c, 'disconnected');
     // A compressed marker followed by bytes that are not DEFLATE.
     (server as any).current.send(Buffer.from([FrameCodecCompressed, 0xff, 0xff, 0xff, 0xff]));
 
-    const ctx = await connecting;
+    const ctx = await disconnected;
     expect(ctx.code).toBe(2);
     expect(ctx.reason).toMatch(/^dictionary compression: frame does not decode with dictionary abc: /);
-    c.disconnect();
+    expect(c.state).toBe('disconnected');
   });
 });

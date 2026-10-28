@@ -1867,12 +1867,12 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
       } catch (e) {
         const id = this._frameCodec.id;
         this._debug('frame decode error', e);
-        // A cached dictionary that cannot decode is a stale or corrupted entry:
-        // drop it so the next connection does not advertise it again and wedge
-        // this client in a loop.
+        // A frame that does not decode is a protocol error, terminal like any
+        // other. The dictionary is forgotten, so a later connect() does not
+        // offer it again.
         this._dictionary.forget(id);
         this._disconnect(disconnectedCodes.badProtocol,
-          `dictionary compression: frame does not decode with dictionary ${id}: ${errorMessage(e)}`, true);
+          `dictionary compression: frame does not decode with dictionary ${id}: ${errorMessage(e)}`, false);
         return;
       }
     }
@@ -1921,21 +1921,11 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
           codec = frameCodecFromDictionary(dict, this._dictionary);
         } catch (e) {
           // The server named a dictionary this client does not hold, or sent
-          // one it can not read, so nothing after this frame can be decoded.
-          // Forget it and start over rather than misread everything that
-          // follows.
+          // one it can not read, so nothing after this frame can be decoded: a
+          // protocol error, terminal like any other. The id is forgotten, so a
+          // later connect() does not offer it again.
           this._dictionary.forget(dict.id || '');
-          const reason = `dictionary compression: ${errorMessage(e)}`;
-          this._disconnect(disconnectedCodes.badProtocol, reason, true);
-          // Still connecting, so no state event carries the reason: without
-          // this the client would retry without a trace.
-          this.emit('error', {
-            type: 'connect',
-            error: {
-              code: errorCodes.transportClosed,
-              message: reason
-            }
-          });
+          this._disconnect(disconnectedCodes.badProtocol, `dictionary compression: ${errorMessage(e)}`, false);
           return;
         }
         if (codec !== null) {

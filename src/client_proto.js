@@ -56,7 +56,7 @@ export const centrifugal = $root.centrifugal = (() => {
                 function Error(properties) {
                     if (properties)
                         for (let keys = Object.keys(properties), i = 0; i < keys.length; ++i)
-                            if (properties[keys[i]] != null)
+                            if (properties[keys[i]] != null && keys[i] !== "__proto__")
                                 this[keys[i]] = properties[keys[i]];
                 }
 
@@ -129,12 +129,18 @@ export const centrifugal = $root.centrifugal = (() => {
                  * @throws {Error} If the payload is not a reader or valid buffer
                  * @throws {$protobuf.util.ProtocolError} If required fields are missing
                  */
-                Error.decode = function decode(reader, length) {
+                Error.decode = function decode(reader, length, error, long) {
                     if (!(reader instanceof $Reader))
                         reader = $Reader.create(reader);
+                    if (long === undefined)
+                        long = 0;
+                    if (long > $Reader.recursionLimit)
+                        throw Error("maximum nesting depth exceeded");
                     let end = length === undefined ? reader.len : reader.pos + length, message = new $root.centrifugal.centrifuge.protocol.Error();
                     while (reader.pos < end) {
                         let tag = reader.uint32();
+                        if (tag === error)
+                            break;
                         switch (tag >>> 3) {
                         case 1: {
                                 message.code = reader.uint32();
@@ -149,7 +155,7 @@ export const centrifugal = $root.centrifugal = (() => {
                                 break;
                             }
                         default:
-                            reader.skipType(tag & 7);
+                            reader.skipType(tag & 7, long);
                             break;
                         }
                     }
@@ -180,9 +186,13 @@ export const centrifugal = $root.centrifugal = (() => {
                  * @param {Object.<string,*>} message Plain object to verify
                  * @returns {string|null} `null` if valid, otherwise the reason why it is not
                  */
-                Error.verify = function verify(message) {
+                Error.verify = function verify(message, long) {
                     if (typeof message !== "object" || message === null)
                         return "object expected";
+                    if (long === undefined)
+                        long = 0;
+                    if (long > $util.recursionLimit)
+                        return "maximum nesting depth exceeded";
                     if (message.code != null && message.hasOwnProperty("code"))
                         if (!$util.isInteger(message.code))
                             return "code: integer expected";
@@ -235,7 +245,7 @@ export const centrifugal = $root.centrifugal = (() => {
                 function EmulationRequest(properties) {
                     if (properties)
                         for (let keys = Object.keys(properties), i = 0; i < keys.length; ++i)
-                            if (properties[keys[i]] != null)
+                            if (properties[keys[i]] != null && keys[i] !== "__proto__")
                                 this[keys[i]] = properties[keys[i]];
                 }
 
@@ -308,12 +318,18 @@ export const centrifugal = $root.centrifugal = (() => {
                  * @throws {Error} If the payload is not a reader or valid buffer
                  * @throws {$protobuf.util.ProtocolError} If required fields are missing
                  */
-                EmulationRequest.decode = function decode(reader, length) {
+                EmulationRequest.decode = function decode(reader, length, error, long) {
                     if (!(reader instanceof $Reader))
                         reader = $Reader.create(reader);
+                    if (long === undefined)
+                        long = 0;
+                    if (long > $Reader.recursionLimit)
+                        throw Error("maximum nesting depth exceeded");
                     let end = length === undefined ? reader.len : reader.pos + length, message = new $root.centrifugal.centrifuge.protocol.EmulationRequest();
                     while (reader.pos < end) {
                         let tag = reader.uint32();
+                        if (tag === error)
+                            break;
                         switch (tag >>> 3) {
                         case 1: {
                                 message.node = reader.string();
@@ -328,7 +344,7 @@ export const centrifugal = $root.centrifugal = (() => {
                                 break;
                             }
                         default:
-                            reader.skipType(tag & 7);
+                            reader.skipType(tag & 7, long);
                             break;
                         }
                     }
@@ -359,9 +375,13 @@ export const centrifugal = $root.centrifugal = (() => {
                  * @param {Object.<string,*>} message Plain object to verify
                  * @returns {string|null} `null` if valid, otherwise the reason why it is not
                  */
-                EmulationRequest.verify = function verify(message) {
+                EmulationRequest.verify = function verify(message, long) {
                     if (typeof message !== "object" || message === null)
                         return "object expected";
+                    if (long === undefined)
+                        long = 0;
+                    if (long > $util.recursionLimit)
+                        return "maximum nesting depth exceeded";
                     if (message.node != null && message.hasOwnProperty("node"))
                         if (!$util.isString(message.node))
                             return "node: string expected";
@@ -424,7 +444,7 @@ export const centrifugal = $root.centrifugal = (() => {
                 function Command(properties) {
                     if (properties)
                         for (let keys = Object.keys(properties), i = 0; i < keys.length; ++i)
-                            if (properties[keys[i]] != null)
+                            if (properties[keys[i]] != null && keys[i] !== "__proto__")
                                 this[keys[i]] = properties[keys[i]];
                 }
 
@@ -597,67 +617,73 @@ export const centrifugal = $root.centrifugal = (() => {
                  * @throws {Error} If the payload is not a reader or valid buffer
                  * @throws {$protobuf.util.ProtocolError} If required fields are missing
                  */
-                Command.decode = function decode(reader, length) {
+                Command.decode = function decode(reader, length, error, long) {
                     if (!(reader instanceof $Reader))
                         reader = $Reader.create(reader);
+                    if (long === undefined)
+                        long = 0;
+                    if (long > $Reader.recursionLimit)
+                        throw Error("maximum nesting depth exceeded");
                     let end = length === undefined ? reader.len : reader.pos + length, message = new $root.centrifugal.centrifuge.protocol.Command();
                     while (reader.pos < end) {
                         let tag = reader.uint32();
+                        if (tag === error)
+                            break;
                         switch (tag >>> 3) {
                         case 1: {
                                 message.id = reader.uint32();
                                 break;
                             }
                         case 4: {
-                                message.connect = $root.centrifugal.centrifuge.protocol.ConnectRequest.decode(reader, reader.uint32());
+                                message.connect = $root.centrifugal.centrifuge.protocol.ConnectRequest.decode(reader, reader.uint32(), undefined, long + 1);
                                 break;
                             }
                         case 5: {
-                                message.subscribe = $root.centrifugal.centrifuge.protocol.SubscribeRequest.decode(reader, reader.uint32());
+                                message.subscribe = $root.centrifugal.centrifuge.protocol.SubscribeRequest.decode(reader, reader.uint32(), undefined, long + 1);
                                 break;
                             }
                         case 6: {
-                                message.unsubscribe = $root.centrifugal.centrifuge.protocol.UnsubscribeRequest.decode(reader, reader.uint32());
+                                message.unsubscribe = $root.centrifugal.centrifuge.protocol.UnsubscribeRequest.decode(reader, reader.uint32(), undefined, long + 1);
                                 break;
                             }
                         case 7: {
-                                message.publish = $root.centrifugal.centrifuge.protocol.PublishRequest.decode(reader, reader.uint32());
+                                message.publish = $root.centrifugal.centrifuge.protocol.PublishRequest.decode(reader, reader.uint32(), undefined, long + 1);
                                 break;
                             }
                         case 8: {
-                                message.presence = $root.centrifugal.centrifuge.protocol.PresenceRequest.decode(reader, reader.uint32());
+                                message.presence = $root.centrifugal.centrifuge.protocol.PresenceRequest.decode(reader, reader.uint32(), undefined, long + 1);
                                 break;
                             }
                         case 9: {
-                                message.presence_stats = $root.centrifugal.centrifuge.protocol.PresenceStatsRequest.decode(reader, reader.uint32());
+                                message.presence_stats = $root.centrifugal.centrifuge.protocol.PresenceStatsRequest.decode(reader, reader.uint32(), undefined, long + 1);
                                 break;
                             }
                         case 10: {
-                                message.history = $root.centrifugal.centrifuge.protocol.HistoryRequest.decode(reader, reader.uint32());
+                                message.history = $root.centrifugal.centrifuge.protocol.HistoryRequest.decode(reader, reader.uint32(), undefined, long + 1);
                                 break;
                             }
                         case 11: {
-                                message.ping = $root.centrifugal.centrifuge.protocol.PingRequest.decode(reader, reader.uint32());
+                                message.ping = $root.centrifugal.centrifuge.protocol.PingRequest.decode(reader, reader.uint32(), undefined, long + 1);
                                 break;
                             }
                         case 12: {
-                                message.send = $root.centrifugal.centrifuge.protocol.SendRequest.decode(reader, reader.uint32());
+                                message.send = $root.centrifugal.centrifuge.protocol.SendRequest.decode(reader, reader.uint32(), undefined, long + 1);
                                 break;
                             }
                         case 13: {
-                                message.rpc = $root.centrifugal.centrifuge.protocol.RPCRequest.decode(reader, reader.uint32());
+                                message.rpc = $root.centrifugal.centrifuge.protocol.RPCRequest.decode(reader, reader.uint32(), undefined, long + 1);
                                 break;
                             }
                         case 14: {
-                                message.refresh = $root.centrifugal.centrifuge.protocol.RefreshRequest.decode(reader, reader.uint32());
+                                message.refresh = $root.centrifugal.centrifuge.protocol.RefreshRequest.decode(reader, reader.uint32(), undefined, long + 1);
                                 break;
                             }
                         case 15: {
-                                message.sub_refresh = $root.centrifugal.centrifuge.protocol.SubRefreshRequest.decode(reader, reader.uint32());
+                                message.sub_refresh = $root.centrifugal.centrifuge.protocol.SubRefreshRequest.decode(reader, reader.uint32(), undefined, long + 1);
                                 break;
                             }
                         default:
-                            reader.skipType(tag & 7);
+                            reader.skipType(tag & 7, long);
                             break;
                         }
                     }
@@ -688,69 +714,73 @@ export const centrifugal = $root.centrifugal = (() => {
                  * @param {Object.<string,*>} message Plain object to verify
                  * @returns {string|null} `null` if valid, otherwise the reason why it is not
                  */
-                Command.verify = function verify(message) {
+                Command.verify = function verify(message, long) {
                     if (typeof message !== "object" || message === null)
                         return "object expected";
+                    if (long === undefined)
+                        long = 0;
+                    if (long > $util.recursionLimit)
+                        return "maximum nesting depth exceeded";
                     if (message.id != null && message.hasOwnProperty("id"))
                         if (!$util.isInteger(message.id))
                             return "id: integer expected";
                     if (message.connect != null && message.hasOwnProperty("connect")) {
-                        let error = $root.centrifugal.centrifuge.protocol.ConnectRequest.verify(message.connect);
+                        let error = $root.centrifugal.centrifuge.protocol.ConnectRequest.verify(message.connect, long + 1);
                         if (error)
                             return "connect." + error;
                     }
                     if (message.subscribe != null && message.hasOwnProperty("subscribe")) {
-                        let error = $root.centrifugal.centrifuge.protocol.SubscribeRequest.verify(message.subscribe);
+                        let error = $root.centrifugal.centrifuge.protocol.SubscribeRequest.verify(message.subscribe, long + 1);
                         if (error)
                             return "subscribe." + error;
                     }
                     if (message.unsubscribe != null && message.hasOwnProperty("unsubscribe")) {
-                        let error = $root.centrifugal.centrifuge.protocol.UnsubscribeRequest.verify(message.unsubscribe);
+                        let error = $root.centrifugal.centrifuge.protocol.UnsubscribeRequest.verify(message.unsubscribe, long + 1);
                         if (error)
                             return "unsubscribe." + error;
                     }
                     if (message.publish != null && message.hasOwnProperty("publish")) {
-                        let error = $root.centrifugal.centrifuge.protocol.PublishRequest.verify(message.publish);
+                        let error = $root.centrifugal.centrifuge.protocol.PublishRequest.verify(message.publish, long + 1);
                         if (error)
                             return "publish." + error;
                     }
                     if (message.presence != null && message.hasOwnProperty("presence")) {
-                        let error = $root.centrifugal.centrifuge.protocol.PresenceRequest.verify(message.presence);
+                        let error = $root.centrifugal.centrifuge.protocol.PresenceRequest.verify(message.presence, long + 1);
                         if (error)
                             return "presence." + error;
                     }
                     if (message.presence_stats != null && message.hasOwnProperty("presence_stats")) {
-                        let error = $root.centrifugal.centrifuge.protocol.PresenceStatsRequest.verify(message.presence_stats);
+                        let error = $root.centrifugal.centrifuge.protocol.PresenceStatsRequest.verify(message.presence_stats, long + 1);
                         if (error)
                             return "presence_stats." + error;
                     }
                     if (message.history != null && message.hasOwnProperty("history")) {
-                        let error = $root.centrifugal.centrifuge.protocol.HistoryRequest.verify(message.history);
+                        let error = $root.centrifugal.centrifuge.protocol.HistoryRequest.verify(message.history, long + 1);
                         if (error)
                             return "history." + error;
                     }
                     if (message.ping != null && message.hasOwnProperty("ping")) {
-                        let error = $root.centrifugal.centrifuge.protocol.PingRequest.verify(message.ping);
+                        let error = $root.centrifugal.centrifuge.protocol.PingRequest.verify(message.ping, long + 1);
                         if (error)
                             return "ping." + error;
                     }
                     if (message.send != null && message.hasOwnProperty("send")) {
-                        let error = $root.centrifugal.centrifuge.protocol.SendRequest.verify(message.send);
+                        let error = $root.centrifugal.centrifuge.protocol.SendRequest.verify(message.send, long + 1);
                         if (error)
                             return "send." + error;
                     }
                     if (message.rpc != null && message.hasOwnProperty("rpc")) {
-                        let error = $root.centrifugal.centrifuge.protocol.RPCRequest.verify(message.rpc);
+                        let error = $root.centrifugal.centrifuge.protocol.RPCRequest.verify(message.rpc, long + 1);
                         if (error)
                             return "rpc." + error;
                     }
                     if (message.refresh != null && message.hasOwnProperty("refresh")) {
-                        let error = $root.centrifugal.centrifuge.protocol.RefreshRequest.verify(message.refresh);
+                        let error = $root.centrifugal.centrifuge.protocol.RefreshRequest.verify(message.refresh, long + 1);
                         if (error)
                             return "refresh." + error;
                     }
                     if (message.sub_refresh != null && message.hasOwnProperty("sub_refresh")) {
-                        let error = $root.centrifugal.centrifuge.protocol.SubRefreshRequest.verify(message.sub_refresh);
+                        let error = $root.centrifugal.centrifuge.protocol.SubRefreshRequest.verify(message.sub_refresh, long + 1);
                         if (error)
                             return "sub_refresh." + error;
                     }
@@ -808,7 +838,7 @@ export const centrifugal = $root.centrifugal = (() => {
                 function Reply(properties) {
                     if (properties)
                         for (let keys = Object.keys(properties), i = 0; i < keys.length; ++i)
-                            if (properties[keys[i]] != null)
+                            if (properties[keys[i]] != null && keys[i] !== "__proto__")
                                 this[keys[i]] = properties[keys[i]];
                 }
 
@@ -991,71 +1021,77 @@ export const centrifugal = $root.centrifugal = (() => {
                  * @throws {Error} If the payload is not a reader or valid buffer
                  * @throws {$protobuf.util.ProtocolError} If required fields are missing
                  */
-                Reply.decode = function decode(reader, length) {
+                Reply.decode = function decode(reader, length, error, long) {
                     if (!(reader instanceof $Reader))
                         reader = $Reader.create(reader);
+                    if (long === undefined)
+                        long = 0;
+                    if (long > $Reader.recursionLimit)
+                        throw Error("maximum nesting depth exceeded");
                     let end = length === undefined ? reader.len : reader.pos + length, message = new $root.centrifugal.centrifuge.protocol.Reply();
                     while (reader.pos < end) {
                         let tag = reader.uint32();
+                        if (tag === error)
+                            break;
                         switch (tag >>> 3) {
                         case 1: {
                                 message.id = reader.uint32();
                                 break;
                             }
                         case 2: {
-                                message.error = $root.centrifugal.centrifuge.protocol.Error.decode(reader, reader.uint32());
+                                message.error = $root.centrifugal.centrifuge.protocol.Error.decode(reader, reader.uint32(), undefined, long + 1);
                                 break;
                             }
                         case 4: {
-                                message.push = $root.centrifugal.centrifuge.protocol.Push.decode(reader, reader.uint32());
+                                message.push = $root.centrifugal.centrifuge.protocol.Push.decode(reader, reader.uint32(), undefined, long + 1);
                                 break;
                             }
                         case 5: {
-                                message.connect = $root.centrifugal.centrifuge.protocol.ConnectResult.decode(reader, reader.uint32());
+                                message.connect = $root.centrifugal.centrifuge.protocol.ConnectResult.decode(reader, reader.uint32(), undefined, long + 1);
                                 break;
                             }
                         case 6: {
-                                message.subscribe = $root.centrifugal.centrifuge.protocol.SubscribeResult.decode(reader, reader.uint32());
+                                message.subscribe = $root.centrifugal.centrifuge.protocol.SubscribeResult.decode(reader, reader.uint32(), undefined, long + 1);
                                 break;
                             }
                         case 7: {
-                                message.unsubscribe = $root.centrifugal.centrifuge.protocol.UnsubscribeResult.decode(reader, reader.uint32());
+                                message.unsubscribe = $root.centrifugal.centrifuge.protocol.UnsubscribeResult.decode(reader, reader.uint32(), undefined, long + 1);
                                 break;
                             }
                         case 8: {
-                                message.publish = $root.centrifugal.centrifuge.protocol.PublishResult.decode(reader, reader.uint32());
+                                message.publish = $root.centrifugal.centrifuge.protocol.PublishResult.decode(reader, reader.uint32(), undefined, long + 1);
                                 break;
                             }
                         case 9: {
-                                message.presence = $root.centrifugal.centrifuge.protocol.PresenceResult.decode(reader, reader.uint32());
+                                message.presence = $root.centrifugal.centrifuge.protocol.PresenceResult.decode(reader, reader.uint32(), undefined, long + 1);
                                 break;
                             }
                         case 10: {
-                                message.presence_stats = $root.centrifugal.centrifuge.protocol.PresenceStatsResult.decode(reader, reader.uint32());
+                                message.presence_stats = $root.centrifugal.centrifuge.protocol.PresenceStatsResult.decode(reader, reader.uint32(), undefined, long + 1);
                                 break;
                             }
                         case 11: {
-                                message.history = $root.centrifugal.centrifuge.protocol.HistoryResult.decode(reader, reader.uint32());
+                                message.history = $root.centrifugal.centrifuge.protocol.HistoryResult.decode(reader, reader.uint32(), undefined, long + 1);
                                 break;
                             }
                         case 12: {
-                                message.ping = $root.centrifugal.centrifuge.protocol.PingResult.decode(reader, reader.uint32());
+                                message.ping = $root.centrifugal.centrifuge.protocol.PingResult.decode(reader, reader.uint32(), undefined, long + 1);
                                 break;
                             }
                         case 13: {
-                                message.rpc = $root.centrifugal.centrifuge.protocol.RPCResult.decode(reader, reader.uint32());
+                                message.rpc = $root.centrifugal.centrifuge.protocol.RPCResult.decode(reader, reader.uint32(), undefined, long + 1);
                                 break;
                             }
                         case 14: {
-                                message.refresh = $root.centrifugal.centrifuge.protocol.RefreshResult.decode(reader, reader.uint32());
+                                message.refresh = $root.centrifugal.centrifuge.protocol.RefreshResult.decode(reader, reader.uint32(), undefined, long + 1);
                                 break;
                             }
                         case 15: {
-                                message.sub_refresh = $root.centrifugal.centrifuge.protocol.SubRefreshResult.decode(reader, reader.uint32());
+                                message.sub_refresh = $root.centrifugal.centrifuge.protocol.SubRefreshResult.decode(reader, reader.uint32(), undefined, long + 1);
                                 break;
                             }
                         default:
-                            reader.skipType(tag & 7);
+                            reader.skipType(tag & 7, long);
                             break;
                         }
                     }
@@ -1086,74 +1122,78 @@ export const centrifugal = $root.centrifugal = (() => {
                  * @param {Object.<string,*>} message Plain object to verify
                  * @returns {string|null} `null` if valid, otherwise the reason why it is not
                  */
-                Reply.verify = function verify(message) {
+                Reply.verify = function verify(message, long) {
                     if (typeof message !== "object" || message === null)
                         return "object expected";
+                    if (long === undefined)
+                        long = 0;
+                    if (long > $util.recursionLimit)
+                        return "maximum nesting depth exceeded";
                     if (message.id != null && message.hasOwnProperty("id"))
                         if (!$util.isInteger(message.id))
                             return "id: integer expected";
                     if (message.error != null && message.hasOwnProperty("error")) {
-                        let error = $root.centrifugal.centrifuge.protocol.Error.verify(message.error);
+                        let error = $root.centrifugal.centrifuge.protocol.Error.verify(message.error, long + 1);
                         if (error)
                             return "error." + error;
                     }
                     if (message.push != null && message.hasOwnProperty("push")) {
-                        let error = $root.centrifugal.centrifuge.protocol.Push.verify(message.push);
+                        let error = $root.centrifugal.centrifuge.protocol.Push.verify(message.push, long + 1);
                         if (error)
                             return "push." + error;
                     }
                     if (message.connect != null && message.hasOwnProperty("connect")) {
-                        let error = $root.centrifugal.centrifuge.protocol.ConnectResult.verify(message.connect);
+                        let error = $root.centrifugal.centrifuge.protocol.ConnectResult.verify(message.connect, long + 1);
                         if (error)
                             return "connect." + error;
                     }
                     if (message.subscribe != null && message.hasOwnProperty("subscribe")) {
-                        let error = $root.centrifugal.centrifuge.protocol.SubscribeResult.verify(message.subscribe);
+                        let error = $root.centrifugal.centrifuge.protocol.SubscribeResult.verify(message.subscribe, long + 1);
                         if (error)
                             return "subscribe." + error;
                     }
                     if (message.unsubscribe != null && message.hasOwnProperty("unsubscribe")) {
-                        let error = $root.centrifugal.centrifuge.protocol.UnsubscribeResult.verify(message.unsubscribe);
+                        let error = $root.centrifugal.centrifuge.protocol.UnsubscribeResult.verify(message.unsubscribe, long + 1);
                         if (error)
                             return "unsubscribe." + error;
                     }
                     if (message.publish != null && message.hasOwnProperty("publish")) {
-                        let error = $root.centrifugal.centrifuge.protocol.PublishResult.verify(message.publish);
+                        let error = $root.centrifugal.centrifuge.protocol.PublishResult.verify(message.publish, long + 1);
                         if (error)
                             return "publish." + error;
                     }
                     if (message.presence != null && message.hasOwnProperty("presence")) {
-                        let error = $root.centrifugal.centrifuge.protocol.PresenceResult.verify(message.presence);
+                        let error = $root.centrifugal.centrifuge.protocol.PresenceResult.verify(message.presence, long + 1);
                         if (error)
                             return "presence." + error;
                     }
                     if (message.presence_stats != null && message.hasOwnProperty("presence_stats")) {
-                        let error = $root.centrifugal.centrifuge.protocol.PresenceStatsResult.verify(message.presence_stats);
+                        let error = $root.centrifugal.centrifuge.protocol.PresenceStatsResult.verify(message.presence_stats, long + 1);
                         if (error)
                             return "presence_stats." + error;
                     }
                     if (message.history != null && message.hasOwnProperty("history")) {
-                        let error = $root.centrifugal.centrifuge.protocol.HistoryResult.verify(message.history);
+                        let error = $root.centrifugal.centrifuge.protocol.HistoryResult.verify(message.history, long + 1);
                         if (error)
                             return "history." + error;
                     }
                     if (message.ping != null && message.hasOwnProperty("ping")) {
-                        let error = $root.centrifugal.centrifuge.protocol.PingResult.verify(message.ping);
+                        let error = $root.centrifugal.centrifuge.protocol.PingResult.verify(message.ping, long + 1);
                         if (error)
                             return "ping." + error;
                     }
                     if (message.rpc != null && message.hasOwnProperty("rpc")) {
-                        let error = $root.centrifugal.centrifuge.protocol.RPCResult.verify(message.rpc);
+                        let error = $root.centrifugal.centrifuge.protocol.RPCResult.verify(message.rpc, long + 1);
                         if (error)
                             return "rpc." + error;
                     }
                     if (message.refresh != null && message.hasOwnProperty("refresh")) {
-                        let error = $root.centrifugal.centrifuge.protocol.RefreshResult.verify(message.refresh);
+                        let error = $root.centrifugal.centrifuge.protocol.RefreshResult.verify(message.refresh, long + 1);
                         if (error)
                             return "refresh." + error;
                     }
                     if (message.sub_refresh != null && message.hasOwnProperty("sub_refresh")) {
-                        let error = $root.centrifugal.centrifuge.protocol.SubRefreshResult.verify(message.sub_refresh);
+                        let error = $root.centrifugal.centrifuge.protocol.SubRefreshResult.verify(message.sub_refresh, long + 1);
                         if (error)
                             return "sub_refresh." + error;
                     }
@@ -1208,7 +1248,7 @@ export const centrifugal = $root.centrifugal = (() => {
                 function Push(properties) {
                     if (properties)
                         for (let keys = Object.keys(properties), i = 0; i < keys.length; ++i)
-                            if (properties[keys[i]] != null)
+                            if (properties[keys[i]] != null && keys[i] !== "__proto__")
                                 this[keys[i]] = properties[keys[i]];
                 }
 
@@ -1361,12 +1401,18 @@ export const centrifugal = $root.centrifugal = (() => {
                  * @throws {Error} If the payload is not a reader or valid buffer
                  * @throws {$protobuf.util.ProtocolError} If required fields are missing
                  */
-                Push.decode = function decode(reader, length) {
+                Push.decode = function decode(reader, length, error, long) {
                     if (!(reader instanceof $Reader))
                         reader = $Reader.create(reader);
+                    if (long === undefined)
+                        long = 0;
+                    if (long > $Reader.recursionLimit)
+                        throw Error("maximum nesting depth exceeded");
                     let end = length === undefined ? reader.len : reader.pos + length, message = new $root.centrifugal.centrifuge.protocol.Push();
                     while (reader.pos < end) {
                         let tag = reader.uint32();
+                        if (tag === error)
+                            break;
                         switch (tag >>> 3) {
                         case 1: {
                                 message.id = reader.int64();
@@ -1377,43 +1423,43 @@ export const centrifugal = $root.centrifugal = (() => {
                                 break;
                             }
                         case 4: {
-                                message.pub = $root.centrifugal.centrifuge.protocol.Publication.decode(reader, reader.uint32());
+                                message.pub = $root.centrifugal.centrifuge.protocol.Publication.decode(reader, reader.uint32(), undefined, long + 1);
                                 break;
                             }
                         case 5: {
-                                message.join = $root.centrifugal.centrifuge.protocol.Join.decode(reader, reader.uint32());
+                                message.join = $root.centrifugal.centrifuge.protocol.Join.decode(reader, reader.uint32(), undefined, long + 1);
                                 break;
                             }
                         case 6: {
-                                message.leave = $root.centrifugal.centrifuge.protocol.Leave.decode(reader, reader.uint32());
+                                message.leave = $root.centrifugal.centrifuge.protocol.Leave.decode(reader, reader.uint32(), undefined, long + 1);
                                 break;
                             }
                         case 7: {
-                                message.unsubscribe = $root.centrifugal.centrifuge.protocol.Unsubscribe.decode(reader, reader.uint32());
+                                message.unsubscribe = $root.centrifugal.centrifuge.protocol.Unsubscribe.decode(reader, reader.uint32(), undefined, long + 1);
                                 break;
                             }
                         case 8: {
-                                message.message = $root.centrifugal.centrifuge.protocol.Message.decode(reader, reader.uint32());
+                                message.message = $root.centrifugal.centrifuge.protocol.Message.decode(reader, reader.uint32(), undefined, long + 1);
                                 break;
                             }
                         case 9: {
-                                message.subscribe = $root.centrifugal.centrifuge.protocol.Subscribe.decode(reader, reader.uint32());
+                                message.subscribe = $root.centrifugal.centrifuge.protocol.Subscribe.decode(reader, reader.uint32(), undefined, long + 1);
                                 break;
                             }
                         case 10: {
-                                message.connect = $root.centrifugal.centrifuge.protocol.Connect.decode(reader, reader.uint32());
+                                message.connect = $root.centrifugal.centrifuge.protocol.Connect.decode(reader, reader.uint32(), undefined, long + 1);
                                 break;
                             }
                         case 11: {
-                                message.disconnect = $root.centrifugal.centrifuge.protocol.Disconnect.decode(reader, reader.uint32());
+                                message.disconnect = $root.centrifugal.centrifuge.protocol.Disconnect.decode(reader, reader.uint32(), undefined, long + 1);
                                 break;
                             }
                         case 12: {
-                                message.refresh = $root.centrifugal.centrifuge.protocol.Refresh.decode(reader, reader.uint32());
+                                message.refresh = $root.centrifugal.centrifuge.protocol.Refresh.decode(reader, reader.uint32(), undefined, long + 1);
                                 break;
                             }
                         default:
-                            reader.skipType(tag & 7);
+                            reader.skipType(tag & 7, long);
                             break;
                         }
                     }
@@ -1444,9 +1490,13 @@ export const centrifugal = $root.centrifugal = (() => {
                  * @param {Object.<string,*>} message Plain object to verify
                  * @returns {string|null} `null` if valid, otherwise the reason why it is not
                  */
-                Push.verify = function verify(message) {
+                Push.verify = function verify(message, long) {
                     if (typeof message !== "object" || message === null)
                         return "object expected";
+                    if (long === undefined)
+                        long = 0;
+                    if (long > $util.recursionLimit)
+                        return "maximum nesting depth exceeded";
                     if (message.id != null && message.hasOwnProperty("id"))
                         if (!$util.isInteger(message.id) && !(message.id && $util.isInteger(message.id.low) && $util.isInteger(message.id.high)))
                             return "id: integer|Long expected";
@@ -1454,47 +1504,47 @@ export const centrifugal = $root.centrifugal = (() => {
                         if (!$util.isString(message.channel))
                             return "channel: string expected";
                     if (message.pub != null && message.hasOwnProperty("pub")) {
-                        let error = $root.centrifugal.centrifuge.protocol.Publication.verify(message.pub);
+                        let error = $root.centrifugal.centrifuge.protocol.Publication.verify(message.pub, long + 1);
                         if (error)
                             return "pub." + error;
                     }
                     if (message.join != null && message.hasOwnProperty("join")) {
-                        let error = $root.centrifugal.centrifuge.protocol.Join.verify(message.join);
+                        let error = $root.centrifugal.centrifuge.protocol.Join.verify(message.join, long + 1);
                         if (error)
                             return "join." + error;
                     }
                     if (message.leave != null && message.hasOwnProperty("leave")) {
-                        let error = $root.centrifugal.centrifuge.protocol.Leave.verify(message.leave);
+                        let error = $root.centrifugal.centrifuge.protocol.Leave.verify(message.leave, long + 1);
                         if (error)
                             return "leave." + error;
                     }
                     if (message.unsubscribe != null && message.hasOwnProperty("unsubscribe")) {
-                        let error = $root.centrifugal.centrifuge.protocol.Unsubscribe.verify(message.unsubscribe);
+                        let error = $root.centrifugal.centrifuge.protocol.Unsubscribe.verify(message.unsubscribe, long + 1);
                         if (error)
                             return "unsubscribe." + error;
                     }
                     if (message.message != null && message.hasOwnProperty("message")) {
-                        let error = $root.centrifugal.centrifuge.protocol.Message.verify(message.message);
+                        let error = $root.centrifugal.centrifuge.protocol.Message.verify(message.message, long + 1);
                         if (error)
                             return "message." + error;
                     }
                     if (message.subscribe != null && message.hasOwnProperty("subscribe")) {
-                        let error = $root.centrifugal.centrifuge.protocol.Subscribe.verify(message.subscribe);
+                        let error = $root.centrifugal.centrifuge.protocol.Subscribe.verify(message.subscribe, long + 1);
                         if (error)
                             return "subscribe." + error;
                     }
                     if (message.connect != null && message.hasOwnProperty("connect")) {
-                        let error = $root.centrifugal.centrifuge.protocol.Connect.verify(message.connect);
+                        let error = $root.centrifugal.centrifuge.protocol.Connect.verify(message.connect, long + 1);
                         if (error)
                             return "connect." + error;
                     }
                     if (message.disconnect != null && message.hasOwnProperty("disconnect")) {
-                        let error = $root.centrifugal.centrifuge.protocol.Disconnect.verify(message.disconnect);
+                        let error = $root.centrifugal.centrifuge.protocol.Disconnect.verify(message.disconnect, long + 1);
                         if (error)
                             return "disconnect." + error;
                     }
                     if (message.refresh != null && message.hasOwnProperty("refresh")) {
-                        let error = $root.centrifugal.centrifuge.protocol.Refresh.verify(message.refresh);
+                        let error = $root.centrifugal.centrifuge.protocol.Refresh.verify(message.refresh, long + 1);
                         if (error)
                             return "refresh." + error;
                     }
@@ -1517,6 +1567,195 @@ export const centrifugal = $root.centrifugal = (() => {
                 };
 
                 return Push;
+            })();
+
+            protocol.Dictionary = (function() {
+
+                /**
+                 * Properties of a Dictionary.
+                 * @memberof centrifugal.centrifuge.protocol
+                 * @interface IDictionary
+                 * @property {string|null} [id] Dictionary id
+                 * @property {Uint8Array|null} [data] Dictionary data
+                 * @property {string|null} [data_b64] Dictionary data_b64
+                 */
+
+                /**
+                 * Constructs a new Dictionary.
+                 * @memberof centrifugal.centrifuge.protocol
+                 * @classdesc Represents a Dictionary.
+                 * @implements IDictionary
+                 * @constructor
+                 * @param {centrifugal.centrifuge.protocol.IDictionary=} [properties] Properties to set
+                 */
+                function Dictionary(properties) {
+                    if (properties)
+                        for (let keys = Object.keys(properties), i = 0; i < keys.length; ++i)
+                            if (properties[keys[i]] != null && keys[i] !== "__proto__")
+                                this[keys[i]] = properties[keys[i]];
+                }
+
+                /**
+                 * Dictionary id.
+                 * @member {string} id
+                 * @memberof centrifugal.centrifuge.protocol.Dictionary
+                 * @instance
+                 */
+                Dictionary.prototype.id = "";
+
+                /**
+                 * Dictionary data.
+                 * @member {Uint8Array} data
+                 * @memberof centrifugal.centrifuge.protocol.Dictionary
+                 * @instance
+                 */
+                Dictionary.prototype.data = $util.newBuffer([]);
+
+                /**
+                 * Dictionary data_b64.
+                 * @member {string} data_b64
+                 * @memberof centrifugal.centrifuge.protocol.Dictionary
+                 * @instance
+                 */
+                Dictionary.prototype.data_b64 = "";
+
+                /**
+                 * Encodes the specified Dictionary message. Does not implicitly {@link centrifugal.centrifuge.protocol.Dictionary.verify|verify} messages.
+                 * @function encode
+                 * @memberof centrifugal.centrifuge.protocol.Dictionary
+                 * @static
+                 * @param {centrifugal.centrifuge.protocol.IDictionary} message Dictionary message or plain object to encode
+                 * @param {$protobuf.Writer} [writer] Writer to encode to
+                 * @returns {$protobuf.Writer} Writer
+                 */
+                Dictionary.encode = function encode(message, writer) {
+                    if (!writer)
+                        writer = $Writer.create();
+                    if (message.id != null && Object.hasOwnProperty.call(message, "id"))
+                        writer.uint32(/* id 1, wireType 2 =*/10).string(message.id);
+                    if (message.data != null && Object.hasOwnProperty.call(message, "data"))
+                        writer.uint32(/* id 2, wireType 2 =*/18).bytes(message.data);
+                    if (message.data_b64 != null && Object.hasOwnProperty.call(message, "data_b64"))
+                        writer.uint32(/* id 3, wireType 2 =*/26).string(message.data_b64);
+                    return writer;
+                };
+
+                /**
+                 * Encodes the specified Dictionary message, length delimited. Does not implicitly {@link centrifugal.centrifuge.protocol.Dictionary.verify|verify} messages.
+                 * @function encodeDelimited
+                 * @memberof centrifugal.centrifuge.protocol.Dictionary
+                 * @static
+                 * @param {centrifugal.centrifuge.protocol.IDictionary} message Dictionary message or plain object to encode
+                 * @param {$protobuf.Writer} [writer] Writer to encode to
+                 * @returns {$protobuf.Writer} Writer
+                 */
+                Dictionary.encodeDelimited = function encodeDelimited(message, writer) {
+                    return this.encode(message, writer).ldelim();
+                };
+
+                /**
+                 * Decodes a Dictionary message from the specified reader or buffer.
+                 * @function decode
+                 * @memberof centrifugal.centrifuge.protocol.Dictionary
+                 * @static
+                 * @param {$protobuf.Reader|Uint8Array} reader Reader or buffer to decode from
+                 * @param {number} [length] Message length if known beforehand
+                 * @returns {centrifugal.centrifuge.protocol.Dictionary} Dictionary
+                 * @throws {Error} If the payload is not a reader or valid buffer
+                 * @throws {$protobuf.util.ProtocolError} If required fields are missing
+                 */
+                Dictionary.decode = function decode(reader, length, error, long) {
+                    if (!(reader instanceof $Reader))
+                        reader = $Reader.create(reader);
+                    if (long === undefined)
+                        long = 0;
+                    if (long > $Reader.recursionLimit)
+                        throw Error("maximum nesting depth exceeded");
+                    let end = length === undefined ? reader.len : reader.pos + length, message = new $root.centrifugal.centrifuge.protocol.Dictionary();
+                    while (reader.pos < end) {
+                        let tag = reader.uint32();
+                        if (tag === error)
+                            break;
+                        switch (tag >>> 3) {
+                        case 1: {
+                                message.id = reader.string();
+                                break;
+                            }
+                        case 2: {
+                                message.data = reader.bytes();
+                                break;
+                            }
+                        case 3: {
+                                message.data_b64 = reader.string();
+                                break;
+                            }
+                        default:
+                            reader.skipType(tag & 7, long);
+                            break;
+                        }
+                    }
+                    return message;
+                };
+
+                /**
+                 * Decodes a Dictionary message from the specified reader or buffer, length delimited.
+                 * @function decodeDelimited
+                 * @memberof centrifugal.centrifuge.protocol.Dictionary
+                 * @static
+                 * @param {$protobuf.Reader|Uint8Array} reader Reader or buffer to decode from
+                 * @returns {centrifugal.centrifuge.protocol.Dictionary} Dictionary
+                 * @throws {Error} If the payload is not a reader or valid buffer
+                 * @throws {$protobuf.util.ProtocolError} If required fields are missing
+                 */
+                Dictionary.decodeDelimited = function decodeDelimited(reader) {
+                    if (!(reader instanceof $Reader))
+                        reader = new $Reader(reader);
+                    return this.decode(reader, reader.uint32());
+                };
+
+                /**
+                 * Verifies a Dictionary message.
+                 * @function verify
+                 * @memberof centrifugal.centrifuge.protocol.Dictionary
+                 * @static
+                 * @param {Object.<string,*>} message Plain object to verify
+                 * @returns {string|null} `null` if valid, otherwise the reason why it is not
+                 */
+                Dictionary.verify = function verify(message, long) {
+                    if (typeof message !== "object" || message === null)
+                        return "object expected";
+                    if (long === undefined)
+                        long = 0;
+                    if (long > $util.recursionLimit)
+                        return "maximum nesting depth exceeded";
+                    if (message.id != null && message.hasOwnProperty("id"))
+                        if (!$util.isString(message.id))
+                            return "id: string expected";
+                    if (message.data != null && message.hasOwnProperty("data"))
+                        if (!(message.data && typeof message.data.length === "number" || $util.isString(message.data)))
+                            return "data: buffer expected";
+                    if (message.data_b64 != null && message.hasOwnProperty("data_b64"))
+                        if (!$util.isString(message.data_b64))
+                            return "data_b64: string expected";
+                    return null;
+                };
+
+                /**
+                 * Gets the default type url for Dictionary
+                 * @function getTypeUrl
+                 * @memberof centrifugal.centrifuge.protocol.Dictionary
+                 * @static
+                 * @param {string} [typeUrlPrefix] your custom typeUrlPrefix(default "type.googleapis.com")
+                 * @returns {string} The default type url
+                 */
+                Dictionary.getTypeUrl = function getTypeUrl(typeUrlPrefix) {
+                    if (typeUrlPrefix === undefined) {
+                        typeUrlPrefix = "type.googleapis.com";
+                    }
+                    return typeUrlPrefix + "/centrifugal.centrifuge.protocol.Dictionary";
+                };
+
+                return Dictionary;
             })();
 
             protocol.ClientInfo = (function() {
@@ -1542,7 +1781,7 @@ export const centrifugal = $root.centrifugal = (() => {
                 function ClientInfo(properties) {
                     if (properties)
                         for (let keys = Object.keys(properties), i = 0; i < keys.length; ++i)
-                            if (properties[keys[i]] != null)
+                            if (properties[keys[i]] != null && keys[i] !== "__proto__")
                                 this[keys[i]] = properties[keys[i]];
                 }
 
@@ -1625,12 +1864,18 @@ export const centrifugal = $root.centrifugal = (() => {
                  * @throws {Error} If the payload is not a reader or valid buffer
                  * @throws {$protobuf.util.ProtocolError} If required fields are missing
                  */
-                ClientInfo.decode = function decode(reader, length) {
+                ClientInfo.decode = function decode(reader, length, error, long) {
                     if (!(reader instanceof $Reader))
                         reader = $Reader.create(reader);
+                    if (long === undefined)
+                        long = 0;
+                    if (long > $Reader.recursionLimit)
+                        throw Error("maximum nesting depth exceeded");
                     let end = length === undefined ? reader.len : reader.pos + length, message = new $root.centrifugal.centrifuge.protocol.ClientInfo();
                     while (reader.pos < end) {
                         let tag = reader.uint32();
+                        if (tag === error)
+                            break;
                         switch (tag >>> 3) {
                         case 1: {
                                 message.user = reader.string();
@@ -1649,7 +1894,7 @@ export const centrifugal = $root.centrifugal = (() => {
                                 break;
                             }
                         default:
-                            reader.skipType(tag & 7);
+                            reader.skipType(tag & 7, long);
                             break;
                         }
                     }
@@ -1680,9 +1925,13 @@ export const centrifugal = $root.centrifugal = (() => {
                  * @param {Object.<string,*>} message Plain object to verify
                  * @returns {string|null} `null` if valid, otherwise the reason why it is not
                  */
-                ClientInfo.verify = function verify(message) {
+                ClientInfo.verify = function verify(message, long) {
                     if (typeof message !== "object" || message === null)
                         return "object expected";
+                    if (long === undefined)
+                        long = 0;
+                    if (long > $util.recursionLimit)
+                        return "maximum nesting depth exceeded";
                     if (message.user != null && message.hasOwnProperty("user"))
                         if (!$util.isString(message.user))
                             return "user: string expected";
@@ -1749,7 +1998,7 @@ export const centrifugal = $root.centrifugal = (() => {
                     this.tags = {};
                     if (properties)
                         for (let keys = Object.keys(properties), i = 0; i < keys.length; ++i)
-                            if (properties[keys[i]] != null)
+                            if (properties[keys[i]] != null && keys[i] !== "__proto__")
                                 this[keys[i]] = properties[keys[i]];
                 }
 
@@ -1923,19 +2172,25 @@ export const centrifugal = $root.centrifugal = (() => {
                  * @throws {Error} If the payload is not a reader or valid buffer
                  * @throws {$protobuf.util.ProtocolError} If required fields are missing
                  */
-                Publication.decode = function decode(reader, length) {
+                Publication.decode = function decode(reader, length, error, long) {
                     if (!(reader instanceof $Reader))
                         reader = $Reader.create(reader);
+                    if (long === undefined)
+                        long = 0;
+                    if (long > $Reader.recursionLimit)
+                        throw Error("maximum nesting depth exceeded");
                     let end = length === undefined ? reader.len : reader.pos + length, message = new $root.centrifugal.centrifuge.protocol.Publication(), key, value;
                     while (reader.pos < end) {
                         let tag = reader.uint32();
+                        if (tag === error)
+                            break;
                         switch (tag >>> 3) {
                         case 4: {
                                 message.data = reader.bytes();
                                 break;
                             }
                         case 5: {
-                                message.info = $root.centrifugal.centrifuge.protocol.ClientInfo.decode(reader, reader.uint32());
+                                message.info = $root.centrifugal.centrifuge.protocol.ClientInfo.decode(reader, reader.uint32(), undefined, long + 1);
                                 break;
                             }
                         case 6: {
@@ -1958,10 +2213,12 @@ export const centrifugal = $root.centrifugal = (() => {
                                         value = reader.string();
                                         break;
                                     default:
-                                        reader.skipType(tag2 & 7);
+                                        reader.skipType(tag2 & 7, long);
                                         break;
                                     }
                                 }
+                                if (key === "__proto__")
+                                    $util.makeProp(message.tags, key);
                                 message.tags[key] = value;
                                 break;
                             }
@@ -2002,7 +2259,7 @@ export const centrifugal = $root.centrifugal = (() => {
                                 break;
                             }
                         default:
-                            reader.skipType(tag & 7);
+                            reader.skipType(tag & 7, long);
                             break;
                         }
                     }
@@ -2033,14 +2290,18 @@ export const centrifugal = $root.centrifugal = (() => {
                  * @param {Object.<string,*>} message Plain object to verify
                  * @returns {string|null} `null` if valid, otherwise the reason why it is not
                  */
-                Publication.verify = function verify(message) {
+                Publication.verify = function verify(message, long) {
                     if (typeof message !== "object" || message === null)
                         return "object expected";
+                    if (long === undefined)
+                        long = 0;
+                    if (long > $util.recursionLimit)
+                        return "maximum nesting depth exceeded";
                     if (message.data != null && message.hasOwnProperty("data"))
                         if (!(message.data && typeof message.data.length === "number" || $util.isString(message.data)))
                             return "data: buffer expected";
                     if (message.info != null && message.hasOwnProperty("info")) {
-                        let error = $root.centrifugal.centrifuge.protocol.ClientInfo.verify(message.info);
+                        let error = $root.centrifugal.centrifuge.protocol.ClientInfo.verify(message.info, long + 1);
                         if (error)
                             return "info." + error;
                     }
@@ -2123,7 +2384,7 @@ export const centrifugal = $root.centrifugal = (() => {
                 function Join(properties) {
                     if (properties)
                         for (let keys = Object.keys(properties), i = 0; i < keys.length; ++i)
-                            if (properties[keys[i]] != null)
+                            if (properties[keys[i]] != null && keys[i] !== "__proto__")
                                 this[keys[i]] = properties[keys[i]];
                 }
 
@@ -2176,19 +2437,25 @@ export const centrifugal = $root.centrifugal = (() => {
                  * @throws {Error} If the payload is not a reader or valid buffer
                  * @throws {$protobuf.util.ProtocolError} If required fields are missing
                  */
-                Join.decode = function decode(reader, length) {
+                Join.decode = function decode(reader, length, error, long) {
                     if (!(reader instanceof $Reader))
                         reader = $Reader.create(reader);
+                    if (long === undefined)
+                        long = 0;
+                    if (long > $Reader.recursionLimit)
+                        throw Error("maximum nesting depth exceeded");
                     let end = length === undefined ? reader.len : reader.pos + length, message = new $root.centrifugal.centrifuge.protocol.Join();
                     while (reader.pos < end) {
                         let tag = reader.uint32();
+                        if (tag === error)
+                            break;
                         switch (tag >>> 3) {
                         case 1: {
-                                message.info = $root.centrifugal.centrifuge.protocol.ClientInfo.decode(reader, reader.uint32());
+                                message.info = $root.centrifugal.centrifuge.protocol.ClientInfo.decode(reader, reader.uint32(), undefined, long + 1);
                                 break;
                             }
                         default:
-                            reader.skipType(tag & 7);
+                            reader.skipType(tag & 7, long);
                             break;
                         }
                     }
@@ -2219,11 +2486,15 @@ export const centrifugal = $root.centrifugal = (() => {
                  * @param {Object.<string,*>} message Plain object to verify
                  * @returns {string|null} `null` if valid, otherwise the reason why it is not
                  */
-                Join.verify = function verify(message) {
+                Join.verify = function verify(message, long) {
                     if (typeof message !== "object" || message === null)
                         return "object expected";
+                    if (long === undefined)
+                        long = 0;
+                    if (long > $util.recursionLimit)
+                        return "maximum nesting depth exceeded";
                     if (message.info != null && message.hasOwnProperty("info")) {
-                        let error = $root.centrifugal.centrifuge.protocol.ClientInfo.verify(message.info);
+                        let error = $root.centrifugal.centrifuge.protocol.ClientInfo.verify(message.info, long + 1);
                         if (error)
                             return "info." + error;
                     }
@@ -2268,7 +2539,7 @@ export const centrifugal = $root.centrifugal = (() => {
                 function Leave(properties) {
                     if (properties)
                         for (let keys = Object.keys(properties), i = 0; i < keys.length; ++i)
-                            if (properties[keys[i]] != null)
+                            if (properties[keys[i]] != null && keys[i] !== "__proto__")
                                 this[keys[i]] = properties[keys[i]];
                 }
 
@@ -2321,19 +2592,25 @@ export const centrifugal = $root.centrifugal = (() => {
                  * @throws {Error} If the payload is not a reader or valid buffer
                  * @throws {$protobuf.util.ProtocolError} If required fields are missing
                  */
-                Leave.decode = function decode(reader, length) {
+                Leave.decode = function decode(reader, length, error, long) {
                     if (!(reader instanceof $Reader))
                         reader = $Reader.create(reader);
+                    if (long === undefined)
+                        long = 0;
+                    if (long > $Reader.recursionLimit)
+                        throw Error("maximum nesting depth exceeded");
                     let end = length === undefined ? reader.len : reader.pos + length, message = new $root.centrifugal.centrifuge.protocol.Leave();
                     while (reader.pos < end) {
                         let tag = reader.uint32();
+                        if (tag === error)
+                            break;
                         switch (tag >>> 3) {
                         case 1: {
-                                message.info = $root.centrifugal.centrifuge.protocol.ClientInfo.decode(reader, reader.uint32());
+                                message.info = $root.centrifugal.centrifuge.protocol.ClientInfo.decode(reader, reader.uint32(), undefined, long + 1);
                                 break;
                             }
                         default:
-                            reader.skipType(tag & 7);
+                            reader.skipType(tag & 7, long);
                             break;
                         }
                     }
@@ -2364,11 +2641,15 @@ export const centrifugal = $root.centrifugal = (() => {
                  * @param {Object.<string,*>} message Plain object to verify
                  * @returns {string|null} `null` if valid, otherwise the reason why it is not
                  */
-                Leave.verify = function verify(message) {
+                Leave.verify = function verify(message, long) {
                     if (typeof message !== "object" || message === null)
                         return "object expected";
+                    if (long === undefined)
+                        long = 0;
+                    if (long > $util.recursionLimit)
+                        return "maximum nesting depth exceeded";
                     if (message.info != null && message.hasOwnProperty("info")) {
-                        let error = $root.centrifugal.centrifuge.protocol.ClientInfo.verify(message.info);
+                        let error = $root.centrifugal.centrifuge.protocol.ClientInfo.verify(message.info, long + 1);
                         if (error)
                             return "info." + error;
                     }
@@ -2414,7 +2695,7 @@ export const centrifugal = $root.centrifugal = (() => {
                 function Unsubscribe(properties) {
                     if (properties)
                         for (let keys = Object.keys(properties), i = 0; i < keys.length; ++i)
-                            if (properties[keys[i]] != null)
+                            if (properties[keys[i]] != null && keys[i] !== "__proto__")
                                 this[keys[i]] = properties[keys[i]];
                 }
 
@@ -2477,12 +2758,18 @@ export const centrifugal = $root.centrifugal = (() => {
                  * @throws {Error} If the payload is not a reader or valid buffer
                  * @throws {$protobuf.util.ProtocolError} If required fields are missing
                  */
-                Unsubscribe.decode = function decode(reader, length) {
+                Unsubscribe.decode = function decode(reader, length, error, long) {
                     if (!(reader instanceof $Reader))
                         reader = $Reader.create(reader);
+                    if (long === undefined)
+                        long = 0;
+                    if (long > $Reader.recursionLimit)
+                        throw Error("maximum nesting depth exceeded");
                     let end = length === undefined ? reader.len : reader.pos + length, message = new $root.centrifugal.centrifuge.protocol.Unsubscribe();
                     while (reader.pos < end) {
                         let tag = reader.uint32();
+                        if (tag === error)
+                            break;
                         switch (tag >>> 3) {
                         case 2: {
                                 message.code = reader.uint32();
@@ -2493,7 +2780,7 @@ export const centrifugal = $root.centrifugal = (() => {
                                 break;
                             }
                         default:
-                            reader.skipType(tag & 7);
+                            reader.skipType(tag & 7, long);
                             break;
                         }
                     }
@@ -2524,9 +2811,13 @@ export const centrifugal = $root.centrifugal = (() => {
                  * @param {Object.<string,*>} message Plain object to verify
                  * @returns {string|null} `null` if valid, otherwise the reason why it is not
                  */
-                Unsubscribe.verify = function verify(message) {
+                Unsubscribe.verify = function verify(message, long) {
                     if (typeof message !== "object" || message === null)
                         return "object expected";
+                    if (long === undefined)
+                        long = 0;
+                    if (long > $util.recursionLimit)
+                        return "maximum nesting depth exceeded";
                     if (message.code != null && message.hasOwnProperty("code"))
                         if (!$util.isInteger(message.code))
                             return "code: integer expected";
@@ -2578,7 +2869,7 @@ export const centrifugal = $root.centrifugal = (() => {
                 function Subscribe(properties) {
                     if (properties)
                         for (let keys = Object.keys(properties), i = 0; i < keys.length; ++i)
-                            if (properties[keys[i]] != null)
+                            if (properties[keys[i]] != null && keys[i] !== "__proto__")
                                 this[keys[i]] = properties[keys[i]];
                 }
 
@@ -2671,12 +2962,18 @@ export const centrifugal = $root.centrifugal = (() => {
                  * @throws {Error} If the payload is not a reader or valid buffer
                  * @throws {$protobuf.util.ProtocolError} If required fields are missing
                  */
-                Subscribe.decode = function decode(reader, length) {
+                Subscribe.decode = function decode(reader, length, error, long) {
                     if (!(reader instanceof $Reader))
                         reader = $Reader.create(reader);
+                    if (long === undefined)
+                        long = 0;
+                    if (long > $Reader.recursionLimit)
+                        throw Error("maximum nesting depth exceeded");
                     let end = length === undefined ? reader.len : reader.pos + length, message = new $root.centrifugal.centrifuge.protocol.Subscribe();
                     while (reader.pos < end) {
                         let tag = reader.uint32();
+                        if (tag === error)
+                            break;
                         switch (tag >>> 3) {
                         case 1: {
                                 message.recoverable = reader.bool();
@@ -2699,7 +2996,7 @@ export const centrifugal = $root.centrifugal = (() => {
                                 break;
                             }
                         default:
-                            reader.skipType(tag & 7);
+                            reader.skipType(tag & 7, long);
                             break;
                         }
                     }
@@ -2730,9 +3027,13 @@ export const centrifugal = $root.centrifugal = (() => {
                  * @param {Object.<string,*>} message Plain object to verify
                  * @returns {string|null} `null` if valid, otherwise the reason why it is not
                  */
-                Subscribe.verify = function verify(message) {
+                Subscribe.verify = function verify(message, long) {
                     if (typeof message !== "object" || message === null)
                         return "object expected";
+                    if (long === undefined)
+                        long = 0;
+                    if (long > $util.recursionLimit)
+                        return "maximum nesting depth exceeded";
                     if (message.recoverable != null && message.hasOwnProperty("recoverable"))
                         if (typeof message.recoverable !== "boolean")
                             return "recoverable: boolean expected";
@@ -2789,7 +3090,7 @@ export const centrifugal = $root.centrifugal = (() => {
                 function Message(properties) {
                     if (properties)
                         for (let keys = Object.keys(properties), i = 0; i < keys.length; ++i)
-                            if (properties[keys[i]] != null)
+                            if (properties[keys[i]] != null && keys[i] !== "__proto__")
                                 this[keys[i]] = properties[keys[i]];
                 }
 
@@ -2842,19 +3143,25 @@ export const centrifugal = $root.centrifugal = (() => {
                  * @throws {Error} If the payload is not a reader or valid buffer
                  * @throws {$protobuf.util.ProtocolError} If required fields are missing
                  */
-                Message.decode = function decode(reader, length) {
+                Message.decode = function decode(reader, length, error, long) {
                     if (!(reader instanceof $Reader))
                         reader = $Reader.create(reader);
+                    if (long === undefined)
+                        long = 0;
+                    if (long > $Reader.recursionLimit)
+                        throw Error("maximum nesting depth exceeded");
                     let end = length === undefined ? reader.len : reader.pos + length, message = new $root.centrifugal.centrifuge.protocol.Message();
                     while (reader.pos < end) {
                         let tag = reader.uint32();
+                        if (tag === error)
+                            break;
                         switch (tag >>> 3) {
                         case 1: {
                                 message.data = reader.bytes();
                                 break;
                             }
                         default:
-                            reader.skipType(tag & 7);
+                            reader.skipType(tag & 7, long);
                             break;
                         }
                     }
@@ -2885,9 +3192,13 @@ export const centrifugal = $root.centrifugal = (() => {
                  * @param {Object.<string,*>} message Plain object to verify
                  * @returns {string|null} `null` if valid, otherwise the reason why it is not
                  */
-                Message.verify = function verify(message) {
+                Message.verify = function verify(message, long) {
                     if (typeof message !== "object" || message === null)
                         return "object expected";
+                    if (long === undefined)
+                        long = 0;
+                    if (long > $util.recursionLimit)
+                        return "maximum nesting depth exceeded";
                     if (message.data != null && message.hasOwnProperty("data"))
                         if (!(message.data && typeof message.data.length === "number" || $util.isString(message.data)))
                             return "data: buffer expected";
@@ -2943,7 +3254,7 @@ export const centrifugal = $root.centrifugal = (() => {
                     this.subs = {};
                     if (properties)
                         for (let keys = Object.keys(properties), i = 0; i < keys.length; ++i)
-                            if (properties[keys[i]] != null)
+                            if (properties[keys[i]] != null && keys[i] !== "__proto__")
                                 this[keys[i]] = properties[keys[i]];
                 }
 
@@ -3099,12 +3410,18 @@ export const centrifugal = $root.centrifugal = (() => {
                  * @throws {Error} If the payload is not a reader or valid buffer
                  * @throws {$protobuf.util.ProtocolError} If required fields are missing
                  */
-                Connect.decode = function decode(reader, length) {
+                Connect.decode = function decode(reader, length, error, long) {
                     if (!(reader instanceof $Reader))
                         reader = $Reader.create(reader);
+                    if (long === undefined)
+                        long = 0;
+                    if (long > $Reader.recursionLimit)
+                        throw Error("maximum nesting depth exceeded");
                     let end = length === undefined ? reader.len : reader.pos + length, message = new $root.centrifugal.centrifuge.protocol.Connect(), key, value;
                     while (reader.pos < end) {
                         let tag = reader.uint32();
+                        if (tag === error)
+                            break;
                         switch (tag >>> 3) {
                         case 1: {
                                 message.client = reader.string();
@@ -3131,13 +3448,15 @@ export const centrifugal = $root.centrifugal = (() => {
                                         key = reader.string();
                                         break;
                                     case 2:
-                                        value = $root.centrifugal.centrifuge.protocol.SubscribeResult.decode(reader, reader.uint32());
+                                        value = $root.centrifugal.centrifuge.protocol.SubscribeResult.decode(reader, reader.uint32(), undefined, long + 1);
                                         break;
                                     default:
-                                        reader.skipType(tag2 & 7);
+                                        reader.skipType(tag2 & 7, long);
                                         break;
                                     }
                                 }
+                                if (key === "__proto__")
+                                    $util.makeProp(message.subs, key);
                                 message.subs[key] = value;
                                 break;
                             }
@@ -3170,7 +3489,7 @@ export const centrifugal = $root.centrifugal = (() => {
                                 break;
                             }
                         default:
-                            reader.skipType(tag & 7);
+                            reader.skipType(tag & 7, long);
                             break;
                         }
                     }
@@ -3201,9 +3520,13 @@ export const centrifugal = $root.centrifugal = (() => {
                  * @param {Object.<string,*>} message Plain object to verify
                  * @returns {string|null} `null` if valid, otherwise the reason why it is not
                  */
-                Connect.verify = function verify(message) {
+                Connect.verify = function verify(message, long) {
                     if (typeof message !== "object" || message === null)
                         return "object expected";
+                    if (long === undefined)
+                        long = 0;
+                    if (long > $util.recursionLimit)
+                        return "maximum nesting depth exceeded";
                     if (message.client != null && message.hasOwnProperty("client"))
                         if (!$util.isString(message.client))
                             return "client: string expected";
@@ -3218,7 +3541,7 @@ export const centrifugal = $root.centrifugal = (() => {
                             return "subs: object expected";
                         let key = Object.keys(message.subs);
                         for (let i = 0; i < key.length; ++i) {
-                            let error = $root.centrifugal.centrifuge.protocol.SubscribeResult.verify(message.subs[key[i]]);
+                            let error = $root.centrifugal.centrifuge.protocol.SubscribeResult.verify(message.subs[key[i]], long + 1);
                             if (error)
                                 return "subs." + error;
                         }
@@ -3287,7 +3610,7 @@ export const centrifugal = $root.centrifugal = (() => {
                 function Disconnect(properties) {
                     if (properties)
                         for (let keys = Object.keys(properties), i = 0; i < keys.length; ++i)
-                            if (properties[keys[i]] != null)
+                            if (properties[keys[i]] != null && keys[i] !== "__proto__")
                                 this[keys[i]] = properties[keys[i]];
                 }
 
@@ -3360,12 +3683,18 @@ export const centrifugal = $root.centrifugal = (() => {
                  * @throws {Error} If the payload is not a reader or valid buffer
                  * @throws {$protobuf.util.ProtocolError} If required fields are missing
                  */
-                Disconnect.decode = function decode(reader, length) {
+                Disconnect.decode = function decode(reader, length, error, long) {
                     if (!(reader instanceof $Reader))
                         reader = $Reader.create(reader);
+                    if (long === undefined)
+                        long = 0;
+                    if (long > $Reader.recursionLimit)
+                        throw Error("maximum nesting depth exceeded");
                     let end = length === undefined ? reader.len : reader.pos + length, message = new $root.centrifugal.centrifuge.protocol.Disconnect();
                     while (reader.pos < end) {
                         let tag = reader.uint32();
+                        if (tag === error)
+                            break;
                         switch (tag >>> 3) {
                         case 1: {
                                 message.code = reader.uint32();
@@ -3380,7 +3709,7 @@ export const centrifugal = $root.centrifugal = (() => {
                                 break;
                             }
                         default:
-                            reader.skipType(tag & 7);
+                            reader.skipType(tag & 7, long);
                             break;
                         }
                     }
@@ -3411,9 +3740,13 @@ export const centrifugal = $root.centrifugal = (() => {
                  * @param {Object.<string,*>} message Plain object to verify
                  * @returns {string|null} `null` if valid, otherwise the reason why it is not
                  */
-                Disconnect.verify = function verify(message) {
+                Disconnect.verify = function verify(message, long) {
                     if (typeof message !== "object" || message === null)
                         return "object expected";
+                    if (long === undefined)
+                        long = 0;
+                    if (long > $util.recursionLimit)
+                        return "maximum nesting depth exceeded";
                     if (message.code != null && message.hasOwnProperty("code"))
                         if (!$util.isInteger(message.code))
                             return "code: integer expected";
@@ -3465,7 +3798,7 @@ export const centrifugal = $root.centrifugal = (() => {
                 function Refresh(properties) {
                     if (properties)
                         for (let keys = Object.keys(properties), i = 0; i < keys.length; ++i)
-                            if (properties[keys[i]] != null)
+                            if (properties[keys[i]] != null && keys[i] !== "__proto__")
                                 this[keys[i]] = properties[keys[i]];
                 }
 
@@ -3528,12 +3861,18 @@ export const centrifugal = $root.centrifugal = (() => {
                  * @throws {Error} If the payload is not a reader or valid buffer
                  * @throws {$protobuf.util.ProtocolError} If required fields are missing
                  */
-                Refresh.decode = function decode(reader, length) {
+                Refresh.decode = function decode(reader, length, error, long) {
                     if (!(reader instanceof $Reader))
                         reader = $Reader.create(reader);
+                    if (long === undefined)
+                        long = 0;
+                    if (long > $Reader.recursionLimit)
+                        throw Error("maximum nesting depth exceeded");
                     let end = length === undefined ? reader.len : reader.pos + length, message = new $root.centrifugal.centrifuge.protocol.Refresh();
                     while (reader.pos < end) {
                         let tag = reader.uint32();
+                        if (tag === error)
+                            break;
                         switch (tag >>> 3) {
                         case 1: {
                                 message.expires = reader.bool();
@@ -3544,7 +3883,7 @@ export const centrifugal = $root.centrifugal = (() => {
                                 break;
                             }
                         default:
-                            reader.skipType(tag & 7);
+                            reader.skipType(tag & 7, long);
                             break;
                         }
                     }
@@ -3575,9 +3914,13 @@ export const centrifugal = $root.centrifugal = (() => {
                  * @param {Object.<string,*>} message Plain object to verify
                  * @returns {string|null} `null` if valid, otherwise the reason why it is not
                  */
-                Refresh.verify = function verify(message) {
+                Refresh.verify = function verify(message, long) {
                     if (typeof message !== "object" || message === null)
                         return "object expected";
+                    if (long === undefined)
+                        long = 0;
+                    if (long > $util.recursionLimit)
+                        return "maximum nesting depth exceeded";
                     if (message.expires != null && message.hasOwnProperty("expires"))
                         if (typeof message.expires !== "boolean")
                             return "expires: boolean expected";
@@ -3618,6 +3961,8 @@ export const centrifugal = $root.centrifugal = (() => {
                  * @property {string|null} [version] ConnectRequest version
                  * @property {Object.<string,string>|null} [headers] ConnectRequest headers
                  * @property {number|Long|null} [flag] ConnectRequest flag
+                 * @property {string|null} [profile] ConnectRequest profile
+                 * @property {string|null} [dict] ConnectRequest dict
                  */
 
                 /**
@@ -3633,7 +3978,7 @@ export const centrifugal = $root.centrifugal = (() => {
                     this.headers = {};
                     if (properties)
                         for (let keys = Object.keys(properties), i = 0; i < keys.length; ++i)
-                            if (properties[keys[i]] != null)
+                            if (properties[keys[i]] != null && keys[i] !== "__proto__")
                                 this[keys[i]] = properties[keys[i]];
                 }
 
@@ -3694,6 +4039,22 @@ export const centrifugal = $root.centrifugal = (() => {
                 ConnectRequest.prototype.flag = $util.Long ? $util.Long.fromBits(0,0,false) : 0;
 
                 /**
+                 * ConnectRequest profile.
+                 * @member {string} profile
+                 * @memberof centrifugal.centrifuge.protocol.ConnectRequest
+                 * @instance
+                 */
+                ConnectRequest.prototype.profile = "";
+
+                /**
+                 * ConnectRequest dict.
+                 * @member {string} dict
+                 * @memberof centrifugal.centrifuge.protocol.ConnectRequest
+                 * @instance
+                 */
+                ConnectRequest.prototype.dict = "";
+
+                /**
                  * Encodes the specified ConnectRequest message. Does not implicitly {@link centrifugal.centrifuge.protocol.ConnectRequest.verify|verify} messages.
                  * @function encode
                  * @memberof centrifugal.centrifuge.protocol.ConnectRequest
@@ -3723,6 +4084,10 @@ export const centrifugal = $root.centrifugal = (() => {
                             writer.uint32(/* id 6, wireType 2 =*/50).fork().uint32(/* id 1, wireType 2 =*/10).string(keys[i]).uint32(/* id 2, wireType 2 =*/18).string(message.headers[keys[i]]).ldelim();
                     if (message.flag != null && Object.hasOwnProperty.call(message, "flag"))
                         writer.uint32(/* id 7, wireType 0 =*/56).int64(message.flag);
+                    if (message.dict != null && Object.hasOwnProperty.call(message, "dict"))
+                        writer.uint32(/* id 8, wireType 2 =*/66).string(message.dict);
+                    if (message.profile != null && Object.hasOwnProperty.call(message, "profile"))
+                        writer.uint32(/* id 9, wireType 2 =*/74).string(message.profile);
                     return writer;
                 };
 
@@ -3750,12 +4115,18 @@ export const centrifugal = $root.centrifugal = (() => {
                  * @throws {Error} If the payload is not a reader or valid buffer
                  * @throws {$protobuf.util.ProtocolError} If required fields are missing
                  */
-                ConnectRequest.decode = function decode(reader, length) {
+                ConnectRequest.decode = function decode(reader, length, error, long) {
                     if (!(reader instanceof $Reader))
                         reader = $Reader.create(reader);
+                    if (long === undefined)
+                        long = 0;
+                    if (long > $Reader.recursionLimit)
+                        throw Error("maximum nesting depth exceeded");
                     let end = length === undefined ? reader.len : reader.pos + length, message = new $root.centrifugal.centrifuge.protocol.ConnectRequest(), key, value;
                     while (reader.pos < end) {
                         let tag = reader.uint32();
+                        if (tag === error)
+                            break;
                         switch (tag >>> 3) {
                         case 1: {
                                 message.token = reader.string();
@@ -3778,13 +4149,15 @@ export const centrifugal = $root.centrifugal = (() => {
                                         key = reader.string();
                                         break;
                                     case 2:
-                                        value = $root.centrifugal.centrifuge.protocol.SubscribeRequest.decode(reader, reader.uint32());
+                                        value = $root.centrifugal.centrifuge.protocol.SubscribeRequest.decode(reader, reader.uint32(), undefined, long + 1);
                                         break;
                                     default:
-                                        reader.skipType(tag2 & 7);
+                                        reader.skipType(tag2 & 7, long);
                                         break;
                                     }
                                 }
+                                if (key === "__proto__")
+                                    $util.makeProp(message.subs, key);
                                 message.subs[key] = value;
                                 break;
                             }
@@ -3812,10 +4185,12 @@ export const centrifugal = $root.centrifugal = (() => {
                                         value = reader.string();
                                         break;
                                     default:
-                                        reader.skipType(tag2 & 7);
+                                        reader.skipType(tag2 & 7, long);
                                         break;
                                     }
                                 }
+                                if (key === "__proto__")
+                                    $util.makeProp(message.headers, key);
                                 message.headers[key] = value;
                                 break;
                             }
@@ -3823,8 +4198,16 @@ export const centrifugal = $root.centrifugal = (() => {
                                 message.flag = reader.int64();
                                 break;
                             }
+                        case 9: {
+                                message.profile = reader.string();
+                                break;
+                            }
+                        case 8: {
+                                message.dict = reader.string();
+                                break;
+                            }
                         default:
-                            reader.skipType(tag & 7);
+                            reader.skipType(tag & 7, long);
                             break;
                         }
                     }
@@ -3855,9 +4238,13 @@ export const centrifugal = $root.centrifugal = (() => {
                  * @param {Object.<string,*>} message Plain object to verify
                  * @returns {string|null} `null` if valid, otherwise the reason why it is not
                  */
-                ConnectRequest.verify = function verify(message) {
+                ConnectRequest.verify = function verify(message, long) {
                     if (typeof message !== "object" || message === null)
                         return "object expected";
+                    if (long === undefined)
+                        long = 0;
+                    if (long > $util.recursionLimit)
+                        return "maximum nesting depth exceeded";
                     if (message.token != null && message.hasOwnProperty("token"))
                         if (!$util.isString(message.token))
                             return "token: string expected";
@@ -3869,7 +4256,7 @@ export const centrifugal = $root.centrifugal = (() => {
                             return "subs: object expected";
                         let key = Object.keys(message.subs);
                         for (let i = 0; i < key.length; ++i) {
-                            let error = $root.centrifugal.centrifuge.protocol.SubscribeRequest.verify(message.subs[key[i]]);
+                            let error = $root.centrifugal.centrifuge.protocol.SubscribeRequest.verify(message.subs[key[i]], long + 1);
                             if (error)
                                 return "subs." + error;
                         }
@@ -3891,6 +4278,12 @@ export const centrifugal = $root.centrifugal = (() => {
                     if (message.flag != null && message.hasOwnProperty("flag"))
                         if (!$util.isInteger(message.flag) && !(message.flag && $util.isInteger(message.flag.low) && $util.isInteger(message.flag.high)))
                             return "flag: integer|Long expected";
+                    if (message.profile != null && message.hasOwnProperty("profile"))
+                        if (!$util.isString(message.profile))
+                            return "profile: string expected";
+                    if (message.dict != null && message.hasOwnProperty("dict"))
+                        if (!$util.isString(message.dict))
+                            return "dict: string expected";
                     return null;
                 };
 
@@ -3929,6 +4322,8 @@ export const centrifugal = $root.centrifugal = (() => {
                  * @property {string|null} [session] ConnectResult session
                  * @property {string|null} [node] ConnectResult node
                  * @property {number|Long|null} [time] ConnectResult time
+                 * @property {number|Long|null} [flag] ConnectResult flag
+                 * @property {centrifugal.centrifuge.protocol.IDictionary|null} [dict] ConnectResult dict
                  */
 
                 /**
@@ -3943,7 +4338,7 @@ export const centrifugal = $root.centrifugal = (() => {
                     this.subs = {};
                     if (properties)
                         for (let keys = Object.keys(properties), i = 0; i < keys.length; ++i)
-                            if (properties[keys[i]] != null)
+                            if (properties[keys[i]] != null && keys[i] !== "__proto__")
                                 this[keys[i]] = properties[keys[i]];
                 }
 
@@ -4036,6 +4431,22 @@ export const centrifugal = $root.centrifugal = (() => {
                 ConnectResult.prototype.time = $util.Long ? $util.Long.fromBits(0,0,false) : 0;
 
                 /**
+                 * ConnectResult flag.
+                 * @member {number|Long} flag
+                 * @memberof centrifugal.centrifuge.protocol.ConnectResult
+                 * @instance
+                 */
+                ConnectResult.prototype.flag = $util.Long ? $util.Long.fromBits(0,0,false) : 0;
+
+                /**
+                 * ConnectResult dict.
+                 * @member {centrifugal.centrifuge.protocol.IDictionary|null|undefined} dict
+                 * @memberof centrifugal.centrifuge.protocol.ConnectResult
+                 * @instance
+                 */
+                ConnectResult.prototype.dict = null;
+
+                /**
                  * Encodes the specified ConnectResult message. Does not implicitly {@link centrifugal.centrifuge.protocol.ConnectResult.verify|verify} messages.
                  * @function encode
                  * @memberof centrifugal.centrifuge.protocol.ConnectResult
@@ -4072,6 +4483,10 @@ export const centrifugal = $root.centrifugal = (() => {
                         writer.uint32(/* id 10, wireType 2 =*/82).string(message.node);
                     if (message.time != null && Object.hasOwnProperty.call(message, "time"))
                         writer.uint32(/* id 11, wireType 0 =*/88).int64(message.time);
+                    if (message.flag != null && Object.hasOwnProperty.call(message, "flag"))
+                        writer.uint32(/* id 12, wireType 0 =*/96).int64(message.flag);
+                    if (message.dict != null && Object.hasOwnProperty.call(message, "dict"))
+                        $root.centrifugal.centrifuge.protocol.Dictionary.encode(message.dict, writer.uint32(/* id 13, wireType 2 =*/106).fork()).ldelim();
                     return writer;
                 };
 
@@ -4099,12 +4514,18 @@ export const centrifugal = $root.centrifugal = (() => {
                  * @throws {Error} If the payload is not a reader or valid buffer
                  * @throws {$protobuf.util.ProtocolError} If required fields are missing
                  */
-                ConnectResult.decode = function decode(reader, length) {
+                ConnectResult.decode = function decode(reader, length, error, long) {
                     if (!(reader instanceof $Reader))
                         reader = $Reader.create(reader);
+                    if (long === undefined)
+                        long = 0;
+                    if (long > $Reader.recursionLimit)
+                        throw Error("maximum nesting depth exceeded");
                     let end = length === undefined ? reader.len : reader.pos + length, message = new $root.centrifugal.centrifuge.protocol.ConnectResult(), key, value;
                     while (reader.pos < end) {
                         let tag = reader.uint32();
+                        if (tag === error)
+                            break;
                         switch (tag >>> 3) {
                         case 1: {
                                 message.client = reader.string();
@@ -4139,13 +4560,15 @@ export const centrifugal = $root.centrifugal = (() => {
                                         key = reader.string();
                                         break;
                                     case 2:
-                                        value = $root.centrifugal.centrifuge.protocol.SubscribeResult.decode(reader, reader.uint32());
+                                        value = $root.centrifugal.centrifuge.protocol.SubscribeResult.decode(reader, reader.uint32(), undefined, long + 1);
                                         break;
                                     default:
-                                        reader.skipType(tag2 & 7);
+                                        reader.skipType(tag2 & 7, long);
                                         break;
                                     }
                                 }
+                                if (key === "__proto__")
+                                    $util.makeProp(message.subs, key);
                                 message.subs[key] = value;
                                 break;
                             }
@@ -4169,8 +4592,16 @@ export const centrifugal = $root.centrifugal = (() => {
                                 message.time = reader.int64();
                                 break;
                             }
+                        case 12: {
+                                message.flag = reader.int64();
+                                break;
+                            }
+                        case 13: {
+                                message.dict = $root.centrifugal.centrifuge.protocol.Dictionary.decode(reader, reader.uint32(), undefined, long + 1);
+                                break;
+                            }
                         default:
-                            reader.skipType(tag & 7);
+                            reader.skipType(tag & 7, long);
                             break;
                         }
                     }
@@ -4201,9 +4632,13 @@ export const centrifugal = $root.centrifugal = (() => {
                  * @param {Object.<string,*>} message Plain object to verify
                  * @returns {string|null} `null` if valid, otherwise the reason why it is not
                  */
-                ConnectResult.verify = function verify(message) {
+                ConnectResult.verify = function verify(message, long) {
                     if (typeof message !== "object" || message === null)
                         return "object expected";
+                    if (long === undefined)
+                        long = 0;
+                    if (long > $util.recursionLimit)
+                        return "maximum nesting depth exceeded";
                     if (message.client != null && message.hasOwnProperty("client"))
                         if (!$util.isString(message.client))
                             return "client: string expected";
@@ -4224,7 +4659,7 @@ export const centrifugal = $root.centrifugal = (() => {
                             return "subs: object expected";
                         let key = Object.keys(message.subs);
                         for (let i = 0; i < key.length; ++i) {
-                            let error = $root.centrifugal.centrifuge.protocol.SubscribeResult.verify(message.subs[key[i]]);
+                            let error = $root.centrifugal.centrifuge.protocol.SubscribeResult.verify(message.subs[key[i]], long + 1);
                             if (error)
                                 return "subs." + error;
                         }
@@ -4244,6 +4679,14 @@ export const centrifugal = $root.centrifugal = (() => {
                     if (message.time != null && message.hasOwnProperty("time"))
                         if (!$util.isInteger(message.time) && !(message.time && $util.isInteger(message.time.low) && $util.isInteger(message.time.high)))
                             return "time: integer|Long expected";
+                    if (message.flag != null && message.hasOwnProperty("flag"))
+                        if (!$util.isInteger(message.flag) && !(message.flag && $util.isInteger(message.flag.low) && $util.isInteger(message.flag.high)))
+                            return "flag: integer|Long expected";
+                    if (message.dict != null && message.hasOwnProperty("dict")) {
+                        let error = $root.centrifugal.centrifuge.protocol.Dictionary.verify(message.dict, long + 1);
+                        if (error)
+                            return "dict." + error;
+                    }
                     return null;
                 };
 
@@ -4285,7 +4728,7 @@ export const centrifugal = $root.centrifugal = (() => {
                 function RefreshRequest(properties) {
                     if (properties)
                         for (let keys = Object.keys(properties), i = 0; i < keys.length; ++i)
-                            if (properties[keys[i]] != null)
+                            if (properties[keys[i]] != null && keys[i] !== "__proto__")
                                 this[keys[i]] = properties[keys[i]];
                 }
 
@@ -4338,19 +4781,25 @@ export const centrifugal = $root.centrifugal = (() => {
                  * @throws {Error} If the payload is not a reader or valid buffer
                  * @throws {$protobuf.util.ProtocolError} If required fields are missing
                  */
-                RefreshRequest.decode = function decode(reader, length) {
+                RefreshRequest.decode = function decode(reader, length, error, long) {
                     if (!(reader instanceof $Reader))
                         reader = $Reader.create(reader);
+                    if (long === undefined)
+                        long = 0;
+                    if (long > $Reader.recursionLimit)
+                        throw Error("maximum nesting depth exceeded");
                     let end = length === undefined ? reader.len : reader.pos + length, message = new $root.centrifugal.centrifuge.protocol.RefreshRequest();
                     while (reader.pos < end) {
                         let tag = reader.uint32();
+                        if (tag === error)
+                            break;
                         switch (tag >>> 3) {
                         case 1: {
                                 message.token = reader.string();
                                 break;
                             }
                         default:
-                            reader.skipType(tag & 7);
+                            reader.skipType(tag & 7, long);
                             break;
                         }
                     }
@@ -4381,9 +4830,13 @@ export const centrifugal = $root.centrifugal = (() => {
                  * @param {Object.<string,*>} message Plain object to verify
                  * @returns {string|null} `null` if valid, otherwise the reason why it is not
                  */
-                RefreshRequest.verify = function verify(message) {
+                RefreshRequest.verify = function verify(message, long) {
                     if (typeof message !== "object" || message === null)
                         return "object expected";
+                    if (long === undefined)
+                        long = 0;
+                    if (long > $util.recursionLimit)
+                        return "maximum nesting depth exceeded";
                     if (message.token != null && message.hasOwnProperty("token"))
                         if (!$util.isString(message.token))
                             return "token: string expected";
@@ -4431,7 +4884,7 @@ export const centrifugal = $root.centrifugal = (() => {
                 function RefreshResult(properties) {
                     if (properties)
                         for (let keys = Object.keys(properties), i = 0; i < keys.length; ++i)
-                            if (properties[keys[i]] != null)
+                            if (properties[keys[i]] != null && keys[i] !== "__proto__")
                                 this[keys[i]] = properties[keys[i]];
                 }
 
@@ -4514,12 +4967,18 @@ export const centrifugal = $root.centrifugal = (() => {
                  * @throws {Error} If the payload is not a reader or valid buffer
                  * @throws {$protobuf.util.ProtocolError} If required fields are missing
                  */
-                RefreshResult.decode = function decode(reader, length) {
+                RefreshResult.decode = function decode(reader, length, error, long) {
                     if (!(reader instanceof $Reader))
                         reader = $Reader.create(reader);
+                    if (long === undefined)
+                        long = 0;
+                    if (long > $Reader.recursionLimit)
+                        throw Error("maximum nesting depth exceeded");
                     let end = length === undefined ? reader.len : reader.pos + length, message = new $root.centrifugal.centrifuge.protocol.RefreshResult();
                     while (reader.pos < end) {
                         let tag = reader.uint32();
+                        if (tag === error)
+                            break;
                         switch (tag >>> 3) {
                         case 1: {
                                 message.client = reader.string();
@@ -4538,7 +4997,7 @@ export const centrifugal = $root.centrifugal = (() => {
                                 break;
                             }
                         default:
-                            reader.skipType(tag & 7);
+                            reader.skipType(tag & 7, long);
                             break;
                         }
                     }
@@ -4569,9 +5028,13 @@ export const centrifugal = $root.centrifugal = (() => {
                  * @param {Object.<string,*>} message Plain object to verify
                  * @returns {string|null} `null` if valid, otherwise the reason why it is not
                  */
-                RefreshResult.verify = function verify(message) {
+                RefreshResult.verify = function verify(message, long) {
                     if (typeof message !== "object" || message === null)
                         return "object expected";
+                    if (long === undefined)
+                        long = 0;
+                    if (long > $util.recursionLimit)
+                        return "maximum nesting depth exceeded";
                     if (message.client != null && message.hasOwnProperty("client"))
                         if (!$util.isString(message.client))
                             return "client: string expected";
@@ -4641,7 +5104,7 @@ export const centrifugal = $root.centrifugal = (() => {
                 function SubscribeRequest(properties) {
                     if (properties)
                         for (let keys = Object.keys(properties), i = 0; i < keys.length; ++i)
-                            if (properties[keys[i]] != null)
+                            if (properties[keys[i]] != null && keys[i] !== "__proto__")
                                 this[keys[i]] = properties[keys[i]];
                 }
 
@@ -4854,12 +5317,18 @@ export const centrifugal = $root.centrifugal = (() => {
                  * @throws {Error} If the payload is not a reader or valid buffer
                  * @throws {$protobuf.util.ProtocolError} If required fields are missing
                  */
-                SubscribeRequest.decode = function decode(reader, length) {
+                SubscribeRequest.decode = function decode(reader, length, error, long) {
                     if (!(reader instanceof $Reader))
                         reader = $Reader.create(reader);
+                    if (long === undefined)
+                        long = 0;
+                    if (long > $Reader.recursionLimit)
+                        throw Error("maximum nesting depth exceeded");
                     let end = length === undefined ? reader.len : reader.pos + length, message = new $root.centrifugal.centrifuge.protocol.SubscribeRequest();
                     while (reader.pos < end) {
                         let tag = reader.uint32();
+                        if (tag === error)
+                            break;
                         switch (tag >>> 3) {
                         case 1: {
                                 message.channel = reader.string();
@@ -4902,7 +5371,7 @@ export const centrifugal = $root.centrifugal = (() => {
                                 break;
                             }
                         case 13: {
-                                message.tf = $root.centrifugal.centrifuge.protocol.FilterNode.decode(reader, reader.uint32());
+                                message.tf = $root.centrifugal.centrifuge.protocol.FilterNode.decode(reader, reader.uint32(), undefined, long + 1);
                                 break;
                             }
                         case 14: {
@@ -4930,7 +5399,7 @@ export const centrifugal = $root.centrifugal = (() => {
                                 break;
                             }
                         default:
-                            reader.skipType(tag & 7);
+                            reader.skipType(tag & 7, long);
                             break;
                         }
                     }
@@ -4961,9 +5430,13 @@ export const centrifugal = $root.centrifugal = (() => {
                  * @param {Object.<string,*>} message Plain object to verify
                  * @returns {string|null} `null` if valid, otherwise the reason why it is not
                  */
-                SubscribeRequest.verify = function verify(message) {
+                SubscribeRequest.verify = function verify(message, long) {
                     if (typeof message !== "object" || message === null)
                         return "object expected";
+                    if (long === undefined)
+                        long = 0;
+                    if (long > $util.recursionLimit)
+                        return "maximum nesting depth exceeded";
                     if (message.channel != null && message.hasOwnProperty("channel"))
                         if (!$util.isString(message.channel))
                             return "channel: string expected";
@@ -4995,7 +5468,7 @@ export const centrifugal = $root.centrifugal = (() => {
                         if (!$util.isString(message.delta))
                             return "delta: string expected";
                     if (message.tf != null && message.hasOwnProperty("tf")) {
-                        let error = $root.centrifugal.centrifuge.protocol.FilterNode.verify(message.tf);
+                        let error = $root.centrifugal.centrifuge.protocol.FilterNode.verify(message.tf, long + 1);
                         if (error)
                             return "tf." + error;
                     }
@@ -5076,7 +5549,7 @@ export const centrifugal = $root.centrifugal = (() => {
                     this.state = [];
                     if (properties)
                         for (let keys = Object.keys(properties), i = 0; i < keys.length; ++i)
-                            if (properties[keys[i]] != null)
+                            if (properties[keys[i]] != null && keys[i] !== "__proto__")
                                 this[keys[i]] = properties[keys[i]];
                 }
 
@@ -5291,12 +5764,18 @@ export const centrifugal = $root.centrifugal = (() => {
                  * @throws {Error} If the payload is not a reader or valid buffer
                  * @throws {$protobuf.util.ProtocolError} If required fields are missing
                  */
-                SubscribeResult.decode = function decode(reader, length) {
+                SubscribeResult.decode = function decode(reader, length, error, long) {
                     if (!(reader instanceof $Reader))
                         reader = $Reader.create(reader);
+                    if (long === undefined)
+                        long = 0;
+                    if (long > $Reader.recursionLimit)
+                        throw Error("maximum nesting depth exceeded");
                     let end = length === undefined ? reader.len : reader.pos + length, message = new $root.centrifugal.centrifuge.protocol.SubscribeResult();
                     while (reader.pos < end) {
                         let tag = reader.uint32();
+                        if (tag === error)
+                            break;
                         switch (tag >>> 3) {
                         case 1: {
                                 message.expires = reader.bool();
@@ -5317,7 +5796,7 @@ export const centrifugal = $root.centrifugal = (() => {
                         case 7: {
                                 if (!(message.publications && message.publications.length))
                                     message.publications = [];
-                                message.publications.push($root.centrifugal.centrifuge.protocol.Publication.decode(reader, reader.uint32()));
+                                message.publications.push($root.centrifugal.centrifuge.protocol.Publication.decode(reader, reader.uint32(), undefined, long + 1));
                                 break;
                             }
                         case 8: {
@@ -5363,7 +5842,7 @@ export const centrifugal = $root.centrifugal = (() => {
                         case 18: {
                                 if (!(message.state && message.state.length))
                                     message.state = [];
-                                message.state.push($root.centrifugal.centrifuge.protocol.Publication.decode(reader, reader.uint32()));
+                                message.state.push($root.centrifugal.centrifuge.protocol.Publication.decode(reader, reader.uint32(), undefined, long + 1));
                                 break;
                             }
                         case 19: {
@@ -5371,7 +5850,7 @@ export const centrifugal = $root.centrifugal = (() => {
                                 break;
                             }
                         default:
-                            reader.skipType(tag & 7);
+                            reader.skipType(tag & 7, long);
                             break;
                         }
                     }
@@ -5402,9 +5881,13 @@ export const centrifugal = $root.centrifugal = (() => {
                  * @param {Object.<string,*>} message Plain object to verify
                  * @returns {string|null} `null` if valid, otherwise the reason why it is not
                  */
-                SubscribeResult.verify = function verify(message) {
+                SubscribeResult.verify = function verify(message, long) {
                     if (typeof message !== "object" || message === null)
                         return "object expected";
+                    if (long === undefined)
+                        long = 0;
+                    if (long > $util.recursionLimit)
+                        return "maximum nesting depth exceeded";
                     if (message.expires != null && message.hasOwnProperty("expires"))
                         if (typeof message.expires !== "boolean")
                             return "expires: boolean expected";
@@ -5421,7 +5904,7 @@ export const centrifugal = $root.centrifugal = (() => {
                         if (!Array.isArray(message.publications))
                             return "publications: array expected";
                         for (let i = 0; i < message.publications.length; ++i) {
-                            let error = $root.centrifugal.centrifuge.protocol.Publication.verify(message.publications[i]);
+                            let error = $root.centrifugal.centrifuge.protocol.Publication.verify(message.publications[i], long + 1);
                             if (error)
                                 return "publications." + error;
                         }
@@ -5460,7 +5943,7 @@ export const centrifugal = $root.centrifugal = (() => {
                         if (!Array.isArray(message.state))
                             return "state: array expected";
                         for (let i = 0; i < message.state.length; ++i) {
-                            let error = $root.centrifugal.centrifuge.protocol.Publication.verify(message.state[i]);
+                            let error = $root.centrifugal.centrifuge.protocol.Publication.verify(message.state[i], long + 1);
                             if (error)
                                 return "state." + error;
                         }
@@ -5510,7 +5993,7 @@ export const centrifugal = $root.centrifugal = (() => {
                 function KeyedItem(properties) {
                     if (properties)
                         for (let keys = Object.keys(properties), i = 0; i < keys.length; ++i)
-                            if (properties[keys[i]] != null)
+                            if (properties[keys[i]] != null && keys[i] !== "__proto__")
                                 this[keys[i]] = properties[keys[i]];
                 }
 
@@ -5573,12 +6056,18 @@ export const centrifugal = $root.centrifugal = (() => {
                  * @throws {Error} If the payload is not a reader or valid buffer
                  * @throws {$protobuf.util.ProtocolError} If required fields are missing
                  */
-                KeyedItem.decode = function decode(reader, length) {
+                KeyedItem.decode = function decode(reader, length, error, long) {
                     if (!(reader instanceof $Reader))
                         reader = $Reader.create(reader);
+                    if (long === undefined)
+                        long = 0;
+                    if (long > $Reader.recursionLimit)
+                        throw Error("maximum nesting depth exceeded");
                     let end = length === undefined ? reader.len : reader.pos + length, message = new $root.centrifugal.centrifuge.protocol.KeyedItem();
                     while (reader.pos < end) {
                         let tag = reader.uint32();
+                        if (tag === error)
+                            break;
                         switch (tag >>> 3) {
                         case 1: {
                                 message.key = reader.string();
@@ -5589,7 +6078,7 @@ export const centrifugal = $root.centrifugal = (() => {
                                 break;
                             }
                         default:
-                            reader.skipType(tag & 7);
+                            reader.skipType(tag & 7, long);
                             break;
                         }
                     }
@@ -5620,9 +6109,13 @@ export const centrifugal = $root.centrifugal = (() => {
                  * @param {Object.<string,*>} message Plain object to verify
                  * @returns {string|null} `null` if valid, otherwise the reason why it is not
                  */
-                KeyedItem.verify = function verify(message) {
+                KeyedItem.verify = function verify(message, long) {
                     if (typeof message !== "object" || message === null)
                         return "object expected";
+                    if (long === undefined)
+                        long = 0;
+                    if (long > $util.recursionLimit)
+                        return "maximum nesting depth exceeded";
                     if (message.key != null && message.hasOwnProperty("key"))
                         if (!$util.isString(message.key))
                             return "key: string expected";
@@ -5672,7 +6165,7 @@ export const centrifugal = $root.centrifugal = (() => {
                     this.items = [];
                     if (properties)
                         for (let keys = Object.keys(properties), i = 0; i < keys.length; ++i)
-                            if (properties[keys[i]] != null)
+                            if (properties[keys[i]] != null && keys[i] !== "__proto__")
                                 this[keys[i]] = properties[keys[i]];
                 }
 
@@ -5736,12 +6229,18 @@ export const centrifugal = $root.centrifugal = (() => {
                  * @throws {Error} If the payload is not a reader or valid buffer
                  * @throws {$protobuf.util.ProtocolError} If required fields are missing
                  */
-                TrackBatch.decode = function decode(reader, length) {
+                TrackBatch.decode = function decode(reader, length, error, long) {
                     if (!(reader instanceof $Reader))
                         reader = $Reader.create(reader);
+                    if (long === undefined)
+                        long = 0;
+                    if (long > $Reader.recursionLimit)
+                        throw Error("maximum nesting depth exceeded");
                     let end = length === undefined ? reader.len : reader.pos + length, message = new $root.centrifugal.centrifuge.protocol.TrackBatch();
                     while (reader.pos < end) {
                         let tag = reader.uint32();
+                        if (tag === error)
+                            break;
                         switch (tag >>> 3) {
                         case 1: {
                                 message.signature = reader.string();
@@ -5750,11 +6249,11 @@ export const centrifugal = $root.centrifugal = (() => {
                         case 2: {
                                 if (!(message.items && message.items.length))
                                     message.items = [];
-                                message.items.push($root.centrifugal.centrifuge.protocol.KeyedItem.decode(reader, reader.uint32()));
+                                message.items.push($root.centrifugal.centrifuge.protocol.KeyedItem.decode(reader, reader.uint32(), undefined, long + 1));
                                 break;
                             }
                         default:
-                            reader.skipType(tag & 7);
+                            reader.skipType(tag & 7, long);
                             break;
                         }
                     }
@@ -5785,9 +6284,13 @@ export const centrifugal = $root.centrifugal = (() => {
                  * @param {Object.<string,*>} message Plain object to verify
                  * @returns {string|null} `null` if valid, otherwise the reason why it is not
                  */
-                TrackBatch.verify = function verify(message) {
+                TrackBatch.verify = function verify(message, long) {
                     if (typeof message !== "object" || message === null)
                         return "object expected";
+                    if (long === undefined)
+                        long = 0;
+                    if (long > $util.recursionLimit)
+                        return "maximum nesting depth exceeded";
                     if (message.signature != null && message.hasOwnProperty("signature"))
                         if (!$util.isString(message.signature))
                             return "signature: string expected";
@@ -5795,7 +6298,7 @@ export const centrifugal = $root.centrifugal = (() => {
                         if (!Array.isArray(message.items))
                             return "items: array expected";
                         for (let i = 0; i < message.items.length; ++i) {
-                            let error = $root.centrifugal.centrifuge.protocol.KeyedItem.verify(message.items[i]);
+                            let error = $root.centrifugal.centrifuge.protocol.KeyedItem.verify(message.items[i], long + 1);
                             if (error)
                                 return "items." + error;
                         }
@@ -5847,7 +6350,7 @@ export const centrifugal = $root.centrifugal = (() => {
                     this.untrack = [];
                     if (properties)
                         for (let keys = Object.keys(properties), i = 0; i < keys.length; ++i)
-                            if (properties[keys[i]] != null)
+                            if (properties[keys[i]] != null && keys[i] !== "__proto__")
                                 this[keys[i]] = properties[keys[i]];
                 }
 
@@ -5942,12 +6445,18 @@ export const centrifugal = $root.centrifugal = (() => {
                  * @throws {Error} If the payload is not a reader or valid buffer
                  * @throws {$protobuf.util.ProtocolError} If required fields are missing
                  */
-                SubRefreshRequest.decode = function decode(reader, length) {
+                SubRefreshRequest.decode = function decode(reader, length, error, long) {
                     if (!(reader instanceof $Reader))
                         reader = $Reader.create(reader);
+                    if (long === undefined)
+                        long = 0;
+                    if (long > $Reader.recursionLimit)
+                        throw Error("maximum nesting depth exceeded");
                     let end = length === undefined ? reader.len : reader.pos + length, message = new $root.centrifugal.centrifuge.protocol.SubRefreshRequest();
                     while (reader.pos < end) {
                         let tag = reader.uint32();
+                        if (tag === error)
+                            break;
                         switch (tag >>> 3) {
                         case 1: {
                                 message.channel = reader.string();
@@ -5964,7 +6473,7 @@ export const centrifugal = $root.centrifugal = (() => {
                         case 4: {
                                 if (!(message.track && message.track.length))
                                     message.track = [];
-                                message.track.push($root.centrifugal.centrifuge.protocol.TrackBatch.decode(reader, reader.uint32()));
+                                message.track.push($root.centrifugal.centrifuge.protocol.TrackBatch.decode(reader, reader.uint32(), undefined, long + 1));
                                 break;
                             }
                         case 5: {
@@ -5974,7 +6483,7 @@ export const centrifugal = $root.centrifugal = (() => {
                                 break;
                             }
                         default:
-                            reader.skipType(tag & 7);
+                            reader.skipType(tag & 7, long);
                             break;
                         }
                     }
@@ -6005,9 +6514,13 @@ export const centrifugal = $root.centrifugal = (() => {
                  * @param {Object.<string,*>} message Plain object to verify
                  * @returns {string|null} `null` if valid, otherwise the reason why it is not
                  */
-                SubRefreshRequest.verify = function verify(message) {
+                SubRefreshRequest.verify = function verify(message, long) {
                     if (typeof message !== "object" || message === null)
                         return "object expected";
+                    if (long === undefined)
+                        long = 0;
+                    if (long > $util.recursionLimit)
+                        return "maximum nesting depth exceeded";
                     if (message.channel != null && message.hasOwnProperty("channel"))
                         if (!$util.isString(message.channel))
                             return "channel: string expected";
@@ -6021,7 +6534,7 @@ export const centrifugal = $root.centrifugal = (() => {
                         if (!Array.isArray(message.track))
                             return "track: array expected";
                         for (let i = 0; i < message.track.length; ++i) {
-                            let error = $root.centrifugal.centrifuge.protocol.TrackBatch.verify(message.track[i]);
+                            let error = $root.centrifugal.centrifuge.protocol.TrackBatch.verify(message.track[i], long + 1);
                             if (error)
                                 return "track." + error;
                         }
@@ -6077,7 +6590,7 @@ export const centrifugal = $root.centrifugal = (() => {
                     this.items = [];
                     if (properties)
                         for (let keys = Object.keys(properties), i = 0; i < keys.length; ++i)
-                            if (properties[keys[i]] != null)
+                            if (properties[keys[i]] != null && keys[i] !== "__proto__")
                                 this[keys[i]] = properties[keys[i]];
                 }
 
@@ -6151,12 +6664,18 @@ export const centrifugal = $root.centrifugal = (() => {
                  * @throws {Error} If the payload is not a reader or valid buffer
                  * @throws {$protobuf.util.ProtocolError} If required fields are missing
                  */
-                SubRefreshResult.decode = function decode(reader, length) {
+                SubRefreshResult.decode = function decode(reader, length, error, long) {
                     if (!(reader instanceof $Reader))
                         reader = $Reader.create(reader);
+                    if (long === undefined)
+                        long = 0;
+                    if (long > $Reader.recursionLimit)
+                        throw Error("maximum nesting depth exceeded");
                     let end = length === undefined ? reader.len : reader.pos + length, message = new $root.centrifugal.centrifuge.protocol.SubRefreshResult();
                     while (reader.pos < end) {
                         let tag = reader.uint32();
+                        if (tag === error)
+                            break;
                         switch (tag >>> 3) {
                         case 1: {
                                 message.expires = reader.bool();
@@ -6169,11 +6688,11 @@ export const centrifugal = $root.centrifugal = (() => {
                         case 3: {
                                 if (!(message.items && message.items.length))
                                     message.items = [];
-                                message.items.push($root.centrifugal.centrifuge.protocol.Publication.decode(reader, reader.uint32()));
+                                message.items.push($root.centrifugal.centrifuge.protocol.Publication.decode(reader, reader.uint32(), undefined, long + 1));
                                 break;
                             }
                         default:
-                            reader.skipType(tag & 7);
+                            reader.skipType(tag & 7, long);
                             break;
                         }
                     }
@@ -6204,9 +6723,13 @@ export const centrifugal = $root.centrifugal = (() => {
                  * @param {Object.<string,*>} message Plain object to verify
                  * @returns {string|null} `null` if valid, otherwise the reason why it is not
                  */
-                SubRefreshResult.verify = function verify(message) {
+                SubRefreshResult.verify = function verify(message, long) {
                     if (typeof message !== "object" || message === null)
                         return "object expected";
+                    if (long === undefined)
+                        long = 0;
+                    if (long > $util.recursionLimit)
+                        return "maximum nesting depth exceeded";
                     if (message.expires != null && message.hasOwnProperty("expires"))
                         if (typeof message.expires !== "boolean")
                             return "expires: boolean expected";
@@ -6217,7 +6740,7 @@ export const centrifugal = $root.centrifugal = (() => {
                         if (!Array.isArray(message.items))
                             return "items: array expected";
                         for (let i = 0; i < message.items.length; ++i) {
-                            let error = $root.centrifugal.centrifuge.protocol.Publication.verify(message.items[i]);
+                            let error = $root.centrifugal.centrifuge.protocol.Publication.verify(message.items[i], long + 1);
                             if (error)
                                 return "items." + error;
                         }
@@ -6263,7 +6786,7 @@ export const centrifugal = $root.centrifugal = (() => {
                 function UnsubscribeRequest(properties) {
                     if (properties)
                         for (let keys = Object.keys(properties), i = 0; i < keys.length; ++i)
-                            if (properties[keys[i]] != null)
+                            if (properties[keys[i]] != null && keys[i] !== "__proto__")
                                 this[keys[i]] = properties[keys[i]];
                 }
 
@@ -6316,19 +6839,25 @@ export const centrifugal = $root.centrifugal = (() => {
                  * @throws {Error} If the payload is not a reader or valid buffer
                  * @throws {$protobuf.util.ProtocolError} If required fields are missing
                  */
-                UnsubscribeRequest.decode = function decode(reader, length) {
+                UnsubscribeRequest.decode = function decode(reader, length, error, long) {
                     if (!(reader instanceof $Reader))
                         reader = $Reader.create(reader);
+                    if (long === undefined)
+                        long = 0;
+                    if (long > $Reader.recursionLimit)
+                        throw Error("maximum nesting depth exceeded");
                     let end = length === undefined ? reader.len : reader.pos + length, message = new $root.centrifugal.centrifuge.protocol.UnsubscribeRequest();
                     while (reader.pos < end) {
                         let tag = reader.uint32();
+                        if (tag === error)
+                            break;
                         switch (tag >>> 3) {
                         case 1: {
                                 message.channel = reader.string();
                                 break;
                             }
                         default:
-                            reader.skipType(tag & 7);
+                            reader.skipType(tag & 7, long);
                             break;
                         }
                     }
@@ -6359,9 +6888,13 @@ export const centrifugal = $root.centrifugal = (() => {
                  * @param {Object.<string,*>} message Plain object to verify
                  * @returns {string|null} `null` if valid, otherwise the reason why it is not
                  */
-                UnsubscribeRequest.verify = function verify(message) {
+                UnsubscribeRequest.verify = function verify(message, long) {
                     if (typeof message !== "object" || message === null)
                         return "object expected";
+                    if (long === undefined)
+                        long = 0;
+                    if (long > $util.recursionLimit)
+                        return "maximum nesting depth exceeded";
                     if (message.channel != null && message.hasOwnProperty("channel"))
                         if (!$util.isString(message.channel))
                             return "channel: string expected";
@@ -6405,7 +6938,7 @@ export const centrifugal = $root.centrifugal = (() => {
                 function UnsubscribeResult(properties) {
                     if (properties)
                         for (let keys = Object.keys(properties), i = 0; i < keys.length; ++i)
-                            if (properties[keys[i]] != null)
+                            if (properties[keys[i]] != null && keys[i] !== "__proto__")
                                 this[keys[i]] = properties[keys[i]];
                 }
 
@@ -6448,15 +6981,21 @@ export const centrifugal = $root.centrifugal = (() => {
                  * @throws {Error} If the payload is not a reader or valid buffer
                  * @throws {$protobuf.util.ProtocolError} If required fields are missing
                  */
-                UnsubscribeResult.decode = function decode(reader, length) {
+                UnsubscribeResult.decode = function decode(reader, length, error, long) {
                     if (!(reader instanceof $Reader))
                         reader = $Reader.create(reader);
+                    if (long === undefined)
+                        long = 0;
+                    if (long > $Reader.recursionLimit)
+                        throw Error("maximum nesting depth exceeded");
                     let end = length === undefined ? reader.len : reader.pos + length, message = new $root.centrifugal.centrifuge.protocol.UnsubscribeResult();
                     while (reader.pos < end) {
                         let tag = reader.uint32();
+                        if (tag === error)
+                            break;
                         switch (tag >>> 3) {
                         default:
-                            reader.skipType(tag & 7);
+                            reader.skipType(tag & 7, long);
                             break;
                         }
                     }
@@ -6487,9 +7026,13 @@ export const centrifugal = $root.centrifugal = (() => {
                  * @param {Object.<string,*>} message Plain object to verify
                  * @returns {string|null} `null` if valid, otherwise the reason why it is not
                  */
-                UnsubscribeResult.verify = function verify(message) {
+                UnsubscribeResult.verify = function verify(message, long) {
                     if (typeof message !== "object" || message === null)
                         return "object expected";
+                    if (long === undefined)
+                        long = 0;
+                    if (long > $util.recursionLimit)
+                        return "maximum nesting depth exceeded";
                     return null;
                 };
 
@@ -6535,7 +7078,7 @@ export const centrifugal = $root.centrifugal = (() => {
                 function PublishRequest(properties) {
                     if (properties)
                         for (let keys = Object.keys(properties), i = 0; i < keys.length; ++i)
-                            if (properties[keys[i]] != null)
+                            if (properties[keys[i]] != null && keys[i] !== "__proto__")
                                 this[keys[i]] = properties[keys[i]];
                 }
 
@@ -6628,12 +7171,18 @@ export const centrifugal = $root.centrifugal = (() => {
                  * @throws {Error} If the payload is not a reader or valid buffer
                  * @throws {$protobuf.util.ProtocolError} If required fields are missing
                  */
-                PublishRequest.decode = function decode(reader, length) {
+                PublishRequest.decode = function decode(reader, length, error, long) {
                     if (!(reader instanceof $Reader))
                         reader = $Reader.create(reader);
+                    if (long === undefined)
+                        long = 0;
+                    if (long > $Reader.recursionLimit)
+                        throw Error("maximum nesting depth exceeded");
                     let end = length === undefined ? reader.len : reader.pos + length, message = new $root.centrifugal.centrifuge.protocol.PublishRequest();
                     while (reader.pos < end) {
                         let tag = reader.uint32();
+                        if (tag === error)
+                            break;
                         switch (tag >>> 3) {
                         case 1: {
                                 message.channel = reader.string();
@@ -6656,7 +7205,7 @@ export const centrifugal = $root.centrifugal = (() => {
                                 break;
                             }
                         default:
-                            reader.skipType(tag & 7);
+                            reader.skipType(tag & 7, long);
                             break;
                         }
                     }
@@ -6687,9 +7236,13 @@ export const centrifugal = $root.centrifugal = (() => {
                  * @param {Object.<string,*>} message Plain object to verify
                  * @returns {string|null} `null` if valid, otherwise the reason why it is not
                  */
-                PublishRequest.verify = function verify(message) {
+                PublishRequest.verify = function verify(message, long) {
                     if (typeof message !== "object" || message === null)
                         return "object expected";
+                    if (long === undefined)
+                        long = 0;
+                    if (long > $util.recursionLimit)
+                        return "maximum nesting depth exceeded";
                     if (message.channel != null && message.hasOwnProperty("channel"))
                         if (!$util.isString(message.channel))
                             return "channel: string expected";
@@ -6745,7 +7298,7 @@ export const centrifugal = $root.centrifugal = (() => {
                 function PublishResult(properties) {
                     if (properties)
                         for (let keys = Object.keys(properties), i = 0; i < keys.length; ++i)
-                            if (properties[keys[i]] != null)
+                            if (properties[keys[i]] != null && keys[i] !== "__proto__")
                                 this[keys[i]] = properties[keys[i]];
                 }
 
@@ -6788,15 +7341,21 @@ export const centrifugal = $root.centrifugal = (() => {
                  * @throws {Error} If the payload is not a reader or valid buffer
                  * @throws {$protobuf.util.ProtocolError} If required fields are missing
                  */
-                PublishResult.decode = function decode(reader, length) {
+                PublishResult.decode = function decode(reader, length, error, long) {
                     if (!(reader instanceof $Reader))
                         reader = $Reader.create(reader);
+                    if (long === undefined)
+                        long = 0;
+                    if (long > $Reader.recursionLimit)
+                        throw Error("maximum nesting depth exceeded");
                     let end = length === undefined ? reader.len : reader.pos + length, message = new $root.centrifugal.centrifuge.protocol.PublishResult();
                     while (reader.pos < end) {
                         let tag = reader.uint32();
+                        if (tag === error)
+                            break;
                         switch (tag >>> 3) {
                         default:
-                            reader.skipType(tag & 7);
+                            reader.skipType(tag & 7, long);
                             break;
                         }
                     }
@@ -6827,9 +7386,13 @@ export const centrifugal = $root.centrifugal = (() => {
                  * @param {Object.<string,*>} message Plain object to verify
                  * @returns {string|null} `null` if valid, otherwise the reason why it is not
                  */
-                PublishResult.verify = function verify(message) {
+                PublishResult.verify = function verify(message, long) {
                     if (typeof message !== "object" || message === null)
                         return "object expected";
+                    if (long === undefined)
+                        long = 0;
+                    if (long > $util.recursionLimit)
+                        return "maximum nesting depth exceeded";
                     return null;
                 };
 
@@ -6871,7 +7434,7 @@ export const centrifugal = $root.centrifugal = (() => {
                 function PresenceRequest(properties) {
                     if (properties)
                         for (let keys = Object.keys(properties), i = 0; i < keys.length; ++i)
-                            if (properties[keys[i]] != null)
+                            if (properties[keys[i]] != null && keys[i] !== "__proto__")
                                 this[keys[i]] = properties[keys[i]];
                 }
 
@@ -6924,19 +7487,25 @@ export const centrifugal = $root.centrifugal = (() => {
                  * @throws {Error} If the payload is not a reader or valid buffer
                  * @throws {$protobuf.util.ProtocolError} If required fields are missing
                  */
-                PresenceRequest.decode = function decode(reader, length) {
+                PresenceRequest.decode = function decode(reader, length, error, long) {
                     if (!(reader instanceof $Reader))
                         reader = $Reader.create(reader);
+                    if (long === undefined)
+                        long = 0;
+                    if (long > $Reader.recursionLimit)
+                        throw Error("maximum nesting depth exceeded");
                     let end = length === undefined ? reader.len : reader.pos + length, message = new $root.centrifugal.centrifuge.protocol.PresenceRequest();
                     while (reader.pos < end) {
                         let tag = reader.uint32();
+                        if (tag === error)
+                            break;
                         switch (tag >>> 3) {
                         case 1: {
                                 message.channel = reader.string();
                                 break;
                             }
                         default:
-                            reader.skipType(tag & 7);
+                            reader.skipType(tag & 7, long);
                             break;
                         }
                     }
@@ -6967,9 +7536,13 @@ export const centrifugal = $root.centrifugal = (() => {
                  * @param {Object.<string,*>} message Plain object to verify
                  * @returns {string|null} `null` if valid, otherwise the reason why it is not
                  */
-                PresenceRequest.verify = function verify(message) {
+                PresenceRequest.verify = function verify(message, long) {
                     if (typeof message !== "object" || message === null)
                         return "object expected";
+                    if (long === undefined)
+                        long = 0;
+                    if (long > $util.recursionLimit)
+                        return "maximum nesting depth exceeded";
                     if (message.channel != null && message.hasOwnProperty("channel"))
                         if (!$util.isString(message.channel))
                             return "channel: string expected";
@@ -7015,7 +7588,7 @@ export const centrifugal = $root.centrifugal = (() => {
                     this.presence = {};
                     if (properties)
                         for (let keys = Object.keys(properties), i = 0; i < keys.length; ++i)
-                            if (properties[keys[i]] != null)
+                            if (properties[keys[i]] != null && keys[i] !== "__proto__")
                                 this[keys[i]] = properties[keys[i]];
                 }
 
@@ -7071,12 +7644,18 @@ export const centrifugal = $root.centrifugal = (() => {
                  * @throws {Error} If the payload is not a reader or valid buffer
                  * @throws {$protobuf.util.ProtocolError} If required fields are missing
                  */
-                PresenceResult.decode = function decode(reader, length) {
+                PresenceResult.decode = function decode(reader, length, error, long) {
                     if (!(reader instanceof $Reader))
                         reader = $Reader.create(reader);
+                    if (long === undefined)
+                        long = 0;
+                    if (long > $Reader.recursionLimit)
+                        throw Error("maximum nesting depth exceeded");
                     let end = length === undefined ? reader.len : reader.pos + length, message = new $root.centrifugal.centrifuge.protocol.PresenceResult(), key, value;
                     while (reader.pos < end) {
                         let tag = reader.uint32();
+                        if (tag === error)
+                            break;
                         switch (tag >>> 3) {
                         case 1: {
                                 if (message.presence === $util.emptyObject)
@@ -7091,18 +7670,20 @@ export const centrifugal = $root.centrifugal = (() => {
                                         key = reader.string();
                                         break;
                                     case 2:
-                                        value = $root.centrifugal.centrifuge.protocol.ClientInfo.decode(reader, reader.uint32());
+                                        value = $root.centrifugal.centrifuge.protocol.ClientInfo.decode(reader, reader.uint32(), undefined, long + 1);
                                         break;
                                     default:
-                                        reader.skipType(tag2 & 7);
+                                        reader.skipType(tag2 & 7, long);
                                         break;
                                     }
                                 }
+                                if (key === "__proto__")
+                                    $util.makeProp(message.presence, key);
                                 message.presence[key] = value;
                                 break;
                             }
                         default:
-                            reader.skipType(tag & 7);
+                            reader.skipType(tag & 7, long);
                             break;
                         }
                     }
@@ -7133,15 +7714,19 @@ export const centrifugal = $root.centrifugal = (() => {
                  * @param {Object.<string,*>} message Plain object to verify
                  * @returns {string|null} `null` if valid, otherwise the reason why it is not
                  */
-                PresenceResult.verify = function verify(message) {
+                PresenceResult.verify = function verify(message, long) {
                     if (typeof message !== "object" || message === null)
                         return "object expected";
+                    if (long === undefined)
+                        long = 0;
+                    if (long > $util.recursionLimit)
+                        return "maximum nesting depth exceeded";
                     if (message.presence != null && message.hasOwnProperty("presence")) {
                         if (!$util.isObject(message.presence))
                             return "presence: object expected";
                         let key = Object.keys(message.presence);
                         for (let i = 0; i < key.length; ++i) {
-                            let error = $root.centrifugal.centrifuge.protocol.ClientInfo.verify(message.presence[key[i]]);
+                            let error = $root.centrifugal.centrifuge.protocol.ClientInfo.verify(message.presence[key[i]], long + 1);
                             if (error)
                                 return "presence." + error;
                         }
@@ -7187,7 +7772,7 @@ export const centrifugal = $root.centrifugal = (() => {
                 function PresenceStatsRequest(properties) {
                     if (properties)
                         for (let keys = Object.keys(properties), i = 0; i < keys.length; ++i)
-                            if (properties[keys[i]] != null)
+                            if (properties[keys[i]] != null && keys[i] !== "__proto__")
                                 this[keys[i]] = properties[keys[i]];
                 }
 
@@ -7240,19 +7825,25 @@ export const centrifugal = $root.centrifugal = (() => {
                  * @throws {Error} If the payload is not a reader or valid buffer
                  * @throws {$protobuf.util.ProtocolError} If required fields are missing
                  */
-                PresenceStatsRequest.decode = function decode(reader, length) {
+                PresenceStatsRequest.decode = function decode(reader, length, error, long) {
                     if (!(reader instanceof $Reader))
                         reader = $Reader.create(reader);
+                    if (long === undefined)
+                        long = 0;
+                    if (long > $Reader.recursionLimit)
+                        throw Error("maximum nesting depth exceeded");
                     let end = length === undefined ? reader.len : reader.pos + length, message = new $root.centrifugal.centrifuge.protocol.PresenceStatsRequest();
                     while (reader.pos < end) {
                         let tag = reader.uint32();
+                        if (tag === error)
+                            break;
                         switch (tag >>> 3) {
                         case 1: {
                                 message.channel = reader.string();
                                 break;
                             }
                         default:
-                            reader.skipType(tag & 7);
+                            reader.skipType(tag & 7, long);
                             break;
                         }
                     }
@@ -7283,9 +7874,13 @@ export const centrifugal = $root.centrifugal = (() => {
                  * @param {Object.<string,*>} message Plain object to verify
                  * @returns {string|null} `null` if valid, otherwise the reason why it is not
                  */
-                PresenceStatsRequest.verify = function verify(message) {
+                PresenceStatsRequest.verify = function verify(message, long) {
                     if (typeof message !== "object" || message === null)
                         return "object expected";
+                    if (long === undefined)
+                        long = 0;
+                    if (long > $util.recursionLimit)
+                        return "maximum nesting depth exceeded";
                     if (message.channel != null && message.hasOwnProperty("channel"))
                         if (!$util.isString(message.channel))
                             return "channel: string expected";
@@ -7331,7 +7926,7 @@ export const centrifugal = $root.centrifugal = (() => {
                 function PresenceStatsResult(properties) {
                     if (properties)
                         for (let keys = Object.keys(properties), i = 0; i < keys.length; ++i)
-                            if (properties[keys[i]] != null)
+                            if (properties[keys[i]] != null && keys[i] !== "__proto__")
                                 this[keys[i]] = properties[keys[i]];
                 }
 
@@ -7394,12 +7989,18 @@ export const centrifugal = $root.centrifugal = (() => {
                  * @throws {Error} If the payload is not a reader or valid buffer
                  * @throws {$protobuf.util.ProtocolError} If required fields are missing
                  */
-                PresenceStatsResult.decode = function decode(reader, length) {
+                PresenceStatsResult.decode = function decode(reader, length, error, long) {
                     if (!(reader instanceof $Reader))
                         reader = $Reader.create(reader);
+                    if (long === undefined)
+                        long = 0;
+                    if (long > $Reader.recursionLimit)
+                        throw Error("maximum nesting depth exceeded");
                     let end = length === undefined ? reader.len : reader.pos + length, message = new $root.centrifugal.centrifuge.protocol.PresenceStatsResult();
                     while (reader.pos < end) {
                         let tag = reader.uint32();
+                        if (tag === error)
+                            break;
                         switch (tag >>> 3) {
                         case 1: {
                                 message.num_clients = reader.uint32();
@@ -7410,7 +8011,7 @@ export const centrifugal = $root.centrifugal = (() => {
                                 break;
                             }
                         default:
-                            reader.skipType(tag & 7);
+                            reader.skipType(tag & 7, long);
                             break;
                         }
                     }
@@ -7441,9 +8042,13 @@ export const centrifugal = $root.centrifugal = (() => {
                  * @param {Object.<string,*>} message Plain object to verify
                  * @returns {string|null} `null` if valid, otherwise the reason why it is not
                  */
-                PresenceStatsResult.verify = function verify(message) {
+                PresenceStatsResult.verify = function verify(message, long) {
                     if (typeof message !== "object" || message === null)
                         return "object expected";
+                    if (long === undefined)
+                        long = 0;
+                    if (long > $util.recursionLimit)
+                        return "maximum nesting depth exceeded";
                     if (message.num_clients != null && message.hasOwnProperty("num_clients"))
                         if (!$util.isInteger(message.num_clients))
                             return "num_clients: integer expected";
@@ -7492,7 +8097,7 @@ export const centrifugal = $root.centrifugal = (() => {
                 function StreamPosition(properties) {
                     if (properties)
                         for (let keys = Object.keys(properties), i = 0; i < keys.length; ++i)
-                            if (properties[keys[i]] != null)
+                            if (properties[keys[i]] != null && keys[i] !== "__proto__")
                                 this[keys[i]] = properties[keys[i]];
                 }
 
@@ -7555,12 +8160,18 @@ export const centrifugal = $root.centrifugal = (() => {
                  * @throws {Error} If the payload is not a reader or valid buffer
                  * @throws {$protobuf.util.ProtocolError} If required fields are missing
                  */
-                StreamPosition.decode = function decode(reader, length) {
+                StreamPosition.decode = function decode(reader, length, error, long) {
                     if (!(reader instanceof $Reader))
                         reader = $Reader.create(reader);
+                    if (long === undefined)
+                        long = 0;
+                    if (long > $Reader.recursionLimit)
+                        throw Error("maximum nesting depth exceeded");
                     let end = length === undefined ? reader.len : reader.pos + length, message = new $root.centrifugal.centrifuge.protocol.StreamPosition();
                     while (reader.pos < end) {
                         let tag = reader.uint32();
+                        if (tag === error)
+                            break;
                         switch (tag >>> 3) {
                         case 1: {
                                 message.offset = reader.uint64();
@@ -7571,7 +8182,7 @@ export const centrifugal = $root.centrifugal = (() => {
                                 break;
                             }
                         default:
-                            reader.skipType(tag & 7);
+                            reader.skipType(tag & 7, long);
                             break;
                         }
                     }
@@ -7602,9 +8213,13 @@ export const centrifugal = $root.centrifugal = (() => {
                  * @param {Object.<string,*>} message Plain object to verify
                  * @returns {string|null} `null` if valid, otherwise the reason why it is not
                  */
-                StreamPosition.verify = function verify(message) {
+                StreamPosition.verify = function verify(message, long) {
                     if (typeof message !== "object" || message === null)
                         return "object expected";
+                    if (long === undefined)
+                        long = 0;
+                    if (long > $util.recursionLimit)
+                        return "maximum nesting depth exceeded";
                     if (message.offset != null && message.hasOwnProperty("offset"))
                         if (!$util.isInteger(message.offset) && !(message.offset && $util.isInteger(message.offset.low) && $util.isInteger(message.offset.high)))
                             return "offset: integer|Long expected";
@@ -7655,7 +8270,7 @@ export const centrifugal = $root.centrifugal = (() => {
                 function HistoryRequest(properties) {
                     if (properties)
                         for (let keys = Object.keys(properties), i = 0; i < keys.length; ++i)
-                            if (properties[keys[i]] != null)
+                            if (properties[keys[i]] != null && keys[i] !== "__proto__")
                                 this[keys[i]] = properties[keys[i]];
                 }
 
@@ -7738,12 +8353,18 @@ export const centrifugal = $root.centrifugal = (() => {
                  * @throws {Error} If the payload is not a reader or valid buffer
                  * @throws {$protobuf.util.ProtocolError} If required fields are missing
                  */
-                HistoryRequest.decode = function decode(reader, length) {
+                HistoryRequest.decode = function decode(reader, length, error, long) {
                     if (!(reader instanceof $Reader))
                         reader = $Reader.create(reader);
+                    if (long === undefined)
+                        long = 0;
+                    if (long > $Reader.recursionLimit)
+                        throw Error("maximum nesting depth exceeded");
                     let end = length === undefined ? reader.len : reader.pos + length, message = new $root.centrifugal.centrifuge.protocol.HistoryRequest();
                     while (reader.pos < end) {
                         let tag = reader.uint32();
+                        if (tag === error)
+                            break;
                         switch (tag >>> 3) {
                         case 1: {
                                 message.channel = reader.string();
@@ -7754,7 +8375,7 @@ export const centrifugal = $root.centrifugal = (() => {
                                 break;
                             }
                         case 8: {
-                                message.since = $root.centrifugal.centrifuge.protocol.StreamPosition.decode(reader, reader.uint32());
+                                message.since = $root.centrifugal.centrifuge.protocol.StreamPosition.decode(reader, reader.uint32(), undefined, long + 1);
                                 break;
                             }
                         case 9: {
@@ -7762,7 +8383,7 @@ export const centrifugal = $root.centrifugal = (() => {
                                 break;
                             }
                         default:
-                            reader.skipType(tag & 7);
+                            reader.skipType(tag & 7, long);
                             break;
                         }
                     }
@@ -7793,9 +8414,13 @@ export const centrifugal = $root.centrifugal = (() => {
                  * @param {Object.<string,*>} message Plain object to verify
                  * @returns {string|null} `null` if valid, otherwise the reason why it is not
                  */
-                HistoryRequest.verify = function verify(message) {
+                HistoryRequest.verify = function verify(message, long) {
                     if (typeof message !== "object" || message === null)
                         return "object expected";
+                    if (long === undefined)
+                        long = 0;
+                    if (long > $util.recursionLimit)
+                        return "maximum nesting depth exceeded";
                     if (message.channel != null && message.hasOwnProperty("channel"))
                         if (!$util.isString(message.channel))
                             return "channel: string expected";
@@ -7803,7 +8428,7 @@ export const centrifugal = $root.centrifugal = (() => {
                         if (!$util.isInteger(message.limit))
                             return "limit: integer expected";
                     if (message.since != null && message.hasOwnProperty("since")) {
-                        let error = $root.centrifugal.centrifuge.protocol.StreamPosition.verify(message.since);
+                        let error = $root.centrifugal.centrifuge.protocol.StreamPosition.verify(message.since, long + 1);
                         if (error)
                             return "since." + error;
                     }
@@ -7854,7 +8479,7 @@ export const centrifugal = $root.centrifugal = (() => {
                     this.publications = [];
                     if (properties)
                         for (let keys = Object.keys(properties), i = 0; i < keys.length; ++i)
-                            if (properties[keys[i]] != null)
+                            if (properties[keys[i]] != null && keys[i] !== "__proto__")
                                 this[keys[i]] = properties[keys[i]];
                 }
 
@@ -7928,17 +8553,23 @@ export const centrifugal = $root.centrifugal = (() => {
                  * @throws {Error} If the payload is not a reader or valid buffer
                  * @throws {$protobuf.util.ProtocolError} If required fields are missing
                  */
-                HistoryResult.decode = function decode(reader, length) {
+                HistoryResult.decode = function decode(reader, length, error, long) {
                     if (!(reader instanceof $Reader))
                         reader = $Reader.create(reader);
+                    if (long === undefined)
+                        long = 0;
+                    if (long > $Reader.recursionLimit)
+                        throw Error("maximum nesting depth exceeded");
                     let end = length === undefined ? reader.len : reader.pos + length, message = new $root.centrifugal.centrifuge.protocol.HistoryResult();
                     while (reader.pos < end) {
                         let tag = reader.uint32();
+                        if (tag === error)
+                            break;
                         switch (tag >>> 3) {
                         case 1: {
                                 if (!(message.publications && message.publications.length))
                                     message.publications = [];
-                                message.publications.push($root.centrifugal.centrifuge.protocol.Publication.decode(reader, reader.uint32()));
+                                message.publications.push($root.centrifugal.centrifuge.protocol.Publication.decode(reader, reader.uint32(), undefined, long + 1));
                                 break;
                             }
                         case 2: {
@@ -7950,7 +8581,7 @@ export const centrifugal = $root.centrifugal = (() => {
                                 break;
                             }
                         default:
-                            reader.skipType(tag & 7);
+                            reader.skipType(tag & 7, long);
                             break;
                         }
                     }
@@ -7981,14 +8612,18 @@ export const centrifugal = $root.centrifugal = (() => {
                  * @param {Object.<string,*>} message Plain object to verify
                  * @returns {string|null} `null` if valid, otherwise the reason why it is not
                  */
-                HistoryResult.verify = function verify(message) {
+                HistoryResult.verify = function verify(message, long) {
                     if (typeof message !== "object" || message === null)
                         return "object expected";
+                    if (long === undefined)
+                        long = 0;
+                    if (long > $util.recursionLimit)
+                        return "maximum nesting depth exceeded";
                     if (message.publications != null && message.hasOwnProperty("publications")) {
                         if (!Array.isArray(message.publications))
                             return "publications: array expected";
                         for (let i = 0; i < message.publications.length; ++i) {
-                            let error = $root.centrifugal.centrifuge.protocol.Publication.verify(message.publications[i]);
+                            let error = $root.centrifugal.centrifuge.protocol.Publication.verify(message.publications[i], long + 1);
                             if (error)
                                 return "publications." + error;
                         }
@@ -8039,7 +8674,7 @@ export const centrifugal = $root.centrifugal = (() => {
                 function PingRequest(properties) {
                     if (properties)
                         for (let keys = Object.keys(properties), i = 0; i < keys.length; ++i)
-                            if (properties[keys[i]] != null)
+                            if (properties[keys[i]] != null && keys[i] !== "__proto__")
                                 this[keys[i]] = properties[keys[i]];
                 }
 
@@ -8082,15 +8717,21 @@ export const centrifugal = $root.centrifugal = (() => {
                  * @throws {Error} If the payload is not a reader or valid buffer
                  * @throws {$protobuf.util.ProtocolError} If required fields are missing
                  */
-                PingRequest.decode = function decode(reader, length) {
+                PingRequest.decode = function decode(reader, length, error, long) {
                     if (!(reader instanceof $Reader))
                         reader = $Reader.create(reader);
+                    if (long === undefined)
+                        long = 0;
+                    if (long > $Reader.recursionLimit)
+                        throw Error("maximum nesting depth exceeded");
                     let end = length === undefined ? reader.len : reader.pos + length, message = new $root.centrifugal.centrifuge.protocol.PingRequest();
                     while (reader.pos < end) {
                         let tag = reader.uint32();
+                        if (tag === error)
+                            break;
                         switch (tag >>> 3) {
                         default:
-                            reader.skipType(tag & 7);
+                            reader.skipType(tag & 7, long);
                             break;
                         }
                     }
@@ -8121,9 +8762,13 @@ export const centrifugal = $root.centrifugal = (() => {
                  * @param {Object.<string,*>} message Plain object to verify
                  * @returns {string|null} `null` if valid, otherwise the reason why it is not
                  */
-                PingRequest.verify = function verify(message) {
+                PingRequest.verify = function verify(message, long) {
                     if (typeof message !== "object" || message === null)
                         return "object expected";
+                    if (long === undefined)
+                        long = 0;
+                    if (long > $util.recursionLimit)
+                        return "maximum nesting depth exceeded";
                     return null;
                 };
 
@@ -8164,7 +8809,7 @@ export const centrifugal = $root.centrifugal = (() => {
                 function PingResult(properties) {
                     if (properties)
                         for (let keys = Object.keys(properties), i = 0; i < keys.length; ++i)
-                            if (properties[keys[i]] != null)
+                            if (properties[keys[i]] != null && keys[i] !== "__proto__")
                                 this[keys[i]] = properties[keys[i]];
                 }
 
@@ -8207,15 +8852,21 @@ export const centrifugal = $root.centrifugal = (() => {
                  * @throws {Error} If the payload is not a reader or valid buffer
                  * @throws {$protobuf.util.ProtocolError} If required fields are missing
                  */
-                PingResult.decode = function decode(reader, length) {
+                PingResult.decode = function decode(reader, length, error, long) {
                     if (!(reader instanceof $Reader))
                         reader = $Reader.create(reader);
+                    if (long === undefined)
+                        long = 0;
+                    if (long > $Reader.recursionLimit)
+                        throw Error("maximum nesting depth exceeded");
                     let end = length === undefined ? reader.len : reader.pos + length, message = new $root.centrifugal.centrifuge.protocol.PingResult();
                     while (reader.pos < end) {
                         let tag = reader.uint32();
+                        if (tag === error)
+                            break;
                         switch (tag >>> 3) {
                         default:
-                            reader.skipType(tag & 7);
+                            reader.skipType(tag & 7, long);
                             break;
                         }
                     }
@@ -8246,9 +8897,13 @@ export const centrifugal = $root.centrifugal = (() => {
                  * @param {Object.<string,*>} message Plain object to verify
                  * @returns {string|null} `null` if valid, otherwise the reason why it is not
                  */
-                PingResult.verify = function verify(message) {
+                PingResult.verify = function verify(message, long) {
                     if (typeof message !== "object" || message === null)
                         return "object expected";
+                    if (long === undefined)
+                        long = 0;
+                    if (long > $util.recursionLimit)
+                        return "maximum nesting depth exceeded";
                     return null;
                 };
 
@@ -8291,7 +8946,7 @@ export const centrifugal = $root.centrifugal = (() => {
                 function RPCRequest(properties) {
                     if (properties)
                         for (let keys = Object.keys(properties), i = 0; i < keys.length; ++i)
-                            if (properties[keys[i]] != null)
+                            if (properties[keys[i]] != null && keys[i] !== "__proto__")
                                 this[keys[i]] = properties[keys[i]];
                 }
 
@@ -8354,12 +9009,18 @@ export const centrifugal = $root.centrifugal = (() => {
                  * @throws {Error} If the payload is not a reader or valid buffer
                  * @throws {$protobuf.util.ProtocolError} If required fields are missing
                  */
-                RPCRequest.decode = function decode(reader, length) {
+                RPCRequest.decode = function decode(reader, length, error, long) {
                     if (!(reader instanceof $Reader))
                         reader = $Reader.create(reader);
+                    if (long === undefined)
+                        long = 0;
+                    if (long > $Reader.recursionLimit)
+                        throw Error("maximum nesting depth exceeded");
                     let end = length === undefined ? reader.len : reader.pos + length, message = new $root.centrifugal.centrifuge.protocol.RPCRequest();
                     while (reader.pos < end) {
                         let tag = reader.uint32();
+                        if (tag === error)
+                            break;
                         switch (tag >>> 3) {
                         case 1: {
                                 message.data = reader.bytes();
@@ -8370,7 +9031,7 @@ export const centrifugal = $root.centrifugal = (() => {
                                 break;
                             }
                         default:
-                            reader.skipType(tag & 7);
+                            reader.skipType(tag & 7, long);
                             break;
                         }
                     }
@@ -8401,9 +9062,13 @@ export const centrifugal = $root.centrifugal = (() => {
                  * @param {Object.<string,*>} message Plain object to verify
                  * @returns {string|null} `null` if valid, otherwise the reason why it is not
                  */
-                RPCRequest.verify = function verify(message) {
+                RPCRequest.verify = function verify(message, long) {
                     if (typeof message !== "object" || message === null)
                         return "object expected";
+                    if (long === undefined)
+                        long = 0;
+                    if (long > $util.recursionLimit)
+                        return "maximum nesting depth exceeded";
                     if (message.data != null && message.hasOwnProperty("data"))
                         if (!(message.data && typeof message.data.length === "number" || $util.isString(message.data)))
                             return "data: buffer expected";
@@ -8451,7 +9116,7 @@ export const centrifugal = $root.centrifugal = (() => {
                 function RPCResult(properties) {
                     if (properties)
                         for (let keys = Object.keys(properties), i = 0; i < keys.length; ++i)
-                            if (properties[keys[i]] != null)
+                            if (properties[keys[i]] != null && keys[i] !== "__proto__")
                                 this[keys[i]] = properties[keys[i]];
                 }
 
@@ -8504,19 +9169,25 @@ export const centrifugal = $root.centrifugal = (() => {
                  * @throws {Error} If the payload is not a reader or valid buffer
                  * @throws {$protobuf.util.ProtocolError} If required fields are missing
                  */
-                RPCResult.decode = function decode(reader, length) {
+                RPCResult.decode = function decode(reader, length, error, long) {
                     if (!(reader instanceof $Reader))
                         reader = $Reader.create(reader);
+                    if (long === undefined)
+                        long = 0;
+                    if (long > $Reader.recursionLimit)
+                        throw Error("maximum nesting depth exceeded");
                     let end = length === undefined ? reader.len : reader.pos + length, message = new $root.centrifugal.centrifuge.protocol.RPCResult();
                     while (reader.pos < end) {
                         let tag = reader.uint32();
+                        if (tag === error)
+                            break;
                         switch (tag >>> 3) {
                         case 1: {
                                 message.data = reader.bytes();
                                 break;
                             }
                         default:
-                            reader.skipType(tag & 7);
+                            reader.skipType(tag & 7, long);
                             break;
                         }
                     }
@@ -8547,9 +9218,13 @@ export const centrifugal = $root.centrifugal = (() => {
                  * @param {Object.<string,*>} message Plain object to verify
                  * @returns {string|null} `null` if valid, otherwise the reason why it is not
                  */
-                RPCResult.verify = function verify(message) {
+                RPCResult.verify = function verify(message, long) {
                     if (typeof message !== "object" || message === null)
                         return "object expected";
+                    if (long === undefined)
+                        long = 0;
+                    if (long > $util.recursionLimit)
+                        return "maximum nesting depth exceeded";
                     if (message.data != null && message.hasOwnProperty("data"))
                         if (!(message.data && typeof message.data.length === "number" || $util.isString(message.data)))
                             return "data: buffer expected";
@@ -8594,7 +9269,7 @@ export const centrifugal = $root.centrifugal = (() => {
                 function SendRequest(properties) {
                     if (properties)
                         for (let keys = Object.keys(properties), i = 0; i < keys.length; ++i)
-                            if (properties[keys[i]] != null)
+                            if (properties[keys[i]] != null && keys[i] !== "__proto__")
                                 this[keys[i]] = properties[keys[i]];
                 }
 
@@ -8647,19 +9322,25 @@ export const centrifugal = $root.centrifugal = (() => {
                  * @throws {Error} If the payload is not a reader or valid buffer
                  * @throws {$protobuf.util.ProtocolError} If required fields are missing
                  */
-                SendRequest.decode = function decode(reader, length) {
+                SendRequest.decode = function decode(reader, length, error, long) {
                     if (!(reader instanceof $Reader))
                         reader = $Reader.create(reader);
+                    if (long === undefined)
+                        long = 0;
+                    if (long > $Reader.recursionLimit)
+                        throw Error("maximum nesting depth exceeded");
                     let end = length === undefined ? reader.len : reader.pos + length, message = new $root.centrifugal.centrifuge.protocol.SendRequest();
                     while (reader.pos < end) {
                         let tag = reader.uint32();
+                        if (tag === error)
+                            break;
                         switch (tag >>> 3) {
                         case 1: {
                                 message.data = reader.bytes();
                                 break;
                             }
                         default:
-                            reader.skipType(tag & 7);
+                            reader.skipType(tag & 7, long);
                             break;
                         }
                     }
@@ -8690,9 +9371,13 @@ export const centrifugal = $root.centrifugal = (() => {
                  * @param {Object.<string,*>} message Plain object to verify
                  * @returns {string|null} `null` if valid, otherwise the reason why it is not
                  */
-                SendRequest.verify = function verify(message) {
+                SendRequest.verify = function verify(message, long) {
                     if (typeof message !== "object" || message === null)
                         return "object expected";
+                    if (long === undefined)
+                        long = 0;
+                    if (long > $util.recursionLimit)
+                        return "maximum nesting depth exceeded";
                     if (message.data != null && message.hasOwnProperty("data"))
                         if (!(message.data && typeof message.data.length === "number" || $util.isString(message.data)))
                             return "data: buffer expected";
@@ -8744,7 +9429,7 @@ export const centrifugal = $root.centrifugal = (() => {
                     this.nodes = [];
                     if (properties)
                         for (let keys = Object.keys(properties), i = 0; i < keys.length; ++i)
-                            if (properties[keys[i]] != null)
+                            if (properties[keys[i]] != null && keys[i] !== "__proto__")
                                 this[keys[i]] = properties[keys[i]];
                 }
 
@@ -8849,12 +9534,18 @@ export const centrifugal = $root.centrifugal = (() => {
                  * @throws {Error} If the payload is not a reader or valid buffer
                  * @throws {$protobuf.util.ProtocolError} If required fields are missing
                  */
-                FilterNode.decode = function decode(reader, length) {
+                FilterNode.decode = function decode(reader, length, error, long) {
                     if (!(reader instanceof $Reader))
                         reader = $Reader.create(reader);
+                    if (long === undefined)
+                        long = 0;
+                    if (long > $Reader.recursionLimit)
+                        throw Error("maximum nesting depth exceeded");
                     let end = length === undefined ? reader.len : reader.pos + length, message = new $root.centrifugal.centrifuge.protocol.FilterNode();
                     while (reader.pos < end) {
                         let tag = reader.uint32();
+                        if (tag === error)
+                            break;
                         switch (tag >>> 3) {
                         case 1: {
                                 message.op = reader.string();
@@ -8881,11 +9572,11 @@ export const centrifugal = $root.centrifugal = (() => {
                         case 6: {
                                 if (!(message.nodes && message.nodes.length))
                                     message.nodes = [];
-                                message.nodes.push($root.centrifugal.centrifuge.protocol.FilterNode.decode(reader, reader.uint32()));
+                                message.nodes.push($root.centrifugal.centrifuge.protocol.FilterNode.decode(reader, reader.uint32(), undefined, long + 1));
                                 break;
                             }
                         default:
-                            reader.skipType(tag & 7);
+                            reader.skipType(tag & 7, long);
                             break;
                         }
                     }
@@ -8916,9 +9607,13 @@ export const centrifugal = $root.centrifugal = (() => {
                  * @param {Object.<string,*>} message Plain object to verify
                  * @returns {string|null} `null` if valid, otherwise the reason why it is not
                  */
-                FilterNode.verify = function verify(message) {
+                FilterNode.verify = function verify(message, long) {
                     if (typeof message !== "object" || message === null)
                         return "object expected";
+                    if (long === undefined)
+                        long = 0;
+                    if (long > $util.recursionLimit)
+                        return "maximum nesting depth exceeded";
                     if (message.op != null && message.hasOwnProperty("op"))
                         if (!$util.isString(message.op))
                             return "op: string expected";
@@ -8942,7 +9637,7 @@ export const centrifugal = $root.centrifugal = (() => {
                         if (!Array.isArray(message.nodes))
                             return "nodes: array expected";
                         for (let i = 0; i < message.nodes.length; ++i) {
-                            let error = $root.centrifugal.centrifuge.protocol.FilterNode.verify(message.nodes[i]);
+                            let error = $root.centrifugal.centrifuge.protocol.FilterNode.verify(message.nodes[i], long + 1);
                             if (error)
                                 return "nodes." + error;
                         }

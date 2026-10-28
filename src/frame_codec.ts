@@ -105,7 +105,7 @@ export class FrameCodec {
   decode(data: any, isJson: boolean): any {
     const bytes = toBytes(data);
     if (bytes.length === 0) {
-      throw new Error('centrifuge: empty frame');
+      throw new Error('empty frame');
     }
     const marker = bytes[0];
     const body = bytes.subarray(1);
@@ -126,13 +126,13 @@ export class FrameCodec {
       // still refuses the result.
       const out2 = inflateSync(body, { dictionary: this.dict });
       if (out2.length > maxDecompressedFrameSize) {
-        throw new Error('centrifuge: decompressed frame too large');
+        throw new Error('decompressed frame too large');
       }
       out = out2;
     } else {
       // A marker this client does not know means the server used a codec that
       // was never negotiated. Guessing would corrupt the stream.
-      throw new Error('centrifuge: unknown frame codec ' + marker);
+      throw new Error('unknown frame codec ' + marker);
     }
 
     this.stats.frames++;
@@ -159,8 +159,8 @@ function toBytes(data: any): Uint8Array {
 }
 
 /**
- * Build a codec from a connect reply dictionary payload, or null when it
- * carries something this client does not understand.
+ * Build a codec from a connect reply dictionary payload, or null when there is
+ * none. Throws, saying why, when the server sent one this client can not use.
  *
  * Protobuf connections carry the dictionary as raw bytes; JSON connections have
  * to base64 it, because a bytes field carries raw JSON in that protocol.
@@ -171,6 +171,7 @@ export function frameCodecFromDictionary(dictionary: any, cache?: DictionaryCach
   if (!dictionary) {
     return null;
   }
+  const id = dictionary.id || '';
   let raw: Uint8Array | null = null;
   let b64: string | null = null;
   if (dictionary.data && dictionary.data.length > 0) {
@@ -178,8 +179,10 @@ export function frameCodecFromDictionary(dictionary: any, cache?: DictionaryCach
   } else if (dictionary.data_b64 || dictionary.dataB64) {
     b64 = (dictionary.data_b64 || dictionary.dataB64) as string;
     raw = base64ToBytes(b64);
+    if (raw === null) {
+      throw new Error(`dictionary ${id} is not valid base64`);
+    }
   }
-  const id = dictionary.id || '';
   // Measured before inflating, on the encoded form, because that is what
   // actually crossed the wire - deflated, and base64 on top of that for JSON.
   // Charging the inflated size overstated the cost of the structure dictionary
@@ -188,14 +191,18 @@ export function frameCodecFromDictionary(dictionary: any, cache?: DictionaryCach
   if (raw !== null) {
     // Content is always deflated: the frame carrying it cannot be compressed,
     // because nothing is installed yet to compress it against.
+    let inflateError = '';
     try {
       // Same bound-during-inflate reasoning as decode above.
       raw = inflateSync(raw, { out: new Uint8Array(maxDictionarySize + 1) });
     } catch (e) {
-      return null;
+      inflateError = e instanceof Error ? e.message : String(e);
+    }
+    if (inflateError !== '') {
+      throw new Error(`dictionary ${id} does not inflate: ${inflateError}`);
     }
     if (raw.length > maxDictionarySize) {
-      return null;
+      throw new Error(`dictionary ${id} exceeds ${maxDictionarySize} bytes`);
     }
   }
   if (!raw || raw.length === 0) {
@@ -204,7 +211,7 @@ export function frameCodecFromDictionary(dictionary: any, cache?: DictionaryCach
     // to send. An id is a hash of the content, so a match is byte identical.
     const held = cache ? cache.get(id) : null;
     if (held === null) {
-      return null;
+      throw new Error(`server named dictionary ${id}, which this client does not hold`);
     }
     // Cached, so it crossed no wire on this connection and is not charged.
     return new FrameCodec(id, held, 0);
@@ -212,11 +219,17 @@ export function frameCodecFromDictionary(dictionary: any, cache?: DictionaryCach
   return new FrameCodec(id, raw, wireBytes);
 }
 
-function base64ToBytes(s: string): Uint8Array {
-  const binary = typeof atob === 'function'
-    ? atob(s)
-    // NodeJS has no atob in older versions; Buffer is available there instead.
-    : Buffer.from(s, 'base64').toString('binary');
+// base64ToBytes returns null for input that is not base64.
+function base64ToBytes(s: string): Uint8Array | null {
+  let binary: string;
+  try {
+    binary = typeof atob === 'function'
+      ? atob(s)
+      // NodeJS has no atob in older versions; Buffer is available there instead.
+      : Buffer.from(s, 'base64').toString('binary');
+  } catch (e) {
+    return null;
+  }
   const out = new Uint8Array(binary.length);
   for (let i = 0; i < binary.length; i++) {
     out[i] = binary.charCodeAt(i);

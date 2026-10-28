@@ -128,15 +128,17 @@ describe('building a codec from a connect reply dictionary', () => {
     expect(c!.getStats().dictionaryBytes).toEqual(0);
   });
 
-  it('returns null for an id the client does not hold', () => {
+  it('throws for an id the client does not hold', () => {
     // Nothing after this frame could be decoded, so the caller has to notice
-    // rather than install a codec built on nothing.
-    expect(frameCodecFromDictionary({ id: 'unknown' }, new DictionaryCache())).toBeNull();
-    expect(frameCodecFromDictionary({ id: 'unknown' })).toBeNull();
+    // rather than install a codec built on nothing - and say why it gave up.
+    const want = 'server named dictionary unknown, which this client does not hold';
+    expect(() => frameCodecFromDictionary({ id: 'unknown' }, new DictionaryCache())).toThrow(want);
+    expect(() => frameCodecFromDictionary({ id: 'unknown' })).toThrow(want);
   });
 
-  it('returns null for content that is not valid deflate', () => {
-    expect(frameCodecFromDictionary({ id: 'abc', data: new Uint8Array([1, 2, 3, 4]) })).toBeNull();
+  it('throws for content that is not valid deflate', () => {
+    expect(() => frameCodecFromDictionary({ id: 'abc', data: new Uint8Array([1, 2, 3, 4]) }))
+      .toThrow('dictionary abc does not inflate');
   });
 
   it('returns null for nothing at all', () => {

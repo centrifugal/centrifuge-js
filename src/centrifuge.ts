@@ -1865,12 +1865,14 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
       try {
         data = this._frameCodec.decode(data, this._codec.name() === 'json');
       } catch (e) {
+        const id = this._frameCodec.id;
         this._debug('frame decode error', e);
         // A cached dictionary that cannot decode is a stale or corrupted entry:
         // drop it so the next connection does not advertise it again and wedge
         // this client in a loop.
-        this._dictionary.forget(this._frameCodec.id);
-        this._disconnect(disconnectedCodes.badProtocol, 'frame decode error', true);
+        this._dictionary.forget(id);
+        this._disconnect(disconnectedCodes.badProtocol,
+          `dictionary compression: frame does not decode with dictionary ${id}: ${errorMessage(e)}`, true);
         return;
       }
     }
@@ -1914,7 +1916,28 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
       // the old one, so the protocol does not offer it.
       const dict = reply.connect && reply.connect.dict;
       if (dict) {
-        const codec = frameCodecFromDictionary(dict, this._dictionary);
+        let codec: FrameCodec | null;
+        try {
+          codec = frameCodecFromDictionary(dict, this._dictionary);
+        } catch (e) {
+          // The server named a dictionary this client does not hold, or sent
+          // one it can not read, so nothing after this frame can be decoded.
+          // Forget it and start over rather than misread everything that
+          // follows.
+          this._dictionary.forget(dict.id || '');
+          const reason = `dictionary compression: ${errorMessage(e)}`;
+          this._disconnect(disconnectedCodes.badProtocol, reason, true);
+          // Still connecting, so no state event carries the reason: without
+          // this the client would retry without a trace.
+          this.emit('error', {
+            type: 'connect',
+            error: {
+              code: errorCodes.transportClosed,
+              message: reason
+            }
+          });
+          return;
+        }
         if (codec !== null) {
           // This dictionary belongs to the client's profile and changes only
           // when the server publishes a new version, so keeping it turns the
@@ -1922,13 +1945,6 @@ export class Centrifuge extends (EventEmitter as new () => TypedEventEmitter<Cli
           this._dictionary.put(codec.id, codec.dictionary);
           this._frameCodec = codec;
           this._debug('dictionary compression activated, id', codec.id);
-        } else {
-          // The server named a dictionary this client does not hold, so nothing
-          // after this frame can be decoded. Forget it and start over rather
-          // than misread everything that follows.
-          this._dictionary.forget(dict.id || '');
-          this._disconnect(disconnectedCodes.badProtocol, 'unknown dictionary', true);
-          return;
         }
       }
     }

@@ -1,8 +1,20 @@
 name: Release workflow
+
+# Publishing uses npm's trusted publishing
+# (https://docs.npmjs.com/trusted-publishers): on npmjs.com, the package's
+# settings name this repository, this workflow and the "release" environment
+# as a trusted publisher, and no token is stored. The job runs in that
+# environment, and the runner's OIDC identity is what npm checks. Node 24 for
+# an npm which supports it (11.5.1 or newer).
 on:
   push:
     tags:
       - '*'
+
+permissions:
+  contents: read
+  id-token: write
+
 jobs:
   release:
     environment: release
@@ -13,12 +25,9 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
+          registry-url: https://registry.npmjs.org
       - name: Install dependencies
         run: yarn install
       - name: Release on npm
-        run: |
-          npm config set //registry.npmjs.org/:_authToken ${NPM_TOKEN}
-          npm publish --ignore-scripts
-        env:
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish --ignore-scripts --provenance

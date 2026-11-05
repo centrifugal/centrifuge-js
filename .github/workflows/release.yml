@@ -1,8 +1,23 @@
 name: Release workflow
+
+# Publishing uses npm's trusted publishing
+# (https://docs.npmjs.com/trusted-publishers): on npmjs.com, the package's
+# settings name this repository, this workflow and the "release" environment
+# as a trusted publisher, and no token is stored. The job runs in that
+# environment, and the runner's OIDC identity is what npm checks. Node 24 for
+# an npm which supports it (11.5.1 or newer).
+#
+# Pushing a tag, 5.9.0 say (a leading v, v5.9.0, is dropped), releases it: the
+# package version is set from the tag - package.json keeps 0.0.0-development.
 on:
   push:
     tags:
       - '*'
+
+permissions:
+  contents: read
+  id-token: write
+
 jobs:
   release:
     environment: release
@@ -13,12 +28,17 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
+          registry-url: https://registry.npmjs.org
       - name: Install dependencies
         run: yarn install
-      - name: Release on npm
+      - name: Version from the tag
         run: |
-          npm config set //registry.npmjs.org/:_authToken ${NPM_TOKEN}
-          npm publish --ignore-scripts
-        env:
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+          version="${GITHUB_REF_NAME#v}"
+          if ! echo "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$'; then
+            echo "::error::tag $GITHUB_REF_NAME is not a version like 5.9.0"
+            exit 1
+          fi
+          npm version "$version" --no-git-tag-version
+      - name: Release on npm
+        run: npm publish --ignore-scripts --provenance
